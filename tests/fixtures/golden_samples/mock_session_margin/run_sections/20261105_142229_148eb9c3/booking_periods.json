@@ -1,0 +1,80 @@
+{
+  "run_id": "20261105_142229_148eb9c3",
+  "keys": {
+    "periods": [
+      "unit_name",
+      "period_no"
+    ],
+    "unit_totals": [
+      "unit_name"
+    ]
+  },
+  "periods": [
+    {
+      "unit_name": "partial_close_lifecycle",
+      "period_no": 1,
+      "opened_at": "2025-09-18T05:58:40.553000+00:00",
+      "closed_at": "2025-09-18T08:01:33.102000+00:00",
+      "reason": "session_end",
+      "currency": "JPY",
+      "trade_count": 4,
+      "tick_count": 12000,
+      "net_pnl": -135.99999999993884,
+      "total_fees": 0.0,
+      "commission_cost": 0.0,
+      "swap_cost": 0.0,
+      "spread_cost": 125.75000000005332,
+      "modelled_spread_cost": 0.0,
+      "win_rate": 0.5,
+      "profit_factor": 0.5342465753425871,
+      "opening_equity": 100000.0,
+      "final_equity": 99864.00000000007,
+      "min_equity": 99803.00000000006,
+      "max_equity": 100089.00000000006,
+      "max_drawdown": 286.0,
+      "account_max_drawdown": 286.0,
+      "account_max_dd_pct": 0.285745686339158,
+      "unrealized_pnl": 0.0,
+      "open_position_count": 0
+    }
+  ],
+  "unit_totals": [
+    {
+      "unit_name": "partial_close_lifecycle",
+      "currency": "JPY",
+      "period_count": 1,
+      "opened_at": "2025-09-18T05:58:40.553000+00:00",
+      "closed_at": "2025-09-18T08:01:33.102000+00:00",
+      "trade_count": 4,
+      "net_pnl": -135.99999999993884,
+      "total_fees": 0.0,
+      "commission_cost": 0.0,
+      "swap_cost": 0.0,
+      "spread_cost": 125.75000000005332,
+      "modelled_spread_cost": 0.0,
+      "gross_profit": 156.0000000000059,
+      "gross_loss": 291.99999999994475,
+      "win_rate": 0.5,
+      "profit_factor": 0.5342465753425871,
+      "opening_equity": 100000.0,
+      "final_equity": 99864.00000000007,
+      "min_equity": 99803.00000000006,
+      "max_equity": 100089.00000000006,
+      "deepest_period_drawdown": 286.0,
+      "account_max_drawdown": 286.0,
+      "account_max_dd_pct": 0.285745686339158
+    }
+  ],
+  "currency": "JPY",
+  "currencies": [
+    "JPY"
+  ],
+  "total_net_pnl": -135.99999999993884,
+  "total_fees": 0.0,
+  "total_trades": 4,
+  "run_net_pnl": -135.99999999993884,
+  "run_total_trades": 4,
+  "reconciles": true,
+  "deepest_period_drawdown": 286.0,
+  "total_final_equity": 99864.00000000007
+}

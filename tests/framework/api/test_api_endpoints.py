@@ -837,7 +837,8 @@ class TestDeployments:
         index.list_runs.return_value = []
         with patch('python.api.endpoints.deployments_router._ledger', return_value=ledger), \
                 patch('python.api.endpoints.deployments_router.RunIndex', return_value=index), \
-                patch('python.api.endpoints.deployments_router.unfinished_by_group',
+                patch('python.framework.reporting.builders.deployment_history_builder.'
+                      'unfinished_by_group',
                       return_value={'live': [MagicMock(), MagicMock()]}):
             data = client.get('/api/v1/deployments/deploy_1').json()
         assert data['count'] == 2 and data['unfinished'] == 2

@@ -15,7 +15,12 @@ from typing import Dict, List, Optional, get_args
 from python.framework.reporting.aggregation.aggregation_fold import aggregate_ledger_rows
 from python.framework.reporting.aggregation.figure_catalog import COLUMN_NULL_MEANING
 from python.framework.types.aggregation_types import NullMeaning
-from python.framework.types.api.report_types import RunResultRow, SweepSummary
+from python.framework.types.api.report_types import (
+    RunResultRow,
+    SweepDetailResponse,
+    SweepListResponse,
+    SweepSummary,
+)
 from python.framework.types.data_origin_types import joined_distinct
 
 # What may be empty on a row and still order a ranking: a figure that was only not MEASURED for
@@ -35,6 +40,52 @@ class ParamSensitivity:
     param: str
     influence: float                # spread of the per-level mean objective (max - min)
     level_means: Dict[str, float]   # level value (as string) → mean objective at that level
+
+
+def compose_sweep_list(rows: List[RunResultRow]) -> SweepListResponse:
+    """
+    Every recorded parameter sweep, newest first — the sweep list's answer.
+
+    Composed here rather than in the route, so the answer can be rebuilt from frozen rows: the
+    golden samples of #557 do exactly that.
+
+    Args:
+        rows: Every ledger row
+
+    Returns:
+        The SweepListResponse (empty list when no sweep has been recorded yet)
+    """
+    # summarize_sweeps orders chronologically (sweep_id is timestamp-based); newest first is
+    # what a picker wants, and it matches the run index's ordering.
+    sweeps = list(reversed(summarize_sweeps(rows)))
+    return SweepListResponse(sweeps=sweeps, count=len(sweeps))
+
+
+def compose_sweep_detail(sweep_id: str, rows: List[RunResultRow]) -> Optional[SweepDetailResponse]:
+    """
+    One sweep's combinations, ranked by the objective the sweep declared.
+
+    Args:
+        sweep_id: The sweep's id
+        rows: The ledger rows of this sweep
+
+    Returns:
+        The ranked combinations, best first within each account currency; None when no row
+        names the sweep
+    """
+    if not rows:
+        return None
+
+    # The spec's own objective and direction were recorded with the runs — ranking by anything
+    # else here would answer a question the sweep did not ask.
+    head = rows[0]
+    objective = head.sweep_objective or 'net_pnl'
+    maximize = head.sweep_maximize if head.sweep_maximize is not None else True
+    combinations = rank_per_currency(rows, objective, maximize=maximize)
+    return SweepDetailResponse(
+        sweep_id=sweep_id, objective=objective, maximize=maximize,
+        combinations=combinations, count=len(combinations),
+        unranked=unranked_count(rows, objective))
 
 
 def summarize_sweeps(rows: List[RunResultRow]) -> List[SweepSummary]:

@@ -10,6 +10,8 @@ Usage:
     python python/cli/fixture_catalog_cli.py produce report_coverage
     python python/cli/fixture_catalog_cli.py produce --all
     python python/cli/fixture_catalog_cli.py verify demo_deployment
+    python python/cli/fixture_catalog_cli.py freeze report_coverage
+    python python/cli/fixture_catalog_cli.py freeze --all
 """
 
 import argparse
@@ -17,19 +19,26 @@ import sys
 import traceback
 from typing import List
 
+from python.framework.exceptions.golden_sample_errors import GoldenSampleError
 from python.framework.fixture_catalog.fixture_catalog import (
     FIXTURE_CATALOG,
     FIXTURE_CATALOG_BY_ID,
     entry_ids,
+    golden_sample_entries,
 )
 from python.framework.fixture_catalog.fixture_catalog_console import (
     render_catalog,
+    render_freeze,
+    render_freeze_refused,
     render_production,
     render_production_start,
     render_verification,
 )
 from python.framework.fixture_catalog.fixture_producer import FixtureProducer, failed_properties
 from python.framework.fixture_catalog.fixture_production_store import FixtureProductionStore
+from python.framework.fixture_catalog.golden_samples.golden_sample_freezer import (
+    GoldenSampleFreezer,
+)
 
 
 class FixtureCatalogCli:
@@ -87,6 +96,27 @@ class FixtureCatalogCli:
         render_verification(entry, production, failed)
         return 0 if production is not None and not failed else 1
 
+    def cmd_freeze(self, ids: List[str], allow_dirty: bool) -> int:
+        """
+        Freeze entries' current productions into their golden samples (#557).
+
+        Args:
+            ids: The entries to freeze, in order
+            allow_dirty: Freeze a production made on an uncommitted tree
+
+        Returns:
+            Process exit code — 1 when any entry was not frozen
+        """
+        freezer = GoldenSampleFreezer(self._store)
+        all_frozen = True
+        for entry_id in ids:
+            try:
+                render_freeze(freezer.freeze(FIXTURE_CATALOG_BY_ID[entry_id], allow_dirty))
+            except GoldenSampleError as error:
+                render_freeze_refused(entry_id, str(error))
+                all_frozen = False
+        return 0 if all_frozen else 1
+
 
 def main() -> None:
     """Main entry point."""
@@ -108,6 +138,17 @@ def main() -> None:
         'verify', help="Check an entry's current production again")
     verify_parser.add_argument('entry', choices=entry_ids(), help='The entry to check')
 
+    golden_ids = [entry.entry_id for entry in golden_sample_entries()]
+    freeze_parser = subparsers.add_parser(
+        'freeze', help="Freeze an entry's current production into its golden sample (#557)")
+    freeze_target = freeze_parser.add_mutually_exclusive_group(required=True)
+    freeze_target.add_argument('entry', nargs='?', choices=golden_ids, help='The entry to freeze')
+    freeze_target.add_argument('--all', action='store_true',
+                               help='Freeze every entry the golden samples are taken from')
+    freeze_parser.add_argument('--allow-dirty', action='store_true',
+                               help='Freeze a production made on an uncommitted tree — for a '
+                                    'sample that is not committed')
+
     args = parser.parse_args()
 
     if not args.command:
@@ -123,6 +164,8 @@ def main() -> None:
             sys.exit(cli.cmd_produce(entry_ids() if args.all else [args.entry]))
         elif args.command == 'verify':
             sys.exit(cli.cmd_verify(args.entry))
+        elif args.command == 'freeze':
+            sys.exit(cli.cmd_freeze(golden_ids if args.all else [args.entry], args.allow_dirty))
 
     except KeyboardInterrupt:
         print('\n\n⚠️  Interrupted by user')

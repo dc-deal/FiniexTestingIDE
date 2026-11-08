@@ -1,0 +1,28 @@
+{
+ "run_list_figures": {
+  "20261105_142017_f9fbf355": {
+   "results": [
+    {
+     "currency": "EUR",
+     "net_pnl": 3.740203674122538,
+     "total_trades": 8
+    },
+    {
+     "currency": "USD",
+     "net_pnl": -23.29977697838381,
+     "total_trades": 10
+    }
+   ],
+   "run_outcome": "failed",
+   "error_count": 0,
+   "warning_count": 6,
+   "log_warning_count": 39,
+   "tick_timespan_seconds": 72133.049
+  }
+ },
+ "deployments": [],
+ "deployment_details": {},
+ "deployment_booking_periods": {},
+ "sweeps": [],
+ "sweep_details": {}
+}

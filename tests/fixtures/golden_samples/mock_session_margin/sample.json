@@ -1,0 +1,32 @@
+{
+ "entry_id": "mock_session_margin",
+ "produced_at": "2026-11-05T14:22:44.632251+00:00",
+ "report_contract": 51,
+ "frozen_at": "2026-11-05T14:41:31.524534Z",
+ "composed_at": "2026-11-05T14:41:31.524534Z",
+ "runs": [
+  {
+   "run_id": "20261105_142229_148eb9c3",
+   "run_type": "autotrader",
+   "started_at": "2026-11-05T14:22:29.007356Z",
+   "commit": "b737def3",
+   "branch": "dev-1-6-0",
+   "dirty": true,
+   "diff_hash": "a67ab133bd90a988b8827fed0f45abf566d71ba3f4f83fdf27f9029dbcc88343",
+   "sections": [
+    "portfolio.json",
+    "trade_history.json",
+    "order_history.json",
+    "execution_stats.json",
+    "pending_orders.json",
+    "worker_decision.json",
+    "signal.json",
+    "feed_stability.json",
+    "booking_periods.json",
+    "run_summary.json"
+   ]
+  }
+ ],
+ "deployment_ids": [],
+ "sweep_ids": []
+}

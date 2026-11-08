@@ -28,25 +28,17 @@ from fastapi import APIRouter
 from python.api.api_error_catalog import DEPLOYMENT_NOT_FOUND, api_error
 from python.api.api_route_documents import describes
 from python.configuration.app_config_manager import AppConfigManager
-from python.framework.reporting.builders.booking_periods_report_builder import (
-    booking_periods_from_ledger_rows,
-)
 from python.framework.reporting.builders.deployment_history_builder import (
-    add_unbooked_sessions,
-    build_deployment_histories,
-    deployment_code_summary,
-    deployment_comparability_advisory,
-    summarize_deployments,
-    unbooked_runs,
+    compose_deployment_booking_periods,
+    compose_deployment_detail,
+    compose_deployment_list,
 )
-from python.framework.reporting.store.run_completion_audit import unfinished_by_group
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import (
     DeploymentBookingPeriodsResponse,
     DeploymentDetailResponse,
     DeploymentListResponse,
-    ParentKind,
     RunInfo,
 )
 
@@ -74,20 +66,7 @@ def list_deployments() -> DeploymentListResponse:
         The DeploymentListResponse — empty when no session has named a continuous deployment
         yet, which is a state and not a failure
     """
-    rows = _ledger().read_rows()
-    histories = add_unbooked_sessions(build_deployment_histories(rows), rows, _runs())
-    advisories = {
-        name: deployment_comparability_advisory(
-            [r for r in rows if r.deployment_id == name])
-        for name in histories
-    }
-    now = datetime.now(timezone.utc)
-    code_summaries = {
-        name: deployment_code_summary([r for r in rows if r.deployment_id == name], now)
-        for name in histories
-    }
-    summaries = summarize_deployments(histories, advisories, code_summaries)
-    return DeploymentListResponse(deployments=summaries, count=len(summaries))
+    return compose_deployment_list(_ledger().read_rows(), _runs(), datetime.now(timezone.utc))
 
 
 @router.get('/deployments/{deployment_id}', response_model=DeploymentDetailResponse,
@@ -108,27 +87,10 @@ def get_deployment(deployment_id: str) -> DeploymentDetailResponse:
     # sweep filter, and its absence is why a live row was written and unreachable (§44).
     rows = _ledger().read_rows(deployment_id=deployment_id)
     runs = [run for run in _runs() if run.parent_id == deployment_id]
-    sessions = add_unbooked_sessions(
-        build_deployment_histories(rows), rows, runs).get(deployment_id, [])
-    if not sessions:
+    detail = compose_deployment_detail(deployment_id, rows, runs, datetime.now(timezone.utc))
+    if detail is None:
         raise api_error(DEPLOYMENT_NOT_FOUND, deployment_id=deployment_id)
-
-    # The ledger holds the row of a session's close only at the end: a run killed before it is
-    # in the list without an end when it sealed a day, and with no figures when it sealed none.
-    # The count says how many such runs there are — without it a session that died reads like
-    # one still running. DEPLOYMENT explicitly: a sweep id has the same shape, so the kind is
-    # what makes the filter exact (#386).
-    missing = unfinished_by_group(
-        runs, rows, parent_id=deployment_id, parent_kind=ParentKind.DEPLOYMENT)
-
-    return DeploymentDetailResponse(
-        deployment_id=deployment_id,
-        sessions=sessions,
-        count=len(sessions),
-        unfinished=sum(len(group) for group in missing.values()),
-        advisory=deployment_comparability_advisory(rows),
-        code_summary=deployment_code_summary(rows, datetime.now(timezone.utc)),
-    )
+    return detail
 
 
 @router.get('/deployments/{deployment_id}/booking-periods',
@@ -156,23 +118,8 @@ def get_deployment_booking_periods(deployment_id: str) -> DeploymentBookingPerio
         and says how many sessions it could not show)
     """
     rows = _ledger().read_rows(deployment_id=deployment_id)
-    not_booked = unbooked_runs(
-        rows, [run for run in _runs() if run.parent_id == deployment_id]).get(deployment_id, [])
-    if not rows and not not_booked:
+    runs = [run for run in _runs() if run.parent_id == deployment_id]
+    periods = compose_deployment_booking_periods(deployment_id, rows, runs)
+    if periods is None:
         raise api_error(DEPLOYMENT_NOT_FOUND, deployment_id=deployment_id)
-
-    periods = booking_periods_from_ledger_rows(rows)
-    # Counted over distinct RUNS, not rows: a run writes one row per period, so counting rows
-    # would report a thirty-day session as thirty sessions. The second count is what keeps a
-    # short list honest — a session whose row predates the booking journal books nothing, and
-    # neither has one that has not sealed its first day yet.
-    booked = {row.run_id for row in rows if row.period_opened_at}
-    return DeploymentBookingPeriodsResponse(
-        deployment_id=deployment_id,
-        periods=periods,
-        count=len(periods),
-        currencies=sorted({period.currency for period in periods}),
-        sessions=len(booked),
-        sessions_without_periods=len(
-            ({row.run_id for row in rows} - booked) | {run.run_id for run in not_booked}),
-    )
+    return periods

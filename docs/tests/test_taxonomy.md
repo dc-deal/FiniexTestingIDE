@@ -109,6 +109,7 @@ tests/
 │   ├── connection_ladder/ unit — shared retry decision for every external connection: classification, backoff, jitter, budget, give-up (#473)
 │   ├── config_directory/  unit — every configuration that can start a run: what a file declares, unreadable files as rows, precedence, the per-file cache, run figures from the run index, and the console views over it (#554)
 │   ├── fixture_catalog/   unit + one real production — the runs a consumer pins: the catalog's completeness, the production record and the current fixture, a session sequence's profiles, the report-coverage run carrying every asserted property (#576)
+│   ├── golden_samples/    unit over committed samples — every aggregate frozen from a fixture production, rebuilt through today's code and compared field by field, and the read-time views composed from the frozen rows (#557)
 │   ├── indicators/        unit — the shared indicator library: what each name means (Wilder vs EMA vs simple), the scalar/series parity, and the warmup each recursive average needs (#517)
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
 │   ├── warmup_history/    unit + cross-path — the bars a run starts from: one synthetic stream through the backtest, mock and live

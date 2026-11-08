@@ -1,0 +1,103 @@
+{
+ "entry_id": "sweep",
+ "produced_at": "2026-11-05T14:39:42.772521+00:00",
+ "report_contract": 51,
+ "frozen_at": "2026-11-05T14:41:34.325158Z",
+ "composed_at": "2026-11-05T14:41:34.325158Z",
+ "runs": [
+  {
+   "run_id": "20261105_142746_8ad5d373",
+   "run_type": "simulation",
+   "started_at": "2026-11-05T14:27:46.298533Z",
+   "commit": "b737def3",
+   "branch": "dev-1-6-0",
+   "dirty": true,
+   "diff_hash": "0c27f76d8e1a0c7ddb0392d041b53c8142d434596d398e8f513f4e586eb74cba",
+   "sections": []
+  },
+  {
+   "run_id": "20261105_142905_e323b51d",
+   "run_type": "simulation",
+   "started_at": "2026-11-05T14:29:05.570554Z",
+   "commit": "b737def3",
+   "branch": "dev-1-6-0",
+   "dirty": true,
+   "diff_hash": "0c27f76d8e1a0c7ddb0392d041b53c8142d434596d398e8f513f4e586eb74cba",
+   "sections": []
+  },
+  {
+   "run_id": "20261105_143034_3fba2c18",
+   "run_type": "simulation",
+   "started_at": "2026-11-05T14:30:34.380875Z",
+   "commit": "b737def3",
+   "branch": "dev-1-6-0",
+   "dirty": true,
+   "diff_hash": "0c27f76d8e1a0c7ddb0392d041b53c8142d434596d398e8f513f4e586eb74cba",
+   "sections": []
+  },
+  {
+   "run_id": "20261105_143152_acf5a632",
+   "run_type": "simulation",
+   "started_at": "2026-11-05T14:31:52.882038Z",
+   "commit": "b737def3",
+   "branch": "dev-1-6-0",
+   "dirty": true,
+   "diff_hash": "0c27f76d8e1a0c7ddb0392d041b53c8142d434596d398e8f513f4e586eb74cba",
+   "sections": []
+  },
+  {
+   "run_id": "20261105_143306_3f150afa",
+   "run_type": "simulation",
+   "started_at": "2026-11-05T14:33:06.408508Z",
+   "commit": "b737def3",
+   "branch": "dev-1-6-0",
+   "dirty": true,
+   "diff_hash": "0c27f76d8e1a0c7ddb0392d041b53c8142d434596d398e8f513f4e586eb74cba",
+   "sections": []
+  },
+  {
+   "run_id": "20261105_143422_789015f8",
+   "run_type": "simulation",
+   "started_at": "2026-11-05T14:34:22.013622Z",
+   "commit": "b737def3",
+   "branch": "dev-1-6-0",
+   "dirty": true,
+   "diff_hash": "0c27f76d8e1a0c7ddb0392d041b53c8142d434596d398e8f513f4e586eb74cba",
+   "sections": []
+  },
+  {
+   "run_id": "20261105_143538_afc211fc",
+   "run_type": "simulation",
+   "started_at": "2026-11-05T14:35:38.059296Z",
+   "commit": "b737def3",
+   "branch": "dev-1-6-0",
+   "dirty": true,
+   "diff_hash": "0c27f76d8e1a0c7ddb0392d041b53c8142d434596d398e8f513f4e586eb74cba",
+   "sections": []
+  },
+  {
+   "run_id": "20261105_143653_8afbf64a",
+   "run_type": "simulation",
+   "started_at": "2026-11-05T14:36:53.916014Z",
+   "commit": "b737def3",
+   "branch": "dev-1-6-0",
+   "dirty": true,
+   "diff_hash": "0c27f76d8e1a0c7ddb0392d041b53c8142d434596d398e8f513f4e586eb74cba",
+   "sections": []
+  },
+  {
+   "run_id": "20261105_143812_9b06d24d",
+   "run_type": "simulation",
+   "started_at": "2026-11-05T14:38:12.583644Z",
+   "commit": "b737def3",
+   "branch": "dev-1-6-0",
+   "dirty": true,
+   "diff_hash": "0c27f76d8e1a0c7ddb0392d041b53c8142d434596d398e8f513f4e586eb74cba",
+   "sections": []
+  }
+ ],
+ "deployment_ids": [],
+ "sweep_ids": [
+  "sweep_20261105_142740_11ae7e03"
+ ]
+}

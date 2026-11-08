@@ -23,16 +23,25 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from python.framework.reporting.aggregation.aggregation_fold import aggregate_ledger_rows
+from python.framework.reporting.builders.booking_periods_report_builder import (
+    booking_periods_from_ledger_rows,
+)
 from python.framework.reporting.builders.code_stand_comparison import (
     code_changes_between,
     stands_agree,
 )
-from python.framework.reporting.store.run_completion_audit import closes_its_run
+from python.framework.reporting.store.run_completion_audit import (
+    closes_its_run,
+    unfinished_by_group,
+)
 from python.framework.types.api.report_types import (
     SESSION_KEY,
+    DeploymentBookingPeriodsResponse,
     DeploymentCaption,
     DeploymentCodeSummary,
     DeploymentComparabilityAdvisory,
+    DeploymentDetailResponse,
+    DeploymentListResponse,
     DeploymentSessionRow,
     DeploymentSummary,
     ParentKind,
@@ -45,6 +54,120 @@ from python.framework.utils.time_utils import ensure_utc_aware
 
 # Where a session without a start sorts among those without booked figures: after every start.
 _NO_START = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def compose_deployment_list(
+    rows: List[RunResultRow],
+    runs: List[RunInfo],
+    now: datetime,
+) -> DeploymentListResponse:
+    """
+    Every deployment, newest first — the deployment list's answer, from what the stores hold.
+
+    Composed here rather than in the route, so the answer can be rebuilt from frozen rows and runs
+    with a fixed instant: the golden samples of #557 do exactly that.
+
+    Args:
+        rows: Every ledger row
+        runs: Every run of the run index
+        now: The instant each code summary measures against
+
+    Returns:
+        The DeploymentListResponse — empty when no session has named a continuous deployment yet
+    """
+    histories = add_unbooked_sessions(build_deployment_histories(rows), rows, runs)
+    advisories = {
+        name: deployment_comparability_advisory(
+            [r for r in rows if r.deployment_id == name])
+        for name in histories
+    }
+    code_summaries = {
+        name: deployment_code_summary([r for r in rows if r.deployment_id == name], now)
+        for name in histories
+    }
+    summaries = summarize_deployments(histories, advisories, code_summaries)
+    return DeploymentListResponse(deployments=summaries, count=len(summaries))
+
+
+def compose_deployment_detail(
+    deployment_id: str,
+    rows: List[RunResultRow],
+    runs: List[RunInfo],
+    now: datetime,
+) -> Optional[DeploymentDetailResponse]:
+    """
+    One deployment's sessions, oldest first — the deployment detail's answer.
+
+    Args:
+        deployment_id: The identity the sessions name
+        rows: The ledger rows of this deployment
+        runs: The run index's runs that name this deployment
+        now: The instant the code summary measures against
+
+    Returns:
+        The sessions, the comparability advisory when the configuration moved, the code summary
+        when the code did, and how many of this deployment's runs never reached their close; None
+        when neither a session in the run index nor a ledger row names this identity
+    """
+    sessions = add_unbooked_sessions(
+        build_deployment_histories(rows), rows, runs).get(deployment_id, [])
+    if not sessions:
+        return None
+
+    # The ledger holds the row of a session's close only at the end: a run killed before it is
+    # in the list without an end when it sealed a day, and with no figures when it sealed none.
+    # The count says how many such runs there are — without it a session that died reads like
+    # one still running. DEPLOYMENT explicitly: a sweep id has the same shape, so the kind is
+    # what makes the filter exact (#386).
+    missing = unfinished_by_group(
+        runs, rows, parent_id=deployment_id, parent_kind=ParentKind.DEPLOYMENT)
+
+    return DeploymentDetailResponse(
+        deployment_id=deployment_id,
+        sessions=sessions,
+        count=len(sessions),
+        unfinished=sum(len(group) for group in missing.values()),
+        advisory=deployment_comparability_advisory(rows),
+        code_summary=deployment_code_summary(rows, now),
+    )
+
+
+def compose_deployment_booking_periods(
+    deployment_id: str,
+    rows: List[RunResultRow],
+    runs: List[RunInfo],
+) -> Optional[DeploymentBookingPeriodsResponse]:
+    """
+    Every booking period one deployment booked, across all of its sessions.
+
+    Args:
+        deployment_id: The identity the sessions name
+        rows: The ledger rows of this deployment
+        runs: The run index's runs that name this deployment
+
+    Returns:
+        The periods, oldest first within each currency; None when neither a session in the run
+        index nor a ledger row names this identity
+    """
+    not_booked = unbooked_runs(rows, runs).get(deployment_id, [])
+    if not rows and not not_booked:
+        return None
+
+    periods = booking_periods_from_ledger_rows(rows)
+    # Counted over distinct RUNS, not rows: a run writes one row per period, so counting rows
+    # would report a thirty-day session as thirty sessions. The second count is what keeps a
+    # short list honest — a session whose row predates the booking journal books nothing, and
+    # neither has one that has not sealed its first day yet.
+    booked = {row.run_id for row in rows if row.period_opened_at}
+    return DeploymentBookingPeriodsResponse(
+        deployment_id=deployment_id,
+        periods=periods,
+        count=len(periods),
+        currencies=sorted({period.currency for period in periods}),
+        sessions=len(booked),
+        sessions_without_periods=len(
+            ({row.run_id for row in rows} - booked) | {run.run_id for run in not_booked}),
+    )
 
 
 def summarize_deployments(
