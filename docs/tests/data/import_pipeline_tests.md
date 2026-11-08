@@ -405,7 +405,8 @@ directories:
   finished/ makes its copy go; a different file of the same name in finished/ is never overwritten
   and keeps the file in the inbox, counted as an error
 - **TestAZipIsImported** — a zip's files are imported and the zip moves to finished/ byte-identical,
-  with no loose copy beside it and its unpacking folder gone; loose files and a zip in one import; a
+  with no loose copy beside it and the unpacking directory gone with its folder — but kept while
+  another zip's folder still lies in it; loose files and a zip in one import; a
   Deflate64 zip (a Deflate zip relabelled — the package reads that method but cannot write it, and a
   Deflate stream without a 258-byte match is also valid Deflate64); the unpacking is a step of its
   own whose rate is per MB of zip, and the scan names the zip

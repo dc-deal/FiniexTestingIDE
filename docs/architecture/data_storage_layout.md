@@ -517,8 +517,8 @@ bot's, rather than ignoring it and overwriting the successor's book.
 
 - **`data/raw/` → `data/finished/`** is a **conveyor, not a store**: a file lies there in order to
   disappear. The importer reads it and MOVES it; it never rewrites the content, and every import
-  drains it. A zip's files pass through `data/unpacking/`, one folder per zip, which is empty again
-  after the import. Giving it a header and an index would make it something it is not, and would
+  drains it. A zip's files pass through `data/unpacking/`, one folder per zip, which exists only
+  while a zip is unpacked. Giving it a header and an index would make it something it is not, and would
   blur that contract.
 - **`data/refused/`** is a **quarantine**: a raw file or zip the import refused or failed on lies
   there unchanged, with `<name>.refused.txt` beside it — one line per refusal, when and why — until

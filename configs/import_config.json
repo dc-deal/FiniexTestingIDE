@@ -5,7 +5,7 @@
         "data_raw": "data/raw",
         "import_output": "data/processed",
         "data_finished": "data/finished",
-        "_comment_data_unpacking": "Where the files of a zip in data_raw are unpacked for their import, one folder per zip; the zip itself is never changed. Empty after every import: a file's copy goes once the import is through with it, the copy of one it refused moves to data_refused.",
+        "_comment_data_unpacking": "Where the files of a zip in data_raw are unpacked for their import, one folder per zip; the zip itself is never changed. Gone after every import: a file's copy goes once the import is through with it, the copy of one it refused moves to data_refused, and the directory goes with its last folder.",
         "data_unpacking": "data/unpacking",
         "_comment_data_refused": "Where the import moves a tick file or zip it refused or failed on, unchanged, with a note of why beside it (<name>.refused.txt). Every import drains data_raw: a file the archive took goes to data_finished, a refused one here. Back into data_raw by hand once its cause is fixed.",
         "data_refused": "data/refused",

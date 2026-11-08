@@ -175,6 +175,7 @@ class TickZipInbox:
         folder = self.get_unpacking_folder(zip_path)
         if folder.exists():
             shutil.rmtree(folder)
+        self._remove_empty_unpacking_dir()
 
     def unpack_member(self, member: TickZipMember) -> Tuple[Path, str]:
         """
@@ -314,6 +315,19 @@ class TickZipInbox:
         folder = self.get_unpacking_folder(zip_path)
         if folder.exists() and not any(folder.iterdir()):
             folder.rmdir()
+        self._remove_empty_unpacking_dir()
+
+    def _remove_empty_unpacking_dir(self) -> None:
+        """
+        Remove the unpacking directory once no zip's folder is left in it. It exists only while a
+        zip is unpacked: left behind empty, it reads on disk as a directory of data with no store,
+        and unpack_member creates it again for the next zip.
+
+        Returns:
+            None
+        """
+        if self._unpacking_dir.exists() and not any(self._unpacking_dir.iterdir()):
+            self._unpacking_dir.rmdir()
 
 
 def manifest_companion(zip_path: Path) -> Path:

@@ -480,7 +480,7 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
                   'reads it and MOVES it — to the finished archive when the archive took it, to '
                   'the refused files when not — and never rewrites the content; every import '
                   'drains it. A zip\'s files pass through the unpacking directory, one folder '
-                  'per zip, which is empty again after the import. A tick package the import '
+                  'per zip, which exists only while a zip is unpacked. A tick package the import '
                   'fetches arrives as <zip>.part until its hash is proven, with its manifest '
                   'beside it. A header and an index would make it something it is not.'),
         ),
