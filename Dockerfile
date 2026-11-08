@@ -1,9 +1,11 @@
 FROM python:3.12-slim
 
-# System packages (git, build tools, htop for monitoring, curl+gnupg for the step below)
+# System packages (git and its helper for gcrypt:: remotes, build tools, htop for monitoring,
+# curl+gnupg for the step below)
 RUN apt-get update && apt-get install -y \
     build-essential \
     git \
+    git-remote-gcrypt \
     htop \
     curl \
     gnupg \

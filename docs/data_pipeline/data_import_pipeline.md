@@ -767,8 +767,9 @@ data/raw/week45.zip
   goes to `data/refused/` before anything of it is written.
 - **A zip stays in the inbox only when what stopped it lay outside it:** its files would not fit on
   the disk, or the file system refused the unpacking. The next import tries again.
-- **`data/unpacking/` is empty after every import.** It holds a zip's files only while they are
-  imported; whatever a crash left there is cleared before the zip is unpacked again.
+- **`data/unpacking/` exists only while a zip is unpacked.** It holds a zip's files only while
+  they are imported, and goes with the last of them; whatever a crash left there is cleared before
+  the zip is unpacked again.
 - **Deflate64** — two zips of the raw archive use it — is read through `zipfile_deflate64`.
 - **Filing a zip into `data/finished/Archives/` stays a step by hand.** The import never reads or
   writes that folder.

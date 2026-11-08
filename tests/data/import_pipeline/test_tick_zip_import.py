@@ -240,8 +240,22 @@ class TestAZipIsImported:
         assert _sha256(paths.tick_finished / 'week45.zip') == digest
         # The zip holds the files, so no loose copy goes to finished/
         assert not list(paths.tick_finished.glob('*_ticks.json'))
-        assert not (paths.tick_unpacking / 'week45').exists()
+        # The unpacking directory goes with its last folder: left empty, it reads as unhomed data
+        assert not paths.tick_unpacking.exists()
         assert _status(coordinator, ImportStepId.TICKS_UNPACK) == ImportStepStatus.DONE
+
+    def test_the_unpacking_directory_stays_while_another_zips_folder_is_in_it(self, tmp_path):
+        paths = _paths(tmp_path)
+        _tick_zip(paths, 'week45.zip', ('AAAUSD', '2026.01.15 10:00:00'))
+        leftover = paths.tick_unpacking / 'week44' / 'left_by_a_crash.json'
+        leftover.parent.mkdir(parents=True)
+        leftover.write_text('{}', encoding='utf-8')
+
+        coordinator = _run(paths)
+
+        assert _outcome(coordinator) == ImportOutcome.COMPLETED
+        assert not (paths.tick_unpacking / 'week45').exists()
+        assert leftover.exists()
 
     def test_loose_files_and_a_zip_in_one_import(self, tmp_path):
         paths = _paths(tmp_path)
@@ -301,7 +315,7 @@ class TestAZipWithFilesTheImportRefuses:
         assert (paths.tick_refused / refused_name).exists()
         note = _note(paths, refused_name)
         assert 'Overlaps the archive' in note and 'week45.zip' in note
-        assert not (paths.tick_unpacking / 'week45').exists()
+        assert not paths.tick_unpacking.exists()
         assert len(_tick_files(paths)) == 2
 
     def test_a_zip_with_nothing_of_use_goes_to_refused(self, tmp_path):
@@ -317,7 +331,7 @@ class TestAZipWithFilesTheImportRefuses:
         # The zip holds the file, so its copy goes rather than lying in refused/ twice
         assert not (paths.tick_refused / name).exists()
         assert name in _note(paths, 'broken.zip')
-        assert not (paths.tick_unpacking / 'broken').exists()
+        assert not paths.tick_unpacking.exists()
 
 
 class TestAZipFedAgain:
@@ -447,7 +461,7 @@ class TestAZipRefusedAsAWhole:
         assert _status(coordinator, ImportStepId.TICKS_UNPACK) == ImportStepStatus.FAILED
         assert (paths.tick_refused / 'damaged.zip').exists()
         assert not _tick_files(paths)
-        assert not (paths.tick_unpacking / 'damaged').exists()
+        assert not paths.tick_unpacking.exists()
 
     def test_a_zip_too_large_for_the_disk_waits_in_the_inbox(self, tmp_path, monkeypatch):
         paths = _paths(tmp_path)
