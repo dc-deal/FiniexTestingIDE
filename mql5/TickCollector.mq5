@@ -12,7 +12,7 @@
 // One number, two renderings. The bare form goes on the wire as `producer_version`,
 // because a consumer reads that field across three producers and two spellings of a
 // version is two things to get wrong; the "V" form is for the console only.
-#define PRODUCER_VERSION     "1.3.0"
+#define PRODUCER_VERSION     "1.3.1"
 #define EA_VERSION           "V" PRODUCER_VERSION
 // Schema version of the exported JSON. A constant, not an input: the version
 // identifies the code that wrote the file and must not be set per chart.
@@ -25,6 +25,9 @@
 // Program identity written into every file. Fixed, never an input - it says which
 // program wrote the bytes, and a field a chart could set would say nothing.
 #define PRODUCER_NAME        "finiex-mt5-collector"
+// The alive stamp FiniexKeepalive reads: a terminal global variable per symbol, this prefix
+// plus the chart's symbol. The keepalive spells the same prefix; the two must agree.
+#define ALIVE_STAMP_PREFIX   "FiniexTickCollector."
 // Where this terminal's identity lives. MQL5\Files of THIS terminal, never
 // FILE_COMMON: the identity belongs to one terminal's archive, and a shared
 // folder would hand the same identity to every terminal on the machine.
@@ -362,12 +365,14 @@ int OnInit()
     Print("✅ Gestuftes Error-Tracking aktiviert (Negligible:", LogNegligibleErrors, 
           " Serious:", LogSeriousErrors, " Fatal:", LogFatalErrors, ")");
 
-    // One timer drives the flush and the midnight close of a quiet market. A timer that cannot be
-    // set stops nothing: the file then closes with the first tick after midnight, and at
-    // MaxTicksPerFile, as before.
+    // One timer drives the flush, the midnight close of a quiet market and the alive stamp. A timer
+    // that cannot be set stops no collecting: the file then closes with the first tick after
+    // midnight, and at MaxTicksPerFile, as before - but the alive stamp stops with it, so the
+    // keepalive reports this collector down, which is what it is for the outside check.
     g_lastFlushMs = GetTickCount64();
+    StampAlive();
     if (!EventSetTimer(1))
-        Print("⚠ Timer could not be set - no periodic flush; the midnight close waits for a tick");
+        Print("⚠ Timer could not be set - no periodic flush and no alive stamp; the midnight close waits for a tick");
     
     return INIT_SUCCEEDED;
 }
@@ -1106,13 +1111,27 @@ void DiscardCurrentFile()
 }
 
 //+------------------------------------------------------------------+
-//| Timer: the flush, and the midnight close of a quiet market       |
+//| The alive stamp FiniexKeepalive reads: this symbol's terminal    |
+//| global variable, set to the computer's UTC time. No network and  |
+//| nothing in the files, so it cannot hold up a tick. TimeGMT and   |
+//| not the server time, which stands still while the market is      |
+//| closed: a weekend must not look like a dead collector.           |
+//+------------------------------------------------------------------+
+void StampAlive()
+{
+    GlobalVariableSet(ALIVE_STAMP_PREFIX + _Symbol, (double)TimeGMT());
+}
+
+//+------------------------------------------------------------------+
+//| Timer: the alive stamp, the flush, and the midnight close of a   |
+//| quiet market                                                     |
 //|                                                                  |
 //| Runs every second and returns at once when there is nothing to   |
 //| do; it never waits, so it cannot hold up the ticks.              |
 //+------------------------------------------------------------------+
 void OnTimer()
 {
+    StampAlive();
     CloseIfDayEnded(UtcMscPrecise());
     if (fileHandle == INVALID_HANDLE || !g_writtenSinceFlush) return;
     ulong nowMs = GetTickCount64();
@@ -1134,23 +1153,30 @@ void OnDeinit(const int reason)
     else
         CloseCurrentFile();
     
+    // Every reason MT5 passes, named: a stop is read back when an outage is judged, and
+    // "unknown" there answers nothing
     string reasonText = "";
     switch(reason)
     {
-        case REASON_PROGRAM: reasonText = "Expert Advisor manuell gestoppt"; break;
-        case REASON_REMOVE: reasonText = "Expert Advisor vom Chart entfernt"; break;
-        case REASON_RECOMPILE: reasonText = "Expert Advisor neu kompiliert"; break;
-        case REASON_CHARTCHANGE: reasonText = "Chart-Eigenschaften geändert"; break;
-        case REASON_CHARTCLOSE: reasonText = "Chart geschlossen"; break;
-        default: reasonText = "Unbekannter Grund"; break;
+        case REASON_PROGRAM: reasonText = "the expert stopped itself (ExpertRemove)"; break;
+        case REASON_REMOVE: reasonText = "removed from the chart"; break;
+        case REASON_RECOMPILE: reasonText = "recompiled"; break;
+        case REASON_CHARTCHANGE: reasonText = "the chart's symbol or period changed"; break;
+        case REASON_CHARTCLOSE: reasonText = "the chart was closed"; break;
+        case REASON_PARAMETERS: reasonText = "its inputs were changed"; break;
+        case REASON_ACCOUNT: reasonText = "another account, or the account's settings changed"; break;
+        case REASON_TEMPLATE: reasonText = "a template was applied"; break;
+        case REASON_INITFAILED: reasonText = "its start failed"; break;
+        case REASON_CLOSE: reasonText = "the terminal was closed"; break;
+        default: reasonText = StringFormat("unknown (%d)", reason); break;
     }
-    
-    // Finale Statistiken
+
+    // Final statistics
     int totalErrors = errorCounts[ERROR_NEGLIGIBLE] + errorCounts[ERROR_SERIOUS] + errorCounts[ERROR_FATAL];
     Print("========================================");
-    Print("TickCollector ", EA_VERSION, " gestoppt");
-    Print("Grund: ", reasonText);
-    Print(StringFormat("Finale Statistiken: %d Ticks, %d Errors", tickCounter, totalErrors));
+    Print("TickCollector ", EA_VERSION, " stopped");
+    Print("Reason: ", reasonText);
+    Print(StringFormat("Final statistics: %d ticks, %d errors", tickCounter, totalErrors));
     if (totalErrors > 0)
     {
         Print(StringFormat("Error-Breakdown: %d Negligible, %d Serious, %d Fatal", 

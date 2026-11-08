@@ -133,11 +133,17 @@ data/raw/*.json
 data/raw/*.jsonl
 # A member the re-import tool was still streaming when it stopped
 data/raw/*.json.part
+# A tick package and its download in progress — #120
+data/raw/*.zip
+data/raw/*.zip.part
 # Signal source raw JSONL (nested per pipeline_id) — #429
 data/raw/signals/*
 !data/raw/signals/.gitkeep
 data/finished/*
 !data/finished/.gitkeep
+# A zip's members while they are imported, and what an import refused with its reason — #120
+data/unpacking/
+data/refused/
 # A venue's published history (#561) — downloaded, never versioned, never published
 data/external/
 data/cache/

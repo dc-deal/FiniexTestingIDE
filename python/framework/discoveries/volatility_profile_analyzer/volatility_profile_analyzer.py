@@ -510,9 +510,12 @@ class VolatilityProfileAnalyzer:
         # Calculate average ATR for relative classification
         all_atrs = [p['avg_atr'] for p in valid_period_data]
         avg_atr_global = np.mean(all_atrs)
+        # Every period's percentile at once: ranking each period against all of them, per period,
+        # grew with the square of the history — a decade of hours on Kraken took minutes
+        atr_percentiles = self._get_percentiles(np.array(all_atrs))
 
         # Second pass: classify periods
-        for period_data in valid_period_data:
+        for period_index, period_data in enumerate(valid_period_data):
             period_start = period_data['period_start']
             group = period_data['group']
             avg_atr = period_data['avg_atr']
@@ -521,8 +524,13 @@ class VolatilityProfileAnalyzer:
 
             period_end = period_start + timedelta(hours=granularity)
 
-            # Get dominant session
-            session_str = group['session'].mode().iloc[0]
+            # Get dominant session. The session follows the bar's UTC hour, so within a one-hour period
+            # every bar has the same one, and the mode is its first value; counting it per period
+            # cost a quarter of the remaining time
+            if granularity == 1:
+                session_str = group['session'].iloc[0]
+            else:
+                session_str = group['session'].mode().iloc[0]
             session = TradingSession(session_str)
 
             # Metrics
@@ -536,7 +544,7 @@ class VolatilityProfileAnalyzer:
             regime = self._classify_regime(ratio)
 
             # Calculate percentile for reference
-            atr_percentile = self._get_percentile(avg_atr, np.array(all_atrs))
+            atr_percentile = atr_percentiles[period_index]
 
             # Bar statistics
             bar_count = len(group)
@@ -564,20 +572,22 @@ class VolatilityProfileAnalyzer:
 
         return periods
 
-    def _get_percentile(self, value: float, all_values: np.ndarray) -> float:
+    def _get_percentiles(self, all_values: np.ndarray) -> np.ndarray:
         """
-        Get percentile rank of a value.
+        Percentile rank of every value: the share of values strictly below it. One sort and a
+        binary search per value, instead of a comparison against every value per value; the
+        count and the arithmetic are the same, so each rank comes out bit for bit as before.
 
         Args:
-            value: Value to rank
-            all_values: All values for comparison
+            all_values: All values, finite
 
         Returns:
-            Percentile (0-100)
+            Percentiles (0-100), in the order of all_values
         """
         if len(all_values) == 0:
-            return 0.0
-        return (all_values < value).sum() / len(all_values) * 100
+            return np.array([], dtype=float)
+        below = np.searchsorted(np.sort(all_values), all_values, side='left')
+        return below / len(all_values) * 100
 
     def _classify_regime(self, ratio: float) -> VolatilityRegime:
         """

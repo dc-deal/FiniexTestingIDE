@@ -59,3 +59,20 @@ there and enters it in the index in the same step.
 | `test_the_file_is_written_and_the_index_stays_current` | One write leaves the file on disk, its row in the index, and the index current |
 | `test_a_rewritten_file_keeps_one_row_and_leaves_no_temporary_file` | A second write of the same file replaces its row, and nothing but the file is left in the folder |
 | `test_no_module_writes_a_parquet_file_past_it` | No module under `python/framework/discoveries/` other than the index unit calls `write_table` or `to_parquet` — a family writing past the index would bring the stale index back with the suite green |
+
+## The volatility profile ranks every period in one pass
+
+`test_volatility_profile_ranks.py`. Each period's `atr_percentile` is the share of periods whose
+ATR lies strictly below its own. It used to be counted against every period, per period — a cost
+that grew with the square of the history, and on a decade of hourly Kraken periods took most of an
+import's cache step. One sort and a binary search give the same count with the same arithmetic, so
+the ranks may not move by a bit. A one-hour period takes its session from its hour, which every bar
+in it shares, instead of counting the most frequent one. The frames are synthetic.
+
+| Test | Asserts |
+|---|---|
+| `test_each_rank_is_the_share_strictly_below` | Ties share a rank, and the rank counts only the values strictly below |
+| `test_ranks_match_the_count_against_every_value_bit_for_bit` | On random values with ties, the ranks equal the former per-value count exactly, in the same dtype |
+| `test_no_values_give_no_ranks` | No periods, no ranks — never an error |
+| `test_every_period_carries_the_rank_of_its_own_atr` | A built profile's periods carry the ranks of their own ATR ratios |
+| `test_a_one_hour_period_takes_the_session_of_its_hour` | Every one-hour period's session is the session of its UTC hour |

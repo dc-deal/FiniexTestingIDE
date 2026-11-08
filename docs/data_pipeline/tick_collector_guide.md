@@ -134,6 +134,14 @@ with normal market hours. It is not part of `TickCollector`: `WebRequest` blocks
 collector reads only the latest tick per `OnTick`, so a ping inside it would lose the ticks arriving
 meanwhile. One keepalive serves the whole terminal, however many symbols it collects.
 
+A terminal can be alive while nothing collects in it — a collector that was never started after a
+restart, or one removed from its chart. So each `TickCollector` sets an alive stamp every second: a
+terminal global variable, `FiniexTickCollector.<symbol>`, holding the computer's UTC time. It costs no
+network call and changes nothing in the files. The keepalive pings only while the alive stamp of every
+symbol named in its `Collectors` input is younger than `CollectorStaleSeconds` (default 180). The UTC
+time is the computer's and not the server's, because the server time stands still while the market is
+closed and a weekend must not look like a dead collector.
+
 **Setting it up:**
 
 1. Create a check: period 10 minutes, grace 30 minutes, simple schedule, e-mail on down. An alarm then
@@ -144,23 +152,31 @@ meanwhile. One keepalive serves the whole terminal, however many symbols it coll
 4. Drag it onto a chart of its own and paste the check's ping address into `PingUrl`. The address is a
    credential, because whoever holds it can report the terminal healthy: it stays in the chart's
    settings on that machine, and the expert never prints it.
+5. Name the collected symbols in `Collectors`, comma-separated and spelled as their charts name them,
+   e.g. `EURUSD,GBPUSD,USDJPY`. Left empty, the keepalive vouches for the terminal only — right for a
+   terminal that collects nothing, wrong for one that does. A collector added later is added here too.
 
-**What the chart says:** the counters `sent`, `withheld` and `failed`, and the last ping's time.
-`withheld` means the terminal is not healthy, `failed` that the path to the check is broken. The log
-gets one line only when that state changes.
+**What the chart says:** the counters `sent`, `withheld` and `failed`, the last ping's time, how many
+collectors it watches and which of them are not running. `withheld` means the terminal is not healthy,
+`failed` that the path to the check is broken. The log gets one line when the state or its reason
+changes, and only then.
 
 | It reports | The check sees |
 |---|---|
 | machine, terminal or the expert gone | silence, then the e-mail |
+| a named `TickCollector` not started, removed from its chart, or hanging | pings withheld, then the e-mail |
 | broker connection lost during an open session | pings withheld, then the e-mail |
 | broker connection lost while the market is closed | pings go on: brokers run maintenance then |
-| market closed, connected | pings go on: the timer needs no ticks |
+| market closed, connected | pings go on: neither timer needs ticks |
 
-**What it does not see:** a `TickCollector` removed from its chart, or one that hangs. The expert reads
-nothing of the collectors. It says that the terminal is alive, not that every symbol is collecting.
+**What it does not see:** a collector that runs while no ticks reach it during an open session — its
+symbol gone from the Market Watch, say. The alive stamp says that the collector runs, not that its
+symbol is quoted. And a symbol left out of `Collectors` is not watched at all.
 
-**To test it:** take it off the chart. The check has to go down and send its e-mail about 40 minutes
-after the last ping.
+**To test it:** take one `TickCollector` off its chart. Within `CollectorStaleSeconds` the keepalive's
+chart names it under *not running* and counts pings as withheld; about 40 minutes after the last ping
+the check sends its e-mail. Put the collector back, and the pings go out again with the next timer
+event. Taking the keepalive itself off the chart tests the silence the same way.
 
 ---
 
@@ -194,7 +210,7 @@ From data format **1.7.0** every exported file carries an `origin` block:
   "instance_id": "dc0db6a25f15",
   "collected_on": "LAPTOP-Q267UHDA",
   "producer": "finiex-mt5-collector",
-  "producer_version": "1.3.0"
+  "producer_version": "1.3.1"
 }
 ```
 
