@@ -92,6 +92,13 @@ is read. The decision trading API hands out masks, never the engine's own object
 engine gains reaches no algo until a mask declares it (#653). Not a pandas boolean mask. See
 [Algo Masks](user_guides/algo_masks.md).
 
+**alive stamp** (`FiniexTickCollector.<symbol>`) — The value an MT5 `TickCollector` writes every
+second into a global variable of its terminal: the computer's UTC time. The terminal's keepalive
+reads it before each ping and pings only while every collected symbol's stamp is fresh, so a
+collector that was never started stops the pings too. Not the *heartbeat*, which is the tick loop's
+idle pass, and not a *liveness ping*, which goes to the monitor. See
+[Tick Collector](data_pipeline/tick_collector_guide.md).
+
 **archive** (tick archive) — The imported tick data a backtest and a mock session replay. The one
 part of the application that stays backward compatible: data from every collector format ever
 accepted is still read. See [Data Import](data_pipeline/data_import_pipeline.md).

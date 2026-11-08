@@ -776,8 +776,8 @@ data/raw/week45.zip
 ### Fetching the collector's packages
 
 The data collector packs its finished tick files into weekly packages — one Deflate zip per
-collector (`kraken`, `mt5`) with a manifest, sealed Sunday 00:00 UTC — and serves them at
-`/v1/packages` (#120). The import fetches them before it scans the inbox, and acknowledges each one
+collector (`kraken`, `mt5`) with a manifest, sealed Sunday 00:00 UTC, or at any cutoff by a command
+on its machine — and serves them at `/v1/packages` (#120). The import fetches them before it scans the inbox, and acknowledges each one
 it took once the import is through:
 
 ```

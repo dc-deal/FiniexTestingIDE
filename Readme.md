@@ -60,6 +60,22 @@ FiniexTestingIDE is a high-performance backtesting and live trading framework fo
 
 ---
 
+## The Finiex Apps
+
+FiniexTestingIDE works together with a few applications of its own family. Each has a short name, used
+wherever the apps name one another.
+
+| App | Short name | Repository | What it does |
+|---|---|---|---|
+| FiniexTestingIDE | `testingide` | [FiniexTestingIDE](https://github.com/dc-deal/FiniexTestingIDE) | Backtesting, live trading (FiniexAutoTrader) and the HTTP API — this repository |
+| FiniexViewer | `viewer` | [FiniexViewer](https://github.com/dc-deal/FiniexViewer) | The browser interface to runs, sessions and data, on the IDE's HTTP API |
+| FiniexDataCollector | `datacollector` | [FiniexDataCollector](https://github.com/dc-deal/FiniexDataCollector) | Collects Kraken ticks around the clock: the IDE's crypto tick data |
+| Package service | `packages` | part of FiniexDataCollector | Packs the collectors' finished tick files into weekly packages, which the IDE's import fetches |
+| FiniexRAGEngine | `ragengine` | [FiniexRAGEngine](https://github.com/dc-deal/FiniexRAGEngine) | Turns news into typed trading signals (LLM sentiment): the IDE's signal input |
+| MT5 tick collector | `mt5-collector` | this repository, [`mql5/`](mql5/) | MetaTrader 5 experts that collect forex ticks, and one that reports the terminal's health — see [Tick Collector](docs/data_pipeline/tick_collector_guide.md) |
+
+---
+
 ## Features
 
 ### Data Pipeline
