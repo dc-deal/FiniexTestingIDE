@@ -1,0 +1,140 @@
+{
+  "run_id": "20261109_170713_84f65be1",
+  "units": [
+    {
+      "name": "demo_btcusd_bot",
+      "symbol": "BTCUSD",
+      "decision_logic_type": "CORE/simple_consensus",
+      "decision_logic_name": "simple_consensus",
+      "worker_decision_tracked": true,
+      "decision_count": 90000,
+      "buy_signals": 11360,
+      "sell_signals": 734,
+      "flat_signals": 77906,
+      "trades_requested": 2,
+      "decision_total_time_ms": 1418.4965279418975,
+      "decision_avg_time_ms": 0.016,
+      "decision_min_time_ms": 0.007,
+      "decision_max_time_ms": 0.714,
+      "ticks_processed": 90000,
+      "parallel_workers": false,
+      "parallel_time_saved_ms": 0.0,
+      "parallel_avg_saved_per_tick_ms": 0.0,
+      "workers": [
+        {
+          "worker_type": "CORE/rsi",
+          "worker_name": "rsi_fast",
+          "call_count": 90000,
+          "total_time_ms": 5061.095301323803,
+          "avg_time_ms": 0.056,
+          "min_time_ms": 0.028,
+          "max_time_ms": 4.536,
+          "compute_basis": "live",
+          "last_compute_tick": 90000,
+          "compute_ratio_pct": 100.0,
+          "ticks_idle": 0,
+          "unit_mean_time_ms": null
+        },
+        {
+          "worker_type": "CORE/bollinger",
+          "worker_name": "bollinger_main",
+          "call_count": 90000,
+          "total_time_ms": 3398.5755837638862,
+          "avg_time_ms": 0.038,
+          "min_time_ms": 0.02,
+          "max_time_ms": 4.143,
+          "compute_basis": "live",
+          "last_compute_tick": 90000,
+          "compute_ratio_pct": 100.0,
+          "ticks_idle": 0,
+          "unit_mean_time_ms": null
+        },
+        {
+          "worker_type": "CORE/obv",
+          "worker_name": "obv_volume",
+          "call_count": 90000,
+          "total_time_ms": 3698.363229079405,
+          "avg_time_ms": 0.041,
+          "min_time_ms": 0.024,
+          "max_time_ms": 1.245,
+          "compute_basis": "live",
+          "last_compute_tick": 90000,
+          "compute_ratio_pct": 100.0,
+          "ticks_idle": 0,
+          "unit_mean_time_ms": null
+        }
+      ],
+      "timed_worker_count": 3,
+      "worker_call_count": 270000,
+      "worker_time_ms": 12158.034114167094,
+      "algo_time_ms": 13576.530642108992,
+      "algo_avg_per_tick_ms": 0.15085034046787768,
+      "non_flat_signals": 12094
+    }
+  ],
+  "worker_totals": [
+    {
+      "worker_type": "CORE/rsi",
+      "worker_name": "rsi_fast",
+      "call_count": 90000,
+      "total_time_ms": 5061.095301323803,
+      "avg_time_ms": 0.05623439223693115,
+      "min_time_ms": 0.028,
+      "max_time_ms": 4.536,
+      "compute_basis": "live",
+      "last_compute_tick": -1,
+      "compute_ratio_pct": null,
+      "ticks_idle": null,
+      "unit_mean_time_ms": 0.056
+    },
+    {
+      "worker_type": "CORE/obv",
+      "worker_name": "obv_volume",
+      "call_count": 90000,
+      "total_time_ms": 3698.363229079405,
+      "avg_time_ms": 0.041092924767548944,
+      "min_time_ms": 0.024,
+      "max_time_ms": 1.245,
+      "compute_basis": "live",
+      "last_compute_tick": -1,
+      "compute_ratio_pct": null,
+      "ticks_idle": null,
+      "unit_mean_time_ms": 0.041
+    },
+    {
+      "worker_type": "CORE/bollinger",
+      "worker_name": "bollinger_main",
+      "call_count": 90000,
+      "total_time_ms": 3398.5755837638862,
+      "avg_time_ms": 0.037761950930709845,
+      "min_time_ms": 0.02,
+      "max_time_ms": 4.143,
+      "compute_basis": "live",
+      "last_compute_tick": -1,
+      "compute_ratio_pct": null,
+      "ticks_idle": null,
+      "unit_mean_time_ms": 0.038
+    }
+  ],
+  "decision_totals": {
+    "total_ticks": 90000,
+    "total_decisions": 90000,
+    "total_non_flat_signals": 12094,
+    "decision_total_time_ms": 1418.4965279418975,
+    "decision_avg_time_ms": 0.01576107253268775,
+    "decision_unit_mean_time_ms": 0.016
+  },
+  "bottlenecks": {
+    "slowest_algo_unit": "demo_btcusd_bot",
+    "slowest_algo_unit_avg_per_tick_ms": 0.15085034046787768,
+    "slowest_algo_unit_time_ms": 13576.530642108992,
+    "slowest_worker": "rsi_fast",
+    "slowest_worker_mean_ms": 0.056,
+    "slowest_worker_worst_unit": "demo_btcusd_bot",
+    "slowest_worker_worst_unit_ms": 0.056,
+    "slowest_decision_logic": "simple_consensus",
+    "slowest_decision_logic_mean_ms": 0.016,
+    "worst_parallel_unit": null,
+    "worst_parallel_time_saved_ms": null
+  }
+}

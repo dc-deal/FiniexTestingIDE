@@ -24,6 +24,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from python.framework.reporting.aggregation.tables.booking_figure_table import (
+    BOOKING_PERIOD_TRADES_TABLE,
+)
+from python.framework.reporting.aggregation.tables.ledger_figure_table import LEDGER_TABLE
 from python.framework.reporting.builders.booking_period_builder import (
     PeriodSnapshot,
     derive_booking_period,
@@ -230,6 +234,24 @@ class TestAPeriodThatTradedNothing:
             'session', 1, _WED, _WED + timedelta(days=1), PeriodCloseReason.ANCHOR,
             _six_cases(), _snapshot())
         assert empty.figures.profit_factor is None
+
+
+class TestAPeriodRebuildsItsRatesLikeTheLedger:
+    """A sealed period is a ledger row, so its rates come from the ledger's own derivations."""
+
+    def test_the_period_and_the_ledger_share_one_derivation_per_rate(self):
+        for rate in ('win_rate', 'profit_factor'):
+            assert (BOOKING_PERIOD_TRADES_TABLE.derivations[rate]
+                    is LEDGER_TABLE.derivations[rate]), rate
+
+    def test_a_period_that_traded_and_lost_nothing_has_no_profit_factor(self):
+        winners_only = [record for record in _six_cases() if record.net_pnl > 0]
+        period = derive_booking_period(
+            'session', 1, _MON, _WED + timedelta(days=1), PeriodCloseReason.ANCHOR,
+            winners_only, _snapshot())
+        assert period.figures.gross_loss == 0.0
+        assert period.figures.profit_factor is None
+        assert period.figures.net_pnl == period.figures.gross_profit
 
 
 class TestTheStockHalfIsReadNeverDerived:

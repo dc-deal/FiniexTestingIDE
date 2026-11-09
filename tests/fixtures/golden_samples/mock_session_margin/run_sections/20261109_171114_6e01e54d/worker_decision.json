@@ -1,0 +1,84 @@
+{
+  "run_id": "20261109_171114_6e01e54d",
+  "units": [
+    {
+      "name": "partial_close_lifecycle",
+      "symbol": "USDJPY",
+      "decision_logic_type": "CORE/test_probes/multi_position_probe",
+      "decision_logic_name": "test_probes/multi_position_probe",
+      "worker_decision_tracked": true,
+      "decision_count": 12000,
+      "buy_signals": 1,
+      "sell_signals": 1,
+      "flat_signals": 11998,
+      "trades_requested": 2,
+      "decision_total_time_ms": 15.928783308481798,
+      "decision_avg_time_ms": 0.001,
+      "decision_min_time_ms": 0.001,
+      "decision_max_time_ms": 0.456,
+      "ticks_processed": 12000,
+      "parallel_workers": false,
+      "parallel_time_saved_ms": 0.0,
+      "parallel_avg_saved_per_tick_ms": 0.0,
+      "workers": [
+        {
+          "worker_type": "CORE/test_probes/sample_probe_worker",
+          "worker_name": "probe_worker",
+          "call_count": 12000,
+          "total_time_ms": 19.557341845938936,
+          "avg_time_ms": 0.002,
+          "min_time_ms": 0.001,
+          "max_time_ms": 0.491,
+          "compute_basis": "live",
+          "last_compute_tick": 12000,
+          "compute_ratio_pct": 100.0,
+          "ticks_idle": 0,
+          "unit_mean_time_ms": null
+        }
+      ],
+      "timed_worker_count": 1,
+      "worker_call_count": 12000,
+      "worker_time_ms": 19.557341845938936,
+      "algo_time_ms": 35.48612515442073,
+      "algo_avg_per_tick_ms": 0.0029571770962017276,
+      "non_flat_signals": 2
+    }
+  ],
+  "worker_totals": [
+    {
+      "worker_type": "CORE/test_probes/sample_probe_worker",
+      "worker_name": "probe_worker",
+      "call_count": 12000,
+      "total_time_ms": 19.557341845938936,
+      "avg_time_ms": 0.001629778487161578,
+      "min_time_ms": 0.001,
+      "max_time_ms": 0.491,
+      "compute_basis": "live",
+      "last_compute_tick": -1,
+      "compute_ratio_pct": null,
+      "ticks_idle": null,
+      "unit_mean_time_ms": 0.002
+    }
+  ],
+  "decision_totals": {
+    "total_ticks": 12000,
+    "total_decisions": 12000,
+    "total_non_flat_signals": 2,
+    "decision_total_time_ms": 15.928783308481798,
+    "decision_avg_time_ms": 0.0013273986090401497,
+    "decision_unit_mean_time_ms": 0.001
+  },
+  "bottlenecks": {
+    "slowest_algo_unit": "partial_close_lifecycle",
+    "slowest_algo_unit_avg_per_tick_ms": 0.0029571770962017276,
+    "slowest_algo_unit_time_ms": 35.48612515442073,
+    "slowest_worker": "probe_worker",
+    "slowest_worker_mean_ms": 0.002,
+    "slowest_worker_worst_unit": "partial_close_lifecycle",
+    "slowest_worker_worst_unit_ms": 0.002,
+    "slowest_decision_logic": "test_probes/multi_position_probe",
+    "slowest_decision_logic_mean_ms": 0.001,
+    "worst_parallel_unit": null,
+    "worst_parallel_time_saved_ms": null
+  }
+}

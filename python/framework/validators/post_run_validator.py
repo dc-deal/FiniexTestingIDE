@@ -21,6 +21,9 @@ from python.framework.reporting.builders.portfolio_report_builder import usable_
 from python.framework.reporting.builders.robustness_report_builder import (
     build_robustness_report_from_batch,
 )
+from python.framework.reporting.builders.worker_decision_breakdown_builder import (
+    coordination_overhead_ms,
+)
 from python.framework.types.api.report_types import WalkForwardClass
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.config_types.data_origin_config_types import OriginClass
@@ -454,7 +457,7 @@ class PostRunValidator:
             worker_exec = sum(w.worker_total_time_ms for w in (tlr.worker_statistics or []))
             decision = tlr.decision_statistics.decision_total_time_ms if tlr.decision_statistics else 0.0
             computation = worker_exec + decision
-            overhead = max(0.0, op_total - computation)
+            overhead = coordination_overhead_ms(op_total, worker_exec, decision)
             if computation > 0 and overhead / computation > _HIGH_OVERHEAD_RATIO:
                 high.append(result.scenario_name)
         if high:

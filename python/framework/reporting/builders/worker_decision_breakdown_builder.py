@@ -41,7 +41,7 @@ def build_worker_decision_breakdowns(
         workers = row.worker_time_ms
         # Null where the unit did not track its decisions: nothing was timed, nothing taken out
         decision = row.decision_total_time_ms or 0.0
-        overhead = max(0.0, total - workers - decision)
+        overhead = coordination_overhead_ms(total, workers, decision)
         breakdowns.append(WorkerDecisionBreakdownRow(
             name=profiling.name, total_time_ms=total, total_ticks=row.ticks_processed,
             worker_execution_ms=workers, decision_logic_ms=decision,
@@ -50,3 +50,20 @@ def build_worker_decision_breakdowns(
             decision_logic_pct=(decision / total * 100) if total > 0 else 0.0,
             coordination_overhead_pct=(overhead / total * 100) if total > 0 else 0.0))
     return breakdowns
+
+
+def coordination_overhead_ms(total_ms: float, worker_ms: float, decision_ms: float) -> float:
+    """
+    What is left of the `worker_decision` operation's time once the workers and the decision logic
+    are taken out — the coordination between them, never below zero. One formula for the
+    breakdown and for the validator that judges it.
+
+    Args:
+        total_ms: The operation's total time
+        worker_ms: The workers' time
+        decision_ms: The decision logic's time
+
+    Returns:
+        The coordination overhead in ms
+    """
+    return max(0.0, total_ms - worker_ms - decision_ms)

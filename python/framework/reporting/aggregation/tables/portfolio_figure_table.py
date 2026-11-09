@@ -35,6 +35,7 @@ from python.framework.types.api.report_types import (
     PortfolioUnitRow,
 )
 from python.framework.types.trading_env_types.broker_types import FeeSource
+from python.framework.types.trading_env_types.order_event_types import OrderEvent
 
 
 def open_position_count(row: Any) -> int:
@@ -135,6 +136,22 @@ def fill_fees_by_source(combined: Dict[str, Any], rows: Sequence[Any]) -> Dict[F
                 fill_count=sum(part.fill_count for part in parts),
                 fill_fees=sum(part.fill_fees for part in parts))
     return summed
+
+
+# One unit's fills per fee source (#508): its order events that executed something, grouped by
+# where their fee came from. The fees add in a loop, as the fold it replaces did.
+FEE_SOURCE_FILLS_TABLE = FoldTable(
+    name='fee_source_fills',
+    figures={
+        'fill_count': FigureDeclaration(Reduction.COUNT),
+        'fill_fees': FigureDeclaration(Reduction.SUM, source='fee', empty_value=0.0,
+                                       addition=Addition.SEQUENTIAL),
+    },
+    order=GroupOrder.FIRST_SEEN,
+    served_as=FeeSourceFills,
+    row_model=OrderEvent,
+    grain=('fee_source',),
+)
 
 
 # The headline's declarations. The aggregated portfolio reuses the sums its rates are built from,

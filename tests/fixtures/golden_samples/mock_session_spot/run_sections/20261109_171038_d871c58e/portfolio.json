@@ -1,0 +1,113 @@
+{
+  "run_id": "20261109_171038_d871c58e",
+  "units": [
+    {
+      "name": "tp_triggered_test",
+      "symbol": "BTCUSD",
+      "currency": "USD",
+      "total_trades": 1,
+      "winning_trades": 0,
+      "losing_trades": 1,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total_profit": 0.0,
+      "total_loss": 1.3564160000000116,
+      "net_profit": -1.3564160000000116,
+      "account_max_drawdown": 1.3564159999987169,
+      "account_max_dd_pct": 0.013564159999987169,
+      "drawdown_carried_from": "",
+      "drawdown_restarts": 0,
+      "drawdown_started_at": "2026-11-09T17:10:44.138086+00:00",
+      "total_fees": 1.421716,
+      "fees_charged": 1.421716,
+      "data_broker_type": "kraken_spot",
+      "data_sentiment_type": "",
+      "broker_name": "Kraken",
+      "spot_mode": true,
+      "total_long_trades": 1,
+      "total_short_trades": 0,
+      "max_equity": 10000.0,
+      "current_balance": 9998.643584000001,
+      "initial_balance": 10000.0,
+      "conversion_rate": null,
+      "base_currency": "BTC",
+      "quote_currency": "USD",
+      "spot_est_current": 9998.643584000001,
+      "spot_est_initial": 10000.0,
+      "spot_est_pnl": -1.3564159999987169,
+      "spot_est_pnl_pct": -0.013564159999987169,
+      "total_spread_cost": 0.00010000000000582077,
+      "total_modelled_spread_cost": 0.0,
+      "total_commission": 0.0,
+      "total_swap": 0.0,
+      "maker_fee": 0.0,
+      "taker_fee": 1.421716,
+      "fill_fees_by_source": {
+        "venue": {
+          "fill_count": 2,
+          "fill_fees": 1.421716
+        }
+      },
+      "has_error": false,
+      "balances": {
+        "USD": 9998.643584000001,
+        "BTC": 0.0
+      },
+      "initial_balances": {
+        "USD": 10000.0,
+        "BTC": 0.0
+      },
+      "committed_funds": {
+        "USD": 0.0,
+        "BTC": 0.0
+      },
+      "usable_funds": {},
+      "last_price": 88878.1,
+      "open_positions": [],
+      "unrealized_pnl": 0.0,
+      "final_equity": 9998.643584000001,
+      "final_equity_valued": true,
+      "session_end_policy": "cancel/leave",
+      "open_position_count": 0
+    }
+  ],
+  "aggregates": [
+    {
+      "currency": "USD",
+      "unit_count": 1,
+      "total_trades": 1,
+      "winning_trades": 0,
+      "losing_trades": 1,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total_profit": 0.0,
+      "total_loss": 1.3564160000000116,
+      "net_profit": -1.3564160000000116,
+      "account_max_drawdown": 1.3564159999987169,
+      "max_equity": 10000.0,
+      "account_max_dd_pct": 0.013564159999987169,
+      "account_max_drawdown_unit": "tp_triggered_test",
+      "total_fees": 1.421716,
+      "fees_charged": 1.421716,
+      "fill_fees_by_source": {
+        "venue": {
+          "fill_count": 2,
+          "fill_fees": 1.421716
+        }
+      },
+      "unrealized_pnl": 0.0,
+      "final_equity": 9998.643584000001,
+      "total_final_equity": 9998.643584000001,
+      "total_initial_balance": 10000.0,
+      "open_position_count": 0
+    }
+  ],
+  "keys": {
+    "units": [
+      "name"
+    ],
+    "aggregates": [
+      "currency"
+    ]
+  }
+}

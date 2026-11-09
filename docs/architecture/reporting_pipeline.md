@@ -656,7 +656,8 @@ substrate the Parameter Optimization system ranks over. Both pipelines append (#
    category still comes from how the order filled — the venue states maker or taker per execution
    only. A backtest's fees are the model's estimate throughout; every order event says which with
    `fee_source`, so a live-versus-backtest comparison of fees can tell the two apart. The portfolio
-   row folds those events into `fill_fees_by_source` — fills and their fees per source — and the
+   row folds those events into `fill_fees_by_source` — fills and their fees per source, through
+   the fee-source table — and the
    order-history row carries `fee_source` beside its `commission`.
    Block-splitting disposition is also model-fed now (`BlockSplittingReport`, Profile Runs only).
    File-logs follow automatically (captured stdout).

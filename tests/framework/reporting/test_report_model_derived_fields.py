@@ -227,7 +227,18 @@ class TestARecordWrittenBeforeContract52:
 
 
 class TestADurationAcrossARestart:
-    """A position restored at boot keeps the entry index of the session that opened it (F4)."""
+    """A position restored at boot has no entry index in the session that closes it (687.a)."""
+
+    def test_a_restored_position_has_no_duration_in_ticks(self):
+        row = TradeHistoryRow(
+            position_id='p1', symbol='BTCUSD', direction='long', lots=0.1, entry_price=1.0,
+            entry_time='2026-01-01T00:00:00+00:00', exit_price=1.1,
+            exit_time='2026-01-02T00:00:00+00:00', duration_s=86400.0, close_reason='',
+            gross_pnl=1.0, total_fees=0.0, net_pnl=1.0, entry_tick_index=None,
+            exit_tick_index=120)
+        assert row.duration_ticks is None
+
+    # A record from before contract 53 still carries the opening session's index
 
     def test_an_exit_before_its_entry_has_no_duration(self):
         row = TradeHistoryRow(

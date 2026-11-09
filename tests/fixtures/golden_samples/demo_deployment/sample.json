@@ -1,18 +1,18 @@
 {
  "entry_id": "demo_deployment",
- "produced_at": "2026-11-09T15:03:07.746299+00:00",
+ "produced_at": "2026-11-09T17:10:13.682843+00:00",
  "report_contract": 52,
- "frozen_at": "2026-11-09T15:15:43.699352Z",
- "composed_at": "2026-11-09T15:15:43.699352Z",
+ "frozen_at": "2026-11-09T17:22:45.241942Z",
+ "composed_at": "2026-11-09T17:22:45.241942Z",
  "runs": [
   {
-   "run_id": "20261109_145825_5d69335e",
+   "run_id": "20261109_170634_843ba099",
    "run_type": "autotrader",
-   "started_at": "2026-11-09T14:58:25.963080Z",
-   "commit": "4f1b5f5b",
+   "started_at": "2026-11-09T17:06:34.438010Z",
+   "commit": "cee42210",
    "branch": "dev-1-6-0",
-   "dirty": true,
-   "diff_hash": "d33e8cf5b6cab7dcb060708dc22a0735ec82192463dd63948a0fb162967ec3e7",
+   "dirty": false,
+   "diff_hash": null,
    "sections": [
     "portfolio.json",
     "trade_history.json",
@@ -27,13 +27,13 @@
    ]
   },
   {
-   "run_id": "20261109_145917_8b2a140c",
+   "run_id": "20261109_170713_84f65be1",
    "run_type": "autotrader",
-   "started_at": "2026-11-09T14:59:17.347139Z",
-   "commit": "4f1b5f5b",
+   "started_at": "2026-11-09T17:07:13.494556Z",
+   "commit": "cee42210",
    "branch": "dev-1-6-0",
-   "dirty": true,
-   "diff_hash": "d33e8cf5b6cab7dcb060708dc22a0735ec82192463dd63948a0fb162967ec3e7",
+   "dirty": false,
+   "diff_hash": null,
    "sections": [
     "portfolio.json",
     "trade_history.json",
@@ -48,13 +48,13 @@
    ]
   },
   {
-   "run_id": "20261109_150009_5a4a230e",
+   "run_id": "20261109_170756_16e8aed9",
    "run_type": "autotrader",
-   "started_at": "2026-11-09T15:00:09.233093Z",
-   "commit": "4f1b5f5b",
+   "started_at": "2026-11-09T17:07:56.838156Z",
+   "commit": "cee42210",
    "branch": "dev-1-6-0",
-   "dirty": true,
-   "diff_hash": "d33e8cf5b6cab7dcb060708dc22a0735ec82192463dd63948a0fb162967ec3e7",
+   "dirty": false,
+   "diff_hash": null,
    "sections": [
     "portfolio.json",
     "trade_history.json",
@@ -69,13 +69,13 @@
    ]
   },
   {
-   "run_id": "20261109_150059_d8ba2914",
+   "run_id": "20261109_170835_2980fc31",
    "run_type": "autotrader",
-   "started_at": "2026-11-09T15:00:59.373960Z",
-   "commit": "4f1b5f5b",
+   "started_at": "2026-11-09T17:08:35.796600Z",
+   "commit": "cee42210",
    "branch": "dev-1-6-0",
-   "dirty": true,
-   "diff_hash": "d33e8cf5b6cab7dcb060708dc22a0735ec82192463dd63948a0fb162967ec3e7",
+   "dirty": false,
+   "diff_hash": null,
    "sections": [
     "portfolio.json",
     "trade_history.json",
@@ -90,23 +90,23 @@
    ]
   },
   {
-   "run_id": "20261109_150147_9c3d0a3d",
+   "run_id": "20261109_170914_af5be647",
    "run_type": "autotrader",
-   "started_at": "2026-11-09T15:01:47.163758Z",
-   "commit": "4f1b5f5b",
+   "started_at": "2026-11-09T17:09:14.751813Z",
+   "commit": "cee42210",
    "branch": "dev-1-6-0",
-   "dirty": true,
-   "diff_hash": "d33e8cf5b6cab7dcb060708dc22a0735ec82192463dd63948a0fb162967ec3e7",
+   "dirty": false,
+   "diff_hash": null,
    "sections": []
   },
   {
-   "run_id": "20261109_150217_c2a9a4c1",
+   "run_id": "20261109_170933_7b3f9ba5",
    "run_type": "autotrader",
-   "started_at": "2026-11-09T15:02:17.089466Z",
-   "commit": "4f1b5f5b",
+   "started_at": "2026-11-09T17:09:33.698434Z",
+   "commit": "cee42210",
    "branch": "dev-1-6-0",
-   "dirty": true,
-   "diff_hash": "d33e8cf5b6cab7dcb060708dc22a0735ec82192463dd63948a0fb162967ec3e7",
+   "dirty": false,
+   "diff_hash": null,
    "sections": [
     "portfolio.json",
     "trade_history.json",
@@ -122,8 +122,8 @@
   }
  ],
  "deployment_ids": [
-  "deploy_20261109_145825_a420e005",
-  "deploy_20261109_150217_7420d5c3"
+  "deploy_20261109_170634_ee56285c",
+  "deploy_20261109_170933_0301befb"
  ],
  "sweep_ids": []
 }

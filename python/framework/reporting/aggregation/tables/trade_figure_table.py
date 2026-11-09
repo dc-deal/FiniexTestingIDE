@@ -156,6 +156,32 @@ def losing_trade(row: Any) -> int:
     return 1 if row.net_pnl < 0 else 0
 
 
+def profit_of_winner(row: Any) -> Optional[float]:
+    """
+    What a winning trade realised — one part of a gross profit.
+
+    Args:
+        row: A trade row
+
+    Returns:
+        Its net P&L when positive, else None
+    """
+    return row.net_pnl if row.net_pnl > 0 else None
+
+
+def loss_of_loser(row: Any) -> Optional[float]:
+    """
+    What a losing trade lost, as a magnitude — one part of a gross loss.
+
+    Args:
+        row: A trade row
+
+    Returns:
+        Its net P&L negated when negative, else None
+    """
+    return -row.net_pnl if row.net_pnl < 0 else None
+
+
 def closed_by_stop_loss(row: Any) -> int:
     """
     Whether a trade was closed by its stop loss — one count each.

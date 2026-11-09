@@ -140,7 +140,9 @@ class TradeHistoryRow(BaseModel):
     r_multiple: float | None = None  # net_pnl / initial_risk; None when no stop loss
     # Full projection (#393) — lets the console audit table render purely from the model
     scenario_name: str = ''     # owning run unit (sim: scenario; live: session) → grouping
-    entry_tick_index: int = 0   # chronological sort key within a unit
+    # The chronological sort key within a unit; None for a position a session restored at boot,
+    # which opened in another session's numbering
+    entry_tick_index: Optional[int] = None
     exit_tick_index: int = 0
     entry_type: str = ''        # 'market' | 'limit' | 'stop' | 'stop_limit'
     stop_loss: float | None = None
@@ -176,13 +178,15 @@ class TradeHistoryRow(BaseModel):
         How many ticks of its unit the trade was open, from its entry to the tick it closed on.
 
         Derived rather than stored, so it cannot drift from the two indices it is read from. A
-        position a session restored at boot keeps the entry index of the session that opened it,
-        so its two indices belong to different numberings; an exit before its entry shows that.
+        position a session restored at boot has no entry index in this session's numbering; a
+        record from before that was so still carries the index of the session that opened it, and
+        an exit before its entry shows that.
 
         Returns:
-            The exit tick index less the entry tick index; None where the exit lies before it
+            The exit tick index less the entry tick index; None for a restored position, or where
+            the exit lies before the entry
         """
-        if self.exit_tick_index < self.entry_tick_index:
+        if self.entry_tick_index is None or self.exit_tick_index < self.entry_tick_index:
             return None
         return self.exit_tick_index - self.entry_tick_index
 

@@ -22,9 +22,9 @@ from python.framework.types.aggregation_types import FoldTable, GroupOrder
 LEDGER_RECENCY_KEYS = ('period_closed_at', 'recorded_at_utc', 'run_timestamp')
 
 
-def _derive_win_rate(combined: Dict[str, Any], rows: Sequence[Any]) -> Optional[float]:
+def derive_win_rate(combined: Dict[str, Any], rows: Sequence[Any]) -> Optional[float]:
     """
-    The win rate from the summed counts.
+    The win rate from the summed counts — of a ledger row's periods, and of a period's trades.
 
     A group that measured nothing — the rows of runs that failed before they measured anything —
     has no win rate rather than one of zero (#646); a group without a trade keeps its 0.0.
@@ -43,9 +43,10 @@ def _derive_win_rate(combined: Dict[str, Any], rows: Sequence[Any]) -> Optional[
     return (winners / total) if total else 0.0
 
 
-def _derive_profit_factor(combined: Dict[str, Any], rows: Sequence[Any]) -> Optional[float]:
+def derive_profit_factor(combined: Dict[str, Any], rows: Sequence[Any]) -> Optional[float]:
     """
-    The profit factor from the summed gross halves.
+    The profit factor from the summed gross halves — of a ledger row's periods, and of a period's
+    trades.
 
     Args:
         combined: The row being built, its flows already folded
@@ -104,8 +105,8 @@ LEDGER_TABLE = FoldTable(
     name='ledger',
     figures=LEDGER_FIGURES,
     derivations={
-        'win_rate': _derive_win_rate,
-        'profit_factor': _derive_profit_factor,
+        'win_rate': derive_win_rate,
+        'profit_factor': derive_profit_factor,
         'signal_fresh_ratio': _derive_weakest_signal_channel,
         'max_consecutive_wins': _derive_nothing_for_a_sequence,
         'max_consecutive_losses': _derive_nothing_for_a_sequence,

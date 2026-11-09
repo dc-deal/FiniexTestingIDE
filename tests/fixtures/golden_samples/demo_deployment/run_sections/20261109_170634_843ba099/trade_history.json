@@ -1,0 +1,217 @@
+{
+  "run_id": "20261109_170634_843ba099",
+  "trades": [
+    {
+      "position_id": "pos_btcusd_1",
+      "symbol": "BTCUSD",
+      "direction": "long",
+      "lots": 0.1,
+      "entry_price": 76889.0,
+      "entry_time": "2026-02-01T20:32:50.539000+00:00",
+      "exit_price": 77824.8,
+      "exit_time": "2026-02-02T00:51:12.544000+00:00",
+      "duration_s": 15502.005,
+      "close_reason": "",
+      "gross_pnl": 93.5800000000003,
+      "total_fees": 123.77104000000001,
+      "net_pnl": -30.191039999999717,
+      "currency": "USD",
+      "swap_cost": 0.0,
+      "commission_cost": 123.77104000000001,
+      "spread_cost": 0.33999999999941793,
+      "modelled_spread_cost": 0.0,
+      "mae_price": 75665.8,
+      "mfe_price": 78086.7,
+      "mae_pnl": -122.31999999999971,
+      "mfe_pnl": 119.76999999999971,
+      "mae_distance": 12231.99999999997,
+      "mfe_distance": 11976.99999999997,
+      "price_unit": "tick",
+      "r_multiple": null,
+      "scenario_name": "demo_btcusd_bot",
+      "entry_tick_index": 7230,
+      "exit_tick_index": 28651,
+      "entry_type": "market",
+      "stop_loss": null,
+      "take_profit": null,
+      "entry_side": "buy",
+      "exit_side": "sell",
+      "entry_executions": [
+        {
+          "trade_id": "SYNTH-pos_btcusd_1-000001",
+          "side": "buy",
+          "volume": 0.1,
+          "price": 76889.0,
+          "fee": 61.51120000000001,
+          "fee_currency": "USD",
+          "liquidity": "taker",
+          "timestamp": "2026-02-01T20:32:50.539000+00:00",
+          "shared_by": 1
+        }
+      ],
+      "exit_executions": [
+        {
+          "trade_id": "SYNTH-pos_btcusd_1-000002",
+          "side": "sell",
+          "volume": 0.1,
+          "price": 77824.8,
+          "fee": 62.259840000000004,
+          "fee_currency": "USD",
+          "liquidity": "taker",
+          "timestamp": "2026-02-02T00:51:12.544000+00:00",
+          "shared_by": 1
+        }
+      ],
+      "entry_slippage": 0.0,
+      "exit_slippage": 0.0,
+      "entry_slippage_pct": 0.0,
+      "exit_slippage_pct": 0.0,
+      "exit_slippage_measured_against": "submission_mid",
+      "exit_level": null,
+      "close_type": "full",
+      "position_closes": 1,
+      "entry_lots": 0.1,
+      "duration_ticks": 21421
+    },
+    {
+      "position_id": "pos_btcusd_3",
+      "symbol": "BTCUSD",
+      "direction": "long",
+      "lots": 0.1,
+      "entry_price": 75318.5,
+      "entry_time": "2026-02-02T04:12:12.331000+00:00",
+      "exit_price": 76849.9,
+      "exit_time": "2026-02-02T08:10:41.532000+00:00",
+      "duration_s": 14309.201,
+      "close_reason": "",
+      "gross_pnl": 153.13999999999942,
+      "total_fees": 121.73472000000001,
+      "net_pnl": 31.405279999999408,
+      "currency": "USD",
+      "swap_cost": 0.0,
+      "commission_cost": 121.73472000000001,
+      "spread_cost": 0.34000000000087316,
+      "modelled_spread_cost": 0.0,
+      "mae_price": 74835.0,
+      "mfe_price": 76853.2,
+      "mae_pnl": -48.35,
+      "mfe_pnl": 153.46999999999971,
+      "mae_distance": 4835.0,
+      "mfe_distance": 15346.99999999997,
+      "price_unit": "tick",
+      "r_multiple": null,
+      "scenario_name": "demo_btcusd_bot",
+      "entry_tick_index": 49003,
+      "exit_tick_index": 66515,
+      "entry_type": "market",
+      "stop_loss": null,
+      "take_profit": null,
+      "entry_side": "buy",
+      "exit_side": "sell",
+      "entry_executions": [
+        {
+          "trade_id": "SYNTH-pos_btcusd_3-000003",
+          "side": "buy",
+          "volume": 0.1,
+          "price": 75318.5,
+          "fee": 60.2548,
+          "fee_currency": "USD",
+          "liquidity": "taker",
+          "timestamp": "2026-02-02T04:12:12.331000+00:00",
+          "shared_by": 1
+        }
+      ],
+      "exit_executions": [
+        {
+          "trade_id": "SYNTH-pos_btcusd_3-000004",
+          "side": "sell",
+          "volume": 0.1,
+          "price": 76849.9,
+          "fee": 61.47992,
+          "fee_currency": "USD",
+          "liquidity": "taker",
+          "timestamp": "2026-02-02T08:10:41.532000+00:00",
+          "shared_by": 1
+        }
+      ],
+      "entry_slippage": 0.0,
+      "exit_slippage": 0.0,
+      "entry_slippage_pct": 0.0,
+      "exit_slippage_pct": 0.0,
+      "exit_slippage_measured_against": "submission_mid",
+      "exit_level": null,
+      "close_type": "full",
+      "position_closes": 1,
+      "entry_lots": 0.1,
+      "duration_ticks": 17512
+    }
+  ],
+  "count": 2,
+  "symbols": [
+    "BTCUSD"
+  ],
+  "analytics": [
+    {
+      "currency": "USD",
+      "trade_count": 2,
+      "expectancy": null,
+      "avg_win_r": null,
+      "avg_loss_r": null,
+      "r_trade_count": 0,
+      "r_win_count": 0,
+      "r_loss_count": 0,
+      "avg_mae_winners": -48.35,
+      "avg_mae_losers": -122.31999999999971,
+      "avg_mfe_losers": 119.76999999999971,
+      "gross_pnl": 246.71999999999971,
+      "net_pnl": 1.2142399999996911,
+      "total_fees": 245.50576,
+      "largest_mae": 122.31999999999971,
+      "largest_mfe": 153.46999999999971,
+      "avg_trade_duration_s": 14905.603,
+      "avg_trade_duration_ticks": 19466.5,
+      "min_trade_duration_ticks": 17512,
+      "max_trade_duration_ticks": 21421,
+      "long_trades": 2,
+      "short_trades": 0,
+      "winning_trades": 1,
+      "losing_trades": 1,
+      "sl_closes": 0,
+      "tp_closes": 0,
+      "scenario_end_closes": 0,
+      "manual_closes": 2,
+      "avg_gross_pnl": 123.35999999999986,
+      "avg_fees": 122.75288,
+      "avg_net_pnl": 0.6071199999998456,
+      "max_consecutive_wins": 1,
+      "max_consecutive_losses": 1
+    }
+  ],
+  "scenario_totals": [
+    {
+      "scenario_name": "demo_btcusd_bot",
+      "currency": "USD",
+      "trade_count": 2,
+      "gross_pnl": 246.71999999999971,
+      "net_pnl": 1.2142399999996911,
+      "total_fees": 245.50576,
+      "total_swap": 0.0,
+      "total_spread_cost": 0.680000000000291,
+      "total_modelled_spread_cost": 0.0
+    }
+  ],
+  "keys": {
+    "trades": [
+      "scenario_name",
+      "position_id",
+      "exit_tick_index"
+    ],
+    "analytics": [
+      "currency"
+    ],
+    "scenario_totals": [
+      "scenario_name",
+      "currency"
+    ]
+  }
+}

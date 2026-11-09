@@ -11,6 +11,10 @@ The per-currency roll-up is derived from the rows via the shared `aggregate_port
 
 from typing import Dict, List, Optional
 
+from python.framework.reporting.aggregation.aggregation_fold import fold_keyed
+from python.framework.reporting.aggregation.tables.portfolio_figure_table import (
+    FEE_SOURCE_FILLS_TABLE,
+)
 from python.framework.reporting.builders.report_aggregators import aggregate_portfolio_by_currency
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import (
@@ -168,15 +172,10 @@ def fill_fees_by_source(events: List[OrderEvent]) -> Dict[FeeSource, FeeSourceFi
         One entry per fee source that occurs, in the order FeeSource declares them; empty where
         nothing executed
     """
-    counts: Dict[FeeSource, int] = {}
-    fees: Dict[FeeSource, float] = {}
-    for event in events:
-        if event.fee_source is None:
-            continue
-        counts[event.fee_source] = counts.get(event.fee_source, 0) + 1
-        fees[event.fee_source] = fees.get(event.fee_source, 0.0) + (event.fee or 0.0)
-    return {source: FeeSourceFills(fill_count=counts[source], fill_fees=fees[source])
-            for source in FeeSource if source in counts}
+    executed = [event for event in events if event.fee_source is not None]
+    folded = dict(fold_keyed(executed, FEE_SOURCE_FILLS_TABLE))
+    return {source: FeeSourceFills(**folded[(source,)])
+            for source in FeeSource if (source,) in folded}
 
 
 def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:

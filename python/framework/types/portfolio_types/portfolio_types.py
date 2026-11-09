@@ -129,7 +129,9 @@ class Position:
     price_unit: str = ''
 
     # === Tick Index (for backtesting analysis) ===
-    entry_tick_index: int = 0
+    # None for a position a session restored at boot: it opened in another session's numbering,
+    # so no tick of this one is its entry
+    entry_tick_index: Optional[int] = 0
     exit_tick_index: int = 0
 
     # === Excursion (MAE/MFE) — running extrema over the position's life (#389) ===
