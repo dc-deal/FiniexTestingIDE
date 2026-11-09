@@ -14,6 +14,7 @@ from python.framework.reporting.aggregation.tables.block_splitting_figure_table 
     BLOCK_TOTALS_TABLE,
 )
 from python.framework.reporting.aggregation.tables.booking_figure_table import (
+    BOOKING_PERIOD_TRADES_TABLE,
     BOOKING_RUN_TOTALS_TABLE,
     BOOKING_UNIT_CLOSE_TABLE,
 )
@@ -27,6 +28,7 @@ from python.framework.reporting.aggregation.tables.execution_figure_table import
 )
 from python.framework.reporting.aggregation.tables.portfolio_figure_table import (
     AGGREGATED_PORTFOLIO_TABLE,
+    FEE_SOURCE_FILLS_TABLE,
     PENDING_TOTALS_TABLE,
     PORTFOLIO_HEADLINE_TABLE,
     SPOT_BALANCES_TABLE,
@@ -109,6 +111,7 @@ FIGURE_TABLES: Dict[str, FoldTable] = {table.name: table for table in (
     AGGREGATED_EXECUTION_TABLE,
     PENDING_TOTALS_TABLE,
     SPOT_BALANCES_TABLE,
+    FEE_SOURCE_FILLS_TABLE,
     RUN_SPAN_TABLE,
     SIGNAL_CHANNEL_TABLE,
     PROFILING_TABLE,
@@ -117,6 +120,7 @@ FIGURE_TABLES: Dict[str, FoldTable] = {table.name: table for table in (
     SIGNAL_RESOLUTION_TABLE,
     SIGNAL_COVERAGE_TABLE,
     FEED_PROVENANCE_TABLE,
+    BOOKING_PERIOD_TRADES_TABLE,
     BOOKING_RUN_TOTALS_TABLE,
     BOOKING_UNIT_CLOSE_TABLE,
     FEED_SOURCE_TABLE,

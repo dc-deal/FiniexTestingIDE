@@ -268,6 +268,11 @@ the day that opens there. `TestAnUnmeasuredValueStaysUnmeasured` pins that an un
 curve without its first valuation stay None, and `TestTheLogLine` that the seal's line names its
 tick count and says an unread equity rather than printing 0.00.
 
+`TestAPeriodRebuildsItsRatesLikeTheLedger` pins that a period's flows fold through their own table
+under the ledger's names, and that its win rate and profit factor come from the very derivations
+the ledger rebuilds them with across the periods — one function each, so the two levels cannot
+answer differently. A period that traded and lost nothing has no profit factor.
+
 ## `test_booking_periods_report.py` — the table, and the line that makes it trustworthy
 
 The reconciliation is the point. A column of period summaries is believed because it agrees with

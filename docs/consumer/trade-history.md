@@ -45,8 +45,8 @@ the session in a live run — and it is the join into every other section.
 | `duration_s` | how long it was open, in seconds |
 | `entry_type` | how the position was opened — `market`, `limit`, `stop`, `stop_limit` |
 | `entry_side` · `exit_side` | `buy` or `sell` — what each end actually did |
-| `entry_tick_index` · `exit_tick_index` | the chronological sort key within the unit |
-| `duration_ticks` | how many ticks of its unit the trade was open: `exit_tick_index` less `entry_tick_index`; null where the exit lies before the entry — a position a session restored at boot keeps the entry index of the session that opened it, so its two indices are not one numbering. `duration_s` holds for every trade |
+| `entry_tick_index` · `exit_tick_index` | the chronological sort key within the unit. `entry_tick_index` is null on a trade whose position a session restored at boot: it opened in another session, and the closing session counts its ticks from zero again |
+| `duration_ticks` | how many ticks of its unit the trade was open: `exit_tick_index` less `entry_tick_index`; null where there is no entry index, and on a run recorded before contract 53, where such a row still carries the opening session's index, wherever the exit lies before it. `duration_s` holds for every trade |
 | `stop_loss` · `take_profit` | the levels in force when this row's close was booked — after any move, not the levels at entry; null where none was |
 | `currency` | the account currency every money figure on the row is in |
 | `close_type` | `full` or `partial` — whether this row closed all of the position or part of it |

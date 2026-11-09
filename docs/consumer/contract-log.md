@@ -33,6 +33,20 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 53 — 2026-11-09 (#557)
+
+A position a session restored at boot has no tick of the closing session to start from.
+
+- [Trade history](/api/v1/docs/trade-history): **`entry_tick_index`** is null on a trade whose
+  position a session restored at boot. The position opened in another session, and the closing
+  session counts its ticks from zero again, so no tick of its own is the entry. `duration_ticks` is
+  null on such a row too; `duration_s` still answers.
+
+**A run recorded before this contract** keeps the index it was written with: the opening session's,
+and `duration_ticks` null only where the exit lies before it.
+
+A field became nullable; nothing added, removed or renamed.
+
 ## Version 52 — 2026-11-09 (#557)
 
 Every figure a console printed is now a field the API serves, so no reader has to compute it.
@@ -128,25 +142,13 @@ now a new deployment stood in no list for up to a day while its session ran.
 - [Errors](/api/v1/docs/errors): `deployment_not_found` now means that no session in the run index
   and no ledger row names the identity.
 
-## Version 48 — 2026-11-01
-
-A consumer can tell which installation answers, now that this API exists on more than one system.
-
-- [Server](/api/v1/docs/server), `/health`: `host_id`, the identity of the installation answering, the
-  same value as `origin_host` on [activities](/api/v1/docs/activities) and [runs](/api/v1/docs/runs). It
-  stays when an address changes, so key a system by it. Null where the server cannot read it; `/health`
-  keeps answering.
-- `/health`: `host_name`, a name for people to read, from the installation's configuration; null where
-  none is set. Two installations may carry the same one, so it is no key.
-
-Two fields added on an open route; nothing removed or renamed.
-
-## Versions 47 and earlier
+## Versions 48 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 48** — 2026-11-01: The installation answering names itself on `/health` — `host_id`, the key, the same value as `origin_host` on activities and runs, and `host_name`, for people to read and no key.
 - **Version 47** — 2026-10-30 (#559): A deployment notices when its sessions ran different code — `changed` also true when only the code moved, `configuration_changed` beside it, `code_changes` on the session rows, `code_summary` on the list rows and the detail, `commit_subject` and `recent_commits` on the run header's repositories, `code_stand` on a sweep's combinations.
 - **Version 46** — 2026-10-30 (#625): A session holds no stop or target for a position any more — `protective_level_enforcement` and `take_profit_enforcement` removed from the open-position rows, `protection_released` and `close_withheld` no longer produced, `409 artifact_unreadable` for a stored artifact that no longer matches its model, `expectancy` null where no trade has an R, and a sweep ranked by `expectancy` counts such runs in `unranked`.
 - **Version 45** — 2026-10-30 (#625): A venue's API decides which levels a run can use — `exit_level` on every [trade history](/api/v1/docs/trade-history) row, `features_beyond_venue` on the [run header](/api/v1/docs/run-header), `order_feature_not_declared` as a `rejection_reason`, four new validation checks, and an exit a strategy keeps itself fills in a backtest at the next price after its level.

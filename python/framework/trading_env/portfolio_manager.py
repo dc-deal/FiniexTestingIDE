@@ -1924,12 +1924,15 @@ class PortfolioManager:
         Args:
             record: Completed TradeRecord to log
         """
-        duration_ticks = record.exit_tick_index - record.entry_tick_index
+        # A position restored at boot has no entry tick in this session's numbering
+        restored = record.entry_tick_index is None
+        entry_tick = '—' if restored else record.entry_tick_index
+        duration_ticks = '—' if restored else record.exit_tick_index - record.entry_tick_index
 
         self._logger.debug(
             f'📊 TRADE RECORD #{len(self._trade_history)} | {record.position_id}\n'
             f'   {record.symbol} {record.direction} {record.lots} lots\n'
-            f'   Entry: {record.entry_price:.5f} @ tick {record.entry_tick_index} | '
+            f'   Entry: {record.entry_price:.5f} @ tick {entry_tick} | '
             f'Exit: {record.exit_price:.5f} @ tick {record.exit_tick_index} | '
             f'Duration: {duration_ticks} ticks\n'
             f'   Tick Value: entry={record.entry_tick_value:.5f}, exit={record.exit_tick_value:.5f}\n'

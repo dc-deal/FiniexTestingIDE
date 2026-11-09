@@ -150,8 +150,10 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         renderer: ConsoleRenderer
     ) -> None:
         """Render trade history for a single scenario (already its rows)."""
-        # Sort by entry_tick_index (chronological) — ordering is a presentation concern
-        sorted_rows = sorted(rows, key=lambda r: r.entry_tick_index)
+        # Sort by entry_tick_index (chronological) — ordering is a presentation concern. A position
+        # restored at boot has none and opened before the session, so it comes first
+        sorted_rows = sorted(rows, key=lambda r: (r.entry_tick_index is not None,
+                                                  r.entry_tick_index or 0))
 
         # Per-scenario totals from the model aggregate (not a re-sum)
         totals = self._scenario_totals_by_name[scenario_name]
@@ -230,13 +232,16 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         gross_str = self._format_value(row.gross_pnl, renderer)
         net_str = self._format_value(row.net_pnl, renderer)
         r_str = f'{row.r_multiple:>6.2f}' if row.r_multiple is not None else f"{'—':>6}"
+        entry_tick_str = (f'{row.entry_tick_index:>10}' if row.entry_tick_index is not None
+                          else f"{'—':>10}")
+        ticks_str = f'{row.duration_ticks:>8}' if row.duration_ticks is not None else f"{'—':>8}"
         reason_str = row.close_reason  # '' for manual
 
         print(
             f'   {idx:>3} | {dir_str} | {entry_type_str:>2} | {row.lots:>5.2f} | '
             f'{row.entry_price:>12.5f} | {row.exit_price:>12.5f} | '
             f'{sl_str} | {tp_str} | '
-            f'{row.entry_tick_index:>10} | {row.exit_tick_index:>10} | {row.duration_ticks:>8} | '
+            f'{entry_tick_str} | {row.exit_tick_index:>10} | {ticks_str} | '
             f'{gross_str:>10} | {row.total_fees:>8.2f} | {row.swap_cost:>8.2f} | {net_str:>10} | '
             f'{row.mae_distance:>9.1f} | {row.mfe_distance:>9.1f} | {r_str} | {reason_str:>14}'
         )
