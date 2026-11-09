@@ -36,6 +36,7 @@ from python.framework.reporting.console.deployment_history_summary import (
 from python.framework.types.api.report_types import (
     CodeChangeDirection,
     DeploymentCodeChange,
+    DeploymentListResponse,
     DeploymentSessionRow,
     DeploymentSummary,
     ParentKind,
@@ -48,6 +49,11 @@ from python.framework.types.run_origin_types import CodeStand, RepositoryStand
 
 DEPLOYMENT = 'deploy_20260901_060000_ab12'
 
+
+
+def _listing(summaries):
+    """The deployment list's answer around its roll-ups, as `compose_deployment_list` builds it."""
+    return DeploymentListResponse(deployments=summaries, count=len(summaries))
 
 def row(run_id: str, timestamp: str, deployment: str = DEPLOYMENT, **overrides) -> RunResultRow:
     """
@@ -295,7 +301,7 @@ class TestADrawdownNobodyMeasuredStaysUnknown:
         ])
         summaries = summarize_deployments(histories, {DEPLOYMENT: None}, {})
         assert summaries[0].max_drawdown is None
-        render_deployment_list(summaries)
+        render_deployment_list(_listing(summaries))
         render_deployment_history(DEPLOYMENT, histories[DEPLOYMENT])
         line = next(text for text in capsys.readouterr().out.splitlines()
                     if text.startswith('r1 '))
@@ -310,7 +316,7 @@ class TestADeclineIsShownNegativeAndZeroAsZero:
 
     def test_a_measured_zero_prints_as_zero(self, capsys):
         histories = build_deployment_histories([row('r1', '2026-09-01T06:00:00+00:00')])
-        render_deployment_list(summarize_deployments(histories, {DEPLOYMENT: None}, {}))
+        render_deployment_list(_listing(summarize_deployments(histories, {DEPLOYMENT: None}, {})))
         render_deployment_history(DEPLOYMENT, histories[DEPLOYMENT])
         printed = capsys.readouterr().out
         assert '-0.00' not in printed
@@ -543,7 +549,7 @@ class TestWhereTheOrdersWent:
         histories = build_deployment_histories(self._ROWS)
         advisory = deployment_comparability_advisory(self._ROWS)
         render_deployment_history(DEPLOYMENT, histories[DEPLOYMENT], advisory)
-        render_deployment_list(summarize_deployments(histories, {DEPLOYMENT: advisory}, {}))
+        render_deployment_list(_listing(summarize_deployments(histories, {DEPLOYMENT: advisory}, {})))
 
         printed = capsys.readouterr().out
         assert 'simulated fills to real money' in printed
@@ -582,7 +588,7 @@ class TestTheOverviewHalf:
     def test_the_list_points_at_the_detail_view(self, capsys):
         """An overview that does not say how to descend is a dead end."""
         histories = build_deployment_histories([row('r1', '2026-09-01T06:00:00+00:00')])
-        render_deployment_list(summarize_deployments(histories, {DEPLOYMENT: None}, {}))
+        render_deployment_list(_listing(summarize_deployments(histories, {DEPLOYMENT: None}, {})))
         assert '--id' in capsys.readouterr().out
 
 
@@ -680,8 +686,8 @@ class TestTheOverviewNamesTheBot:
                 scenario_set_name='ethusd_production'),
         ]
         histories = build_deployment_histories(rows)
-        render_deployment_list(summarize_deployments(
-            histories, {k: None for k in histories}, {}))
+        render_deployment_list(_listing(summarize_deployments(
+            histories, {k: None for k in histories}, {})))
 
         printed = capsys.readouterr().out
         lines = [line for line in printed.splitlines() if 'deploy_' in line and 'usd_production' in line]
@@ -1320,7 +1326,7 @@ class TestARunThatMeasuredNothingStandsWithoutFigures:
                 for s in summaries] == [('USD', 2, 2, 1)]
         assert summaries[0].net_pnl == 0.0
         assert summaries[0].first_started == datetime.fromisoformat(FIRST_START)
-        render_deployment_list(summaries)
+        render_deployment_list(_listing(summaries))
         assert '+2 without figures (1 failed)' in capsys.readouterr().out
 
 
@@ -1343,7 +1349,7 @@ class TestTheListSaysWhichMoved:
             {DEPLOYMENT: deployment_code_summary(rows, NOW)})[0]
 
     def _printed(self, rows: list, capsys) -> tuple:
-        render_deployment_list([self._summary(rows)])
+        render_deployment_list(_listing([self._summary(rows)]))
         printed = capsys.readouterr().out
         line = next(text for text in printed.splitlines() if text.startswith(DEPLOYMENT))
         return line, printed
@@ -1492,7 +1498,7 @@ class TestADeploymentIsListedFromItsFirstSession:
 
     def test_the_list_prints_a_dash_and_says_why(self, capsys):
         histories = add_unbooked_sessions({}, [], [started('new', '2026-09-03T06:00:00+00:00')])
-        render_deployment_list(summarize_deployments(histories, {}, {}))
+        render_deployment_list(_listing(summarize_deployments(histories, {}, {})))
         printed = capsys.readouterr().out
         line = next(text for text in printed.splitlines() if text.startswith(DEPLOYMENT))
         assert '—' in line and '0.00' not in line

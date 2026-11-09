@@ -42,16 +42,23 @@ from python.framework.reporting.builders.deployment_history_builder import (
     compose_deployment_list,
 )
 from python.framework.reporting.builders.execution_stats_report_builder import slippage_summaries
+from python.framework.reporting.builders.profiling_report_builder import with_warmup_shares
 from python.framework.reporting.builders.report_aggregators import (
+    aggregate_decision_totals,
     aggregate_execution_totals,
+    aggregate_failed_orders,
     aggregate_portfolio_by_currency,
     aggregate_profiling,
     aggregate_trade_analytics,
     aggregate_trade_scenario_totals,
+    aggregate_worker_decision_bottlenecks,
     aggregate_worker_totals,
 )
 from python.framework.reporting.builders.run_summary_builder import build_run_summary
 from python.framework.reporting.builders.run_unit import RunUnit
+from python.framework.reporting.builders.worker_decision_breakdown_builder import (
+    build_worker_decision_breakdowns,
+)
 from python.framework.reporting.io.artifact_specs import (
     AGGREGATED_PORTFOLIO_ARTIFACT,
     BOOKING_PERIODS_ARTIFACT,
@@ -72,9 +79,11 @@ from python.framework.reporting.store.run_list_figures import fold_run_list_figu
 from python.framework.types.api.report_types import (
     FeedStabilitySourceRow,
     FillSlippageRow,
+    ProfilingReport,
     RunInfo,
     RunResultRow,
     UnitRoster,
+    WarmupPhaseRow,
 )
 from python.framework.types.disturbance_episode_types import FeedEpisodeInSource
 from python.framework.types.fill_slippage_types import FillSlippage
@@ -399,6 +408,171 @@ def _recorded_worker_totals(run: FrozenRun) -> Any:
     return run.worker_decision.worker_totals
 
 
+def _tracked_units(run: FrozenRun) -> list:
+    """
+    The worker/decision unit rows that tracked their decisions — what the totals fold over.
+
+    Args:
+        run: The frozen run
+
+    Returns:
+        The tracked unit rows
+    """
+    return [unit for unit in run.worker_decision.units if unit.worker_decision_tracked]
+
+
+def _rebuild_decision_totals(run: FrozenRun) -> Any:
+    """
+    Block M — the decision logic's totals, from the tracked unit rows.
+
+    Args:
+        run: The frozen run
+
+    Returns:
+        The rebuilt totals
+    """
+    return aggregate_decision_totals(_tracked_units(run))
+
+
+def _recorded_decision_totals(run: FrozenRun) -> Any:
+    """
+    Block M as the run recorded it.
+
+    Args:
+        run: The frozen run
+
+    Returns:
+        The recorded totals
+    """
+    return run.worker_decision.decision_totals
+
+
+def _rebuild_bottlenecks(run: FrozenRun) -> Any:
+    """
+    Block N — the slowest performers, from the tracked unit rows.
+
+    Args:
+        run: The frozen run
+
+    Returns:
+        The rebuilt bottlenecks
+    """
+    return aggregate_worker_decision_bottlenecks(_tracked_units(run))
+
+
+def _recorded_bottlenecks(run: FrozenRun) -> Any:
+    """
+    Block N as the run recorded it.
+
+    Args:
+        run: The frozen run
+
+    Returns:
+        The recorded bottlenecks
+    """
+    return run.worker_decision.bottlenecks
+
+
+def _rebuild_failed_orders(run: FrozenRun) -> Any:
+    """
+    Block O — the failed orders counted, from the frozen order rows.
+
+    Args:
+        run: The frozen run
+
+    Returns:
+        The rebuilt counts
+    """
+    return aggregate_failed_orders(run.order_history.orders)
+
+
+def _recorded_failed_orders(run: FrozenRun) -> Any:
+    """
+    Block O as the run recorded it.
+
+    Args:
+        run: The frozen run
+
+    Returns:
+        The recorded counts
+    """
+    report = run.order_history
+    return {'failed_listed': report.failed_listed, 'failed_by_unit': report.failed_by_unit,
+            'failed_by_reason': report.failed_by_reason}
+
+
+def _rebuild_warmup(run: FrozenRun) -> Any:
+    """
+    Block P — the warmup's total, slowest phase and shares, from the phases' own durations.
+
+    Args:
+        run: The frozen run
+
+    Returns:
+        The rebuilt warmup part
+    """
+    report = with_warmup_shares(ProfilingReport(
+        run_id=run.run_id, units=[],
+        warmup_phases=[WarmupPhaseRow(name=phase.name, duration_s=phase.duration_s)
+                       for phase in run.profiling.warmup_phases]))
+    return _warmup_view(report)
+
+
+def _recorded_warmup(run: FrozenRun) -> Any:
+    """
+    Block P as the run recorded it.
+
+    Args:
+        run: The frozen run
+
+    Returns:
+        The recorded warmup part
+    """
+    return _warmup_view(run.profiling)
+
+
+def _warmup_view(report: ProfilingReport) -> Dict[str, Any]:
+    """
+    The warmup as block P compares it — the phases with their shares, the whole and its slowest.
+
+    Args:
+        report: A profiling report
+
+    Returns:
+        The comparable view
+    """
+    return {'warmup_phases': report.warmup_phases, 'warmup_total_s': report.warmup_total_s,
+            'warmup_slowest_phase': report.warmup_slowest_phase,
+            'warmup_slowest_s': report.warmup_slowest_s,
+            'warmup_slowest_pct': report.warmup_slowest_pct}
+
+
+def _rebuild_breakdowns(run: FrozenRun) -> Any:
+    """
+    Block Q — where each unit's worker_decision time went, from the two frozen sections.
+
+    Args:
+        run: The frozen run
+
+    Returns:
+        The rebuilt breakdowns
+    """
+    return build_worker_decision_breakdowns(run.profiling, run.worker_decision)
+
+
+def _recorded_breakdowns(run: FrozenRun) -> Any:
+    """
+    Block Q as the run recorded it.
+
+    Args:
+        run: The frozen run
+
+    Returns:
+        The recorded breakdowns
+    """
+    return run.profiling.worker_decision_breakdowns
+
+
 def _rebuild_profiling(run: FrozenRun) -> Any:
     """
     Block I — the profiling aggregate, from the unit rows.
@@ -460,6 +634,10 @@ def _recorded_booking_unit_totals(run: FrozenRun) -> Any:
     return run.booking_periods.unit_totals
 
 
+# A source row's counters exist only while a run runs, and so does the share read from them
+_FROM_THE_COUNTERS = frozenset({*FEED_COUNTER_TABLE.figures, 'fresh_tick_pct'})
+
+
 def _feed_view(units: Sequence[FeedStabilitySourceRow], totals: Dict[str, Any]) -> Dict[str, Any]:
     """
     The feed stability as block J compares it — the source rows without their counters, and the
@@ -473,7 +651,7 @@ def _feed_view(units: Sequence[FeedStabilitySourceRow], totals: Dict[str, Any]) 
         The comparable view
     """
     return {'units': [{name: value for name, value in unit.model_dump().items()
-                       if name not in FEED_COUNTER_TABLE.figures} for unit in units],
+                       if name not in _FROM_THE_COUNTERS} for unit in units],
             **totals}
 
 
@@ -605,6 +783,16 @@ GOLDEN_SAMPLE_BLOCKS: Tuple[GoldenSampleBlock, ...] = (
     GoldenSampleBlock('booking-periods.unit_totals', 'L · the booking periods per unit',
                       ('booking_periods',), _rebuild_booking_unit_totals,
                       _recorded_booking_unit_totals),
+    GoldenSampleBlock('worker-decision.decision_totals', 'M · the decision totals',
+                      ('worker_decision',), _rebuild_decision_totals, _recorded_decision_totals),
+    GoldenSampleBlock('worker-decision.bottlenecks', 'N · the slowest performers',
+                      ('worker_decision',), _rebuild_bottlenecks, _recorded_bottlenecks),
+    GoldenSampleBlock('order-history.failed', 'O · the failed orders counted',
+                      ('order_history',), _rebuild_failed_orders, _recorded_failed_orders),
+    GoldenSampleBlock('profiling.warmup', 'P · the warmup',
+                      ('profiling',), _rebuild_warmup, _recorded_warmup),
+    GoldenSampleBlock('profiling.worker_decision_breakdowns', 'Q · the worker/decision breakdown',
+                      ('profiling', 'worker_decision'), _rebuild_breakdowns, _recorded_breakdowns),
 )
 
 

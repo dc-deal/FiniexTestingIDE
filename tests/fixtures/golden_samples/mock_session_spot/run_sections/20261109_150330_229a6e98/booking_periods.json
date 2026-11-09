@@ -1,0 +1,83 @@
+{
+  "run_id": "20261109_150330_229a6e98",
+  "keys": {
+    "periods": [
+      "unit_name",
+      "period_no"
+    ],
+    "unit_totals": [
+      "unit_name"
+    ]
+  },
+  "periods": [
+    {
+      "unit_name": "tp_triggered_test",
+      "period_no": 1,
+      "opened_at": "2026-01-25T04:19:47.600000+00:00",
+      "closed_at": "2026-01-25T05:26:47.598000+00:00",
+      "reason": "session_end",
+      "currency": "USD",
+      "trade_count": 1,
+      "tick_count": 1000,
+      "net_pnl": -1.3564160000000116,
+      "total_fees": 1.421716,
+      "commission_cost": 1.421716,
+      "swap_cost": 0.0,
+      "spread_cost": 0.00010000000000582077,
+      "modelled_spread_cost": 0.0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "opening_equity": 10000.0,
+      "final_equity": 9998.643584000001,
+      "min_equity": 9998.643584000001,
+      "max_equity": 10000.0,
+      "max_drawdown": 1.3564159999987169,
+      "account_max_drawdown": 1.3564159999987169,
+      "account_max_dd_pct": 0.013564159999987169,
+      "unrealized_pnl": 0.0,
+      "open_position_count": 0
+    }
+  ],
+  "unit_totals": [
+    {
+      "unit_name": "tp_triggered_test",
+      "currency": "USD",
+      "period_count": 1,
+      "opened_at": "2026-01-25T04:19:47.600000+00:00",
+      "closed_at": "2026-01-25T05:26:47.598000+00:00",
+      "trade_count": 1,
+      "net_pnl": -1.3564160000000116,
+      "total_fees": 1.421716,
+      "commission_cost": 1.421716,
+      "swap_cost": 0.0,
+      "spread_cost": 0.00010000000000582077,
+      "modelled_spread_cost": 0.0,
+      "gross_profit": 0.0,
+      "gross_loss": 1.3564160000000116,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "opening_equity": 10000.0,
+      "final_equity": 9998.643584000001,
+      "min_equity": 9998.643584000001,
+      "max_equity": 10000.0,
+      "deepest_period_drawdown": 1.3564159999987169,
+      "account_max_drawdown": 1.3564159999987169,
+      "account_max_dd_pct": 0.013564159999987169
+    }
+  ],
+  "currency": "USD",
+  "currencies": [
+    "USD"
+  ],
+  "total_net_pnl": -1.3564160000000116,
+  "total_fees": 1.421716,
+  "total_trades": 1,
+  "run_net_pnl": -1.3564160000000116,
+  "run_total_trades": 1,
+  "reconciles": true,
+  "deepest_period_drawdown": 1.3564159999987169,
+  "total_final_equity": 9998.643584000001,
+  "period_count": 1,
+  "period_unit_count": 1,
+  "reconciliation_difference": 0.0
+}

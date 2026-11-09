@@ -129,13 +129,14 @@ def equity_return_pct(row: PortfolioUnitRow) -> Optional[float]:
     return (row.final_equity - initial) / initial * 100
 
 
-def _usable_funds(stats: PortfolioStats) -> dict:
+def usable_funds(stats: PortfolioStats) -> dict:
     """
     What is left of each balance once this bot's own unfilled orders are counted (#489).
 
     Derived here rather than in a renderer: the same difference is read by the console, the
-    JSON artifact and the API, and three subtractions are three chances to disagree. Only
-    currencies with a claim appear — a balance nothing is holding needs no second number.
+    JSON artifact, the API and the post-run validators (a negative one is their advisory), and
+    each subtraction is a chance to disagree. Only currencies with a claim appear — a balance
+    nothing is holding needs no second number.
 
     Args:
         stats: The unit's portfolio stats, carrying the captured committed figure
@@ -223,7 +224,7 @@ def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
         balances=stats.balances,
         initial_balances=stats.initial_balances,
         committed_funds=dict(stats.committed_funds),
-        usable_funds=_usable_funds(stats),
+        usable_funds=usable_funds(stats),
         last_price=stats.last_price,
         base_currency=stats.base_currency,
         quote_currency=stats.quote_currency,

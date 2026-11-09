@@ -137,8 +137,10 @@ currency and stand outside the per-currency rows. `unit_count` at this level is 
 count — scenarios in a backtest, 1 in a live session.
 
 What each count means, and the same counts per unit, are on
-[execution stats](/api/v1/docs/execution-stats); executed over submitted and adopted is
-`execution_rate_pct` on the [aggregated portfolio](/api/v1/docs/aggregated-portfolio).
+[execution stats](/api/v1/docs/execution-stats). `execution_rate_pct` is executed over submitted
+and adopted, in percent, over the run's counts — the same formula the
+[aggregated portfolio](/api/v1/docs/aggregated-portfolio) applies per currency; `0.0` when no order
+was handled.
 
 ## Which units are missing from the figures, and why
 

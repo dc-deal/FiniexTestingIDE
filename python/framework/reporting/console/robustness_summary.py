@@ -9,7 +9,7 @@ the PostRunValidator (no decisions in reports).
 from python.framework.reporting.console.abstract_batch_summary_section import (
     AbstractBatchSummarySection,
 )
-from python.framework.types.api.report_types import RobustnessReport
+from python.framework.types.api.report_types import RobustnessReport, WalkForwardClass
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 
@@ -89,22 +89,20 @@ class RobustnessSummary(AbstractBatchSummarySection):
         print(f'    {self._wfe_line(renderer)}')
 
     def _wfe_line(self, renderer: ConsoleRenderer) -> str:
-        """The Walk-Forward Efficiency line with its display class (presentation only)."""
+        """The Walk-Forward Efficiency line with the class the report serves (#557)."""
         report = self._report
-        # A bucket below min_windows makes the WFE rest on too few windows → inconclusive
-        # (mirrors the validator's verdict suppression).
-        is_n = report.in_sample.window_count if report.in_sample else 0
-        oos_n = report.out_of_sample.window_count if report.out_of_sample else 0
-        if is_n < report.min_windows or oos_n < report.min_windows:
+        walk_forward = report.walk_forward_class
+        if walk_forward is WalkForwardClass.INCONCLUSIVE:
+            is_n = report.in_sample.window_count if report.in_sample else 0
+            oos_n = report.out_of_sample.window_count if report.out_of_sample else 0
             return renderer.yellow(
                 f'WFE: inconclusive — IS={is_n}/OOS={oos_n} (< {report.min_windows} windows)')
-        wfe = report.walk_forward_efficiency
-        if wfe is None:
+        if walk_forward is WalkForwardClass.UNDEFINED:
             return renderer.gray('WFE: n/a (IS not profitable — degradation undefined)')
-        label = f'WFE {wfe:.2f} (OOS/IS)'
-        if wfe >= report.robust_wfe_threshold:
+        label = f'WFE {report.walk_forward_efficiency:.2f} (OOS/IS)'
+        if walk_forward is WalkForwardClass.ROBUST:
             return renderer.green(f'{label} → ROBUST ✓')
-        if wfe < report.overfit_wfe_threshold:
+        if walk_forward is WalkForwardClass.OVERFIT:
             return renderer.red(f'{label} → ⚠ OVERFIT')
         return renderer.yellow(f'{label} → moderate degradation')
 
@@ -120,7 +118,7 @@ class RobustnessSummary(AbstractBatchSummarySection):
         report = self._report
         if not report.params_constant:
             print(renderer.gray(
-                f'    Parameters vary across windows ({len(report.drifting_windows)} drift)'))
+                f'    Parameters vary across windows ({report.drift_count} drift)'))
         if report.disposition_pct > 0 and report.disposition_gates_verdict:
             print(renderer.gray(
                 f'    Block-splitting distortion: {report.disposition_pct:.1f}% '

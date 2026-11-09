@@ -1,0 +1,72 @@
+{
+  "run_id": "20261109_150415_a28d7c0c",
+  "currencies": [
+    {
+      "currency": "JPY",
+      "net_pnl": -135.99999999993884,
+      "profit_factor": 0.5342465753425871,
+      "win_rate": 0.5,
+      "account_max_drawdown": 286.0,
+      "max_equity": 100089.00000000006,
+      "account_max_dd_pct": 0.285745686339158,
+      "account_max_drawdown_unit": "partial_close_lifecycle",
+      "total_fees": 0.0,
+      "fees_charged": 0.0,
+      "gross_profit": 156.0000000000059,
+      "gross_loss": 291.99999999994475,
+      "total_trades": 4,
+      "winning_trades": 2,
+      "losing_trades": 2,
+      "unrealized_pnl": 0.0,
+      "final_equity": 99864.00000000007,
+      "total_final_equity": 99864.00000000007,
+      "total_initial_balance": 100000.0,
+      "unit_count": 1,
+      "open_position_count": 0,
+      "expectancy": null,
+      "avg_win_r": null,
+      "avg_loss_r": null,
+      "r_trade_count": 0,
+      "r_win_count": 0,
+      "r_loss_count": 0,
+      "avg_mae_winners": -180.00000000000682,
+      "avg_mae_losers": -320.49999999998136,
+      "avg_mfe_losers": 211.49999999998667,
+      "largest_mae": 397.9999999999677,
+      "largest_mfe": 422.99999999997334,
+      "avg_trade_duration_s": 2853.96075,
+      "max_consecutive_wins": 2,
+      "max_consecutive_losses": 2
+    }
+  ],
+  "orders_submitted": 6,
+  "orders_adopted": 0,
+  "orders_executed": 6,
+  "orders_denied": 0,
+  "orders_rejected": 0,
+  "orders_cancelled": 0,
+  "orders_expired": 0,
+  "orders_undelivered": 0,
+  "orders_unaccounted": 0,
+  "sl_tp_triggered": 0,
+  "unit_count": 1,
+  "tick_timespan_seconds": 7372.549,
+  "tick_timespan_total_seconds": 7372.549,
+  "units_declared": 1,
+  "units_disabled": 0,
+  "units_absent": [],
+  "signal_fresh_ratio": null,
+  "disturbance_episode_count": 0,
+  "disturbance_stale_seconds": 0.0,
+  "disturbance_source_count": 0,
+  "disturbance_stress_injected": 0,
+  "keys": {
+    "currencies": [
+      "currency"
+    ],
+    "units_absent": [
+      "name"
+    ]
+  },
+  "execution_rate_pct": 100.0
+}

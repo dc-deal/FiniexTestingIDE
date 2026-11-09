@@ -24,9 +24,11 @@ from typing import Dict, List, Optional
 
 from python.framework.reporting.aggregation.aggregation_fold import (
     aggregate_ledger_rows,
+    fold_group,
     fold_rows,
 )
 from python.framework.reporting.aggregation.tables.deployment_figure_table import (
+    DEPLOYMENT_CAPTION_TABLE,
     DEPLOYMENT_SUMMARY_TABLE,
 )
 from python.framework.reporting.builders.booking_periods_report_builder import (
@@ -273,12 +275,7 @@ def deployment_caption(sessions: List[DeploymentSessionRow]) -> DeploymentCaptio
     Returns:
         The caption
     """
-    starts = [s.started for s in sessions if s.started is not None]
-    return DeploymentCaption(
-        session_count=len({s.run_id for s in sessions}),
-        first_started=min(starts, key=ensure_utc_aware) if starts else None,
-        currencies=sorted({s.currency for s in sessions if s.currency}),
-    )
+    return DeploymentCaption(**fold_group(sessions, DEPLOYMENT_CAPTION_TABLE))
 
 
 def deployment_comparability_advisory(

@@ -119,6 +119,11 @@ exposure. See [Capital and Safety](autotrader/autotrader_capital_and_safety.md).
 **basis** — Never used alone. The qualified terms: *compute basis*, *decision basis*, *price
 basis*, *signal basis*, *time basis*, *trade window basis* — each below.
 
+**batch status** (`batch_status` on the warnings-and-errors outcome) — Whether none, some or all of a
+run's units failed: `success`, `partial`, `failed`. A description of two counts, not a grading —
+how the run ended is its *run outcome*, which also weighs logged errors. See
+[Warnings & Errors](architecture/warnings_errors_tiers.md).
+
 **booking period** — One sealed period of one run unit, bounded by the market's trading day and
 numbered from 1; the ledger holds one row per booking period, in its account's currency. Every
 trading day of the market calendar has one, a day without a tick included (`tick_count` 0). In code
@@ -901,6 +906,10 @@ per unit, because two scenarios on one symbol mint the same synthetic ids.
 
 **signal** — A worker output that feeds a decision. The *SIGNAL worker* is the type that reads
 external, pre-collected data such as sentiment. See [Signal Data Source](data_pipeline/signal_data_source.md).
+In a decision logic's statistics the word means something else: `buy_signals`, `sell_signals` and
+`flat_signals` count what its decisions asked for, and a *non-flat signal* (`non_flat_signals`,
+`total_non_flat_signals`) is a decision that asked to buy or sell. One word for two things; the
+decision's meaning keeps its served names until one name per quantity is settled (#657).
 
 **signal basis** — A signal row's quality grade from the producer (`llm`, `no_data`, `degraded`).
 

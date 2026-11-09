@@ -33,6 +33,45 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 52 — 2026-11-09 (#557)
+
+Every figure a console printed is now a field the API serves, so no reader has to compute it.
+
+- [Trade history](/api/v1/docs/trade-history): **`duration_ticks`** on every row. Each analytics
+  entry adds `long_trades`, `short_trades`, `winning_trades`, `losing_trades`, the closes by reason
+  (`sl_closes`, `tp_closes`, `scenario_end_closes`, `manual_closes`), the averages per trade
+  (`avg_gross_pnl`, `avg_fees`, `avg_net_pnl`) and the holding time in ticks
+  (`avg_trade_duration_ticks`, `min_…`, `max_…`).
+- [Order history](/api/v1/docs/order-history): `failed_listed`, `failed_by_unit` and
+  `failed_by_reason` count the failed rows the list holds; a filter counts them again.
+- [Portfolio](/api/v1/docs/portfolio): `open_position_count` on a unit row.
+  [Pending orders](/api/v1/docs/pending-orders): `active_limit_count`, `active_stop_count`,
+  `active_order_count`.
+- [Aggregated portfolio](/api/v1/docs/aggregated-portfolio): **`total_costs`** — every cost
+  category, the spread included, so not a fee total — and `spot_total_est_pnl` with
+  `spot_total_est_pnl_pct`.
+- [Run summary](/api/v1/docs/run-summary): `execution_rate_pct` over the run's counts.
+- [Workers and decisions](/api/v1/docs/worker-decision): on a unit row `timed_worker_count`,
+  `worker_call_count`, `worker_time_ms`, `algo_time_ms`, `algo_avg_per_tick_ms`, `non_flat_signals`;
+  on a totals row `unit_mean_time_ms`; `decision_totals` and `bottlenecks` over the tracked units —
+  null where no unit tracked its decisions.
+- [Profiling](/api/v1/docs/profiling): `clipping_rate_pct`, `clipping_budget_count`, the slowest
+  profiled unit beside the mean, the warmup's total and slowest phase with each phase's `pct`, and
+  `worker_decision_breakdowns`; `keys` for its lists.
+- [Order history](/api/v1/docs/order-history): `keys`, with `[]` for `orders`.
+- [Scenario details](/api/v1/docs/scenario-details), [warnings and errors](/api/v1/docs/warnings-errors),
+  [booking periods](/api/v1/docs/booking-periods), [feed stability](/api/v1/docs/feed-stability),
+  [signal](/api/v1/docs/signal), [broker](/api/v1/docs/broker): the shares, the differences and the
+  counts their own lists imply — `batch_status` among them, a description of the failed count and
+  not a grading.
+- Validation checks: `usable_funds_negative`.
+
+**A run recorded before this contract:** a figure read from fields of its own row is answered for
+it too; a figure folded over rows the artifact does not keep — `decision_totals`, `bottlenecks`,
+the slowest profiled unit, `worker_decision_breakdowns`, a warmup phase's `pct` — is null there.
+
+Nothing removed or renamed; no meaning changed.
+
 ## Version 51 — 2026-11-05 (#646)
 
 A deployment no longer reads twice in the list, once of the two rows empty.
@@ -102,35 +141,13 @@ A consumer can tell which installation answers, now that this API exists on more
 
 Two fields added on an open route; nothing removed or renamed.
 
-## Version 47 — 2026-10-30 (#559)
-
-A deployment notices when its sessions ran different code, in a strategy's repository as much as in
-this application's.
-
-- [Deployments](/api/v1/docs/deployments), a changed meaning: `changed` on a list row is also true
-  when only the code moved. **`changed: true` with `advisory: null` is a new state:** the advisory
-  still speaks of the profile alone and stays null for a code change. `configuration_changed`, new
-  on the list row, says what `changed` said so far.
-- Deployments, the session rows: `code_changes`, one entry per repository whose code differs from the
-  previous session's: `repository_label`, `old_commit`, `new_commit`, `commits_between`,
-  `change_direction` (`forward`, `back`, `unknown`, `uncommitted`, `added`, `removed`) and `subject`.
-  Empty when nothing moved, and on a session recorded before this contract. `code_changes_key` on
-  the detail is empty: an entry's identity is its place in the list, and `repository_label` can repeat.
-- Deployments, the list rows and the detail: `code_summary`, with `code_stands`, `sessions`,
-  `last_change_at` and `age_days`; null under two code stands.
-- [Run header](/api/v1/docs/run-header): a repository in `code_identity` carries `commit_subject` and
-  `recent_commits`, filled for a session of a deployment and null on every other run.
-- [Sweeps](/api/v1/docs/sweeps): a combination carries `code_stand`, null on every one, because only
-  a session records it.
-
-Nothing removed or renamed; one meaning changed: `changed`.
-
-## Versions 46 and earlier
+## Versions 47 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 47** — 2026-10-30 (#559): A deployment notices when its sessions ran different code — `changed` also true when only the code moved, `configuration_changed` beside it, `code_changes` on the session rows, `code_summary` on the list rows and the detail, `commit_subject` and `recent_commits` on the run header's repositories, `code_stand` on a sweep's combinations.
 - **Version 46** — 2026-10-30 (#625): A session holds no stop or target for a position any more — `protective_level_enforcement` and `take_profit_enforcement` removed from the open-position rows, `protection_released` and `close_withheld` no longer produced, `409 artifact_unreadable` for a stored artifact that no longer matches its model, `expectancy` null where no trade has an R, and a sweep ranked by `expectancy` counts such runs in `unranked`.
 - **Version 45** — 2026-10-30 (#625): A venue's API decides which levels a run can use — `exit_level` on every [trade history](/api/v1/docs/trade-history) row, `features_beyond_venue` on the [run header](/api/v1/docs/run-header), `order_feature_not_declared` as a `rejection_reason`, four new validation checks, and an exit a strategy keeps itself fills in a backtest at the next price after its level.
 - **Version 44** — 2026-10-27 (#631): What every live session knows about its venue is recorded — `GET /api/v1/reports/runs/{run_id}/venue-api-performance` (new), `reconciliation` on the [venue account](/api/v1/docs/venue-account), `fee_report` and `venue_fee_expected` on [broker](/api/v1/docs/broker), a fill's slippage on [order history](/api/v1/docs/order-history) and in `fill_slippage` on [execution statistics](/api/v1/docs/execution-stats), and a protective exit's `exit_slippage` measured against the level that fired.

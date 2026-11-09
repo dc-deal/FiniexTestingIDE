@@ -58,6 +58,13 @@ Null where no grading was stamped — see [nulls](/api/v1/docs/nulls).
 one unit, so `total_units` is 1 there, and `failed_count` is 1 only where an emergency reason was
 recorded.
 
+Derived from those, on the outcome: `succeeded_count` and `success_rate_pct` (of all units, 0.0
+over none); `batch_status` — `success`, `partial` or `failed` as none, some or all units failed, a
+description of the counts and not a grading; `first_failure_messages`, the first failure's message
+line by line without the line that only names the scenario as failed in validation, with
+`first_failure_more_messages` counting the lines beyond the first; and `other_failed_count`, the
+failed units besides the first one named.
+
 ## An emergency is not always a failure
 
 `shutdown_mode` reads `normal` or `emergency` on a live session, and is empty on a backtest, where

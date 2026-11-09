@@ -126,6 +126,10 @@ for orders that took the book (taker). Such a venue books its fees there rather 
 `total_commission`. How a single period's split relates to its fee total
 is stated on [booking periods](/api/v1/docs/booking-periods).
 
+`total_costs` adds every category up — the spread, the modelled spread, commission, swap, maker and
+taker. It is **not** a fee total: the spread is measured inside the gross P&L and is no fee. An
+unmeasured spread (`total_spread_cost` null) is left out of it.
+
 `headline.fill_fees_by_source` says where the fills' fees came from, summed over the block's units.
 In a backtest every fill is `estimate` — our fee model's figure, with no venue to ask; what the
 split means where a venue does report its fee is on [portfolio](/api/v1/docs/portfolio).
@@ -169,6 +173,9 @@ carries one row per spot unit:
 
 `spot_total_est_current` and `spot_total_est_initial` are those estimates summed over the block,
 and `spot_has_base_holdings` says whether any unit in it held the base asset at all.
+`spot_total_est_pnl` is the estimate's move over the run, and `spot_total_est_pnl_pct` that move in
+percent of where it started — null where no unit held a base asset it could value, or the estimate
+started at nothing: the balance P&L is then the whole statement.
 
 **Read `has_base_holdings` before reading `est_current` as zero.** A zero estimate on an account
 with no base holding means no estimate was formed, not that the account is worth nothing — its

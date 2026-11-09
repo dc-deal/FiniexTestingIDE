@@ -17,6 +17,24 @@ class BatchStatus(Enum):
     PARTIAL = 'partial'   # Some scenarios failed
     FAILED = 'failed'     # All scenarios failed
 
+    @classmethod
+    def of_counts(cls, failed: int, total: int) -> 'BatchStatus':
+        """
+        The status two counts describe.
+
+        Args:
+            failed: The units that failed
+            total: All units
+
+        Returns:
+            SUCCESS when none failed (or there was none), FAILED when every one did, else PARTIAL
+        """
+        if failed == 0:
+            return cls.SUCCESS
+        if failed == total:
+            return cls.FAILED
+        return cls.PARTIAL
+
 
 @dataclass
 class BoxRenderConfig:

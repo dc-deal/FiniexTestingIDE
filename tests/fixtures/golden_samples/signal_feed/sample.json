@@ -1,18 +1,18 @@
 {
  "entry_id": "signal_feed",
- "produced_at": "2026-11-08T14:33:13.687932+00:00",
- "report_contract": 51,
- "frozen_at": "2026-11-08T14:48:25.880979Z",
- "composed_at": "2026-11-08T14:48:25.880979Z",
+ "produced_at": "2026-11-09T15:05:23.658502+00:00",
+ "report_contract": 52,
+ "frozen_at": "2026-11-09T15:15:47.206750Z",
+ "composed_at": "2026-11-09T15:15:47.206750Z",
  "runs": [
   {
-   "run_id": "20261108_143254_3a10282a",
+   "run_id": "20261109_150451_ddc75152",
    "run_type": "simulation",
-   "started_at": "2026-11-08T14:32:54.770188Z",
-   "commit": "2912dd3e",
+   "started_at": "2026-11-09T15:04:51.918722Z",
+   "commit": "4f1b5f5b",
    "branch": "dev-1-6-0",
-   "dirty": false,
-   "diff_hash": null,
+   "dirty": true,
+   "diff_hash": "d33e8cf5b6cab7dcb060708dc22a0735ec82192463dd63948a0fb162967ec3e7",
    "sections": [
     "portfolio.json",
     "trade_history.json",

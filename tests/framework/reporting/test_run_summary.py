@@ -75,6 +75,18 @@ class TestBuild:
         assert (rs.orders_submitted, rs.orders_executed, rs.sl_tp_triggered) == (5, 4, 2)
         assert rs.unit_count == 1
 
+    def test_the_execution_rate_is_the_aggregated_portfolio_s_formula(self):
+        # Executed over sent plus adopted (#557): an adopted order that fills is executed here
+        # without having been sent here
+        portfolio = PortfolioReport(run_id=_RUN_ID, units=[_unit()], aggregates=[_agg()])
+        trade = TradeHistoryReport(run_id=_RUN_ID, trades=[], count=0, symbols=[], analytics=[])
+        assert build_run_summary(_RUN_ID, portfolio, trade, _exec()).execution_rate_pct == 80.0
+        adopted = ExecutionStatsReport(run_id=_RUN_ID, units=[], totals=ExecutionStatsTotals(
+            orders_submitted=3, orders_adopted=1, orders_executed=2))
+        assert build_run_summary(_RUN_ID, portfolio, trade, adopted).execution_rate_pct == 50.0
+        none = ExecutionStatsReport(run_id=_RUN_ID, units=[], totals=ExecutionStatsTotals())
+        assert build_run_summary(_RUN_ID, portfolio, trade, none).execution_rate_pct == 0.0
+
     def test_currency_without_analytics_has_no_r(self):
         # portfolio currency present, no matching trade analytics → no R figure was measured
         portfolio = PortfolioReport(run_id=_RUN_ID, units=[_unit('JPY')], aggregates=[_agg(currency='JPY')])

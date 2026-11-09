@@ -29,7 +29,9 @@ from python.framework.types.config_types.scenario_settings_config_types import (
 )
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
+from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
+from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_event_types import OrderEvent, OrderEventType
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from python.framework.types.validation_types import ValidationDomain, ValidationResult
@@ -307,3 +309,44 @@ class TestReadingsThatStartedFresh:
         SessionPostRunValidator(result, _config()).validate()
         assert all(f.check != 'carried_readings_not_continued'
                    for vr in result.session_validation_result for f in vr.findings)
+
+
+class TestTheSessionsFundsBelowZeroAfterOwnOrders:
+    """
+    The session says so when its funds fall below zero once its own unfilled orders count —
+    the same shared check as a backtest's (#557: the console's ⚠ moved here).
+    """
+
+    @staticmethod
+    def _result(usd: float, claimed: float) -> AutoTraderResult:
+        """
+        A spot session result holding `usd` while its unfilled orders claim `claimed`.
+
+        Args:
+            usd: What the account holds in USD
+            claimed: What its own unfilled orders claim in USD
+
+        Returns:
+            The result
+        """
+        stats = PortfolioStats(
+            broker_type=BrokerType.KRAKEN_SPOT, total_trades=0, total_long_trades=0,
+            total_short_trades=0, winning_trades=0, losing_trades=0, total_profit=0.0,
+            total_loss=0.0, account_max_drawdown=0.0, max_equity=0.0,
+            account_max_drawdown_pct=0.0, win_rate=0.0, profit_factor=None,
+            total_spread_cost=0.0, total_modelled_spread_cost=0.0, total_commission=0.0,
+            total_swap=0.0, maker_fee=0.0, taker_fee=0.0, total_fees=0.0, fees_charged=0.0,
+            currency='USD', broker_name='kraken', current_conversion_rate=1.0,
+            current_balance=usd, initial_balance=1000.0, spot_mode=True,
+            balances={'USD': usd}, committed_funds={'USD': claimed},
+            base_currency='BTC', quote_currency='USD')
+        return AutoTraderResult(portfolio_stats=stats)
+
+    def test_a_claim_beyond_the_balance_is_reported(self):
+        findings = _validated(self._result(usd=100.0, claimed=150.0), _config(with_settings=False))
+        assert [f.check for f in findings] == ['usable_funds_negative']
+        assert 'USD -50.0000 usable' in findings[0].message
+        assert findings[0].domain is ValidationDomain.PORTFOLIO
+
+    def test_a_covered_claim_says_nothing(self):
+        assert _validated(self._result(usd=500.0, claimed=150.0), _config(with_settings=False)) == []

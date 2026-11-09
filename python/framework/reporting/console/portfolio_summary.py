@@ -241,7 +241,7 @@ class PortfolioSummary(AbstractBatchSummarySection):
         lines = []
         if unit.open_positions:
             lines.append(
-                f'Open at end: {len(unit.open_positions)} position(s) | '
+                f'Open at end: {unit.open_position_count} position(s) | '
                 f'{renderer.pnl(unit.unrealized_pnl, unit.currency)} unrealized')
             for pos in unit.open_positions:
                 mark = (f'last {pos.last_price:,.5f} · '
@@ -316,19 +316,19 @@ class PortfolioSummary(AbstractBatchSummarySection):
         # Only when something is actually claimed (#489): a run that ended with no unfilled
         # order has nothing to say here, and a line reading `committed 0.00` would be noise
         # on every clean run. A NEGATIVE usable figure is the one worth seeing — adoption can
-        # inherit a reserve the balance has already moved past — so it is called out.
+        # inherit a reserve the balance has already moved past — and the post-run validators
+        # name it in WARNINGS & ERRORS (`usable_funds_negative`); the line shows the figure.
         quote_committed = unit.committed_funds.get(quote, 0.0)
         base_committed = unit.committed_funds.get(base, 0.0)
         if quote_committed or base_committed:
             usable_quote = unit.usable_funds.get(quote, quote_bal)
             usable_base = unit.usable_funds.get(base, base_bal)
-            warn = ' ⚠' if min(usable_quote, usable_base) < 0 else ''
             lines.append(
                 f'Committed: {format_currency_simple(quote_committed, quote)} | '
                 f'{base} {base_committed:,.4f}')
             lines.append(
                 f'Usable: {format_currency_signed(usable_quote, quote)} | '
-                f'{base} {usable_base:,.4f}{warn}')
+                f'{base} {usable_base:,.4f}')
         if unit.last_price > 0:
             price_str = format_currency_simple(unit.last_price, quote)
             lines.append(
@@ -381,9 +381,9 @@ class PortfolioSummary(AbstractBatchSummarySection):
             return ''
         parts = []
         if pending.active_limit_orders:
-            parts.append(f'{len(pending.active_limit_orders)} limits')
+            parts.append(f'{pending.active_limit_count} limits')
         if pending.active_stop_orders:
-            parts.append(f'{len(pending.active_stop_orders)} stops')
+            parts.append(f'{pending.active_stop_count} stops')
         return renderer.cyan(f"Active: {' | '.join(parts)}") if parts else ''
 
     def _render_active_order_details(self, renderer: ConsoleRenderer) -> None:
@@ -392,10 +392,11 @@ class PortfolioSummary(AbstractBatchSummarySection):
             active = unit.active_limit_orders + unit.active_stop_orders
             if not active:
                 continue
+            count = unit.active_order_count
             print()
             print(renderer.cyan(
                 f"   ┌─ Active Orders at Scenario End: {unit.name} "
-                f"({len(active)} order{'s' if len(active) > 1 else ''}) ─┐"))
+                f"({count} order{'s' if count > 1 else ''}) ─┐"))
             self._render_active_order_table(renderer, active)
 
     @staticmethod
@@ -484,14 +485,13 @@ class PortfolioSummary(AbstractBatchSummarySection):
     ):
         """Render detailed aggregated portfolio stats from the model row (#397)."""
         h = row.headline
-        total_pnl = h.total_profit - h.total_loss
 
         print(f"\n{renderer.bold('   TRADING SUMMARY:')}")
         print(f'      Total Trades: {h.total_trades} (L/S: {row.total_long_trades}/{row.total_short_trades}) |  '
               f'Win/Loss: {h.winning_trades}W/{h.losing_trades}L  |  '
               f'Win Rate: {h.win_rate:.1%}')
 
-        print(f'      Total P&L: {renderer.pnl(total_pnl, currency)}  |  '
+        print(f'      Total P&L: {renderer.pnl(h.net_profit, currency)}  |  '
               f'Profit: {renderer.pnl(force_positive(h.total_profit), currency)}  |  '
               f'Loss: {renderer.pnl(force_negative(h.total_loss), currency)}')
 
@@ -517,8 +517,6 @@ class PortfolioSummary(AbstractBatchSummarySection):
 
         # Cost breakdown (layout A — all five categories, zeros where n/a). A spread that was
         # not measured stays out of the total, and the total says so.
-        total_costs = ((row.total_spread_cost or 0.0) + row.total_modelled_spread_cost
-                       + row.total_commission + row.total_swap + row.maker_fee + row.taker_fee)
         spread = (SPREAD_NOT_MEASURED if row.total_spread_cost is None
                   else renderer.pnl(-row.total_spread_cost, currency))
         if row.total_modelled_spread_cost:
@@ -534,9 +532,9 @@ class PortfolioSummary(AbstractBatchSummarySection):
               f'Swap: {renderer.pnl(-row.total_swap, currency)}')
         print(f'      Maker: {renderer.pnl(force_negative(row.maker_fee), currency)} |  '
               f'Taker: {renderer.pnl(force_negative(row.taker_fee), currency)} |  '
-              # Signed like its parts, so a net credit prints as one. The sum is still taken
-              # here; moving it onto the model, and settling its label, belongs to #557.
-              f'Total Fees: {renderer.pnl(-total_costs, currency)}{total_note}')
+              # Signed like its parts, so a net credit prints as one. The sum is the model's
+              # `total_costs`; the label, which calls a measured spread a fee, is #657's.
+              f'Total Fees: {renderer.pnl(-row.total_costs, currency)}{total_note}')
 
         print('\n   📉 RISK METRICS:')
         print(f'      Max Drawdown (account, curve): '

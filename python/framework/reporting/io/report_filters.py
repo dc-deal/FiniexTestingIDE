@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Optional
 
 from python.framework.reporting.builders.report_aggregators import (
+    aggregate_failed_orders,
     aggregate_trade_analytics,
     aggregate_trade_scenario_totals,
 )
@@ -88,4 +89,5 @@ def filter_order_history_report(
 
     symbols = sorted({row.symbol for row in rows if row.symbol})
     return OrderHistoryReport(
-        run_id=report.run_id, orders=rows, count=len(rows), symbols=symbols)
+        run_id=report.run_id, orders=rows, count=len(rows), symbols=symbols,
+        **aggregate_failed_orders(rows))

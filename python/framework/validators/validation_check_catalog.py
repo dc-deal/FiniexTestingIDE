@@ -249,6 +249,11 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         'The order-event stream holds fewer submissions than the executor counted — a record was '
         'lost, most likely to a failed write — so the counters derived from it are too low.'),
     ValidationCheckInfo(
+        'usable_funds_negative', 'Funds below zero after own orders',
+        "A unit's funds in a currency fall below zero once its own unfilled orders are counted — "
+        'the balance moved past a claim the bot still holds, so the order cannot be filled in '
+        'full from what the account holds.'),
+    ValidationCheckInfo(
         'time_divergence', 'Scenarios far apart in time',
         'The scenarios of one currency span many days, so their combined profit and loss is a '
         'statistic, not a portfolio.'),

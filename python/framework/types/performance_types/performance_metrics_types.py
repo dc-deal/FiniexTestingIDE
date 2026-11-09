@@ -1,7 +1,8 @@
 """
 FiniexTestingIDE - Performance Metrics Types
-Dataclasses for profiling and performance metrics: how the time between ticks is distributed,
-and how a scenario's time splits between workers, decision logic and coordination.
+Dataclasses for profiling and performance metrics: how the time between ticks is distributed.
+How a scenario's time splits between workers, decision logic and coordination is derived on the
+profiling report (`WorkerDecisionBreakdownRow`).
 
 Architecture:
 - Filled by batch_orchestrator during tick loop profiling
@@ -9,8 +10,7 @@ Architecture:
 - Read by ProfilingSummary for visualization
 """
 
-from dataclasses import dataclass, field
-from typing import Dict
+from dataclasses import dataclass
 
 
 @dataclass
@@ -46,55 +46,3 @@ class InterTickIntervalStats:
     filtered_intervals: int
     gaps_removed: int
     gap_threshold_s: float
-
-
-@dataclass
-class WorkerDecisionBreakdown:
-    """
-    Detailed breakdown of worker_decision time.
-
-    Shows exactly where time is spent in WorkerOrchestrator.process_tick():
-    - Pure worker computation time
-    - Decision logic computation time
-    - Coordination overhead (the mystery!)
-
-    This helps identify performance bottlenecks within the decision pipeline.
-    """
-    scenario_name: str
-
-    # Total time (should match worker_decision from TickLoopProfile)
-    total_time_ms: float
-    total_ticks: int
-
-    # Component breakdown
-    worker_execution_ms: float       # Sum of all worker.compute() times
-    decision_logic_ms: float         # DecisionLogic.compute() time
-    coordination_overhead_ms: float  # Overhead (calculated as difference)
-
-    # Per-worker details (from PerformanceLogCoordinator)
-    worker_breakdown: Dict[str, float] = field(
-        default_factory=dict)  # {worker_name: time_ms}
-
-    # Percentages of total worker_decision time
-    worker_execution_pct: float = 0.0
-    decision_logic_pct: float = 0.0
-    coordination_overhead_pct: float = 0.0
-
-    # Derived metric (pure calculation). The "is overhead too high?" verdict is NOT here — it is a
-    # decision produced by the post-run validator (#395, no decisions in reports).
-    overhead_ratio: float = 0.0  # overhead / computation time
-
-    def __post_init__(self):
-        """Calculate derived metrics after initialization."""
-        if self.total_time_ms > 0:
-            self.worker_execution_pct = (
-                self.worker_execution_ms / self.total_time_ms) * 100
-            self.decision_logic_pct = (
-                self.decision_logic_ms / self.total_time_ms) * 100
-            self.coordination_overhead_pct = (
-                self.coordination_overhead_ms / self.total_time_ms) * 100
-
-        # Calculate overhead ratio (pure calc — no verdict)
-        computation_time = self.worker_execution_ms + self.decision_logic_ms
-        if computation_time > 0:
-            self.overhead_ratio = self.coordination_overhead_ms / computation_time

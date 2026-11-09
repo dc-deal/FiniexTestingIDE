@@ -14,21 +14,12 @@ Renders:
 - Bottleneck analysis (worst performers)
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 from python.framework.reporting.console.abstract_batch_summary_section import (
     AbstractBatchSummarySection,
 )
 from python.framework.types.api.report_types import WorkerDecisionReport, WorkerDecisionUnitRow
-from python.framework.types.performance_types.performance_summary_aggregation_types import (
-    AggregatedPerformanceStats,
-    DecisionLogicBottleneckData,
-    ParallelBottleneckData,
-    PerformanceBottlenecks,
-    ScenarioBottleneckData,
-    WorkerAggregateData,
-    WorkerBottleneckData,
-)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 
@@ -46,6 +37,7 @@ class PerformanceSummary(AbstractBatchSummarySection):
         Args:
             worker_decision_report: The unified worker/decision report (#398)
         """
+        self._report = worker_decision_report
         # Only a tracked unit has figures to show; an untracked one carries null counters.
         self._units: List[WorkerDecisionUnitRow] = [
             unit for unit in worker_decision_report.units if unit.worker_decision_tracked]
@@ -93,15 +85,12 @@ class PerformanceSummary(AbstractBatchSummarySection):
         if not self._layer_a_has_data():
             return
 
-        # Aggregate statistics
-        aggregated: AggregatedPerformanceStats = self._aggregate_performance_stats()
-
         print()
         renderer.section_separator()
         renderer.print_bold('📊 AGGREGATED SUMMARY (ALL SCENARIOS)')
         renderer.section_separator()
 
-        self._render_aggregated_details(aggregated, renderer)
+        self._render_aggregated_details(renderer)
         print()
 
     def render_bottleneck_analysis(self, renderer: ConsoleRenderer) -> None:
@@ -114,16 +103,13 @@ class PerformanceSummary(AbstractBatchSummarySection):
         if not self._layer_a_has_data():
             return
 
-        # Analyze bottlenecks
-        bottlenecks: PerformanceBottlenecks = self._analyze_bottlenecks()
-
         print()
         renderer.section_separator()
         print(f"{renderer.bold(renderer.red('⚠️ BOTTLENECK ANALYSIS'))} "
               f"{renderer.gray('(Worst Performers)')}")
         renderer.section_separator()
 
-        self._render_bottleneck_details(bottlenecks, renderer)
+        self._render_bottleneck_details(renderer)
         print()
 
     def _render_scenario_performance(self, unit: WorkerDecisionUnitRow, renderer: ConsoleRenderer) -> None:
@@ -139,9 +125,9 @@ class PerformanceSummary(AbstractBatchSummarySection):
         # Header
         parallel_workers = unit.parallel_workers
         ticks_processed = unit.ticks_processed
-        total_workers = len(unit.workers)
+        total_workers = unit.timed_worker_count
         decision_count = unit.decision_count
-        total_calls = sum(w.call_count for w in unit.workers)
+        total_calls = unit.worker_call_count
 
         mode_str = renderer.green(
             'Parallel') if parallel_workers else renderer.yellow('Sequential')
@@ -194,225 +180,97 @@ class PerformanceSummary(AbstractBatchSummarySection):
 
         print()
 
-    def _aggregate_performance_stats(self) -> AggregatedPerformanceStats:
+    def _render_aggregated_details(self, renderer: ConsoleRenderer) -> None:
         """
-        Aggregate performance statistics across all units.
-
-        Returns:
-            Aggregated performance statistics
-        """
-        aggregated = AggregatedPerformanceStats()
-
-        for unit in self._units:
-            # Basic stats
-            aggregated.total_ticks += unit.ticks_processed
-            aggregated.total_signals += unit.decision_count
-            aggregated.total_decisions += unit.decision_count
-
-            # Worker stats
-            for w in unit.workers:
-                if w.worker_name not in aggregated.worker_aggregates:
-                    aggregated.worker_aggregates[w.worker_name] = WorkerAggregateData()
-
-                worker_agg = aggregated.worker_aggregates[w.worker_name]
-                worker_agg.calls += w.call_count
-                worker_agg.total_time += w.total_time_ms
-                worker_agg.times.append(w.avg_time_ms)
-
-            # Decision logic
-            decision_agg = aggregated.decision_aggregates
-            decision_agg.calls += unit.decision_count
-            decision_agg.total_time += unit.decision_total_time_ms
-            decision_agg.times.append(unit.decision_avg_time_ms)
-
-        return aggregated
-
-    def _render_aggregated_details(
-        self,
-        aggregated: AggregatedPerformanceStats,
-        renderer: ConsoleRenderer
-    ) -> None:
-        """
-        Render detailed aggregated performance stats.
+        Render detailed aggregated performance stats — the report's totals.
 
         Args:
-            aggregated: Aggregated performance statistics
             renderer: ConsoleRenderer instance
         """
+        totals = self._report.decision_totals
+        if totals is None:
+            # No unit tracked its decisions: there are no totals to show
+            return
         print()
         print(f"{renderer.bold('   📊 AGGREGATED STATS:')}")
-        print(f'      Total Ticks: {aggregated.total_ticks:,}  |  '
-              f'Total Signals: {aggregated.total_signals:,}  |  '
-              f'Total Decisions: {aggregated.total_decisions:,}')
+        print(f'      Total Ticks: {totals.total_ticks:,}  |  '
+              f'Total Signals: {totals.total_non_flat_signals:,}  |  '
+              f'Total Decisions: {totals.total_decisions:,}')
 
-        # Worker aggregates
-        if aggregated.worker_aggregates:
+        # Worker totals, in the order the workers first appear across the scenarios
+        if self._report.worker_totals:
             print(f"\n{renderer.bold('   👷 WORKERS (AGGREGATED):')}")
 
-            for worker_name, agg in aggregated.worker_aggregates.items():
-                total_calls = agg.calls
-                total_time = agg.total_time
-                avg_time = total_time / total_calls if total_calls > 0 else 0.0
-                scenario_avg = sum(agg.times) / \
-                    len(agg.times) if agg.times else 0.0
+            first_seen: Dict[str, int] = {}
+            for unit in self._units:
+                for w in unit.workers:
+                    first_seen.setdefault(w.worker_name, len(first_seen))
+            for worker in sorted(self._report.worker_totals,
+                                 key=lambda w: first_seen.get(w.worker_name, len(first_seen))):
+                print(f"      {renderer.blue(f'{worker.worker_name:15}')}  "
+                      f"Total Calls: {worker.call_count:>6}  |  "
+                      f"Total Time: {worker.total_time_ms:>8.2f}ms  |  "
+                      f"Avg: {worker.avg_time_ms:>6.3f}ms  |  "
+                      f"Scenario Avg: {worker.unit_mean_time_ms:>6.3f}ms")
 
-                print(f"      {renderer.blue(f'{worker_name:15}')}  "
-                      f"Total Calls: {total_calls:>6}  |  "
-                      f"Total Time: {total_time:>8.2f}ms  |  "
-                      f"Avg: {avg_time:>6.3f}ms  |  "
-                      f"Scenario Avg: {scenario_avg:>6.3f}ms")
-
-        # Decision logic aggregate
-        decision_agg = aggregated.decision_aggregates
-        if decision_agg.calls > 0:
-            total_calls = decision_agg.calls
-            total_time = decision_agg.total_time
-            avg_time = total_time / total_calls if total_calls > 0 else 0.0
-            scenario_avg = sum(decision_agg.times) / \
-                len(decision_agg.times) if decision_agg.times else 0.0
-
+        # Decision logic totals
+        if totals.total_decisions > 0:
             print(f"\n{renderer.bold('   🧠 DECISION LOGIC (AGGREGATED):')}")
-            print(f'      Total Decisions: {total_calls}  |  '
-                  f'Total Time: {total_time:>8.2f}ms  |  '
-                  f'Avg: {avg_time:>6.3f}ms  |  '
-                  f'Scenario Avg: {scenario_avg:>6.3f}ms')
+            print(f'      Total Decisions: {totals.total_decisions}  |  '
+                  f'Total Time: {totals.decision_total_time_ms:>8.2f}ms  |  '
+                  f'Avg: {totals.decision_avg_time_ms:>6.3f}ms  |  '
+                  f'Scenario Avg: {totals.decision_unit_mean_time_ms:>6.3f}ms')
 
-    def _analyze_bottlenecks(self) -> PerformanceBottlenecks:
+    def _render_bottleneck_details(self, renderer: ConsoleRenderer) -> None:
         """
-        Analyze performance bottlenecks across all units.
-
-        Returns:
-            Performance bottleneck analysis
-        """
-        bottlenecks = PerformanceBottlenecks()
-
-        slowest_scenario_time: float = 0.0
-        worker_times: Dict[str, List[Tuple[str, float]]] = {}
-        decision_logic_times: Dict[str, List[Tuple[str, float]]] = {}
-        worst_parallel_saved: float = float('inf')
-
-        for unit in self._units:
-            scenario_name = unit.name
-            ticks = unit.ticks_processed
-
-            # Calculate scenario avg time per tick
-            total_worker_time = sum(w.total_time_ms for w in unit.workers)
-            total_decision_time = unit.decision_total_time_ms
-
-            total_time = total_worker_time + total_decision_time
-            avg_time_per_tick = total_time / ticks if ticks > 0 else 0.0
-
-            if avg_time_per_tick > slowest_scenario_time:
-                slowest_scenario_time = avg_time_per_tick
-                bottlenecks.slowest_scenario = ScenarioBottleneckData(
-                    name=scenario_name,
-                    avg_time_per_tick=avg_time_per_tick,
-                    total_time=total_time
-                )
-
-            # Collect worker times
-            for w in unit.workers:
-                if w.worker_name not in worker_times:
-                    worker_times[w.worker_name] = []
-                worker_times[w.worker_name].append((scenario_name, w.avg_time_ms))
-
-            # Collect decision logic times
-            if unit.decision_logic_name:
-                if unit.decision_logic_name not in decision_logic_times:
-                    decision_logic_times[unit.decision_logic_name] = []
-                decision_logic_times[unit.decision_logic_name].append(
-                    (scenario_name, unit.decision_avg_time_ms))
-
-            # Check parallel efficiency
-            if unit.parallel_workers:
-                time_saved = unit.parallel_time_saved_ms
-                if time_saved < worst_parallel_saved:
-                    worst_parallel_saved = time_saved
-                    bottlenecks.worst_parallel = ParallelBottleneckData(
-                        name=scenario_name,
-                        time_saved=time_saved,
-                        status=self._get_parallel_status(time_saved)
-                    )
-
-        # Find worst worker
-        worst_worker_avg: float = 0.0
-        for worker_name, times in worker_times.items():
-            avg_time = sum(t[1] for t in times) / len(times) if times else 0.0
-            if avg_time > worst_worker_avg:
-                worst_worker_avg = avg_time
-                bottlenecks.slowest_worker = WorkerBottleneckData(
-                    name=worker_name,
-                    avg_time=avg_time,
-                    scenarios=times
-                )
-
-        # Find worst decision logic
-        worst_decision_avg: float = 0.0
-        for logic_name, times in decision_logic_times.items():
-            avg_time = sum(t[1] for t in times) / len(times) if times else 0.0
-            if avg_time > worst_decision_avg:
-                worst_decision_avg = avg_time
-                bottlenecks.slowest_decision_logic = DecisionLogicBottleneckData(
-                    name=logic_name,
-                    avg_time=avg_time,
-                    scenarios=times
-                )
-
-        return bottlenecks
-
-    def _render_bottleneck_details(
-        self,
-        bottlenecks: PerformanceBottlenecks,
-        renderer: ConsoleRenderer
-    ) -> None:
-        """
-        Render bottleneck analysis details.
+        Render bottleneck analysis details — the report's slowest performers.
 
         Args:
-            bottlenecks: Bottleneck analysis data
             renderer: ConsoleRenderer instance
         """
+        b = self._report.bottlenecks
         print()
+        if b is None:
+            # No unit tracked its decisions: there is nothing to rank
+            return
 
         # Slowest scenario
-        if bottlenecks.slowest_scenario:
-            scenario = bottlenecks.slowest_scenario
+        if b.slowest_algo_unit is not None:
             print(f"{renderer.bold('   🌶 SLOWEST SCENARIO:')}")
-            avg_str = renderer.red(f'{scenario.avg_time_per_tick:.3f}ms')
-            print(f'      {renderer.red(scenario.name)}  |  '
+            avg_str = renderer.red(f'{b.slowest_algo_unit_avg_per_tick_ms:.3f}ms')
+            print(f'      {renderer.red(b.slowest_algo_unit)}  |  '
                   f'Avg/tick: {avg_str}  |  '
-                  f'Total: {scenario.total_time:.2f}ms')
+                  f'Total: {b.slowest_algo_unit_time_ms:.2f}ms')
             print(
                 f"      {renderer.yellow('→ This scenario took the longest time per tick')}")
 
         # Slowest worker
-        if bottlenecks.slowest_worker:
-            worker = bottlenecks.slowest_worker
+        if b.slowest_worker is not None:
             print(f"\n{renderer.bold('   🌶 SLOWEST WORKER:')}")
-            avg_str = renderer.red(f'{worker.avg_time:.3f}ms')
-            print(f'      {renderer.red(worker.name)}  |  '
+            avg_str = renderer.red(f'{b.slowest_worker_mean_ms:.3f}ms')
+            print(f'      {renderer.red(b.slowest_worker)}  |  '
                   f'Avg: {avg_str} (across all scenarios)')
 
-            worst_scenario = max(worker.scenarios, key=lambda x: x[1])
-            worst_msg = f"→ Worst in scenario '{worst_scenario[0]}': {worst_scenario[1]:.3f}ms"
+            worst_msg = (f"→ Worst in scenario '{b.slowest_worker_worst_unit}': "
+                         f'{b.slowest_worker_worst_unit_ms:.3f}ms')
             print(f'      {renderer.yellow(worst_msg)}')
 
-        # Slowest decision logic
-        if bottlenecks.slowest_decision_logic and bottlenecks.slowest_decision_logic.avg_time > 0.5:
-            logic = bottlenecks.slowest_decision_logic
+        # Slowest decision logic — a measurement, shown like the slowest worker; there is
+        # deliberately no fixed "too slow" threshold (validators/shared_advisory_checks.py)
+        if b.slowest_decision_logic is not None:
             print(f"\n{renderer.bold('   🌶 SLOWEST DECISION LOGIC:')}")
-            avg_str = renderer.red(f'{logic.avg_time:.3f}ms')
-            print(f'      {renderer.red(logic.name)}  |  '
+            avg_str = renderer.red(f'{b.slowest_decision_logic_mean_ms:.3f}ms')
+            print(f'      {renderer.red(b.slowest_decision_logic)}  |  '
                   f'Avg: {avg_str} (across all scenarios)')
 
-        # Worst parallel efficiency
-        if bottlenecks.worst_parallel and bottlenecks.worst_parallel.time_saved < 0:
-            parallel = bottlenecks.worst_parallel
+        # Worst parallel efficiency — shown whenever a unit ran its workers in parallel; whether
+        # it cost time is PostRunValidator's verdict (_check_parallel_penalty)
+        if b.worst_parallel_unit is not None:
             print(f"\n{renderer.bold('   🌶 WORST PARALLEL EFFICIENCY:')}")
-            time_saved_str = renderer.red(f'{parallel.time_saved:.2f}ms')
-            print(f'      {renderer.red(parallel.name)}  |  '
+            time_saved_str = renderer.red(f'{b.worst_parallel_time_saved_ms:.2f}ms')
+            print(f'      {renderer.red(b.worst_parallel_unit)}  |  '
                   f'Time saved: {time_saved_str}  |  '
-                  f'Status: {parallel.status}')
+                  f'Status: {self._get_parallel_status(b.worst_parallel_time_saved_ms)}')
 
         # No recommendations here. Whether parallel execution is costing time is a verdict —
         # PostRunValidator decides it (_check_parallel_penalty) and the WARNINGS & ERRORS

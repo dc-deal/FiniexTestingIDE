@@ -33,7 +33,8 @@ the single symbol it traded. See [row keys](/api/v1/docs/row-keys).
 session has no scenario grid rather than an unrecorded one. [Nulls](/api/v1/docs/nulls) has the
 difference.
 
-On a backtest, `scenarios` names the scenarios that ran and produced results. It is not the list
+On a backtest, `scenarios` names the scenarios that ran and produced results, and
+`scenario_count` counts them. It is not the list
 the configuration declared: a scenario that was disabled, or refused before it started, is not
 here. The declared list is in [config](/api/v1/docs/config), and every scenario with its outcome,
 failures included, is on [scenario details](/api/v1/docs/scenario-details).

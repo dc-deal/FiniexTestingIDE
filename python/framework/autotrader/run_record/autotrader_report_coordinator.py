@@ -344,7 +344,8 @@ class AutotraderReportCoordinator:
             closing_block=AutotraderSessionSummary(
                 result, unified.trade_history, self._run_dir, unified.run_summary,
                 warnings_errors_report, cold_start_report, safety_report,
-                venue_account_report),
+                venue_account_report, portfolio_report=unified.portfolio,
+                order_report=unified.order_history),
         )
 
         # Render once (live always full detail); capture, print to console (with colors), and

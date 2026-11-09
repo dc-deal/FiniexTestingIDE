@@ -17,7 +17,6 @@ from typing import Any, Dict, List
 
 import pytest
 
-from python.configuration.app_config_manager import AppConfigManager
 from python.framework.constants.currency_constants import (
     format_currency_signed,
     format_currency_simple,
@@ -173,7 +172,7 @@ def _render_executive(units: List[PortfolioUnitRow]) -> str:
         The printed text, colours stripped
     """
     executive = SimExecutiveSummary(
-        app_config=AppConfigManager(), run_summary=RunSummary(run_id=_RUN_ID, currencies=[]),
+        run_summary=RunSummary(run_id=_RUN_ID, currencies=[]),
         run_meta_report=RunMetaReport(run_id=_RUN_ID),
         profiling_report=ProfilingReport(run_id=_RUN_ID, units=[]),
         scenario_details_report=ScenarioDetailsReport(run_id=_RUN_ID, units=[]),

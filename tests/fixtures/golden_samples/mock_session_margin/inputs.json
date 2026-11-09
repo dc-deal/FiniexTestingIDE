@@ -5,17 +5,17 @@
    "param_hash": "e653c68573278b55405d38ec5487e980c05fae57e7f851b00ac5d687a6179ea3",
    "status": "ok",
    "error": null,
-   "run_id": "20261108_143407_ad990d05",
-   "run_timestamp": "2026-11-08T14:34:07.426822+00:00",
+   "run_id": "20261109_150415_a28d7c0c",
+   "run_timestamp": "2026-11-09T15:04:15.965878+00:00",
    "sweep_id": null,
    "sweep_params": null,
    "sweep_objective": null,
    "sweep_maximize": null,
    "scenario_set_name": "partial_close_lifecycle",
    "app_version": "1.5.0",
-   "git_commit": "2912dd3e",
+   "git_commit": "4f1b5f5b",
    "git_branch": "dev-1-6-0",
-   "git_dirty": false,
+   "git_dirty": true,
    "decision_logic_type": "CORE/test_probes/multi_position_probe",
    "decision_version": "0.0.0",
    "worker_versions": {
@@ -45,15 +45,15 @@
     "repositories": [
      {
       "repository": "framework",
-      "commit": "2912dd3e",
-      "dirty": false,
-      "diff_hash": null,
+      "commit": "4f1b5f5b",
+      "dirty": true,
+      "diff_hash": "d33e8cf5b6cab7dcb060708dc22a0735ec82192463dd63948a0fb162967ec3e7",
       "subject": null,
       "recent_commits": null
      }
     ]
    },
-   "recorded_at_utc": "2026-11-08T14:34:13.919323+00:00",
+   "recorded_at_utc": "2026-11-09T15:04:32.925775+00:00",
    "trial_count": 1,
    "run_outcome": "success",
    "error_count": 0,
@@ -121,7 +121,7 @@
  ],
  "run_index": [
   {
-   "run_id": "20261108_143407_ad990d05",
+   "run_id": "20261109_150415_a28d7c0c",
    "group": "autotrader",
    "name": "partial_close_lifecycle",
    "artifacts": [
@@ -148,15 +148,15 @@
     "state_frames.jsonl"
    ],
    "recording": null,
-   "start_time": "2026-11-08T14:34:07.426822+00:00",
+   "start_time": "2026-11-09T15:04:15.965878+00:00",
    "parent_id": null,
    "parent_kind": null,
    "config_id": "ea9755ae7beedbcbd00a852ddc2b35c8f1974be3bd46143d0870de99722d8eb3",
    "app_version": "1.5.0",
-   "git_commit": "2912dd3e",
+   "git_commit": "4f1b5f5b",
    "config_snapshot": "partial_close_lifecycle.json",
    "reporting": "expected",
-   "size_bytes": 227400,
+   "size_bytes": 230981,
    "ticks_from": "archive",
    "orders_to": "simulated",
    "data_windows": [
@@ -167,7 +167,7 @@
     }
    ],
    "run_purpose": "fixture",
-   "report_contract": 51,
+   "report_contract": 52,
    "origin_channel": "cli",
    "origin_client": "console",
    "origin_principal": "operator",

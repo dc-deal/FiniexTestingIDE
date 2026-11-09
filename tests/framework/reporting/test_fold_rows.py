@@ -167,7 +167,9 @@ class TestEveryTableResolves:
     @pytest.mark.parametrize('name', sorted(n for n, t in FIGURE_TABLES.items() if t.row_model))
     def test_every_source_names_a_field_of_the_row(self, name):
         table = FIGURE_TABLES[name]
-        fields_of_row = set(get_type_hints(table.row_model))
+        # A row model's computed fields are read like its stored ones
+        fields_of_row = (set(get_type_hints(table.row_model))
+                         | set(getattr(table.row_model, 'model_computed_fields', {})))
         for field_name in table.grain:
             assert field_name in fields_of_row, (name, field_name)
         for figure, declaration in table.figures.items():

@@ -131,11 +131,14 @@ unit's periods measured one.
 ```
 
 `total_net_pnl`, `total_fees` and `total_trades` are the sums over the periods — the table's own
-totals, and the figures to render beside it. `run_net_pnl` and `run_total_trades` are what the run
+totals, and the figures to render beside it. `period_count` and `period_unit_count` count the
+periods listed and the units that booked them. `run_net_pnl` and `run_total_trades` are what the run
 itself reports for the same currency; they are there to be compared against, and when the check
 holds they carry the same value.
 
-`reconciles` compares the periods' sums against the figures the run reports. What it proves is
+`reconciles` compares the periods' sums against the figures the run reports;
+`reconciliation_difference` is the periods' net P&L less the run's, null where the run reports no
+figure. What it proves is
 **completeness**: every closed trade reached exactly one period. A `false` means a trade was lost
 between the run and its ledger — dropped in retention, missed by a window, lost in transport.
 

@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from python.framework.reporting.builders.portfolio_report_builder import build_portfolio_report
+from python.framework.reporting.builders.run_unit import run_units_from_session
 from python.framework.reporting.builders.warnings_errors_report_builder import (
     build_warnings_errors_report_from_session,
 )
@@ -40,13 +42,17 @@ def _render(result: AutoTraderResult, run_dir=None, trade_report=None,
             venue_account_report: Optional[VenueAccountReport] = None,
             warnings_errors_report: Optional[WarningsErrorsReport] = None) -> str:
     """Render the closing block and return the captured stdout (ANSI kept)."""
+    # The session's portfolio row, built from the result as the report coordinator builds it
+    portfolio = build_portfolio_report(
+        '20260830_120000_a1b2c3d4', run_units_from_session(result, name='btcusd', symbol='BTCUSD'))
     old = sys.stdout
     sys.stdout = buf = io.StringIO()
     try:
         AutotraderSessionSummary(
             result, trade_report, run_dir,
             warnings_errors_report=warnings_errors_report,
-            venue_account_report=venue_account_report).render(ConsoleRenderer())
+            venue_account_report=venue_account_report,
+            portfolio_report=portfolio).render(ConsoleRenderer())
     finally:
         sys.stdout = old
     return buf.getvalue()

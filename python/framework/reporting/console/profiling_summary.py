@@ -126,24 +126,20 @@ class ProfilingSummary(AbstractBatchSummarySection):
             renderer: ConsoleRenderer instance
         """
         phases = self._report.warmup_phases
-        if not phases:
-            return
-
-        total_warmup = sum(p.duration_s for p in phases)
-        if total_warmup <= 0:
+        total_warmup = self._report.warmup_total_s
+        if not phases or total_warmup <= 0:
             return
 
         renderer.section_separator()
         renderer.print_bold('⏱️  WARMUP PHASE BREAKDOWN')
         renderer.section_separator()
 
-        slowest_name = max(phases, key=lambda p: p.duration_s).name
+        slowest_name = self._report.warmup_slowest_phase
         name_width = max(max(len(p.name) for p in phases), 20)
 
         for idx, phase in enumerate(phases):
-            pct = phase.duration_s / total_warmup * 100
             label = f'Phase {idx}  {phase.name:<{name_width}}'
-            value = f'{phase.duration_s:>7.2f}s  {pct:>5.1f}%'
+            value = f'{phase.duration_s:>7.2f}s  {phase.pct:>5.1f}%'
             if phase.name == slowest_name:
                 print(renderer.yellow(f'  {label}  {value}  ← slowest'))
             else:
@@ -366,14 +362,13 @@ class ProfilingSummary(AbstractBatchSummarySection):
             # nothing-to-report state.
             print(renderer.green(
                 f'  ✅ Tick Processing Budget Active ({budget_str}) — '
-                f'no ticks clipped ({total_ticks:,} ticks, {len(agg.clipping_budgets)} budget(s))'))
+                f'no ticks clipped ({total_ticks:,} ticks, {agg.clipping_budget_count} budget(s))'))
             print()
         else:
-            overall_rate = total_clipped / total_ticks * 100
             print(f"  {renderer.bold('✂️  Tick Processing Budget Active:')}")
             print(f'     Budget: {budget_str}')
             print(f'     Total: {total_kept:,} / {total_ticks:,} ticks kept  |  '
-                  f'Clipped: {total_clipped:,} ({overall_rate:.1f}%)')
+                  f'Clipped: {total_clipped:,} ({agg.clipping_rate_pct:.1f}%)')
             print()
 
     def _render_cross_scenario_averages(self, renderer: ConsoleRenderer):

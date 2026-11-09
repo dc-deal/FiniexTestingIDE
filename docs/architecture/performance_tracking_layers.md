@@ -77,12 +77,17 @@ Layer A's split, the section would either show only a total (no breakdown) or co
 
 ## Graceful Degradation
 
-| `tick_loop_profiling` | `worker_decision_tracking` | Sections shown | Executive Summary `Tracking:` line |
-|---|---|---|---|
-| `true` | `true` | All | _(none — default case, no friction)_ |
-| `true` | `false` | Layer-B sections only | `⚠️ Worker tracking OFF (per-worker / decision breakdowns unavailable)` |
-| `false` | `true` | Layer-A sections only | `⚠️ Tick-loop profiling OFF (operation hotspot analysis unavailable)` |
-| `false` | `false` | None | `⚠️ All performance tracking OFF (no per-component or operation-level diagnostics)` |
+| `tick_loop_profiling` | `worker_decision_tracking` | Sections shown | `performance_tracking` | Executive Summary `Tracking:` line |
+|---|---|---|---|---|
+| `true` | `true` | All | `both_on` | _(none — default case, no friction)_ |
+| `true` | `false` | Layer-B sections only | `worker_off` | `⚠️ Worker tracking OFF (per-worker / decision breakdowns unavailable)` |
+| `false` | `true` | Layer-A sections only | `profiling_off` | `⚠️ Tick-loop profiling OFF (operation hotspot analysis unavailable)` |
+| `false` | `false` | None | `all_off` | `⚠️ All performance tracking OFF (no per-component or operation-level diagnostics)` |
+
+`performance_tracking` is the class the run meta report derives from its two layer flags; the
+executive summary prints the line that belongs to it. It describes the run's configuration and is
+deliberately no warning: worker tracking is off in a default backtest, so a warning would stand on
+nearly every run.
 
 The hybrid 🔍 WORKER DECISION BREAKDOWN is suppressed if **either** layer is off (see above).
 
@@ -175,5 +180,5 @@ See [config_cascade_guide.md](../config_cascade_guide.md) for the full cascade d
 | [`python/framework/reporting/console/performance_summary.py`](../../python/framework/reporting/console/performance_summary.py) | Layer-A sections, suppressed via `_layer_a_has_data()` |
 | [`python/framework/reporting/console/profiling_summary.py`](../../python/framework/reporting/console/profiling_summary.py) | Layer-B sections, suppressed via `_layer_b_has_data()` |
 | [`python/framework/reporting/console/worker_decision_breakdown_summary.py`](../../python/framework/reporting/console/worker_decision_breakdown_summary.py) | Hybrid section, suppressed when either layer is off |
-| [`python/framework/reporting/console/sim_executive_summary.py`](../../python/framework/reporting/console/sim_executive_summary.py) | `Tracking:` status line in the EXECUTION RESULTS block |
+| [`python/framework/reporting/console/sim_executive_summary.py`](../../python/framework/reporting/console/sim_executive_summary.py) | `Tracking:` status line in the EXECUTION RESULTS block, from the run meta's `performance_tracking` |
 | [`python/framework/types/config_types/performance_tracking_config_types.py`](../../python/framework/types/config_types/performance_tracking_config_types.py) | Pydantic models with `extra='forbid'` |

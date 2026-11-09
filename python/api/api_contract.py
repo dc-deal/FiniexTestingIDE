@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 51
+API_CONTRACT_VERSION = 52
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,10 +36,24 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'deployments: the sessions without booked figures no longer stand in a row of their own beside '
-    'a deployment\'s booked rows; each booked row counts them — sessions_without_figures, and '
-    'sessions_failed for those that failed before they measured anything — the same on every row '
-    'of the deployment, never to be added across rows',
-    'deployments: the row whose currency is null is served only for a deployment that has booked '
-    'nothing, and carries the same two counts',
+    'every figure a console printed is now a field: fields added, nothing removed, renamed or '
+    'changed in meaning',
+    'trade-history: duration_ticks on every row; on each analytics entry the counts by direction, '
+    'outcome and close reason, the averages per trade and the holding time in ticks',
+    'order-history: failed_listed, failed_by_unit and failed_by_reason count the failed rows '
+    'listed — a filter counts them again',
+    'portfolio and pending-orders: open_position_count on a unit row; active_limit_count, '
+    'active_stop_count and active_order_count',
+    'aggregated-portfolio: total_costs (every cost category, the spread included — not a fee '
+    'total) and spot_total_est_pnl with its percentage',
+    'run-summary: execution_rate_pct over the run\'s counts',
+    'worker-decision: a unit\'s worker sums and algo time, unit_mean_time_ms on a totals row, '
+    'decision_totals and bottlenecks over the tracked units — null where none tracked',
+    'profiling: the clipping rate, the slowest profiled unit beside the mean, the warmup\'s total '
+    'and slowest phase with each phase\'s share, worker_decision_breakdowns, and keys',
+    'order-history: keys, [] for the order rows',
+    'a run recorded earlier answers what its own rows give; what it does not keep is null',
+    'scenario-details, warnings-errors, booking-periods, feed-stability, signal, broker: the '
+    'shares, differences and counts their lists imply',
+    'validation checks: usable_funds_negative',
 ]

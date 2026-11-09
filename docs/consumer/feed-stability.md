@@ -83,7 +83,8 @@ one unit and a run of twenty. `unit` is what separates the rows; group by it bef
 ## The counters beside the episodes
 
 `fresh_ticks`, `stale_ticks` and `blind_ticks` describe the **whole run** for that source, summed
-across its units, while the episodes describe only the disturbed stretches. Read together they
+across its units, while the episodes describe only the disturbed stretches. `fresh_tick_pct` is the
+fresh share of the three together — null where no tick was counted. Read together they
 answer the two questions a stability view has to answer at once: how much of the run was decided on
 degraded data, and when.
 

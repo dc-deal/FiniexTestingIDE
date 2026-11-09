@@ -1,0 +1,156 @@
+{
+  "run_id": "20261109_145734_a6aa5b90",
+  "units": [
+    {
+      "name": "EURGBP_refusals_01",
+      "symbol": "EURGBP",
+      "orders_submitted": 9,
+      "orders_adopted": 0,
+      "orders_executed": 5,
+      "orders_denied": 9,
+      "orders_rejected": 4,
+      "orders_cancelled": 0,
+      "orders_expired": 0,
+      "orders_undelivered": 0,
+      "orders_unaccounted": 0,
+      "sl_tp_triggered": 0,
+      "orders_failed": 13
+    },
+    {
+      "name": "EURGBP_refusals_02",
+      "symbol": "EURGBP",
+      "orders_submitted": 12,
+      "orders_adopted": 0,
+      "orders_executed": 7,
+      "orders_denied": 17,
+      "orders_rejected": 5,
+      "orders_cancelled": 0,
+      "orders_expired": 0,
+      "orders_undelivered": 0,
+      "orders_unaccounted": 0,
+      "sl_tp_triggered": 0,
+      "orders_failed": 22
+    },
+    {
+      "name": "ETHUSD_spot_two_balances",
+      "symbol": "ETHUSD",
+      "orders_submitted": 21,
+      "orders_adopted": 0,
+      "orders_executed": 21,
+      "orders_denied": 0,
+      "orders_rejected": 0,
+      "orders_cancelled": 0,
+      "orders_expired": 0,
+      "orders_undelivered": 0,
+      "orders_unaccounted": 0,
+      "sl_tp_triggered": 0,
+      "orders_failed": 0
+    },
+    {
+      "name": "EURGBP_left_open",
+      "symbol": "EURGBP",
+      "orders_submitted": 1,
+      "orders_adopted": 0,
+      "orders_executed": 1,
+      "orders_denied": 0,
+      "orders_rejected": 0,
+      "orders_cancelled": 0,
+      "orders_expired": 0,
+      "orders_undelivered": 0,
+      "orders_unaccounted": 0,
+      "sl_tp_triggered": 0,
+      "orders_failed": 0
+    },
+    {
+      "name": "EURGBP_partial_close",
+      "symbol": "EURGBP",
+      "orders_submitted": 4,
+      "orders_adopted": 0,
+      "orders_executed": 4,
+      "orders_denied": 0,
+      "orders_rejected": 0,
+      "orders_cancelled": 0,
+      "orders_expired": 0,
+      "orders_undelivered": 0,
+      "orders_unaccounted": 0,
+      "sl_tp_triggered": 0,
+      "orders_failed": 0
+    }
+  ],
+  "totals": {
+    "orders_submitted": 47,
+    "orders_adopted": 0,
+    "orders_executed": 38,
+    "orders_denied": 26,
+    "orders_rejected": 9,
+    "orders_cancelled": 0,
+    "orders_expired": 0,
+    "orders_undelivered": 0,
+    "orders_unaccounted": 0,
+    "sl_tp_triggered": 0,
+    "orders_failed": 35
+  },
+  "fill_slippage": [
+    {
+      "measured_against": "submission_mid",
+      "fills": 5,
+      "fills_measured": 5,
+      "adverse_pct_mean": 0.008071392779211484,
+      "adverse_pct_max": 0.009093905946274225,
+      "name": "EURGBP_refusals_01"
+    },
+    {
+      "measured_against": "submission_mid",
+      "fills": 7,
+      "fills_measured": 7,
+      "adverse_pct_mean": 0.006817738994032979,
+      "adverse_pct_max": 0.008626093357338476,
+      "name": "EURGBP_refusals_02"
+    },
+    {
+      "measured_against": "submission_mid",
+      "fills": 21,
+      "fills_measured": 21,
+      "adverse_pct_mean": 0.0032585274859316974,
+      "adverse_pct_max": 0.04362053160334014,
+      "name": "ETHUSD_spot_two_balances"
+    },
+    {
+      "measured_against": "submission_mid",
+      "fills": 1,
+      "fills_measured": 1,
+      "adverse_pct_mean": 0.006899962050215624,
+      "adverse_pct_max": 0.006899962050215624,
+      "name": "EURGBP_left_open"
+    },
+    {
+      "measured_against": "submission_mid",
+      "fills": 4,
+      "fills_measured": 4,
+      "adverse_pct_mean": 0.006963117032650314,
+      "adverse_pct_max": 0.010231342011031035,
+      "name": "EURGBP_partial_close"
+    }
+  ],
+  "fill_slippage_totals": [
+    {
+      "measured_against": "submission_mid",
+      "fills": 38,
+      "fills_measured": 38,
+      "adverse_pct_mean": 0.005033227479991337,
+      "adverse_pct_max": 0.04362053160334014
+    }
+  ],
+  "keys": {
+    "units": [
+      "name"
+    ],
+    "fill_slippage": [
+      "name",
+      "measured_against"
+    ],
+    "fill_slippage_totals": [
+      "measured_against"
+    ]
+  }
+}
