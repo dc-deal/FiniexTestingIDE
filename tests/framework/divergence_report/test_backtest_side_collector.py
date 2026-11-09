@@ -20,12 +20,14 @@ from python.framework.reporting.builders.divergence.backtest_side_collector impo
     BacktestSideCollector,
 )
 from python.framework.reporting.io.artifact_specs import SCENARIO_DETAILS_ARTIFACT
+from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
 from python.framework.reporting.io.report_artifact_io import write_artifact
 from python.framework.reporting.io.run_header_io import write_run_header
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.store.entry_members.run_dir_reader import RunDirReader
 from python.framework.store.entry_members.run_entry_reader import RunEntryReader
+from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import (
     DataWindow,
@@ -37,6 +39,7 @@ from python.framework.types.api.report_types import (
 from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.run_results_types import RunProvenance
 from python.framework.types.store_member_types import RunEntryMemberId
+from python.framework.types.trading_env_types.order_event_types import OrderEvent, OrderEventType
 from python.framework.validators.divergence_gate_validator import check_divergence_gate
 from tests.shared.divergence_gate_pair import (
     BACKTEST_COMMIT,
@@ -50,7 +53,8 @@ from tests.shared.divergence_gate_pair import (
     gate_session,
     gate_window,
 )
-from tests.shared.divergence_live_chain import FIRST_TICK
+from tests.shared.divergence_live_chain import FIRST_TICK, frame
+from tests.shared.null_logger import NullLogger
 
 _LAST_TICK = WINDOW_END - timedelta(seconds=3)
 
@@ -91,11 +95,26 @@ class _Tree:
         write_run_header(header, run_dir)
         RunIndex(self.index).register_run(header, run_dir)
         directory = RunDirReader(run_dir)
+        writer = RunEntryWriter(run_dir, RUN_TYPE_SIMULATION)
         if frames:
-            frames_path = directory.path_of(RunEntryMemberId.SCENARIO_STATE_FRAMES,
-                                            scenario=SCENARIO)
-            frames_path.parent.mkdir(parents=True, exist_ok=True)
-            frames_path.write_text('', encoding='utf-8')
+            stream = writer.open_stream(
+                RunEntryMemberId.SCENARIO_STATE_FRAMES, run_id, NullLogger(), stops='-',
+                header_fields={'unit_name': SCENARIO, 'cadence_timeframe': 'M1',
+                               'cadence_s': 60.0}, scenario=SCENARIO)
+            for minute in range(3):
+                stream.write(frame(FIRST_TICK + timedelta(minutes=minute)).model_dump(mode='json'))
+            stream.close()
+        # Two scenarios' events in the run's one stream, as the batch writes them at its end
+        appender = writer.open_stream(RunEntryMemberId.ORDER_EVENTS, run_id, NullLogger(),
+                                      stops='-', required=True)
+        events = OrderEventStreamWriter(appender, SCENARIO)
+        others = OrderEventStreamWriter(appender, 'my_other_scenario')
+        for seq, event_type in ((1, OrderEventType.SUBMITTED), (2, OrderEventType.FILLED)):
+            event = OrderEvent(seq=seq, event_type=event_type, order_id='order_1',
+                               submitted_seq=1, symbol='ETHUSD', lots=0.1, event_time=FIRST_TICK)
+            events(event)
+            others(event)
+        appender.close()
         if details:
             directory.section_path(SCENARIO_DETAILS_ARTIFACT).parent.mkdir(exist_ok=True)
             write_artifact(ScenarioDetailsReport(run_id=run_id, units=[ScenarioDetailsRow(
@@ -142,6 +161,20 @@ class TestTheRunAsItRecordedItself:
     def test_a_scenario_without_its_frames_says_so(self, tree):
         tree.backtest(frames=False)
         assert not tree.collector().collect_run('b1').scenarios[0].records_frames
+        records = tree.collector().collect_scenario_records('b1', SCENARIO)
+        assert records.frames.frames == [] and records.frames.unreadable
+
+
+class TestWhatAScenarioRecordedAsItRan:
+
+    def test_its_own_order_events_and_its_frames(self, tree):
+        tree.backtest()
+        records = tree.collector().collect_scenario_records('b1', SCENARIO)
+        assert [event.seq for event in records.order_events] == [1, 2]
+        assert {event.scenario_name for event in records.order_events} == {SCENARIO}
+        assert [f.frame_time for f in records.frames.frames] == [
+            FIRST_TICK + timedelta(minutes=minute) for minute in range(3)]
+        assert records.frames.unreadable == '' and records.unreadable == {}
 
     def test_missing_scenario_details_are_named_never_filled_in(self, tree):
         tree.backtest(details=False)

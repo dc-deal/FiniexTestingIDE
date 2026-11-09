@@ -8,22 +8,26 @@ derived: a record that cannot be read is named on the capture, never replaced by
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.constants.run_layout_constants import RUN_TYPE_SIMULATION
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.artifact_specs import SCENARIO_DETAILS_ARTIFACT
+from python.framework.reporting.io.order_event_stream_io import order_events_of
+from python.framework.reporting.io.state_frame_stream_io import read_recorded_frames
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.store.entry_members.run_entry_reader import RunEntryReader
 from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import (
+    OrderEventRow,
     DataWindow,
     RunHeader,
     ScenarioDetailsRow,
 )
 from python.framework.types.divergence_capture_types import (
     BacktestRunCapture,
+    BacktestScenarioRecords,
     BacktestScenarioCapture,
 )
 from python.framework.types.run_config_types import RunConfigKind
@@ -91,6 +95,36 @@ class BacktestSideCollector:
             rows=rows,
             scenarios=[self._scenario(run_id, name, windows.get(name), details.get(name),
                                       strategies.get(name), unreadable) for name in names],
+            unreadable=unreadable)
+
+    def collect_scenario_records(self, run_id: str, scenario: str) -> BacktestScenarioRecords:
+        """
+        What one scenario of a backtest run recorded as it ran: its order events and its frames.
+
+        Args:
+            run_id: The run
+            scenario: The scenario
+
+        Returns:
+            Its records; what could not be read is named, never filled in
+        """
+        unreadable: Dict[str, str] = {}
+        events: List[OrderEventRow] = []
+        try:
+            stream = self._reader.read_stream(run_id, RunEntryMemberId.ORDER_EVENTS)
+            if stream is not None:
+                rows, _truths, truncated = order_events_of(
+                    stream, RunEntryMemberId.ORDER_EVENTS.value, run_id)
+                events = sorted((row for row in rows if row.scenario_name == scenario),
+                                key=lambda row: row.seq)
+                if truncated:
+                    unreadable['order_events'] = 'its last line was cut off mid-write'
+        except _UNREADABLE as e:
+            unreadable['order_events'] = str(e)
+        return BacktestScenarioRecords(
+            scenario=scenario, order_events=events,
+            frames=read_recorded_frames(self._reader, run_id,
+                                        RunEntryMemberId.SCENARIO_STATE_FRAMES, scenario=scenario),
             unreadable=unreadable)
 
     def _header(self, run_id: str, unreadable: Dict[str, str]) -> Optional[RunHeader]:

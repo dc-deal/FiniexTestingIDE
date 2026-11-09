@@ -27,7 +27,7 @@ from python.framework.types.api.report_types import (
     SessionBookingState,
     WarningsErrorsOutcome,
 )
-from python.framework.types.api.state_frame_types import StateFrameStreamEnds
+from python.framework.types.api.state_frame_types import StateFrame, StateFrameStreamEnds
 from python.framework.types.config_types.market_config_types import DayAnchorConfig
 from python.framework.types.run_origin_types import CodeIdentity, CodeStand
 from python.framework.types.trading_env_types.order_event_types import (
@@ -290,4 +290,34 @@ class BacktestRunCapture:
     code_identity: Optional[CodeIdentity]
     rows: List[RunResultRow]
     scenarios: List[BacktestScenarioCapture]
+    unreadable: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RecordedFrames:
+    """
+    One run unit's state frames, read whole — a live session's or a backtest scenario's.
+
+    Args:
+        frames: Every frame, in the order written
+        unreadable: Why the stream could not be read in full; '' where it could
+    """
+    frames: List[StateFrame]
+    unreadable: str = ''
+
+
+@dataclass(frozen=True)
+class BacktestScenarioRecords:
+    """
+    What one backtest scenario recorded as it ran — what the measures read of it.
+
+    Args:
+        scenario: The scenario
+        order_events: Its order events, in `seq` order
+        frames: Its state frames
+        unreadable: What could not be read, by what it is, with the reason
+    """
+    scenario: str
+    order_events: List[OrderEventRow]
+    frames: RecordedFrames
     unreadable: Dict[str, str] = field(default_factory=dict)

@@ -147,7 +147,8 @@ tests/
 │   ├── divergence_report/ unit + integration — a live session against a backtest of its window: the backtest built from the session's
 │   │                      record — rendered profile, frozen broker document, recorded warmup — every block declared; the live
 │   │                      side's segments, windows and trading days, each day compared or excluded with every cause; the
-│   │                      gate — code path, strategy, configuration, broker document, window — that refuses a pair (#512)
+│   │                      gate — code path, strategy, configuration, broker document, window — that refuses a pair; the
+│   │                      measures — each order, the account values, the day attribution — on real backtests too (#512)
 │   ├── composite/         unit — which accounts may add up: the composite definition and its floor, the key projected from
 │   │                      the rendered configuration, joins and splits, the excluded member, every shipped value classified (#615)
 │   ├── rendered_config/   unit — what a run records it ran with: the one strategy renderer and its portable type key, every shipped

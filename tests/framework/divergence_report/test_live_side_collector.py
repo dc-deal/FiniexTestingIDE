@@ -219,6 +219,29 @@ class TestTheSessionsWithoutAStream:
             tree.collector().collect_sessions(DEPLOYMENT)
 
 
+class TestEverySessionsFrames:
+
+    def test_read_whole_across_the_sealed_days_in_time_order(self, tree):
+        _two_sessions(tree)
+        collector = tree.collector()
+        frames = collector.collect_session_frames(collector.collect_sessions(DEPLOYMENT))
+        assert sorted(frames) == ['s1', 's2']
+        first = frames['s1']
+        # the first tick's frame, then two a day — at noon and a minute before the closing
+        assert len(first.frames) == 1 + 2 * 3 and first.unreadable == ''
+        times = [frame.frame_time for frame in first.frames]
+        assert times == sorted(times) and times[0] == FIRST_TICK
+
+    def test_a_session_that_records_no_frames_says_so(self, tree):
+        _two_sessions(tree)
+        tree.session('s3', FIRST_TICK + timedelta(days=6), [], book=False)
+        shutil.rmtree(RunDirReader(tree.root / 'runs' / 's3').path_of(
+            RunEntryMemberId.STATE_FRAMES).parent)
+        collector = tree.collector()
+        frames = collector.collect_session_frames(collector.collect_sessions(DEPLOYMENT))
+        assert frames['s3'].frames == [] and frames['s3'].unreadable
+
+
 class TestTheSealedDays:
 
     def test_each_days_records(self, tree):

@@ -30,6 +30,8 @@ session's record, and each seam that carries one is held here.
 | A position changed by hand across a restart goes unnoticed | The days after compare two different accounts |
 | A file the backtest's code path reaches changes after the session's release, undeclared — or a declared one changes again | The divergence measures a change of code, not parity |
 | The backtest runs another strategy, strategy configuration, broker document or window than the session | The divergence measures that difference instead of the simulator |
+| A measure reports a divergence between a run and itself | What it measures is the instrument, not the difference between the two runs |
+| The parts of a day's change of account value do not add up to the change | The attribution names a cause for a divergence that is not where it says |
 
 Not here: the warmup read back from a record, bar for bar against the archive path — that is the
 warmup history suite (`test_warmup_from_record.py`); the count of a day's order events held to the
@@ -116,6 +118,7 @@ ledger's writer.
 | Test | Description |
 |------|-------------|
 | `TestTheSessionsWithoutAStream` | every session with its booking state, first tick, outcome, frame ends, lot step and base currency from the frozen document, code stand, release, rendered strategy and the code identity of its header; a session only the run index names has booked nothing yet; a deployment nobody names and one naming two brokers are refused |
+| `TestEverySessionsFrames` | each session's state frames read whole across its sealed days, in time order; a session that records none says so |
 | `TestTheSealedDays` | each day's records — its events in `seq` order, its label, its last frame, its position at the closing; an unbroken session is compared every day and the restart after its stop waits; a day record gone is not checked |
 
 ### `test_import_closure.py`
@@ -164,4 +167,62 @@ writer, and its rendered scenario set in a run-config store.
 | Test | Description |
 |------|-------------|
 | `TestTheRunAsItRecordedItself` | the header's release and code identity, the ledger row's broker document, each scenario's declared window, first and last tick, frames and rendered strategy from the run-config store; a scenario without frames says so; missing scenario details and a run naming no rendered set are named, never filled in; a tick limit leaves the window open; a run nobody names and a session are refused |
+| `TestWhatAScenarioRecordedAsItRan` | a scenario's own order events, taken from the run's one stream that holds every scenario's, and its frames |
 | `test_the_gate_takes_what_the_collector_read` | the gate passes the pair the collector read |
+
+### `test_paired_difference_statistics.py`
+
+| Test | Description |
+|------|-------------|
+| tests at module level | the mean and the tracking error of a series worked by hand; the 90 % interval with the t quantile of its degrees of freedom, the wider one between two tabulated degrees; the lag-1 autocorrelation and its Ljung-Box statistic; a trending series rejects independence; too few days give no figure, a series without variation no autocorrelation |
+
+### `test_order_divergence.py`
+
+One day's orders on both sides, built from the record's own types, with one thing changed per test.
+
+| Test | Description |
+|------|-------------|
+| `TestAnOrderOnBothSides` | the same order shows nothing; a worse live fill is a positive execution difference, for a buy and for a sell; the live fee rate against the taker rate, and a fee the venue did not report is not checked; a partial fill counts its executed lots, several fills are priced by their lot-weighted mean; a refusal is named with its cause; the size against the two account values; the delay from the decision mid apart |
+| `TestWhatIsLeftOver` | an order on one side only is listed, and the fills are counted per side; an order whose record names no side measures no price |
+| `TestTheDecisionFrame` | found by the order it names, else the order frame written when the order was submitted; no frame of the pass gives none |
+| tests at module level | a close sells what a long held and buys back what a short held; the taker rate comes from the frozen document, in percent |
+
+### `test_equity_divergence.py`
+
+| Test | Description |
+|------|-------------|
+| `TestTheSlots` | only slots both sides valued inside a compared day, the largest gap and the gap at the end; an unvalued frame is no slot |
+| `TestTheDays` | each side changes in percent of its opening value; an excluded day is not measured; a side without a frame before the opening has no change; the days' differences read as a series |
+| tests at module level | the valued frame before an instant skips unvalued ones and never takes the instant itself |
+
+### `test_day_attribution.py`
+
+A spot day worked by hand: 1000 USD at a mid of 3000, 0.1 ETH bought at 3001 for a fee of 0.60 —
+decided at 2999, submitted at 3000 — and a mid of 3010 at the end.
+
+| Test | Description |
+|------|-------------|
+| `TestOneSpotDay` | a paired fill splits at its decision and its submission and the parts add up; an unpaired fill stays whole; what was held at the start is valued over the day; a missing quantity leaves a residual; a fill outside the two frames belongs to another day |
+| `TestWhatIsNotTakenApart` | a margin day says why; a day without frames at both ends; a spot day without a base currency |
+| `TestTwoRuns` | the difference is taken part by part; a side that cannot be taken apart names itself |
+
+### `test_divergence_measures_on_a_backtest.py`
+
+Two fixture scenarios run once each with state frames, in this process: a spot account and a margin
+account.
+
+| Test | Description |
+|------|-------------|
+| `TestTheRunsAreWorthMeasuring` | each run filled orders and valued its frames |
+| `TestTheEquationAtSpot` | every window of the spot run is taken apart and its parts add up to its change of account value; the fees it paid are seen |
+| `test_a_margin_run_is_not_taken_apart_and_says_why` | the margin run is not taken apart, and says why |
+| `TestARunAgainstItself` | held against itself, every order measures nothing and the account values never part, in both account models; every part of the spot attribution is zero |
+
+### `test_segment_measures.py`
+
+The live side's deployment of a session killed and restarted the same day, against a backtest that
+recorded the same orders and account values.
+
+| Test | Description |
+|------|-------------|
+| `TestTheSegmentAgainstABacktestOfIt` | the days after the restart are compared where both sides are flat, and a position the backtest holds keeps a waiting day out; every compared day is paired with the backtest row of its boundary; the same records show nothing in any measure; what could not be read is named |

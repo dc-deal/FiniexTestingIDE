@@ -15,6 +15,8 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 from python.framework.types.api.report_types import DeploymentCodeChange
+from python.framework.types.trading_env_types.broker_types import FeeSource
+from python.framework.types.trading_env_types.order_types import OrderSide
 
 
 class SegmentBoundaryKind(StrEnum):
@@ -469,3 +471,268 @@ class PairedOrders(BaseModel):
     pairs: List[OrderPair] = []
     live_unpaired: List[LiveSubmission] = []
     backtest_unpaired: List[int] = []
+
+
+class OrderOutcome(BaseModel):
+    """
+    What one run's record holds for one order: its submission, its fills, and what they cost.
+
+    Args:
+        run_id: The run that submitted it — the session, or the backtest
+        seq: Its submission's `seq` in that run's record
+        order_side: Whether it bought or sold — a close sells what a long held; None where its
+            record names no action or direction
+        submitted_at: When it was submitted, on the run's own clock
+        submission_mid: The mid of the quote it was submitted at; None where no tick was in scope
+        decision_mid: The mid of the frame of the pass that sent it; None where no frame names it
+        decision_equity: The account value in that frame; None as above, and where it is unvalued
+        filled_lots: What was executed of it; 0 where nothing was
+        fill_price: The lot-weighted mean price of its fills; None where nothing was executed
+        filled_at: When its last fill came; None as above
+        fee: The fees of its fills, in the account currency; None as above
+        fee_source: Whether the fee is the venue's own figure; None as above
+        refusal: Why it was refused, where a refusal is recorded — its reason and the venue's
+            code; '' where none is
+    """
+    run_id: str
+    seq: int
+    order_side: Optional[OrderSide] = None
+    submitted_at: Optional[datetime] = None
+    submission_mid: Optional[float] = None
+    decision_mid: Optional[float] = None
+    decision_equity: Optional[float] = None
+    filled_lots: float = 0.0
+    fill_price: Optional[float] = None
+    filled_at: Optional[datetime] = None
+    fee: Optional[float] = None
+    fee_source: Optional[FeeSource] = None
+    refusal: str = ''
+
+
+class OrderDivergence(BaseModel):
+    """
+    One order submitted on both sides, measured (measure 2). Every figure is live minus backtest
+    where it compares the two; None where an input it needs is missing.
+
+    Args:
+        live: The live order
+        backtest: The backtest's order
+        lots_difference: Filled lots, live minus backtest (2a)
+        execution_difference: (fill − submission mid) signed by the order's side, live minus
+            backtest — positive where live paid more than the backtest (2b)
+        execution_difference_pct: The same in % of the live submission mid
+        live_fee_rate_pct: The live fee ÷ (lots × fill price), in % (2c); None where the fee is
+            not the venue's own figure
+        taker_rate_pct: The frozen broker configuration's taker rate, in %
+        fee_not_checked_because: Why the fee rate was not compared; '' where it was
+        lots_ratio: Live lots ÷ backtest lots (2d)
+        equity_ratio: Live ÷ backtest account value at the two decision frames
+        live_delay: (submission mid − decision mid) signed by the side, live — reported apart
+        backtest_delay: The same, backtest
+    """
+    live: OrderOutcome
+    backtest: OrderOutcome
+    lots_difference: float
+    execution_difference: Optional[float] = None
+    execution_difference_pct: Optional[float] = None
+    live_fee_rate_pct: Optional[float] = None
+    taker_rate_pct: Optional[float] = None
+    fee_not_checked_because: str = ''
+    lots_ratio: Optional[float] = None
+    equity_ratio: Optional[float] = None
+    live_delay: Optional[float] = None
+    backtest_delay: Optional[float] = None
+
+
+class DayOrderDivergence(BaseModel):
+    """
+    One compared trading day's orders on both sides (measure 2).
+
+    Args:
+        trading_day: The day's label
+        closing: When it closed
+        orders: The orders submitted on both sides, paired by rank
+        live_one_sided: The live orders without a counterpart
+        backtest_one_sided: The backtest's orders without one
+        live_fill_count: How many live orders executed anything
+        backtest_fill_count: How many backtest orders did
+        unbooked_executions: Executions the live record holds that its book did not book; None
+            where the day's record was not checked
+    """
+    trading_day: date
+    closing: datetime
+    orders: List[OrderDivergence] = []
+    live_one_sided: List[OrderOutcome] = []
+    backtest_one_sided: List[OrderOutcome] = []
+    live_fill_count: int = 0
+    backtest_fill_count: int = 0
+    unbooked_executions: Optional[int] = None
+
+
+class EquityGap(BaseModel):
+    """
+    The two runs' account values at one instant (measure 3).
+
+    Args:
+        at: The cadence slot or boundary they are compared at
+        live_equity: The live account value
+        backtest_equity: The backtest's
+        gap: Live minus backtest
+    """
+    at: datetime
+    live_equity: float
+    backtest_equity: float
+    gap: float
+
+
+class DayEquityDifference(BaseModel):
+    """
+    One compared day's change of account value on both sides (measure 3).
+
+    Args:
+        trading_day: The day's label
+        closing: When it closed
+        live_opening_equity: The live account value at the last frame before the opening; None
+            where there is no valued frame
+        live_closing_equity: The same before the closing
+        backtest_opening_equity: The backtest's, as above
+        backtest_closing_equity: The backtest's, as above
+        live_change_pct: The live change in % of its opening value
+        backtest_change_pct: The backtest's
+        difference_pct: Live minus backtest
+        closing_gap: The closing values, live minus backtest
+        live_ledger_final_equity: The day's live ledger row's final equity, beside the frame's —
+            the row values at the period's last tick, the frame at the pass before the closing;
+            None where the row holds none
+        backtest_ledger_final_equity: The same, the backtest's row
+    """
+    trading_day: date
+    closing: datetime
+    live_opening_equity: Optional[float] = None
+    live_closing_equity: Optional[float] = None
+    backtest_opening_equity: Optional[float] = None
+    backtest_closing_equity: Optional[float] = None
+    live_change_pct: Optional[float] = None
+    backtest_change_pct: Optional[float] = None
+    difference_pct: Optional[float] = None
+    closing_gap: Optional[float] = None
+    live_ledger_final_equity: Optional[float] = None
+    backtest_ledger_final_equity: Optional[float] = None
+
+
+class DailyDifferenceStatistics(BaseModel):
+    """
+    The days' differences of equity change, as a series (measure 3) — reported, never binding.
+
+    Args:
+        day_count: How many days carry a difference
+        mean_pct: Their mean
+        tracking_error_pct: Their standard deviation; None below two days
+        interval_low_pct: The lower end of a 90 % interval on the mean, paired by day
+        interval_high_pct: Its upper end
+        lag_one_autocorrelation: Whether one day's difference follows the day before's; None below
+            three days
+        ljung_box_statistic: The Ljung-Box statistic at lag 1
+        interval_too_narrow: Whether the test rejects independent days at 5 % — then the interval
+            assumes more than the days show; None where it was not computed
+    """
+    day_count: int = 0
+    mean_pct: Optional[float] = None
+    tracking_error_pct: Optional[float] = None
+    interval_low_pct: Optional[float] = None
+    interval_high_pct: Optional[float] = None
+    lag_one_autocorrelation: Optional[float] = None
+    ljung_box_statistic: Optional[float] = None
+    interval_too_narrow: Optional[bool] = None
+
+
+class EquityTracking(BaseModel):
+    """
+    How far the two runs' account values ran apart over a segment (measure 3).
+
+    Args:
+        shared_slots: How many cadence slots both sides valued
+        largest_gap: The slot with the largest gap; None where no slot is shared
+        gap_at_end: The last shared slot's gap
+        days: Every compared day
+        daily: The days' differences as a series
+    """
+    shared_slots: int = 0
+    largest_gap: Optional[EquityGap] = None
+    gap_at_end: Optional[EquityGap] = None
+    days: List[DayEquityDifference] = []
+    daily: DailyDifferenceStatistics = DailyDifferenceStatistics()
+
+
+class AttributionParts(BaseModel):
+    """
+    One day's change of account value taken apart — for one run, or live minus backtest. The
+    parts add up to the change; the residual is what they leave.
+
+    Args:
+        equity_change: The change from the last frame before the opening to the last frame
+            before the closing
+        held: What the account held at the start, valued over the day
+        delay: The move from each paired order's decision mid to its submission mid
+        execution: Each paired fill against its submission mid
+        end_price: Each paired fill's lots valued from its decision mid to the day's end
+        one_sided: The whole contribution of the fills of orders the other run did not submit
+        fees: The fees of the day's fills, as a contribution (negative)
+        valuation: What the account values beside its quote balance and its base holding at the
+            mid — another currency it holds; 0 where it holds none
+        residual: The change less every part
+    """
+    equity_change: float
+    held: float
+    delay: float
+    execution: float
+    end_price: float
+    one_sided: float
+    fees: float
+    valuation: float
+    residual: float
+
+
+class DayAttribution(BaseModel):
+    """
+    Where one compared day's difference of equity change comes from.
+
+    Args:
+        trading_day: The day's label
+        closing: When it closed
+        live: The live day taken apart; None where it could not be
+        backtest: The backtest's day; None as above
+        difference: Live minus backtest, part by part — its residual is the attribution's
+        not_computed_because: Why it could not be taken apart; '' where it was
+    """
+    trading_day: date
+    closing: datetime
+    live: Optional[AttributionParts] = None
+    backtest: Optional[AttributionParts] = None
+    difference: Optional[AttributionParts] = None
+    not_computed_because: str = ''
+
+
+class SegmentMeasures(BaseModel):
+    """
+    What one segment's compared days show beside a backtest of its window — measure 2, measure 3
+    and the day attribution. Numbers only: whether they lie within their bounds is the verdict's.
+
+    Args:
+        segment_index: The segment's position in its deployment, from 1
+        scenario: The backtest scenario the segment was held against
+        days: The segment's days, the ones after a break decided by the resumption rule
+        paired_days: Every compared day with the backtest row that closed at the same boundary
+        orders: Each compared day's orders on both sides
+        equity: How far the two account values ran apart
+        attribution: Each compared day's difference of equity change, taken apart
+        unreadable: What could not be read, on either side, with the reason
+    """
+    segment_index: int
+    scenario: str
+    days: List[TradingDayClassification] = []
+    paired_days: List[PairedDay] = []
+    orders: List[DayOrderDivergence] = []
+    equity: EquityTracking = EquityTracking()
+    attribution: List[DayAttribution] = []
+    unreadable: List[str] = []

@@ -37,6 +37,7 @@ from python.framework.reporting.io.run_stream_day_record import (
     read_day_record_lines,
     read_day_record_summary,
 )
+from python.framework.reporting.io.state_frame_stream_io import read_recorded_frames
 from python.framework.reporting.store.report_store import ReportStore
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
@@ -59,6 +60,7 @@ from python.framework.types.divergence_capture_types import (
     LiveDayRecords,
     LiveDeploymentCapture,
     LiveSessionCapture,
+    RecordedFrames,
 )
 from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.run_origin_types import CodeIdentity
@@ -179,6 +181,20 @@ class LiveSideCollector:
             for day in self._read_days(directory, session.run_id, capture.anchor):
                 days[(session.run_id, day.trading_day)] = day
         return days
+
+    def collect_session_frames(self, capture: LiveDeploymentCapture) -> Dict[str, RecordedFrames]:
+        """
+        Every session's state frames, read whole across its sealed days and its own file.
+
+        Args:
+            capture: The deployment's sessions
+
+        Returns:
+            Session → its frames; a session that records none says so
+        """
+        return {session.run_id: read_recorded_frames(self._reader, session.run_id,
+                                                     RunEntryMemberId.STATE_FRAMES)
+                for session in capture.sessions}
 
     def _capture_session(self, run_id: str, rows: List[RunResultRow], run: Optional[RunInfo],
                          booking_state: SessionBookingState) -> LiveSessionCapture:
