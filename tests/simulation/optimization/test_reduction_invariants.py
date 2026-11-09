@@ -206,11 +206,12 @@ class TestEveryReductionNamesItsKindOfFigure:
         for reduction in Reduction:
             assert isinstance(reduction.figure_kind(), FigureKind), reduction
 
-    def test_only_a_sum_is_a_flow(self):
+    def test_only_what_adds_up_is_a_flow(self):
         # A control total over several composites takes exactly the flows — so the flows must be
-        # exactly the columns that add up.
+        # exactly the reductions that add up: a sum, a count of rows, and a sum over a complete set,
+        # whose total is None as soon as one part is.
         flows = {r for r in Reduction if r.figure_kind() is FigureKind.FLOW}
-        assert flows == {Reduction.SUM}
+        assert flows == {Reduction.SUM, Reduction.COUNT, Reduction.SUM_COMPLETE}
 
     def test_what_is_never_combined_is_never_a_flow(self):
         for reduction in (r for r in Reduction if not r.folds_on_its_own()):

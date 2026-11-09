@@ -659,7 +659,8 @@ FIXTURE_CATALOG: Tuple[FixtureEntry, ...] = (
         title='A small parameter sweep — every combination an ordinary backtest of its parent',
         producer=FixtureProducerKind.SWEEP,
         source='configs/sweeps/trend_channel_reference_grid.json',
-        consumers=(_GOLDEN_SAMPLES,),
+        # FiniexViewer pins it for its ranking fixtures and its README's sweep picture
+        consumers=(_FINIEX_VIEWER, _GOLDEN_SAMPLES),
         properties=(
             FixtureProperty('combinations', 'The sweep runs two combinations or more',
                             _several_combinations),

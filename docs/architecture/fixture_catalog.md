@@ -83,6 +83,19 @@ must move no number. What proves that is a set of runs whose aggregates were fro
 anything moved — and the catalog already reproduces such runs on demand. `freeze` writes an entry's
 current production into `tests/fixtures/golden_samples/<entry>/`:
 
+- **Which runs:** not chosen by hand. Every catalog entry that names `#557 golden samples` among
+  its consumers is frozen, and `fixture_catalog_cli.py list` shows them: together they exercise
+  every report block, a mock session at spot and one at margin, a deployment of several sessions,
+  a parameter sweep, and the signal and feed-stability families. They run on the archive's real
+  ticks, from the committed reference configurations.
+- **What is compared:** every field of every aggregate, down to the last bit — a float that
+  differs in its last digit is a difference, and so is a field missing on either side. Beside
+  the aggregates, the read-time views a consumer meets: the run list, the deployments, the sweeps.
+- **The practice it follows:** a *golden master* or characterization test — the behaviour is
+  frozen before the code is reshaped, and the reshaped code must reproduce it. Backtest
+  frameworks keep the same idea for whole runs, a regression run checked against a handful of
+  expected statistics; here every field is checked, not a handful.
+
 ```
 python python/cli/fixture_catalog_cli.py freeze report_coverage
 python python/cli/fixture_catalog_cli.py freeze --all
@@ -103,14 +116,23 @@ python python/cli/fixture_catalog_cli.py freeze --all
   that is not reproduced refuses the freeze. So does a production made on an uncommitted tree,
   unless `--allow-dirty` is given for a sample that is not committed.
 
-The suite `tests/framework/golden_samples/` runs the same checks on every committed sample. A few
-families are frozen and not rebuilt yet, each with its reason in `FROZEN_NOT_REBUILT`: their folds
-read what exists only while a run runs, or sit inline in their builders until #557 lifts them out.
+The suite `tests/framework/golden_samples/` runs the same checks on every committed sample. What is
+frozen and cannot be rebuilt names its reason in `FROZEN_NOT_REBUILT` (`golden_sample_checks.py`):
+its inputs exist only while a run runs, so producing the entry again is what checks it.
+The samples are a store of their own, a committed record beside the certificates
+(`store_cli.py catalog` lists it): unlike the run tree they were frozen from, they are versioned and
+survive every pruning.
 
 **A sample does not go stale by age, only by intent.** It stays the reference as long as the code
 it guards should compute the same numbers. When a change is meant to move a number or a served
 shape, the entry is produced and frozen again and the review reads the diff — the samples are what
 makes such a change visible field by field. A sample is removed only with the aggregates it guards.
+
+**The same runs serve the viewer.** The entries a golden sample freezes are fixtures a consumer
+pins too: FiniexViewer captures their answers from this API to test its own side against. A change
+that moves a served number on purpose therefore produces the entry once, and that one production
+feeds both — the sample frozen again for this repository's review, and the answers the viewer
+captures again to bring its contract tests along.
 
 ## The production record
 

@@ -29,6 +29,10 @@ from python.framework.constants.run_layout_constants import (
     GLOBAL_LOG_FILE,
     IMPORT_LOG_SUBDIR,
 )
+from python.framework.constants.golden_sample_constants import (
+    GOLDEN_SAMPLE_HEADER_FILE,
+    GOLDEN_SAMPLES_DIR,
+)
 from python.framework.discoveries.discovery_cache_index import (
     DISCOVERY_INDEX_FILE,
     DiscoveryCacheIndex,
@@ -245,6 +249,24 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
             entry_glob=CERTIFICATE_GLOB,
             index_path=CERTIFICATES_ROOT / CERTIFICATE_INDEX_FILE,
             index_factory=lambda: CertificateIndex(CERTIFICATES_ROOT),
+        ),
+        StoreId.GOLDEN_SAMPLES: StoreDescriptor(
+            store_id=StoreId.GOLDEN_SAMPLES,
+            kind=StoreKind.RECORD,
+            purpose='the frozen aggregates of fixture productions',
+            doc='docs/architecture/fixture_catalog.md#golden-samples--a-productions-aggregates-frozen',
+            root=GOLDEN_SAMPLES_DIR,
+            key='entry_id — one folder per fixture-catalog entry',
+            form=RetrievalForm.DOCUMENT,
+            backend=StoreBackend.DISK,
+            entry_glob=f'*/{GOLDEN_SAMPLE_HEADER_FILE}',
+            note=('One folder per fixture-catalog entry (#557): the report sections, ledger rows, '
+                  'run index rows and read-time views of its newest verified production, frozen so '
+                  'that every checkout checks today\'s aggregates against them. Opened by entry id, '
+                  'so it needs no index. Committed in the code tree like the certificates and never '
+                  'under the data home: it has to outlive the runs it was frozen from, which the run '
+                  'tree prunes and git ignores. A new freeze replaces an entry whole; git keeps the '
+                  'earlier ones.'),
         ),
         StoreId.COLD_START_STATE: StoreDescriptor(
             store_id=StoreId.COLD_START_STATE,

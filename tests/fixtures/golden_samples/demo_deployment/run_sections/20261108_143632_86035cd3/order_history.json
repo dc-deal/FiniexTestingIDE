@@ -1,0 +1,61 @@
+{
+  "run_id": "20261108_143632_86035cd3",
+  "orders": [
+    {
+      "order_id": "pos_btcusd_1",
+      "scenario_name": "demo_btcusd_bot",
+      "position_id": null,
+      "symbol": "BTCUSD",
+      "direction": "long",
+      "action": "open",
+      "status": "pending",
+      "requested_lots": 0.1,
+      "executed_lots": null,
+      "executed_price": null,
+      "event_time": "2026-02-05T03:31:37.855000+00:00",
+      "commission": 0.0,
+      "fee_source": null,
+      "order_type": "market",
+      "close_type": null,
+      "rejection_reason": null,
+      "rejection_message": null,
+      "initiator": null,
+      "end_reason": null,
+      "order_event_seq": null,
+      "slippage_measured_against": null,
+      "slippage_reference_price": null,
+      "slippage": null,
+      "slippage_pct": null
+    },
+    {
+      "order_id": "pos_btcusd_1",
+      "scenario_name": "demo_btcusd_bot",
+      "position_id": "pos_btcusd_1",
+      "symbol": "BTCUSD",
+      "direction": "long",
+      "action": "open",
+      "status": "executed",
+      "requested_lots": 0.1,
+      "executed_lots": 0.1,
+      "executed_price": 71258.7,
+      "event_time": "2026-02-05T03:31:37.855000+00:00",
+      "commission": 57.00696,
+      "fee_source": "venue",
+      "order_type": "market",
+      "close_type": null,
+      "rejection_reason": null,
+      "rejection_message": null,
+      "initiator": null,
+      "end_reason": null,
+      "order_event_seq": 4,
+      "slippage_measured_against": "submission_mid",
+      "slippage_reference_price": 71258.7,
+      "slippage": 0.0,
+      "slippage_pct": 0.0
+    }
+  ],
+  "count": 2,
+  "symbols": [
+    "BTCUSD"
+  ]
+}

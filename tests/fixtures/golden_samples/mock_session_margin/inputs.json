@@ -5,17 +5,17 @@
    "param_hash": "e653c68573278b55405d38ec5487e980c05fae57e7f851b00ac5d687a6179ea3",
    "status": "ok",
    "error": null,
-   "run_id": "20261105_142229_148eb9c3",
-   "run_timestamp": "2026-11-05T14:22:29.007356+00:00",
+   "run_id": "20261108_143407_ad990d05",
+   "run_timestamp": "2026-11-08T14:34:07.426822+00:00",
    "sweep_id": null,
    "sweep_params": null,
    "sweep_objective": null,
    "sweep_maximize": null,
    "scenario_set_name": "partial_close_lifecycle",
    "app_version": "1.5.0",
-   "git_commit": "b737def3",
+   "git_commit": "2912dd3e",
    "git_branch": "dev-1-6-0",
-   "git_dirty": true,
+   "git_dirty": false,
    "decision_logic_type": "CORE/test_probes/multi_position_probe",
    "decision_version": "0.0.0",
    "worker_versions": {
@@ -45,15 +45,15 @@
     "repositories": [
      {
       "repository": "framework",
-      "commit": "b737def3",
-      "dirty": true,
-      "diff_hash": "a67ab133bd90a988b8827fed0f45abf566d71ba3f4f83fdf27f9029dbcc88343",
+      "commit": "2912dd3e",
+      "dirty": false,
+      "diff_hash": null,
       "subject": null,
       "recent_commits": null
      }
     ]
    },
-   "recorded_at_utc": "2026-11-05T14:22:37.814299+00:00",
+   "recorded_at_utc": "2026-11-08T14:34:13.919323+00:00",
    "trial_count": 1,
    "run_outcome": "success",
    "error_count": 0,
@@ -121,7 +121,7 @@
  ],
  "run_index": [
   {
-   "run_id": "20261105_142229_148eb9c3",
+   "run_id": "20261108_143407_ad990d05",
    "group": "autotrader",
    "name": "partial_close_lifecycle",
    "artifacts": [
@@ -148,15 +148,15 @@
     "state_frames.jsonl"
    ],
    "recording": null,
-   "start_time": "2026-11-05T14:22:29.007356+00:00",
+   "start_time": "2026-11-08T14:34:07.426822+00:00",
    "parent_id": null,
    "parent_kind": null,
    "config_id": "ea9755ae7beedbcbd00a852ddc2b35c8f1974be3bd46143d0870de99722d8eb3",
    "app_version": "1.5.0",
-   "git_commit": "b737def3",
+   "git_commit": "2912dd3e",
    "config_snapshot": "partial_close_lifecycle.json",
    "reporting": "expected",
-   "size_bytes": 228855,
+   "size_bytes": 227400,
    "ticks_from": "archive",
    "orders_to": "simulated",
    "data_windows": [

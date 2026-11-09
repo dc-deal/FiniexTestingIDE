@@ -47,6 +47,7 @@ and a written one cannot drift apart (#621). The tables, the shapes and how a fi
 | 1f | `runs/simulation/sweeps/` — the parameter sweeps; their combinations are runs of row 1 | RECORD | `sweep_id` | none — its figures are the ledger's rows, `ranked.csv` an export of them | A · document |
 | 2 | `runs/ledger/` | RECORD | `(run_id, unit, period_no, currency)` — columns, never a path | `run_ledger_index.parquet` | B · set |
 | 3 | `tests/*/reports/` | RECORD | family + version + date | `certificates_index.parquet` | A · document |
+| 3b | `tests/fixtures/golden_samples/` — the frozen aggregates of fixture productions (#557) | RECORD | `entry_id` — one folder per fixture-catalog entry | none — opened by its entry id | A · document |
 | 4 | `data/runtime/session_state/` | **CARRY-OVER** | `<bot_id>_<symbol>`, separator reserved | none — opened by key | A · document |
 | 4b | `data/runtime/cold_start_state/` | **CARRY-OVER** | `<bot_id>_<symbol>`, separator reserved | `cold_start_state_index.parquet` | A · document |
 | 5 | `data/processed/{broker}/ticks` | ARCHIVE | broker / symbol / file | `ticks_index.parquet` | C · bulk |
@@ -91,8 +92,9 @@ one data home, the directory the environment variable `FINIEX_DATA_HOME` names, 
 the workspace (`user_configs/`) and the strategy directories. Unset, the working directory is
 the home, and a development checkout keeps every path exactly as configured.
 
-Three roots stay where they are, each on purpose: the certificates (row 3) and the generator
-profiles (row 9) are committed and belong to the code tree of the release that made them, and
+Some roots stay where they are, each on purpose: the certificates (row 3), the golden samples
+(row 3b) and the generator profiles (row 9) are committed and belong to the code tree that made
+them, and
 the activity list (row 15) is the machine's, at an absolute path every tree shares. An absolute
 path in the configuration stands for itself. A home that does not exist refuses the start
 instead of being created: an empty one holds no carry-over, and a session started on it would

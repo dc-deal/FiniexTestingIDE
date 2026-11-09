@@ -40,7 +40,14 @@ is the finding the table exists to surface.
 from collections import Counter
 from typing import List
 
-from python.framework.reporting.aggregation.aggregation_fold import aggregate_ledger_rows
+from python.framework.reporting.aggregation.aggregation_fold import (
+    aggregate_ledger_rows,
+    fold_group,
+)
+from python.framework.reporting.aggregation.tables.booking_figure_table import (
+    BOOKING_RUN_TOTALS_TABLE,
+    BOOKING_UNIT_CLOSE_TABLE,
+)
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.reporting.store.run_results_ledger import period_ledger_fields
 from python.framework.types.api.report_types import (
@@ -101,14 +108,14 @@ def build_booking_periods_report(
         return BookingPeriodsReport(
             run_id=run_id, currency=reported, currencies=present)
 
-    total_net_pnl = sum(row.net_pnl for row in rows)
+    totals = fold_group(rows, BOOKING_RUN_TOTALS_TABLE)
+    total_net_pnl = totals['total_net_pnl']
     # No figure for this currency means there is nothing to check against — NOT that the
     # check passed. A default of 0.0 here made a small period sum agree with a figure that
     # was never reported (measured on a two-currency run, #539 audit).
     run_figures = _run_figures(run_summary, reported)
     run_net_pnl = run_figures.net_pnl if run_figures else None
     unit_totals = _unit_totals(run_id, in_currency)
-    closing = [total.final_equity for total in unit_totals]
 
     return BookingPeriodsReport(
         run_id=run_id,
@@ -116,19 +123,14 @@ def build_booking_periods_report(
         currencies=present,
         periods=rows,
         unit_totals=unit_totals,
-        total_net_pnl=total_net_pnl,
-        total_fees=sum(row.total_fees for row in rows),
-        total_trades=sum(row.trade_count for row in rows),
         run_net_pnl=run_net_pnl,
         run_total_trades=run_figures.total_trades if run_figures else None,
         reconciles=(None if run_net_pnl is None
                     else abs(total_net_pnl - run_net_pnl) <= RECONCILE_TOLERANCE),
-        # The deepest SINGLE-period decline, which is what this table's column holds. Not the
-        # run's drawdown: a fall that runs across a period boundary is deeper than any one
-        # period's own, and the run summary is where that figure lives.
-        deepest_period_drawdown=max(
-            (row.max_drawdown for row in rows if row.max_drawdown is not None), default=None),
-        total_final_equity=(None if any(value is None for value in closing) else sum(closing)),
+        # The periods add up to the run's P&L, fees and trades; its closing equity adds up the
+        # units' own (both declared in the booking tables)
+        **totals,
+        **fold_group(unit_totals, BOOKING_UNIT_CLOSE_TABLE),
     )
 
 

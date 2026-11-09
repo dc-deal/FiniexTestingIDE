@@ -1,6 +1,6 @@
 {
  "run_list_figures": {
-  "20261105_144029_fe71ec10": {
+  "20261108_143254_3a10282a": {
    "results": [
     {
      "currency": "USD",
@@ -10,7 +10,7 @@
    ],
    "run_outcome": "success",
    "error_count": 0,
-   "warning_count": 6,
+   "warning_count": 7,
    "log_warning_count": 7,
    "tick_timespan_seconds": 56245.206
   }

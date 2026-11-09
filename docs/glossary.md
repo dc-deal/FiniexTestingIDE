@@ -425,6 +425,12 @@ first: the one way a session trading real money starts without a carry-over to c
 declared first start that finds a usable carry-over is refused. See
 [Unattended Operation](autotrader/unattended_operation.md).
 
+**figure** — A number a report serves about a run or a part of it: a P&L, a count, a drawdown, a
+rate. What a *fold table* declares per figure is how it combines when several rows are read as one.
+Not a *field*, which is any attribute a served model carries — an id and a label are fields, not
+figures — and not the robustness or ranking *metric*, the one figure a sweep or a robustness run
+is judged by. See [Reporting Pipeline](architecture/reporting_pipeline.md).
+
 **fixture** — Never used alone. *Fixture run* (`run_purpose: fixture`): a run constructed to show
 something — every run a test starts, and every run a consumer pins; its numbers are built, not
 earned. *Test fixture*: the data a test reads from `tests/fixtures/`, or a pytest fixture in a
@@ -432,6 +438,12 @@ earned. *Test fixture*: the data a test reads from `tests/fixtures/`, or a pytes
 A *current fixture* is the run a catalog entry's newest verified production made — see
 [Fixture Catalog](architecture/fixture_catalog.md); a *superseded* one (`fixture_superseded: true`)
 was made by an older or a failed production. See *run purpose*.
+
+**fold table** — How one kind of row combines into a served aggregate, declared: per figure its
+reduction, where it is read on a row, what it answers when no row carries a value and how its
+values are added, beside the derivations of its rates and what one served entry is grouped by.
+The aggregates of the run's report sections fold through one; `figure_tables.py` lists them. See
+[Reporting Pipeline](architecture/reporting_pipeline.md#aggregates-are-their-own-stage-and-they-serve-both-outputs).
 
 **footprint** (`footprint.json` in a run directory) — A run's own record of what it wrote, written
 as its very last step: every file it held, with its size, and for each file written only sometimes
@@ -445,7 +457,14 @@ run against it. See [Store Entry Members](architecture/store_entry_members.md#th
 content: the configuration it was given (`config_id`), the one an AutoTrader session ran with
 (`rendered_config_id`), the broker configuration (`broker_config_id`). A frozen copy is never
 rewritten, so an old run keeps saying what it used. Not the fee seed's `_fee_structure_frozen`,
-which records when a declared fee rate was set. See [Introduction](introduction_to_the_ide.md).
+which records when a declared fee rate was set, and not a *golden sample*'s freeze, which copies a
+fixture production into the code tree. See [Introduction](introduction_to_the_ide.md).
+
+**golden sample** — A fixture-catalog entry's production frozen into `tests/fixtures/golden_samples/`
+by `fixture_catalog_cli.py freeze`: its runs' report sections, ledger and run-index rows and the
+read-time views composed from them, with the code and the time they came from. A suite rebuilds
+the aggregates from it on every commit and compares field by field, so a change that moves a number
+shows which; what cannot be rebuilt from a sample says why. See [Fixture Catalog](architecture/fixture_catalog.md#golden-samples--a-productions-aggregates-frozen).
 
 **host id** (`host_id` on `/health`, `origin_host` on a row) — Which installation an answer or a row
 comes from: an identity minted once per installation and kept in its data home, so it stays across a

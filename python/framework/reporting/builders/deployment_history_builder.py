@@ -22,7 +22,13 @@ collapsed into a verdict (#527 owns the richer surface; the console is the floor
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from python.framework.reporting.aggregation.aggregation_fold import aggregate_ledger_rows
+from python.framework.reporting.aggregation.aggregation_fold import (
+    aggregate_ledger_rows,
+    fold_rows,
+)
+from python.framework.reporting.aggregation.tables.deployment_figure_table import (
+    DEPLOYMENT_SUMMARY_TABLE,
+)
 from python.framework.reporting.builders.booking_periods_report_builder import (
     booking_periods_from_ledger_rows,
 )
@@ -237,38 +243,19 @@ def _summarize_one(
     Returns:
         The summary line
     """
-    # max(), never sum(): each live row carries the RUNNING decline against the inherited
-    # peak, so adding them counts one decline once per session that was still inside it. Over
-    # the sessions that measured one: a session without a drawdown is unknown, not a zero.
-    measured = [s for s in sessions if s.max_drawdown is not None]
-    deepest = max(measured, key=lambda s: abs(s.max_drawdown)) if measured else None
-    gaps = [s.gap_hours for s in sessions if s.gap_hours is not None]
-    starts = [s.started for s in sessions if s.started is not None]
+    # How the sessions fold — the deepest decline, the complete sum, the earliest start — is
+    # declared in the deployment summary's fold table.
+    (figures,) = fold_rows(sessions, DEPLOYMENT_SUMMARY_TABLE)
     advisory = advisories.get(deployment)
     code_summary = code_summaries.get(deployment)
     return DeploymentSummary(
         deployment_id=deployment,
-        sessions=len(sessions),
         sessions_without_figures=sessions_without_figures,
         sessions_failed=sessions_failed,
-        # Earliest and latest rather than first and last: the sessions without booked figures take
-        # their starts from two sources, a ledger row and the run index.
-        first_started=min(starts, key=ensure_utc_aware) if starts else None,
-        last_started=max(starts, key=ensure_utc_aware) if starts else None,
-        # None on the row of the sessions that have booked nothing: no figure was measured, and
-        # a sum over them would claim a zero
-        net_pnl=(sum(s.net_pnl for s in sessions)
-                 if all(s.net_pnl is not None for s in sessions) else None),
-        max_drawdown=deepest.max_drawdown if deepest else None,
-        max_drawdown_pct=deepest.max_drawdown_pct if deepest else None,
-        currency=sessions[0].currency,
-        bot=sessions[0].bot,
-        bot_id=sessions[0].bot_id,
-        longest_gap_hours=max(gaps) if gaps else None,
         changed=advisory is not None or code_summary is not None,
         configuration_changed=advisory is not None,
         code_summary=code_summary,
-        orders_to=sorted({s.orders_to for s in sessions if s.orders_to is not None}),
+        **figures,
     )
 
 

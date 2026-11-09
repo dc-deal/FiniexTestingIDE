@@ -1,0 +1,203 @@
+{
+  "run_id": "20261108_143254_3a10282a",
+  "units": [
+    {
+      "name": "BTCUSD_signal_feed_disturbed",
+      "symbol": "BTCUSD",
+      "currency": "USD",
+      "total_trades": 2,
+      "winning_trades": 0,
+      "losing_trades": 2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total_profit": 0.0,
+      "total_loss": 1.7483038079080249,
+      "net_profit": -1.7483038079080249,
+      "account_max_drawdown": 2.653237575004823,
+      "account_max_dd_pct": 0.02653237575004823,
+      "drawdown_carried_from": "",
+      "drawdown_restarts": 0,
+      "drawdown_started_at": "2026-11-08T14:33:05.701145+00:00",
+      "total_fees": 2.047864770304706,
+      "fees_charged": 2.559015038297541,
+      "data_broker_type": "kraken_spot",
+      "data_sentiment_type": "crypto_sentiment",
+      "broker_name": "Kraken",
+      "spot_mode": true,
+      "total_long_trades": 2,
+      "total_short_trades": 0,
+      "max_equity": 10000.0,
+      "current_balance": 9933.846762424995,
+      "initial_balance": 10000.0,
+      "conversion_rate": null,
+      "base_currency": "BTC",
+      "quote_currency": "USD",
+      "spot_est_current": 9997.346762424995,
+      "spot_est_initial": 10000.0,
+      "spot_est_pnl": -2.653237575004823,
+      "spot_est_pnl_pct": -0.02653237575004823,
+      "total_spread_cost": null,
+      "total_modelled_spread_cost": 0.0031390376033159553,
+      "total_commission": 0.0,
+      "total_swap": 0.0,
+      "maker_fee": 0.0,
+      "taker_fee": 2.559015038297541,
+      "fill_fees_by_source": {
+        "estimate": {
+          "fill_count": 5,
+          "fill_fees": 2.559015038297541
+        }
+      },
+      "has_error": false,
+      "balances": {
+        "USD": 9933.846762424995,
+        "BTC": 0.001
+      },
+      "initial_balances": {
+        "USD": 10000.0
+      },
+      "committed_funds": {
+        "USD": 0.0,
+        "BTC": 0.0
+      },
+      "usable_funds": {},
+      "last_price": 63500.0,
+      "open_positions": [
+        {
+          "position_id": "pos_btcusd_3",
+          "direction": "long",
+          "lots": 0.001,
+          "entry_price": 63893.78349910439,
+          "entry_time": "2026-08-11T14:40:24.219000+00:00",
+          "last_price": 63500.0,
+          "unrealized_pnl": -0.9057124469702802,
+          "valued": true,
+          "stop_loss": null,
+          "take_profit": null
+        }
+      ],
+      "unrealized_pnl": -0.9057124469702802,
+      "final_equity": 9997.346762424995,
+      "final_equity_valued": true,
+      "session_end_policy": ""
+    },
+    {
+      "name": "GBPUSD_signal_feed_disturbed",
+      "symbol": "GBPUSD",
+      "currency": "USD",
+      "total_trades": 0,
+      "winning_trades": 0,
+      "losing_trades": 0,
+      "win_rate": 0.0,
+      "profit_factor": null,
+      "total_profit": 0.0,
+      "total_loss": 0.0,
+      "net_profit": 0.0,
+      "account_max_drawdown": 0.2899999999990541,
+      "account_max_dd_pct": 0.0028999999999905412,
+      "drawdown_carried_from": "",
+      "drawdown_restarts": 0,
+      "drawdown_started_at": "2026-11-08T14:33:05.717237+00:00",
+      "total_fees": 0.0,
+      "fees_charged": 0.0,
+      "data_broker_type": "mt5",
+      "data_sentiment_type": "forex_macro_sentiment",
+      "broker_name": "Vantage International Group Limited",
+      "spot_mode": false,
+      "total_long_trades": 0,
+      "total_short_trades": 0,
+      "max_equity": 10000.02,
+      "current_balance": 10000.0,
+      "initial_balance": 10000.0,
+      "conversion_rate": null,
+      "base_currency": "GBP",
+      "quote_currency": "USD",
+      "spot_est_current": 0.0,
+      "spot_est_initial": 0.0,
+      "spot_est_pnl": 0.0,
+      "spot_est_pnl_pct": 0.0,
+      "total_spread_cost": 0.0,
+      "total_modelled_spread_cost": 0.0,
+      "total_commission": 0.0,
+      "total_swap": 0.0,
+      "maker_fee": 0.0,
+      "taker_fee": 0.0,
+      "fill_fees_by_source": {
+        "estimate": {
+          "fill_count": 1,
+          "fill_fees": 0.0
+        }
+      },
+      "has_error": false,
+      "balances": {
+        "USD": 10000.0
+      },
+      "initial_balances": {
+        "USD": 10000.0
+      },
+      "committed_funds": {
+        "USD": 0.0,
+        "GBP": 0.0
+      },
+      "usable_funds": {},
+      "last_price": 1.35056,
+      "open_positions": [
+        {
+          "position_id": "pos_gbpusd_1",
+          "direction": "long",
+          "lots": 0.01,
+          "entry_price": 1.35049,
+          "entry_time": "2026-08-11T02:55:18.583000+00:00",
+          "last_price": 1.35056,
+          "unrealized_pnl": -0.010000000000065512,
+          "valued": true,
+          "stop_loss": null,
+          "take_profit": null
+        }
+      ],
+      "unrealized_pnl": -0.010000000000065512,
+      "final_equity": 9999.99,
+      "final_equity_valued": true,
+      "session_end_policy": ""
+    }
+  ],
+  "aggregates": [
+    {
+      "currency": "USD",
+      "unit_count": 2,
+      "total_trades": 2,
+      "winning_trades": 0,
+      "losing_trades": 2,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total_profit": 0.0,
+      "total_loss": 1.7483038079080249,
+      "net_profit": -1.7483038079080249,
+      "account_max_drawdown": 2.653237575004823,
+      "max_equity": 10000.0,
+      "account_max_dd_pct": 0.02653237575004823,
+      "account_max_drawdown_unit": "BTCUSD_signal_feed_disturbed",
+      "total_fees": 2.047864770304706,
+      "fees_charged": 2.559015038297541,
+      "fill_fees_by_source": {
+        "estimate": {
+          "fill_count": 6,
+          "fill_fees": 2.559015038297541
+        }
+      },
+      "unrealized_pnl": -0.9157124469703457,
+      "final_equity": null,
+      "total_final_equity": 19997.336762424995,
+      "total_initial_balance": 20000.0,
+      "open_position_count": 2
+    }
+  ],
+  "keys": {
+    "units": [
+      "name"
+    ],
+    "aggregates": [
+      "currency"
+    ]
+  }
+}

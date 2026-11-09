@@ -9,11 +9,14 @@ most). The sensitivity is OFAT — it ignores interactions and makes no signific
 """
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Dict, List, Optional, get_args
 
-from python.framework.reporting.aggregation.aggregation_fold import aggregate_ledger_rows
+from python.framework.reporting.aggregation.aggregation_fold import (
+    aggregate_ledger_rows,
+    fold_rows,
+)
 from python.framework.reporting.aggregation.figure_catalog import COLUMN_NULL_MEANING
+from python.framework.reporting.aggregation.tables.sweep_figure_table import SWEEP_SUMMARY_TABLE
 from python.framework.types.aggregation_types import NullMeaning
 from python.framework.types.api.report_types import (
     RunResultRow,
@@ -21,7 +24,6 @@ from python.framework.types.api.report_types import (
     SweepListResponse,
     SweepSummary,
 )
-from python.framework.types.data_origin_types import joined_distinct
 
 # What may be empty on a row and still order a ranking: a figure that was only not MEASURED for
 # some runs — they are left out, and `unranked_count` says how many. A figure that can be
@@ -98,35 +100,10 @@ def summarize_sweeps(rows: List[RunResultRow]) -> List[SweepSummary]:
     Returns:
         One SweepSummary per sweep, ordered by sweep_id (timestamp-based → chronological)
     """
-    groups: Dict[str, List[RunResultRow]] = {}
-    for row in rows:
-        if row.sweep_id:
-            groups.setdefault(row.sweep_id, []).append(row)
-
-    summaries: List[SweepSummary] = []
-    for sweep_id, group in groups.items():
-        stamps = sorted(datetime.fromisoformat(r.run_timestamp) for r in group if r.run_timestamp)
-        run_ids = {r.run_id for r in group}
-        error_ids = {r.run_id for r in group if r.status == 'error'}
-        head = group[0]
-        summaries.append(SweepSummary(
-            sweep_id=sweep_id,
-            started=stamps[0] if stamps else None,
-            duration_s=(stamps[-1] - stamps[0]).total_seconds() if len(stamps) > 1 else 0.0,
-            run_count=len(run_ids),
-            ok_count=len(run_ids) - len(error_ids),
-            error_count=len(error_ids),
-            decision_logic_type=head.decision_logic_type,
-            decision_version=head.decision_version,
-            base_config=head.scenario_set_name.split('__', 1)[0],
-            symbols=head.symbols,
-            objective=head.sweep_objective or '',
-            maximize=head.sweep_maximize if head.sweep_maximize is not None else True,
-            features_beyond_venue=joined_distinct(
-                [name for r in group for name in r.features_beyond_venue.split(',') if name]),
-        ))
-
-    return sorted(summaries, key=lambda s: s.sweep_id)
+    # Counts of distinct runs, the description of the first row — declared in the sweep summary's
+    # fold table, which orders the sweeps by their id.
+    return [SweepSummary(**figures) for figures in fold_rows(
+        [row for row in rows if row.sweep_id], SWEEP_SUMMARY_TABLE)]
 
 
 @dataclass

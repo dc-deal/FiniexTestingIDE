@@ -70,6 +70,7 @@ class StoreId(StrEnum):
     RUN_LEDGER = 'run_ledger'
     FIXTURE_PRODUCTIONS = 'fixture_productions'
     CERTIFICATES = 'certificates'
+    GOLDEN_SAMPLES = 'golden_samples'
     SESSION_STATE = 'session_state'
     COLD_START_STATE = 'cold_start_state'
     TICKS = 'ticks'
