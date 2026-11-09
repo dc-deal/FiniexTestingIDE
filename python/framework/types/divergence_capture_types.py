@@ -28,6 +28,7 @@ from python.framework.types.api.report_types import (
     WarningsErrorsOutcome,
 )
 from python.framework.types.api.state_frame_types import StateFrame, StateFrameStreamEnds
+from python.framework.types.autotrader_types.tick_stream_event_types import TickStreamOutage
 from python.framework.types.config_types.market_config_types import DayAnchorConfig
 from python.framework.types.run_origin_types import CodeIdentity, CodeStand
 from python.framework.types.trading_env_types.order_event_types import (
@@ -324,3 +325,16 @@ class BacktestScenarioRecords:
     order_events: List[OrderEventRow]
     frames: RecordedFrames
     unreadable: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RecordedOutages:
+    """
+    One session's tick-stream outages, read whole.
+
+    Args:
+        outages: Every outage, in the order recorded
+        unreadable: Why the record could not be read in full; '' where it could
+    """
+    outages: List[TickStreamOutage]
+    unreadable: str = ''

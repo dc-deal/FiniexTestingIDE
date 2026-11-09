@@ -559,6 +559,8 @@ class DayOrderDivergence(BaseModel):
         backtest_fill_count: How many backtest orders did
         unbooked_executions: Executions the live record holds that its book did not book; None
             where the day's record was not checked
+        orders_in_gap: The orders, on either side, submitted or filled inside a gap — named and
+            left out of the measure
     """
     trading_day: date
     closing: datetime
@@ -568,6 +570,7 @@ class DayOrderDivergence(BaseModel):
     live_fill_count: int = 0
     backtest_fill_count: int = 0
     unbooked_executions: Optional[int] = None
+    orders_in_gap: List[OrderOutcome] = []
 
 
 class EquityGap(BaseModel):
@@ -652,13 +655,15 @@ class EquityTracking(BaseModel):
     How far the two runs' account values ran apart over a segment (measure 3).
 
     Args:
-        shared_slots: How many cadence slots both sides valued
+        shared_slots: How many cadence slots both sides valued, outside the gaps
+        slots_in_gaps: How many shared slots a gap left out
         largest_gap: The slot with the largest gap; None where no slot is shared
         gap_at_end: The last shared slot's gap
         days: Every compared day
         daily: The days' differences as a series
     """
     shared_slots: int = 0
+    slots_in_gaps: int = 0
     largest_gap: Optional[EquityGap] = None
     gap_at_end: Optional[EquityGap] = None
     days: List[DayEquityDifference] = []
@@ -742,10 +747,13 @@ class DecisionComparisonState(StrEnum):
     AGREE: the same action and the same number of orders
     ONE_SIDED: a different action, or an order one side sent and the other did not
     NOT_CHECKED: a side has no frame of its decision — never counted as agreeing
+    IN_GAP: its boundary lies in a gap, or its pass came more than the gap bound after the
+        boundary, on either side — named and left out with its orders
     """
     AGREE = 'agree'
     ONE_SIDED = 'one_sided'
     NOT_CHECKED = 'not_checked'
+    IN_GAP = 'in_gap'
 
 
 class DayDecision(BaseModel):
@@ -816,9 +824,91 @@ class DecisionTable(BaseModel):
     Args:
         cells: Every pair of actions that occurred, with its days
         not_checked: The days a side's decision was not found on
+        in_gap: The days whose decision a gap left out
     """
     cells: List[DecisionTableCell] = []
     not_checked: int = 0
+    in_gap: int = 0
+
+
+class GapSource(StrEnum):
+    """
+    Where a gap was found — a stretch in which one side did not see what the other saw.
+
+    ARCHIVE_BARS: more than the gap bound between two consecutive M1 bars of the archive
+    TRADE_ID_RUN: a run of the venue's trade ids the archive's ticks lack, spanning more than the
+        gap bound
+    TICK_STREAM_OUTAGE: an outage the session's tick stream recorded
+    FRAME_PAUSE: more than the gap bound between two consecutive state frames of a session — a
+        frozen process or a sleeping host records no outage, so only the frames show it
+    """
+    ARCHIVE_BARS = 'archive_bars'
+    TRADE_ID_RUN = 'trade_id_run'
+    TICK_STREAM_OUTAGE = 'tick_stream_outage'
+    FRAME_PAUSE = 'frame_pause'
+
+
+class DivergenceGap(BaseModel):
+    """
+    One gap of a segment's window.
+
+    Args:
+        source: Where it was found
+        start: Where it begins
+        end: Where it ends
+        run_id: The session it was found in; '' for the archive
+        confirmed: Whether it counts as a gap — a run of missing trade ids counts only once the
+            venue's own trade list confirms it; every other source always counts
+        detail: What was found, in a few words
+    """
+    source: GapSource
+    start: datetime
+    end: datetime
+    run_id: str = ''
+    confirmed: bool = True
+    detail: str = ''
+
+
+class ExcludedSpan(BaseModel):
+    """
+    A stretch whose minutes are left out on both sides — one or more confirmed gaps, merged.
+
+    Args:
+        start: Where it begins
+        end: Where it ends
+    """
+    start: datetime
+    end: datetime
+
+
+class GapList(BaseModel):
+    """
+    Every gap of a segment's window, and the stretches they leave out.
+
+    Args:
+        gaps: Every gap that counts, in time order
+        unconfirmed: The runs of missing trade ids that wait for the venue's trade list
+        excluded: The confirmed gaps merged into stretches, in time order
+        unreadable: What could not be read, with the reason
+    """
+    gaps: List[DivergenceGap] = []
+    unconfirmed: List[DivergenceGap] = []
+    excluded: List[ExcludedSpan] = []
+    unreadable: List[str] = []
+
+
+class RenderStamp(BaseModel):
+    """
+    One bar file a backtest read, and when it was rendered.
+
+    Args:
+        timeframe: Its timeframe
+        bar_file: The file, by name
+        rendered_at: When it was rendered, as its metadata says; None where it says nothing
+    """
+    timeframe: str
+    bar_file: str
+    rendered_at: Optional[str] = None
 
 
 class SegmentMeasures(BaseModel):
@@ -831,6 +921,8 @@ class SegmentMeasures(BaseModel):
         scenario: The backtest scenario the segment was held against
         days: The segment's days, the ones after a break decided by the resumption rule
         paired_days: Every compared day with the backtest row that closed at the same boundary
+        gaps: The window's gaps and the stretches they leave out
+        render_stamps: The bar files the backtest read, and when each was rendered
         decisions: Each compared day's decision on both sides (measure 1); empty where no decision
             timeframe was given
         decision_table: The compared days, live action × backtest action
@@ -843,6 +935,8 @@ class SegmentMeasures(BaseModel):
     scenario: str
     days: List[TradingDayClassification] = []
     paired_days: List[PairedDay] = []
+    gaps: GapList = GapList()
+    render_stamps: List[RenderStamp] = []
     decisions: List[DecisionComparison] = []
     decision_table: DecisionTable = DecisionTable()
     orders: List[DayOrderDivergence] = []

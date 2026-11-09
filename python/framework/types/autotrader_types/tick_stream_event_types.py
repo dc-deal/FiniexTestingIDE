@@ -11,6 +11,9 @@ from enum import Enum
 from typing import Any, Dict, Optional
 
 
+# The record kind an outage carries in the tick stream record
+OUTAGE_RECORD_KIND = 'outage'
+
 class TickStreamLossCause(Enum):
     """How the tick source learned that its connection was lost."""
     # No message for `connection_dead_s` — the source's own check, which aborts the connection.
@@ -109,7 +112,7 @@ class TickStreamOutage:
             JSON-ready values; None values are left out by the writer
         """
         return {
-            'record_kind': 'outage',
+            'record_kind': OUTAGE_RECORD_KIND,
             'outage_no': self.outage_no,
             'symbol': self.symbol,
             'lost_at': _instant(self.lost_at),
@@ -125,6 +128,30 @@ class TickStreamOutage:
             'data_gap_s': (None if self.get_data_gap_s() is None
                            else round(self.get_data_gap_s(), 3)),
         }
+
+    @staticmethod
+    def from_record(record: Dict[str, Any]) -> 'TickStreamOutage':
+        """
+        An outage read back from its line of the tick stream record.
+
+        Args:
+            record: The line, as `to_record` wrote it; a value left out reads as None
+
+        Returns:
+            The outage
+        """
+        return TickStreamOutage(
+            outage_no=int(record['outage_no']), symbol=record['symbol'],
+            lost_at=_parsed(record['lost_at']),
+            detected_by=TickStreamLossCause(record['detected_by']),
+            delivered_for_s=float(record['delivered_for_s']),
+            attempts=int(record.get('attempts', 0)),
+            restored_at=_parsed(record.get('restored_at')),
+            outage_s=record.get('outage_s'),
+            last_public_trade_id=record.get('last_public_trade_id'),
+            last_public_trade_time=_parsed(record.get('last_public_trade_time')),
+            first_public_trade_id=record.get('first_public_trade_id'),
+            first_public_trade_time=_parsed(record.get('first_public_trade_time')))
 
 
 @dataclass
@@ -178,6 +205,19 @@ class RefusedPublicTradeTotals:
             'listed_per_reason': self.listed_per_reason,
             'totals': {reason.value: count for reason, count in self.totals.items()},
         }
+
+
+def _parsed(text: Optional[str]) -> Optional[datetime]:
+    """
+    An instant read back from its ISO-8601 text.
+
+    Args:
+        text: The text, or None
+
+    Returns:
+        The instant, or None
+    """
+    return None if text is None else datetime.fromisoformat(text)
 
 
 def _instant(value: Optional[datetime]) -> Optional[str]:

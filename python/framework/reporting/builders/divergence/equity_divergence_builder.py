@@ -12,11 +12,13 @@ from bisect import bisect_left
 from datetime import datetime
 from typing import Dict, List, Optional, Sequence
 
+from python.framework.reporting.builders.divergence.gap_list_builder import in_excluded
 from python.framework.types.api.divergence_report_types import (
     DailyDifferenceStatistics,
     DayEquityDifference,
     EquityGap,
     EquityTracking,
+    ExcludedSpan,
     TradingDayClassification,
 )
 from python.framework.types.api.report_types import RunResultRow
@@ -34,7 +36,8 @@ from python.framework.utils.paired_difference_statistics import (
 def track_equity(days: Sequence[TradingDayClassification], live_frames: Sequence[StateFrame],
                  backtest_frames: Sequence[StateFrame],
                  live_rows: Dict[datetime, RunResultRow],
-                 backtest_rows: Dict[datetime, RunResultRow]) -> EquityTracking:
+                 backtest_rows: Dict[datetime, RunResultRow],
+                 excluded: Sequence[ExcludedSpan] = ()) -> EquityTracking:
     """
     The two runs' account values over a segment's compared days.
 
@@ -44,18 +47,20 @@ def track_equity(days: Sequence[TradingDayClassification], live_frames: Sequence
         backtest_frames: The backtest scenario's frames, in time order
         live_rows: Each compared day's live ledger row, by its closing
         backtest_rows: The backtest's row closing at the same boundary, by that closing
+        excluded: The stretches the window's gaps leave out — no slot inside one is compared
 
     Returns:
         The slots' gaps, every compared day and the days' differences as a series
     """
     compared = [day for day in days if day.included]
-    gaps = shared_slot_gaps(compared, live_frames, backtest_frames)
+    shared = shared_slot_gaps(compared, live_frames, backtest_frames)
+    gaps = [gap for gap in shared if not in_excluded(gap.at, excluded)]
     day_differences = [day_equity_difference(day, live_frames, backtest_frames,
                                               live_rows.get(day.closing),
                                               backtest_rows.get(day.closing))
                        for day in compared]
     return EquityTracking(
-        shared_slots=len(gaps),
+        shared_slots=len(gaps), slots_in_gaps=len(shared) - len(gaps),
         largest_gap=max(gaps, key=lambda gap: abs(gap.gap), default=None),
         gap_at_end=gaps[-1] if gaps else None,
         days=day_differences,

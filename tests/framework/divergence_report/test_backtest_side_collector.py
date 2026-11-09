@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
+import pandas as pd
 import pytest
 
 from python.framework.constants.run_layout_constants import (
@@ -18,6 +19,7 @@ from python.framework.constants.run_layout_constants import (
 )
 from python.framework.reporting.builders.divergence.backtest_side_collector import (
     BacktestSideCollector,
+    window_trades,
 )
 from python.framework.reporting.io.artifact_specs import SCENARIO_DETAILS_ARTIFACT
 from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
@@ -208,3 +210,44 @@ def test_the_gate_takes_what_the_collector_read(tree):
     result = check_divergence_gate([gate_session()], tree.collector().collect_run('b1'),
                                    gate_window(), read_tree=empty_tree)
     assert result.is_comparable(), result.findings
+
+
+class _BarsIndex:
+    """A bar index holding one entry per timeframe, as the index manager keeps it."""
+
+    def __init__(self):
+        self.index = {'kraken_spot': {'ETHUSD': {
+            'M5': {'path': '/data/kraken_spot/bars/ETHUSD_M5_BARS.parquet',
+                   'rendered_at': '2026-11-20T08:00:00+00:00'},
+            'D1': {'path': '/data/kraken_spot/bars/ETHUSD_D1_BARS.parquet',
+                   'rendered_at': 'unknown'}}}}
+
+
+class _TickIndex:
+    """A tick index that hands out the files it was given."""
+
+    def __init__(self, paths):
+        self._paths = paths
+
+    def get_relevant_files(self, broker_type, symbol, start, end):
+        return self._paths
+
+
+def test_the_render_stamps_of_the_bar_files_the_backtest_read(tree):
+    stamps = tree.collector().collect_render_stamps('kraken_spot', 'ETHUSD', ['M5', 'D1', 'H4'],
+                                                    _BarsIndex())
+    assert [(stamp.timeframe, stamp.bar_file, stamp.rendered_at) for stamp in stamps] == [
+        ('D1', 'ETHUSD_D1_BARS.parquet', None),
+        ('M5', 'ETHUSD_M5_BARS.parquet', '2026-11-20T08:00:00+00:00')]
+
+
+def test_the_trade_ids_of_a_windows_ticks(tmp_path):
+    start = FIRST_TICK
+    msc = [int((start + timedelta(seconds=offset)).timestamp() * 1000) for offset in (-60, 0, 1, 2)]
+    path = tmp_path / 'ETHUSD_ticks.parquet'
+    pd.DataFrame({'time_msc': msc, 'bid': [3000.0] * 4, 'ask': [3000.5] * 4,
+                  'trade_id': pd.array([1, 2, None, 4], dtype='Int64')}).to_parquet(path)
+    ids, times = window_trades(_TickIndex([path]), 'kraken_spot', 'ETHUSD', start,
+                               start + timedelta(minutes=5))
+    assert ids.tolist() == [2, 4]
+    assert times.tolist() == [msc[1], msc[3]]

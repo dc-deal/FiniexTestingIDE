@@ -149,7 +149,7 @@ tests/
 │   │                      side's segments, windows and trading days, each day compared or excluded with every cause; the
 │   │                      gate — code path, strategy, configuration, broker document, window — that refuses a pair; the
 │   │                      measures — each day's decision, each order, the account values, the day attribution — on
-│   │                      real backtests too (#512)
+│   │                      real backtests too; the window's gaps and what they leave out (#512)
 │   ├── composite/         unit — which accounts may add up: the composite definition and its floor, the key projected from
 │   │                      the rendered configuration, joins and splits, the excluded member, every shipped value classified (#615)
 │   ├── rendered_config/   unit — what a run records it ran with: the one strategy renderer and its portable type key, every shipped

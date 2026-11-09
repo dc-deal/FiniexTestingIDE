@@ -32,9 +32,13 @@ GATE_SOURCE_SUFFIX = '.py'
 # never reads one back to compute.
 GATE_EXCLUDED_PREFIXES = ('python/framework/types/api/',)
 
+# The bound above which a pause counts as a gap — between two bars of the archive, inside a run of
+# missing trade ids, or between two state frames of a session
+GAP_BOUND_S = 120
+
 # How far a backtest scenario's first or last tick may fall inside the compared window's edges —
-# the bound above which a pause in the data counts as a gap
-WINDOW_EDGE_TOLERANCE_S = 120
+# a pause shorter than the gap bound is no gap
+WINDOW_EDGE_TOLERANCE_S = GAP_BOUND_S
 
 # Release of the session → file → why it may differ, and the syntax tree it may have
 ALLOWED_CHANGES_BY_RELEASE = {

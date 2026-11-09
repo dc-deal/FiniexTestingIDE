@@ -32,6 +32,7 @@ session's record, and each seam that carries one is held here.
 | The backtest runs another strategy, strategy configuration, broker document or window than the session | The divergence measures that difference instead of the simulator |
 | A measure reports a divergence between a run and itself | What it measures is the instrument, not the difference between the two runs |
 | A day whose decision frame is missing on one side counts as agreeing | A one-sided day the verdict should have named slips through |
+| A stretch one side did not see stays in a measure | The divergence measures a capture or an outage, not the simulator |
 | The parts of a day's change of account value do not add up to the change | The attribution names a cause for a divergence that is not where it says |
 
 Not here: the warmup read back from a record, bar for bar against the archive path — that is the
@@ -119,6 +120,7 @@ ledger's writer.
 | Test | Description |
 |------|-------------|
 | `TestTheSessionsWithoutAStream` | every session with its booking state, first tick, outcome, frame ends, lot step and base currency from the frozen document, code stand, release, rendered strategy and the code identity of its header; a session only the run index names has booked nothing yet; a deployment nobody names and one naming two brokers are refused |
+| `TestEverySessionsOutages` | a session's tick-stream outages read back as written; a session without the record has none |
 | `TestTheWarmupsReach` | the longest stretch a timeframe's required bars span; a record naming no timeframe has none |
 | `TestEverySessionsFrames` | each session's state frames read whole across its sealed days, in time order; a session that records none says so |
 | `TestTheSealedDays` | each day's records — its events in `seq` order, its label, its last frame, its position at the closing; an unbroken session is compared every day and the restart after its stop waits; a day record gone is not checked |
@@ -171,6 +173,8 @@ writer, and its rendered scenario set in a run-config store.
 | `TestTheRunAsItRecordedItself` | the header's release and code identity, the ledger row's broker document, each scenario's declared window, first and last tick, frames and rendered strategy from the run-config store; a scenario without frames says so; missing scenario details and a run naming no rendered set are named, never filled in; a tick limit leaves the window open; a run nobody names and a session are refused |
 | `TestWhatAScenarioRecordedAsItRan` | a scenario's own order events, taken from the run's one stream that holds every scenario's, and its frames |
 | `test_the_gate_takes_what_the_collector_read` | the gate passes the pair the collector read |
+| `test_the_render_stamps_of_the_bar_files_the_backtest_read` | each timeframe's bar file and its render stamp; an unknown stamp reads as none, a timeframe the index lacks is left out |
+| `test_the_trade_ids_of_a_windows_ticks` | the trade ids and event times of the ticks inside a window, a tick without an id left out |
 
 ### `test_paired_difference_statistics.py`
 
@@ -228,6 +232,14 @@ recorded the same orders and account values.
 | Test | Description |
 |------|-------------|
 | `TestTheSegmentAgainstABacktestOfIt` | the days after the restart are compared where both sides are flat, and a position the backtest holds keeps a waiting day out; every compared day is paired with the backtest row of its boundary; the same records show nothing in any measure, every decision agreeing; what could not be read is named, and so is a comparison given no decision timeframe |
+
+### `test_gap_list.py`
+
+| Test | Description |
+|------|-------------|
+| `TestEachSource` | an archive gap across the window's edge counts; a run of missing trade ids longer than the bound, a short one is none; an outage between the venue's trades, else from loss to restoration, and none without an end; an outage reads back as written; a pause in the frames longer than the bound |
+| `TestTheList` | gaps merge into stretches and an unconfirmed run leaves nothing out; a run the venue confirmed does; a stretch holds its start and not its end |
+| `TestWhatAGapLeavesOut` | a decision whose bar closed in a gap, and one whose pass came late after its bar closed; an order submitted or filled in a gap is named and left out; a slot in a gap leaves measure 3 |
 
 ### `test_decision_divergence.py`
 

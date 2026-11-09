@@ -29,6 +29,7 @@ from python.framework.reporting.builders.divergence.live_trading_day_builder imp
     pair_trading_days,
 )
 from python.framework.reporting.builders.divergence.order_divergence_builder import (
+    leave_out_gaps,
     measure_day_orders,
 )
 from python.framework.types.api.divergence_report_types import (
@@ -36,8 +37,10 @@ from python.framework.types.api.divergence_report_types import (
     DayOrderDivergence,
     DecisionComparison,
     DecisionTable,
+    GapList,
     LiveSegment,
     OrderOutcome,
+    RenderStamp,
     SegmentMeasures,
 )
 from python.framework.types.api.report_types import OrderEventRow, RunResultRow
@@ -59,7 +62,8 @@ def measure_segment(segment: LiveSegment, capture: LiveDeploymentCapture,
                     day_records: Mapping[Tuple[str, date], LiveDayRecords],
                     live_frames: Mapping[str, RecordedFrames], backtest: BacktestRunCapture,
                     records: BacktestScenarioRecords, taker_rate_pct: Optional[float],
-                    decision_timeframe: Optional[str]) -> SegmentMeasures:
+                    decision_timeframe: Optional[str], gaps: Optional[GapList] = None,
+                    render_stamps: Sequence[RenderStamp] = ()) -> SegmentMeasures:
     """
     One segment's compared days, measured against a backtest of its window.
 
@@ -73,6 +77,9 @@ def measure_segment(segment: LiveSegment, capture: LiveDeploymentCapture,
         taker_rate_pct: The frozen broker configuration's taker rate, in percent
         decision_timeframe: The timeframe whose bar's close is a day's decision, as the comparison
             declares it; None leaves measure 1 out, and says so
+        gaps: The window's gaps; their stretches are left out of every measure. None where none
+            were gathered
+        render_stamps: The bar files the backtest read, and when each was rendered
 
     Returns:
         The segment's days after the resumption rule, and measures 1, 2 and 3 and the day
@@ -83,6 +90,10 @@ def measure_segment(segment: LiveSegment, capture: LiveDeploymentCapture,
     lot_step = first.lot_step if first is not None else None
     base_currency = first.base_currency if first is not None else None
     unreadable = _unreadable_of(segment.run_ids, live_frames, records)
+    gap_list = gaps if gaps is not None else GapList()
+    excluded = gap_list.excluded
+    if gaps is None:
+        unreadable.append('no gaps were gathered, so no minute was left out for one')
     merged_live = sorted((frame for run_id in segment.run_ids
                           for frame in live_frames.get(run_id, RecordedFrames([])).frames),
                          key=lambda frame: frame.frame_time)
@@ -133,11 +144,15 @@ def measure_segment(segment: LiveSegment, capture: LiveDeploymentCapture,
                     if (session.start_time or session.first_tick) is not None}
         decisions, table = compare_decisions(
             days, segment.window.start, merged_live, backtest_frames,
-            {measured.closing: measured for measured in orders}, decision_timeframe, restarts)
+            {measured.closing: measured for measured in orders}, decision_timeframe, restarts,
+            excluded)
     return SegmentMeasures(
         segment_index=segment.index, scenario=records.scenario, days=days,
-        paired_days=paired_days, decisions=decisions, decision_table=table, orders=orders,
-        equity=track_equity(days, merged_live, backtest_frames, live_rows, backtest_by_closing),
+        paired_days=paired_days, gaps=gap_list, render_stamps=list(render_stamps),
+        decisions=decisions, decision_table=table,
+        orders=[leave_out_gaps(measured, excluded) for measured in orders],
+        equity=track_equity(days, merged_live, backtest_frames, live_rows, backtest_by_closing,
+                            excluded),
         attribution=attribution, unreadable=unreadable)
 
 

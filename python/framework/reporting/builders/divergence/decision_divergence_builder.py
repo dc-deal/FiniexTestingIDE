@@ -11,6 +11,8 @@ holds, and whether the measure passes, is the verdict's. Pure: it reads the fram
 from datetime import datetime, timedelta
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
+from python.framework.constants.divergence_gate_constants import GAP_BOUND_S
+from python.framework.reporting.builders.divergence.gap_list_builder import in_excluded
 from python.framework.types.api.divergence_report_types import (
     DayDecision,
     DayOrderDivergence,
@@ -18,20 +20,25 @@ from python.framework.types.api.divergence_report_types import (
     DecisionComparisonState,
     DecisionTable,
     DecisionTableCell,
+    ExcludedSpan,
     ExplainedFlipKind,
     TradingDayClassification,
 )
 from python.framework.types.api.state_frame_types import StateFrame
 from python.framework.types.decision_logic_types import DecisionLogicAction
+from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 # How many of a day's differing worker outputs a detail names
 _NAMED_OUTPUTS = 3
+
+_GAP_BOUND = timedelta(seconds=GAP_BOUND_S)
 
 
 def compare_decisions(days: Sequence[TradingDayClassification], segment_start: Optional[datetime],
                       live_frames: Sequence[StateFrame], backtest_frames: Sequence[StateFrame],
                       orders: Mapping[datetime, DayOrderDivergence], decision_timeframe: str,
-                      restarts: Mapping[str, Tuple[datetime, Optional[timedelta]]]
+                      restarts: Mapping[str, Tuple[datetime, Optional[timedelta]]],
+                      excluded: Sequence[ExcludedSpan] = ()
                       ) -> Tuple[List[DecisionComparison], DecisionTable]:
     """
     Every compared day's decision on both sides, and the days counted by their two actions.
@@ -45,13 +52,14 @@ def compare_decisions(days: Sequence[TradingDayClassification], segment_start: O
         decision_timeframe: The timeframe whose bar's close is the day's decision
         restarts: Each session that started after the segment's first, by its run id: its start
             and how far back its warmup reached
+        excluded: The stretches the window's gaps leave out
 
     Returns:
         (one comparison per compared day, in day order; the table of their actions)
     """
     comparisons = [compare_day(day, segment_start if day.first_of_segment else None,
                                live_frames, backtest_frames, orders.get(day.closing),
-                               decision_timeframe, restarts)
+                               decision_timeframe, restarts, excluded)
                    for day in days if day.included]
     return comparisons, decision_table(comparisons)
 
@@ -59,8 +67,8 @@ def compare_decisions(days: Sequence[TradingDayClassification], segment_start: O
 def compare_day(day: TradingDayClassification, first_tick: Optional[datetime],
                 live_frames: Sequence[StateFrame], backtest_frames: Sequence[StateFrame],
                 orders: Optional[DayOrderDivergence], decision_timeframe: str,
-                restarts: Mapping[str, Tuple[datetime, Optional[timedelta]]]
-                ) -> DecisionComparison:
+                restarts: Mapping[str, Tuple[datetime, Optional[timedelta]]],
+                excluded: Sequence[ExcludedSpan] = ()) -> DecisionComparison:
     """
     One compared day's decision on both sides.
 
@@ -72,6 +80,7 @@ def compare_day(day: TradingDayClassification, first_tick: Optional[datetime],
         orders: The day's measured orders; None where they were not measured
         decision_timeframe: The timeframe whose bar's close is the decision
         restarts: The sessions that started after the segment's first, as above
+        excluded: The stretches the window's gaps leave out
 
     Returns:
         Whether they agree, and for a one-sided day the explained kind it is proposed as
@@ -92,6 +101,12 @@ def compare_day(day: TradingDayClassification, first_tick: Optional[datetime],
             detail=f'no {decision_timeframe} decision frame on the {missing} side')
     live = _decision(live_frame, live_orders)
     backtest = _decision(backtest_frame, backtest_orders)
+    in_gap = _in_gap(day, first_tick, (live_frame, backtest_frame), decision_timeframe,
+                     excluded)
+    if in_gap:
+        return DecisionComparison(
+            trading_day=day.trading_day, closing=day.closing, state=DecisionComparisonState.IN_GAP,
+            live=live, backtest=backtest, detail=in_gap)
     if live.action == backtest.action and live.order_count == backtest.order_count:
         return DecisionComparison(trading_day=day.trading_day, closing=day.closing,
                                   state=DecisionComparisonState.AGREE, live=live,
@@ -175,9 +190,13 @@ def decision_table(comparisons: Sequence[DecisionComparison]) -> DecisionTable:
     """
     counts: Dict[Tuple[DecisionLogicAction, DecisionLogicAction], int] = {}
     not_checked = 0
+    in_gap = 0
     for comparison in comparisons:
         live = comparison.live.action if comparison.live is not None else None
         backtest = comparison.backtest.action if comparison.backtest is not None else None
+        if comparison.state is DecisionComparisonState.IN_GAP:
+            in_gap += 1
+            continue
         if (comparison.state is DecisionComparisonState.NOT_CHECKED or live is None
                 or backtest is None):
             not_checked += 1
@@ -189,7 +208,49 @@ def decision_table(comparisons: Sequence[DecisionComparison]) -> DecisionTable:
                for (live, backtest), days in sorted(
                    counts.items(), key=lambda item: (order.index(item[0][0]),
                                                      order.index(item[0][1])))],
-        not_checked=not_checked)
+        not_checked=not_checked, in_gap=in_gap)
+
+
+def _in_gap(day: TradingDayClassification, first_tick: Optional[datetime],
+            frames: Sequence[StateFrame], decision_timeframe: str,
+            excluded: Sequence[ExcludedSpan]) -> str:
+    """
+    Why a day's decision is left out for a gap, if it is: its boundary — where the decision bar
+    closed, or the segment's first tick — lies in a gap, or a side's pass came more than the gap
+    bound after the boundary.
+
+    Args:
+        day: The day
+        first_tick: The segment's first tick on its first day — its own boundary; None otherwise
+        frames: The two decision frames
+        decision_timeframe: The timeframe whose bar's close is the decision
+        excluded: The stretches the window's gaps leave out
+
+    Returns:
+        The reason in a few words; '' where no gap touches the decision
+    """
+    for frame in frames:
+        boundary = first_tick if first_tick is not None else _bar_close(frame, decision_timeframe)
+        if in_excluded(boundary, excluded):
+            return f'its boundary {boundary:%d %b %H:%M} lies in a gap'
+        if first_tick is None and frame.frame_time - boundary > _GAP_BOUND:
+            return (f'a pass came {(frame.frame_time - boundary).total_seconds():.0f} s after '
+                    f'its boundary {boundary:%d %b %H:%M}')
+    return ''
+
+
+def _bar_close(frame: StateFrame, timeframe: str) -> datetime:
+    """
+    When the bar a decision frame's pass saw close actually closed.
+
+    Args:
+        frame: A frame whose pass closed a bar of the timeframe
+        timeframe: The timeframe
+
+    Returns:
+        The bar's opening plus its length
+    """
+    return frame.closed_bars[timeframe] + timedelta(minutes=TimeframeConfig.get_minutes(timeframe))
 
 
 def _decision(frame: Optional[StateFrame], order_count: int) -> Optional[DayDecision]:

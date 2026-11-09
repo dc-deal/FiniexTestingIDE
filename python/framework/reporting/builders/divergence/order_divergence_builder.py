@@ -13,11 +13,13 @@ from bisect import bisect_left
 from datetime import date, datetime
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
+from python.framework.reporting.builders.divergence.gap_list_builder import in_excluded
 from python.framework.reporting.builders.divergence.live_trading_day_builder import (
     pair_orders_of_day,
 )
 from python.framework.types.api.divergence_report_types import (
     DayOrderDivergence,
+    ExcludedSpan,
     OrderDivergence,
     OrderOutcome,
 )
@@ -104,6 +106,40 @@ def measure_day_orders(trading_day: date, closing: datetime,
         backtest_fill_count=sum(1 for outcome in backtest_outcomes.values()
                                 if outcome.filled_lots > 0),
         unbooked_executions=unbooked_executions)
+
+
+def leave_out_gaps(day: DayOrderDivergence,
+                   excluded: Sequence[ExcludedSpan]) -> DayOrderDivergence:
+    """
+    A day's orders without those submitted or filled inside a gap — named, never dropped.
+
+    Args:
+        day: The day's measured orders
+        excluded: The stretches the window's gaps leave out
+
+    Returns:
+        The day with every such order moved to its orders in a gap, a pair with both its sides
+    """
+    if not excluded:
+        return day
+
+    def in_gap(outcome: OrderOutcome) -> bool:
+        return (in_excluded(outcome.submitted_at, excluded)
+                or in_excluded(outcome.filled_at, excluded))
+
+    in_gaps: List[OrderOutcome] = []
+    orders: List[OrderDivergence] = []
+    for order in day.orders:
+        if in_gap(order.live) or in_gap(order.backtest):
+            in_gaps += [order.live, order.backtest]
+        else:
+            orders.append(order)
+    live = [outcome for outcome in day.live_one_sided if not in_gap(outcome)]
+    backtest = [outcome for outcome in day.backtest_one_sided if not in_gap(outcome)]
+    in_gaps += [outcome for outcome in day.live_one_sided + day.backtest_one_sided
+                if in_gap(outcome)]
+    return day.model_copy(update={'orders': orders, 'live_one_sided': live,
+                                  'backtest_one_sided': backtest, 'orders_in_gap': in_gaps})
 
 
 def outcome_of(run_id: str, seq: int, events: Sequence[OrderEventRow],

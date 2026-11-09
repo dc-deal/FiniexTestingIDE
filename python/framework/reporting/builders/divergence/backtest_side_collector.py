@@ -8,10 +8,16 @@ derived: a record that cannot be read is named on the capture, never replaced by
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.data_management.index.bars_index_manager import BarsIndexManager
+from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.constants.run_layout_constants import RUN_TYPE_SIMULATION
+from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.artifact_specs import SCENARIO_DETAILS_ARTIFACT
 from python.framework.reporting.io.order_event_stream_io import order_events_of
@@ -19,20 +25,25 @@ from python.framework.reporting.io.state_frame_stream_io import read_recorded_fr
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.store.entry_members.run_entry_reader import RunEntryReader
 from python.framework.store.run_config_store import RunConfigStore
+from python.framework.types.api.divergence_report_types import RenderStamp
 from python.framework.types.api.report_types import (
-    OrderEventRow,
     DataWindow,
+    OrderEventRow,
     RunHeader,
     ScenarioDetailsRow,
 )
 from python.framework.types.divergence_capture_types import (
     BacktestRunCapture,
-    BacktestScenarioRecords,
     BacktestScenarioCapture,
+    BacktestScenarioRecords,
 )
 from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.time_utils import parse_iso_datetime
+
+# The tick columns a run of missing trade ids is found from — with the two the tick reader derives
+# its price from, which it cannot do without them
+_TRADE_COLUMNS = ['trade_id', 'time_msc', 'timestamp', 'bid', 'ask']
 
 # What a read can fail with when a record is missing, damaged or of a shape this reader does not
 # know — a data condition, named on the record; anything else is a fault and propagates
@@ -126,6 +137,35 @@ class BacktestSideCollector:
             frames=read_recorded_frames(self._reader, run_id,
                                         RunEntryMemberId.SCENARIO_STATE_FRAMES, scenario=scenario),
             unreadable=unreadable)
+
+    def collect_render_stamps(self, broker_type: str, symbol: str, timeframes: List[str],
+                              bars_index: Optional[BarsIndexManager] = None) -> List[RenderStamp]:
+        """
+        The bar files a backtest of a symbol read, and when each was rendered.
+
+        Args:
+            broker_type: The broker
+            symbol: The symbol
+            timeframes: The timeframes the backtest read
+            bars_index: The bar index; the configured one, loaded, when omitted
+
+        Returns:
+            One stamp per timeframe the index holds a file for, in timeframe order
+        """
+        if bars_index is None:
+            bars_index = BarsIndexManager()
+            bars_index.load_index()
+        entries = bars_index.index.get(broker_type, {}).get(symbol, {})
+        stamps: List[RenderStamp] = []
+        for timeframe in sorted(timeframes):
+            entry = entries.get(timeframe)
+            if entry is None:
+                continue
+            rendered_at = entry.get('rendered_at')
+            stamps.append(RenderStamp(
+                timeframe=timeframe, bar_file=Path(entry['path']).name,
+                rendered_at=rendered_at if rendered_at and rendered_at != 'unknown' else None))
+        return stamps
 
     def _header(self, run_id: str, unreadable: Dict[str, str]) -> Optional[RunHeader]:
         """
@@ -243,3 +283,59 @@ def _tick_instant(text: str, name: str, unreadable: Dict[str, str]) -> Optional[
         unreadable[name] = str(e)
         return None
 
+
+def window_trades(tick_index: TickIndexManager, broker_type: str, symbol: str, start: datetime,
+                  end: datetime) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    The trade ids and event times of the archive's ticks inside a window.
+
+    Args:
+        tick_index: The tick index
+        broker_type: The broker
+        symbol: The symbol
+        start: The window's start
+        end: The window's end
+
+    Returns:
+        (trade ids, event times in epoch milliseconds) of every tick that carries an id
+    """
+    frames = [read_tick_parquet(path, columns=_TRADE_COLUMNS)
+              for path in tick_index.get_relevant_files(broker_type, symbol, start, end)]
+    frames = [frame for frame in frames if 'trade_id' in frame.columns]
+    if not frames:
+        return np.array([], dtype='int64'), np.array([], dtype='int64')
+    ticks = pd.concat(frames, ignore_index=True)
+    ticks = ticks[ticks['trade_id'].notna()]
+    msc = _event_msc(ticks)
+    inside = (msc >= _to_msc(start)) & (msc < _to_msc(end))
+    return ticks['trade_id'].to_numpy(dtype='int64')[inside], msc[inside]
+
+
+def _event_msc(ticks: pd.DataFrame) -> np.ndarray:
+    """
+    Each tick's event time in epoch milliseconds — the same rule the deficiency scan reads by,
+    written here because that scan lies in the backtest's code path.
+
+    Args:
+        ticks: The ticks
+
+    Returns:
+        Milliseconds, from time_msc where present, else from the timestamp
+    """
+    if 'time_msc' in ticks.columns and ticks['time_msc'].notna().all():
+        return ticks['time_msc'].astype('int64').to_numpy()
+    stamps = pd.to_datetime(ticks['timestamp'], utc=True)
+    return (stamps.astype('int64') // 1_000_000).to_numpy()
+
+
+def _to_msc(instant: datetime) -> int:
+    """
+    An instant in epoch milliseconds.
+
+    Args:
+        instant: A timezone-aware instant
+
+    Returns:
+        Its milliseconds since the epoch
+    """
+    return int(instant.timestamp() * 1000)

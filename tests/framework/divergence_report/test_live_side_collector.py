@@ -47,6 +47,10 @@ from python.framework.types.api.report_types import (
     WarningsErrorsOutcome,
     WarningsErrorsReport,
 )
+from python.framework.types.autotrader_types.tick_stream_event_types import (
+    TickStreamLossCause,
+    TickStreamOutage,
+)
 from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.run_results_types import PeriodCloseReason, RunProvenance
 from python.framework.types.store_member_types import RunEntryMemberId
@@ -217,6 +221,25 @@ class TestTheSessionsWithoutAStream:
                      broker_type='mt5')
         with pytest.raises(ValueError, match='2 brokers'):
             tree.collector().collect_sessions(DEPLOYMENT)
+
+
+class TestEverySessionsOutages:
+
+    def test_read_from_the_tick_stream_and_a_session_without_one_has_none(self, tree):
+        _two_sessions(tree)
+        outage = TickStreamOutage(
+            outage_no=1, symbol=SYMBOL, lost_at=FIRST_TICK + timedelta(days=3, hours=4),
+            detected_by=TickStreamLossCause.SILENCE, delivered_for_s=3600.0, attempts=2,
+            restored_at=FIRST_TICK + timedelta(days=3, hours=4, minutes=5))
+        stream = RunEntryWriter(tree.root / 'runs' / 's2', RUN_TYPE_AUTOTRADER).open_stream(
+            RunEntryMemberId.TICK_STREAM_EVENTS, 's2', NullLogger(), stops='-')
+        stream.write({key: value for key, value in outage.to_record().items()
+                      if value is not None})
+        stream.close()
+        collector = tree.collector()
+        outages = collector.collect_session_outages(collector.collect_sessions(DEPLOYMENT))
+        assert outages['s2'].outages == [outage] and outages['s2'].unreadable == ''
+        assert outages['s1'].outages == []
 
 
 class TestTheWarmupsReach:

@@ -24,6 +24,7 @@ from python.framework.reporting.builders.divergence.segment_measures_builder imp
 from python.framework.types.api.divergence_report_types import (
     DayExclusionReason,
     DecisionComparisonState,
+    GapList,
 )
 from python.framework.types.api.report_types import OpenPositionRow
 from python.framework.types.api.state_frame_types import StateFrame, StateFrameCause
@@ -105,7 +106,7 @@ def _measured(backtest_eth_at: Optional[Dict[int, float]] = None):
         scenario=_SCENARIO, order_events=backtest_events,
         frames=RecordedFrames(_frames_over(0, 6, backtest_eth_at)))
     return measure_segment(segment, capture, day_records, live_frames, backtest, records, 0.8,
-                           'D1')
+                           'D1', GapList())
 
 
 class TestTheSegmentAgainstABacktestOfIt:

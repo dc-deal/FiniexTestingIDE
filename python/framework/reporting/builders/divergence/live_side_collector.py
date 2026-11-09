@@ -55,6 +55,10 @@ from python.framework.types.api.report_types import (
     WarningsErrorsOutcome,
 )
 from python.framework.types.api.state_frame_types import StateFrame, StateFrameStreamEnds
+from python.framework.types.autotrader_types.tick_stream_event_types import (
+    OUTAGE_RECORD_KIND,
+    TickStreamOutage,
+)
 from python.framework.types.config_types.market_config_types import DayAnchorConfig
 from python.framework.types.divergence_capture_types import (
     BoundaryPosition,
@@ -62,6 +66,7 @@ from python.framework.types.divergence_capture_types import (
     LiveDeploymentCapture,
     LiveSessionCapture,
     RecordedFrames,
+    RecordedOutages,
 )
 from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.run_origin_types import CodeIdentity
@@ -197,6 +202,39 @@ class LiveSideCollector:
         return {session.run_id: read_recorded_frames(self._reader, session.run_id,
                                                      RunEntryMemberId.STATE_FRAMES)
                 for session in capture.sessions}
+
+    def collect_session_outages(self,
+                                capture: LiveDeploymentCapture) -> Dict[str, RecordedOutages]:
+        """
+        Every session's tick-stream outages, read whole across its sealed days and its own file.
+
+        Args:
+            capture: The deployment's sessions
+
+        Returns:
+            Session → its outages; a session whose record cannot be read says so
+        """
+        return {session.run_id: self._outages_of(session.run_id) for session in capture.sessions}
+
+    def _outages_of(self, run_id: str) -> RecordedOutages:
+        """
+        One session's tick-stream outages.
+
+        Args:
+            run_id: The session
+
+        Returns:
+            Its outages; none, and why, where the record cannot be read
+        """
+        try:
+            stream = self._reader.read_stream(run_id, RunEntryMemberId.TICK_STREAM_EVENTS)
+            if stream is None:
+                return RecordedOutages(outages=[])
+            return RecordedOutages(outages=[
+                TickStreamOutage.from_record(record) for record in stream.records
+                if record.get('record_kind') == OUTAGE_RECORD_KIND])
+        except _UNREADABLE as e:
+            return RecordedOutages(outages=[], unreadable=str(e))
 
     def _capture_session(self, run_id: str, rows: List[RunResultRow], run: Optional[RunInfo],
                          booking_state: SessionBookingState) -> LiveSessionCapture:
