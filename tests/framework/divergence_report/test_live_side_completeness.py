@@ -87,6 +87,34 @@ class TestADaysRecordAgainstItsRow:
         assert {(m.column, m.recorded, m.counted) for m in completeness.mismatches} == {
             ('orders_submitted', 1, 2), ('orders_cancelled', 0, 1)}
 
+    def test_more_executions_than_counted_and_nothing_else_apart_is_complete(self):
+        row, closing = self._row()
+        noon = closing - timedelta(hours=12)
+        records = day_record('s1', FIRST_DAY, events=[
+            event(1, OrderEventType.SUBMITTED, noon), event(2, OrderEventType.FILLED, noon),
+            event(3, OrderEventType.FILLED, noon), event(4, OrderEventType.FILLED, noon)])
+        completeness = check_day_completeness(row, records, closing)
+        assert completeness.state is DayCompletenessState.COMPLETE
+        assert completeness.mismatches == []
+        assert completeness.unbooked_executions == 2
+
+    def test_fewer_executions_than_counted_is_incomplete(self):
+        row, closing = self._row(orders_executed=2)
+        completeness = check_day_completeness(row, day_record('s1', FIRST_DAY), closing)
+        assert completeness.state is DayCompletenessState.INCOMPLETE
+        assert completeness.unbooked_executions == 0
+
+    def test_more_executions_beside_another_difference_is_incomplete(self):
+        row, closing = self._row(orders_cancelled=1)
+        noon = closing - timedelta(hours=12)
+        records = day_record('s1', FIRST_DAY, events=[
+            event(1, OrderEventType.SUBMITTED, noon), event(2, OrderEventType.FILLED, noon),
+            event(3, OrderEventType.FILLED, noon)])
+        completeness = check_day_completeness(row, records, closing)
+        assert completeness.state is DayCompletenessState.INCOMPLETE
+        assert {m.column for m in completeness.mismatches} == {
+            'orders_executed', 'orders_cancelled'}
+
     def test_a_partial_fill_the_venue_then_ended_is_complete(self):
         row, closing = self._row()
         noon = closing - timedelta(hours=12)
@@ -222,7 +250,7 @@ class TestGuardsAgainstADaySlippingIn:
         days = _side(first, twin)[0].days
         assert {_R.DUPLICATE_ROWS, _R.SESSION_OVERLAP} <= _reasons(days[0])
 
-    def test_a_record_holding_a_fill_nothing_was_booked_for(self):
+    def test_a_record_holding_a_fill_nothing_was_booked_for_stays_compared_and_names_it(self):
         closing = closing_of(FIRST_DAY + timedelta(days=1), CRYPTO_ANCHOR)
         noon = closing - timedelta(hours=12)
         unbooked = day_record('s1', FIRST_DAY + timedelta(days=1), events=[
@@ -230,8 +258,10 @@ class TestGuardsAgainstADaySlippingIn:
             event(3, OrderEventType.FILLED, noon)])
         day = _side(session('s1', FIRST_TICK, days_from(FIRST_DAY, 3)),
                     records={('s1', FIRST_DAY + timedelta(days=1)): unbooked})[0].days[1]
-        assert _reasons(day) == {_R.INCOMPLETE_RECORD}
-        assert any('orders_executed 2 recorded, 1 counted' in detail for detail in day.details)
+        assert _reasons(day) == set()
+        assert day.completeness.unbooked_executions == 1
+        assert any('1 execution(s) the venue made that the book did not book' in detail
+                   for detail in day.details)
 
     def test_pruned_records(self):
         segment, = _side(session('s1', FIRST_TICK, days_from(FIRST_DAY, 2),

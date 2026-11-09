@@ -1,7 +1,8 @@
 """
 FiniexTestingIDE - Divergence Capture Types
-What the divergence report reads from a live deployment's records (#512), before anything is derived
-from it, and how one trading day's order events are counted against the day's ledger row.
+What the divergence report reads from a live deployment's records and from a backtest run's (#512),
+before anything is derived from it, and how one trading day's order events are counted against the
+day's ledger row.
 
 The count declaration lives here rather than beside OrderEventType: that module is part of the
 backtest's import closure, which the divergence gate holds unchanged against the release a session
@@ -11,7 +12,7 @@ ran, and the report's own declarations stay outside it.
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from python.framework.types.api.divergence_report_types import (
     CompareWindow,
@@ -20,6 +21,7 @@ from python.framework.types.api.divergence_report_types import (
     SessionEnd,
 )
 from python.framework.types.api.report_types import (
+    DataWindow,
     OrderEventRow,
     RunResultRow,
     SessionBookingState,
@@ -27,7 +29,7 @@ from python.framework.types.api.report_types import (
 )
 from python.framework.types.api.state_frame_types import StateFrameStreamEnds
 from python.framework.types.config_types.market_config_types import DayAnchorConfig
-from python.framework.types.run_origin_types import CodeStand
+from python.framework.types.run_origin_types import CodeIdentity, CodeStand
 from python.framework.types.trading_env_types.order_event_types import (
     ORDER_EVENT_BY_STATUS,
     OrderEventType,
@@ -43,8 +45,8 @@ from python.framework.types.trading_env_types.trading_env_stats_types import (
 # - the step after a partial fill — the venue ended the rest of an order whose executed part is
 #   already booked as its fill. It is the one ending that carries `cum_lots`.
 # - a live close the venue executed for a position no longer held here. Nothing was booked for
-#   it and the stream gives it no mark, so a day holding one reads incomplete on
-#   `orders_executed`, which names the day.
+#   it and the stream gives it no mark, so a day holding one records more executions than its row
+#   counted; the day stays compared and names them as a divergence between the book and the venue.
 ORDER_EVENT_COUNT_COLUMN: Dict[OrderEventType, Optional[str]] = {
     OrderEventType.SUBMITTED: 'orders_submitted',
     OrderEventType.ADOPTED: 'orders_adopted',
@@ -97,6 +99,12 @@ class LiveSessionCapture:
             died before writing one
         frame_ends: Its state-frame stream at both ends; None where it records no frames
         records_pruned_at: When a prune deleted its run directory; None while it was not
+        app_version: The release it ran, from its rows; None as above
+        rendered_strategy_config: Its strategy as its components were built, every default filled
+            in — from its rendered configuration in the run-config store; None where that cannot
+            be read
+        code_identity: Which code it ran — the framework, the strategy's repository and every
+            component's digest — from its header; None where the header cannot be read
         unreadable: What could not be read, by what it is, with the reason — a record named here
             is not checked, never absent
     """
@@ -115,6 +123,9 @@ class LiveSessionCapture:
     outcome: Optional[WarningsErrorsOutcome]
     frame_ends: Optional[StateFrameStreamEnds]
     records_pruned_at: Optional[datetime]
+    app_version: Optional[str] = None
+    rendered_strategy_config: Optional[Dict[str, Any]] = None
+    code_identity: Optional[CodeIdentity] = None
     unreadable: Dict[str, str] = field(default_factory=dict)
 
 
@@ -235,3 +246,48 @@ class DerivedSegment:
     ends: List[SessionEnd]
     window: CompareWindow
     declared_stops: List[DeclaredStop]
+
+
+@dataclass(frozen=True)
+class BacktestScenarioCapture:
+    """
+    One scenario of a backtest run, as the run recorded it.
+
+    Args:
+        name: The scenario
+        declared_window: The window its header says it was set to cover; None where the header
+            names none for it
+        first_tick: The first tick it processed, from its scenario details; None where it
+            processed none or the details cannot be read
+        last_tick: The last tick it processed; None as above
+        records_frames: Whether its state-frame stream exists
+        rendered_strategy_config: Its strategy as its components were built, from the run's
+            rendered scenario set; None where that cannot be read
+    """
+    name: str
+    declared_window: Optional[DataWindow]
+    first_tick: Optional[datetime]
+    last_tick: Optional[datetime]
+    records_frames: bool
+    rendered_strategy_config: Optional[Dict[str, Any]] = None
+
+
+@dataclass(frozen=True)
+class BacktestRunCapture:
+    """
+    A finished backtest run as its records show it — what the divergence gate reads of it.
+
+    Args:
+        run_id: The run
+        app_version: The release it ran, from its header; None where the header cannot be read
+        code_identity: Which code it ran, from its header; None as above
+        rows: Its ledger rows
+        scenarios: Its scenarios, by name
+        unreadable: What could not be read, by what it is, with the reason
+    """
+    run_id: str
+    app_version: Optional[str]
+    code_identity: Optional[CodeIdentity]
+    rows: List[RunResultRow]
+    scenarios: List[BacktestScenarioCapture]
+    unreadable: Dict[str, str] = field(default_factory=dict)

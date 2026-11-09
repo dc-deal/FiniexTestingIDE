@@ -86,7 +86,7 @@ account models.
 |------|-------------|
 | `test_the_record_counts_what_the_executor_counted` | a fill and a close, a refusal, a denial, a strategy cancel, a partial fill the venue then ended, an adoption and its fill, the session end's cancel, a lost answer the venue never received — each counted from its events exactly as the executor counted it |
 | `test_the_step_after_a_partial_fill_is_recorded_and_not_counted` | the venue's ending of the rest is written after `partially_filled` and counted nowhere |
-| `test_a_close_for_a_position_no_longer_held_is_the_one_known_difference` | the venue's fill of a close whose position something else took is recorded and booked nowhere, so the count is one execution higher than the executor's — the one known difference |
+| `test_a_close_for_a_position_no_longer_held_is_the_one_known_difference` | the venue's fill of a close whose position something else took is recorded and booked nowhere, so the count is one execution higher than the executor's — the one known difference, which the divergence report keeps compared and names |
 
 ### `test_order_event_stream_io.py`
 

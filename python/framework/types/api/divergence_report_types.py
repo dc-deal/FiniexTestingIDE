@@ -206,11 +206,15 @@ class DayCompleteness(BaseModel):
         mismatches: Every count that disagrees
         not_checked_because: Why it could not be checked; '' where it was
         uncompared_columns: The counts no event of the record counts, left out of the check
+        unbooked_executions: How many executions the record holds beyond what the row counted,
+            where nothing else disagrees — fills the venue made that the book did not book, a
+            divergence between the two and no loss of the record; None where it was not checked
     """
     state: DayCompletenessState
     mismatches: List[DayCountMismatch] = []
     not_checked_because: str = ''
     uncompared_columns: List[str] = []
+    unbooked_executions: Optional[int] = None
 
 
 class DayExclusionReason(StrEnum):
@@ -325,7 +329,8 @@ class TradingDayClassification(BaseModel):
             is compared
         included: Whether it is compared — only where no cause holds
         exclusions: Every cause that holds
-        details: What each cause found — who, when and which figures
+        details: What each cause found — who, when and which figures — and, on a compared day,
+            the executions its book did not book
         completeness: Its record against its ledger row; None where no row seals it
         ledger_row: The row that sealed it; None where none did
         first_frame_after_opening_s: Seconds from its opening to its first state frame — when

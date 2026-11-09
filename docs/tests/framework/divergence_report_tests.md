@@ -1,8 +1,8 @@
 # Divergence Report Tests
 
 `tests/framework/divergence_report/` — the comparison of a live session with a backtest of exactly
-its window (#512): what the backtest is built from, which trading days of the live side are
-compared, and what the report measures.
+its window (#512): what the backtest is built from, whether a backtest may be compared with the
+session at all, which trading days of the live side are compared, and what the report measures.
 
 Run: `python -m pytest tests/framework/divergence_report/ -v`
 Launch entry: `🧩 Pytest: Divergence Report (All)`
@@ -28,6 +28,8 @@ session's record, and each seam that carries one is held here.
 | A day's order events are counted otherwise than the executor counted them | Every day with a partial fill the venue ended reads incomplete and drops out |
 | A segment's window starts at the first period's opening instead of the first tick | The backtest decides on bars the session never saw |
 | A position changed by hand across a restart goes unnoticed | The days after compare two different accounts |
+| A file the backtest's code path reaches changes after the session's release, undeclared — or a declared one changes again | The divergence measures a change of code, not parity |
+| The backtest runs another strategy, strategy configuration, broker document or window than the session | The divergence measures that difference instead of the simulator |
 
 Not here: the warmup read back from a record, bar for bar against the archive path — that is the
 warmup history suite (`test_warmup_from_record.py`); the count of a day's order events held to the
@@ -38,7 +40,8 @@ The live side's tests build their deployments with `tests/shared/divergence_live
 sessions in memory with their ledger rows in the shape the ledger writes them, how each ended, their
 first ticks and state frames, and the day records each sealed — on the crypto market, starting five
 minutes after midnight the way the thirty-day run does. The collector's own tests write real run
-directories instead.
+directories instead. The gate's tests start from `tests/shared/divergence_gate_pair.py`, a session
+and a backtest the gate lets through, and change one thing each.
 
 ## The tests
 
@@ -95,11 +98,11 @@ The trading days as the report places them, and the counting a day is checked by
 
 | Test | Description |
 |------|-------------|
-| `TestADaysRecordAgainstItsRow` | complete; incomplete with every disagreeing count named; a partial fill the venue then ended is complete; every way a day cannot be checked — no record, unreadable, mislabelled, a line cut off, an event after the day closed, a row without a count, pruned — says why |
+| `TestADaysRecordAgainstItsRow` | complete; incomplete with every disagreeing count named; more executions than counted and nothing else apart is complete, the surplus counted as unbooked; fewer executions, or more beside another difference, is incomplete; a partial fill the venue then ended is complete; every way a day cannot be checked — no record, unreadable, mislabelled, a line cut off, an event after the day closed, a row without a count, pruned — says why |
 | `TestTheThirtyDayRunAsPlanned` | one session still running: every sealed day compared; the first day, whose first tick comes five minutes after midnight, is exempt from its opening |
 | `TestAKilledSession` | killed and restarted the same day: that day excluded, the days after wait for the positions; restarted two days later: the empty day and the restart day named; an emergency shutdown is a kill with its cause quoted; an orderly stop is named as a stop |
 | `TestALateSealOverSeveralDays` | a machine that slept: the days its loop did not run through are named once, the day after waits; a day another stream sealed but whose order record is missing is not checked rather than a loop that stopped; a session killed between booking a day and sealing its records leaves that day not checked |
-| `TestGuardsAgainstADaySlippingIn` | a day sealed twice by overlapping sessions; a record holding a fill nothing was booked for reads incomplete; pruned records; the days after a declared stop lie after the window; without a first tick no day is placed |
+| `TestGuardsAgainstADaySlippingIn` | a day sealed twice by overlapping sessions; a record holding a fill nothing was booked for stays compared and names the execution the book did not book; pruned records; the days after a declared stop lie after the window; without a first tick no day is placed |
 | `TestPropertiesOfEveryClassification` | every grid day appears; a day is included exactly when no cause holds; every cause has its sentence and names its rule section; which causes break the record |
 | `TestTheResumption` | apart, apart, then the same: compared again from there; exactly one lot step counts as the same; a side without a position is apart; the live positions come from each day's last frame |
 
@@ -112,5 +115,53 @@ ledger's writer.
 
 | Test | Description |
 |------|-------------|
-| `TestTheSessionsWithoutAStream` | every session with its booking state, first tick, outcome, frame ends, lot step and base currency from the frozen document, and code stand; a session only the run index names has booked nothing yet; a deployment nobody names and one naming two brokers are refused |
+| `TestTheSessionsWithoutAStream` | every session with its booking state, first tick, outcome, frame ends, lot step and base currency from the frozen document, code stand, release, rendered strategy and the code identity of its header; a session only the run index names has booked nothing yet; a deployment nobody names and one naming two brokers are refused |
 | `TestTheSealedDays` | each day's records — its events in `seq` order, its label, its last frame, its position at the closing; an unbroken session is compared every day and the restart after its stop waits; a day record gone is not checked |
+
+### `test_import_closure.py`
+
+The closure of a code path is computed from source text, so a synthetic tree of a few files shows
+every way an import reaches a file.
+
+| Test | Description |
+|------|-------------|
+| `TestTheClosure` | `from a import b` reaches `a` and the module `b`, a plain import and a conditional one count; an import naming no file and a relative one add nothing; an excluded prefix is neither held nor followed; on this tree the path holds its entry points and no served model, and none of the divergence report's own modules |
+| `TestTheSyntaxTree` | docstrings, comments and layout leave the tree and its digest unchanged; a changed value and a string that is no docstring change it |
+
+### `test_divergence_gate_code_path.py`
+
+A repository in `tmp_path` laid out like the backtest's path — entry points, a data-preparation
+module, a served model — with a release commit; each test commits one change on top and reads both
+trees back through git, as the gate does.
+
+| Test | Description |
+|------|-------------|
+| `TestReadingATreeAtACommit` | every file of the directory with the suffix, at the commit; a commit the repository does not hold reads nothing |
+| `TestTheCodePathFileByFile` | unchanged and docstring-only pass; a code change is refused undeclared and passes declared at its tree; a declared file that changed again is refused, a docstring fix keeps its declaration; a file entering the path — new or newly imported — and one leaving it are refused undeclared; a served model is outside the path; a malformed declaration is a fault |
+| `TestTheGateOverTheCode` | the release against an unchanged commit is comparable; an undeclared change is refused with the file; a release without declarations permits no change; an uncommitted session or backtest, a commit the repository does not hold, sessions on two commits, a session whose code or release cannot be read are refused |
+| `TestTheGatesOwnDeclarations` | every declaration names known categories and a full digest; every category is declared somewhere |
+
+### `test_divergence_gate_checks.py`
+
+The code path is judged over an empty tree here, so each check stands alone.
+
+| Test | Description |
+|------|-------------|
+| `test_the_pair_as_built_is_comparable` | the starting pair passes every check |
+| `TestTheStrategy` | a component of different code, one on one side only, the strategy repository on another commit or uncommitted on either side are refused; a repository is compared by its label, never by its root |
+| `TestTheRenderedStrategy` | the strategy as both sides rendered it: a deep value and a default filled in on one side only are refused by their path; key order does not count; a session or a scenario whose rendered strategy cannot be read is refused |
+| `TestTheBrokerDocument` | another frozen configuration, and a session without one, are refused |
+| `TestTheWindow` | a first tick more than the gap bound after the window's start, a last tick more than it before the end, a tick limit, a scenario without ticks, a window without an end and a backtest without a scenario are refused; a first tick within the bound passes |
+| `TestWhatTheBacktestRecorded` | an order feature beyond the venue, a backtest without a ledger row and a scenario without state frames are refused |
+| `test_every_refusal_is_an_error_with_a_declared_check` | every refusal is an error whose check id the catalog declares |
+
+### `test_backtest_side_collector.py`
+
+A real run directory, written the way a backtest writes itself: its header, registered in the run
+index, a state-frame stream per scenario, its scenario details, its ledger row through the ledger's
+writer, and its rendered scenario set in a run-config store.
+
+| Test | Description |
+|------|-------------|
+| `TestTheRunAsItRecordedItself` | the header's release and code identity, the ledger row's broker document, each scenario's declared window, first and last tick, frames and rendered strategy from the run-config store; a scenario without frames says so; missing scenario details and a run naming no rendered set are named, never filled in; a tick limit leaves the window open; a run nobody names and a session are refused |
+| `test_the_gate_takes_what_the_collector_read` | the gate passes the pair the collector read |

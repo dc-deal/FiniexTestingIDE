@@ -44,6 +44,7 @@ from python.framework.store.broker_config_freeze import read_frozen_broker_confi
 from python.framework.store.entry_members.run_dir_reader import RunDirReader
 from python.framework.store.entry_members.run_entry_members import RUN_ENTRY_MEMBERS_BY_ID
 from python.framework.store.entry_members.run_entry_reader import RunEntryReader
+from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.report_types import (
     ParentKind,
     RunInfo,
@@ -59,6 +60,8 @@ from python.framework.types.divergence_capture_types import (
     LiveDeploymentCapture,
     LiveSessionCapture,
 )
+from python.framework.types.run_config_types import RunConfigKind
+from python.framework.types.run_origin_types import CodeIdentity
 from python.framework.types.run_stream_types import RunStreamLines
 from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.broker_types import BrokerType
@@ -83,7 +86,8 @@ class LiveSideCollector:
                  reader: Optional[RunEntryReader] = None,
                  store: Optional[ReportStore] = None,
                  market_config: Optional[MarketConfigManager] = None,
-                 read_broker_config: Callable[[str], Dict[str, Any]] = read_frozen_broker_config):
+                 read_broker_config: Callable[[str], Dict[str, Any]] = read_frozen_broker_config,
+                 run_configs: Optional[RunConfigStore] = None):
         """
         Args:
             ledger: The run-results ledger; the configured one when omitted
@@ -92,6 +96,8 @@ class LiveSideCollector:
             store: The report store; one over that index and ledger when omitted
             market_config: Where a broker's trading day flips; the configured one when omitted
             read_broker_config: Reads a frozen broker configuration by its id
+            run_configs: The run-config store a session's rendered profile is read from; the
+                configured one when omitted
         """
         if ledger is None or run_index is None or reader is None or store is None:
             config = AppConfigManager()
@@ -107,6 +113,8 @@ class LiveSideCollector:
         self._store = store
         self._market_config = market_config or MarketConfigManager()
         self._read_broker_config = read_broker_config
+        self._run_configs = run_configs or RunConfigStore(
+            Path(AppConfigManager().get_run_configs_path()))
 
     def collect_sessions(self, deployment_id: str) -> LiveDeploymentCapture:
         """
@@ -190,7 +198,8 @@ class LiveSideCollector:
         rows = sorted(rows, key=lambda row: (row.period_no is None, row.period_no or 0))
         stated = [row for row in rows if not row.measured_nothing()]
         identity = {name: _agreed(stated, name, unreadable) for name in (
-            'code_stand', 'data_broker_type', 'rendered_config_id', 'broker_config_id', 'symbols')}
+            'code_stand', 'data_broker_type', 'rendered_config_id', 'broker_config_id', 'symbols',
+            'app_version')}
         symbols = identity['symbols'] or []
         symbol = symbols[0] if symbols else None
         broker_config_id = identity['broker_config_id'] or ''
@@ -209,6 +218,10 @@ class LiveSideCollector:
             outcome=self._outcome(run_id, unreadable),
             frame_ends=self._frame_ends(run_id, unreadable),
             records_pruned_at=_instant(pruned, 'records_pruned_at', unreadable),
+            app_version=identity['app_version'],
+            rendered_strategy_config=self._rendered_strategy(
+                identity['rendered_config_id'] or '', unreadable),
+            code_identity=self._code_identity(run_id, unreadable),
             unreadable=unreadable)
 
     def _symbol_facts(self, broker_config_id: str, broker_type: str, symbol: Optional[str],
@@ -239,6 +252,51 @@ class LiveSideCollector:
             unreadable['broker_config'] = str(e)
             return None, None
         return spec.volume_step, spec.base_currency
+
+    def _rendered_strategy(self, rendered_config_id: str,
+                           unreadable: Dict[str, str]) -> Optional[Dict[str, Any]]:
+        """
+        A session's strategy as its components were built, from its rendered profile.
+
+        Args:
+            rendered_config_id: The run-config store id of its rendered profile; '' where its
+                rows name none
+            unreadable: Where a failed read is named
+
+        Returns:
+            The rendered strategy; None where it cannot be read
+        """
+        if not rendered_config_id:
+            return None
+        try:
+            document = self._run_configs.read_frozen(rendered_config_id,
+                                                     RunConfigKind.AUTOTRADER_RENDERED)
+        except _UNREADABLE as e:
+            unreadable['rendered_config'] = str(e)
+            return None
+        strategy = document.get('strategy_config')
+        if not isinstance(strategy, dict):
+            unreadable['rendered_config'] = 'its rendered profile holds no strategy'
+            return None
+        return strategy
+
+    def _code_identity(self, run_id: str, unreadable: Dict[str, str]) -> Optional[CodeIdentity]:
+        """
+        Which code a session ran, from its header.
+
+        Args:
+            run_id: The session
+            unreadable: Where a failed read is named
+
+        Returns:
+            Its code identity; None where the header is missing, cannot be read or predates it
+        """
+        try:
+            header = self._reader.read_header(run_id)
+        except _UNREADABLE as e:
+            unreadable['header'] = str(e)
+            return None
+        return header.code_identity if header is not None else None
 
     def _first_tick(self, run_id: str, unreadable: Dict[str, str]) -> Optional[datetime]:
         """

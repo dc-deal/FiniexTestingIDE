@@ -34,6 +34,7 @@ from python.framework.types.api.divergence_report_types import (
 from python.framework.types.api.report_types import RunResultRow
 from python.framework.types.config_types.market_config_types import DayAnchorConfig
 from python.framework.types.divergence_capture_types import (
+    ORDER_EVENT_COUNT_COLUMN,
     UNCOMPARED_COUNT_COLUMNS,
     BoundaryPosition,
     DerivedSegment,
@@ -42,9 +43,13 @@ from python.framework.types.divergence_capture_types import (
     LiveSessionCapture,
 )
 from python.framework.types.run_results_types import PeriodCloseReason
+from python.framework.types.trading_env_types.order_event_types import OrderEventType
 from python.framework.types.trading_env_types.trading_env_stats_types import EXECUTION_COUNT_FIELDS
 from python.framework.utils.time_utils import parse_iso_datetime
 from python.framework.utils.trading_day_anchor import trading_day_of
+
+# The count a fill is counted in — the one a record can hold more of than its row, unlost
+_EXECUTED_COLUMN = ORDER_EVENT_COUNT_COLUMN[OrderEventType.FILLED]
 
 
 def check_day_completeness(row: RunResultRow, records: Optional[LiveDayRecords],
@@ -92,9 +97,16 @@ def check_day_completeness(row: RunResultRow, records: Optional[LiveDayRecords],
     mismatches = [DayCountMismatch(column=column, recorded=recorded[column],
                                    counted=getattr(row, column))
                   for column in compared if recorded[column] != getattr(row, column)]
+    # More executions than counted, and nothing else apart: nothing was lost — the venue filled an
+    # order for a position the session no longer held, and the book booked nothing for it
+    if (len(mismatches) == 1 and mismatches[0].column == _EXECUTED_COLUMN
+            and mismatches[0].recorded > mismatches[0].counted):
+        return DayCompleteness(
+            state=DayCompletenessState.COMPLETE, uncompared_columns=uncompared,
+            unbooked_executions=mismatches[0].recorded - mismatches[0].counted)
     return DayCompleteness(
         state=DayCompletenessState.INCOMPLETE if mismatches else DayCompletenessState.COMPLETE,
-        mismatches=mismatches, uncompared_columns=uncompared)
+        mismatches=mismatches, uncompared_columns=uncompared, unbooked_executions=0)
 
 
 def _alive_spans(segment: DerivedSegment) -> List[Tuple[str, datetime, datetime]]:
@@ -300,6 +312,9 @@ def _classify_day(label: date, first_of_segment: bool, opening: datetime, closin
     elif completeness.state is DayCompletenessState.NOT_CHECKED and not loop_did_not_run:
         exclusions.append(DayExclusionReason.COMPLETENESS_NOT_CHECKED)
         details.append(completeness.not_checked_because)
+    if completeness.unbooked_executions:
+        details.append(f'{completeness.unbooked_executions} execution(s) the venue made that the '
+                       'book did not book — a divergence between the book and the venue')
     first_frame = records.frames_first_time if records else None
     last_frame = records.frames_last_time if records else None
     return TradingDayClassification(

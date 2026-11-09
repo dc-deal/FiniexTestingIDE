@@ -30,6 +30,7 @@ from python.framework.reporting.builders.divergence.live_trading_day_builder imp
 from python.framework.reporting.io.artifact_specs import WARNINGS_ERRORS_ARTIFACT
 from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
 from python.framework.reporting.io.report_artifact_io import write_artifact
+from python.framework.reporting.io.run_header_io import write_run_header
 from python.framework.reporting.io.run_stream_sealer import RunStreamSealer
 from python.framework.reporting.store.report_store import ReportStore
 from python.framework.reporting.store.run_index import RunIndex
@@ -37,6 +38,7 @@ from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.store.entry_members.run_dir_reader import RunDirReader
 from python.framework.store.entry_members.run_entry_reader import RunEntryReader
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.divergence_report_types import SessionEndKind
 from python.framework.types.api.report_types import (
     ParentKind,
@@ -45,11 +47,13 @@ from python.framework.types.api.report_types import (
     WarningsErrorsOutcome,
     WarningsErrorsReport,
 )
+from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.run_results_types import PeriodCloseReason, RunProvenance
 from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.order_event_types import OrderEvent, OrderEventType
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from python.framework.validators.divergence_day_validator import live_side_of
+from tests.shared.divergence_gate_pair import RENDERED_STRATEGY, code_identity
 from tests.shared.divergence_live_chain import (
     CRYPTO_ANCHOR,
     DEPLOYMENT,
@@ -72,6 +76,10 @@ class _Tree:
         self.root = root
         self.index = root / 'runs_index.parquet'
         self.ledger_dir = root / 'ledger'
+        self.run_configs = RunConfigStore(root / 'run_configs')
+        self.rendered_id = self.run_configs.register_document(
+            {'kind': RunConfigKind.AUTOTRADER_RENDERED.value, 'strategy_config': RENDERED_STRATEGY},
+            RunConfigKind.AUTOTRADER_RENDERED).config_id
 
     def collector(self) -> LiveSideCollector:
         with open(_BROKER_DOCUMENT, 'r', encoding='utf-8') as handle:
@@ -79,17 +87,20 @@ class _Tree:
         return LiveSideCollector(
             ledger=RunResultsLedger(self.ledger_dir), run_index=RunIndex(self.index),
             reader=RunEntryReader(self.index), store=ReportStore(self.index, self.ledger_dir),
-            market_config=MarketConfigManager(), read_broker_config=lambda _id: document)
+            market_config=MarketConfigManager(), read_broker_config=lambda _id: document,
+            run_configs=self.run_configs)
 
     def session(self, run_id: str, first_tick: datetime, days: List[date],
                 closed_at: Optional[datetime] = None, broker_type: str = 'kraken_spot',
                 book: bool = True) -> Path:
         """Write one session that sealed the given days, one order filled at each day's noon."""
         run_dir = self.root / 'runs' / run_id
-        RunIndex(self.index).register_run(RunHeader(
+        header = RunHeader(
             run_id=run_id, start_time=first_tick - timedelta(seconds=30),
             run_type=RUN_TYPE_AUTOTRADER, run_name='my_bot', parent_id=DEPLOYMENT,
-            parent_kind=ParentKind.DEPLOYMENT), run_dir)
+            parent_kind=ParentKind.DEPLOYMENT, code_identity=code_identity())
+        RunIndex(self.index).register_run(header, run_dir)
+        write_run_header(header, run_dir)
         logger = NullLogger()
         sealer = RunStreamSealer(logger)
         writer = RunEntryWriter(run_dir, RUN_TYPE_AUTOTRADER, streams=sealer)
@@ -150,8 +161,9 @@ class _Tree:
             app_version='1.5.0', git_commit='a1b2c3d4', git_branch='main', git_dirty=False,
             decision_logic_type='CORE/my_logic', decision_version='1.0.0', worker_versions={},
             strategy_config_json='{}', symbols=[SYMBOL], data_broker_type=broker_type,
-            deployment_id=DEPLOYMENT, run_type=RUN_TYPE_AUTOTRADER, rendered_config_id='rendered_1',
-            broker_config_id='broker_1', code_stand=code_stand()), periods)
+            deployment_id=DEPLOYMENT, run_type=RUN_TYPE_AUTOTRADER,
+            rendered_config_id=self.rendered_id, broker_config_id='broker_1',
+            code_stand=code_stand()), periods)
 
 
 @pytest.fixture
@@ -182,6 +194,9 @@ class TestTheSessionsWithoutAStream:
         assert first.frame_ends.first.frame_time == FIRST_TICK
         assert (first.lot_step, first.base_currency) == (_ETHUSD_LOT_STEP, 'ETH')
         assert first.code_stand == code_stand() and not first.unreadable
+        assert first.app_version == '1.5.0'
+        assert first.rendered_strategy_config == RENDERED_STRATEGY
+        assert first.code_identity == code_identity()
         assert [row.period_close_reason for row in first.rows][-1] == 'session_end'
         assert (capture.anchor, capture.weekend_closure) == (CRYPTO_ANCHOR, False)
         assert closed_at > FIRST_TICK

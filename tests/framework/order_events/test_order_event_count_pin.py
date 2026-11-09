@@ -176,7 +176,7 @@ def test_the_step_after_a_partial_fill_is_recorded_and_not_counted(spot_mode):
 
 @ACCOUNT_MODELS
 def test_a_close_for_a_position_no_longer_held_is_the_one_known_difference(spot_mode):
-    """Recorded as the venue's fill, booked nowhere: the day reads incomplete on executions."""
+    """Recorded as the venue's fill, booked nowhere: one execution more recorded than counted."""
     mock, executor, events = live_session(spot_mode=spot_mode)
     executor.open_order(market_order())
     mock.await_submit_confirmation(executor)
