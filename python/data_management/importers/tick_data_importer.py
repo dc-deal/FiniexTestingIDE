@@ -161,8 +161,8 @@ class TickDataImporter:
 
         if not json_files:
             vLog.warning(
-                f'No JSON files found in {self.source_dir}. Just rebuilding index.')
-            index_manager = self.rebuild_parquet_index()
+                f'No JSON files found in {self.source_dir}. Just updating the index.')
+            index_manager = self.update_parquet_index()
             if index_manager is not None:
                 self.validate_archive_ordering(index_manager)
             return
@@ -173,7 +173,7 @@ class TickDataImporter:
         for json_file in json_files:
             self.import_file(json_file)
 
-        index_manager = self.rebuild_parquet_index()
+        index_manager = self.update_parquet_index()
         if index_manager is not None:
             self.validate_archive_ordering(index_manager)
 
@@ -339,30 +339,32 @@ class TickDataImporter:
             vLog.error(error_msg)
             self.errors.append(error_msg)
 
-    def rebuild_parquet_index(
+    def update_parquet_index(
         self,
         on_file_scanned: Optional[Callable[[int, int], None]] = None
     ) -> Optional[TickIndexManager]:
         """
-        Rebuild index after successful imports. A failure is counted among the errors, and so
-        is a tick file the scan could not read, so the summary cannot read `Errors: 0` over an
-        index that no longer describes the archive.
+        Bring the index up to date after the imports: only the files that changed are read, or
+        every file where the index is missing or was written under an older schema
+        (TickIndexManager.update_index). A failure is counted among the errors, and so is a
+        tick file the scan could not read, so the summary cannot read `Errors: 0` over an index
+        that no longer describes the archive.
 
         Args:
             on_file_scanned: Called with (file number, file count) for each tick file scanned
 
         Returns:
-            The rebuilt index — also when files were missing from it — or None when the
-            rebuild failed
+            The updated index — also when files were missing from it — or None when the
+            update failed
         """
-        vLog.info('\n🔄 Rebuilding Parquet index...')
+        vLog.info('\n🔄 Updating Parquet index...')
         try:
 
             index_manager = TickIndexManager(data_dir=str(self.target_dir))
-            index_manager.build_index(force_rebuild=True, on_file_scanned=on_file_scanned)
+            index_manager.update_index(on_file_scanned=on_file_scanned)
 
             symbols = index_manager.list_symbols()
-            vLog.info(f'✅ Index rebuilt: {len(symbols)} symbols indexed')
+            vLog.info(f'✅ Index up to date: {len(symbols)} symbols indexed')
             unreadable = index_manager.get_unreadable_files()
             if unreadable:
                 # The ticks are the archive, not derived: the repair is a re-import
@@ -373,9 +375,9 @@ class TickDataImporter:
             return index_manager
 
         except Exception as e:
-            vLog.error(f'❌ Failed to rebuild index: {e}')
+            vLog.error(f'❌ Failed to update index: {e}')
             vLog.error('   Index may be outdated - run manual rebuild!')
-            self.errors.append(f'Tick index rebuild failed: {e}')
+            self.errors.append(f'Tick index update failed: {e}')
             return None
 
     def get_applied_offsets(self) -> Dict[str, Dict[str, int]]:

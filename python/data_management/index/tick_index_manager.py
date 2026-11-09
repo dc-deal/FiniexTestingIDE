@@ -5,11 +5,13 @@ TickIndexManager - Fast File Selection via Metadata Index
 """
 
 import json
+import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
 import pyarrow as pa
@@ -25,6 +27,11 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.store.abstract_store_index import store_index_filename
 from python.framework.types.data_deficiency_types import DataDeficiency, TradeIdGaps
+from python.framework.types.import_types.tick_index_types import (
+    TickIndexMethod,
+    TickIndexRebuildReason,
+    TickIndexRun,
+)
 from python.framework.types.store_types import StoreId
 from python.framework.utils.tick_deficiency_scan import measure_tick_deficiencies
 
@@ -39,6 +46,12 @@ vLog = get_global_logger()
 # The proper mechanism is `AbstractStoreIndex.LOGIC_VERSION`, which these three legacy managers
 # do not have — adopting it is #583's, and this is the stopgap until then.
 INDEX_SCHEMA_VERSION = b'2.4'
+
+# How many file checks an update runs at once. A check is one stat; on a mounted drive each waits
+# milliseconds and in parallel the waits overlap — measured 2026-11-09 on this container's bridged
+# drive: 8,369 files took about 36 s one after another and about 2 s across 16 threads. On a
+# server's local disk both stay well under a second, so the number costs nothing there.
+_STAT_THREADS = 16
 
 
 def _json_or_none(raw: Optional[bytes]) -> Optional[dict]:
@@ -61,6 +74,22 @@ def _json_or_none(raw: Optional[bytes]) -> Optional[dict]:
     except (ValueError, UnicodeDecodeError):
         return None
     return decoded if isinstance(decoded, dict) else None
+
+
+def _stat_or_none(path: Path) -> Optional[os.stat_result]:
+    """
+    A file's stat, for an update's check of what changed.
+
+    Args:
+        path: The file
+
+    Returns:
+        Its stat, or None when it no longer exists
+    """
+    try:
+        return os.stat(path)
+    except FileNotFoundError:
+        return None
 
 
 class TickIndexManager:
@@ -99,6 +128,8 @@ class TickIndexManager:
         self.index: Dict[str, Dict[str, List[Dict]]] = {}
         # The files the last scan could not read (see get_unreadable_files)
         self._unreadable_files: List[str] = []
+        # How the last build went, update or full rebuild (see get_last_run)
+        self._last_run: Optional[TickIndexRun] = None
         self.logger.info('📚 Parquet Tick Index Manager initialized.')
 
     # =========================================================================
@@ -116,12 +147,14 @@ class TickIndexManager:
                         Default False - assumes index is current
             on_file_scanned: Called with (file number, file count) for each file a rebuild scans
         """
+        reason = TickIndexRebuildReason.ASKED_FOR if force_rebuild else None
         # An index written under an older schema is rebuilt regardless of mtimes: its rows are
         # complete for the columns that existed then and silently missing the ones added since.
         if not force_rebuild and self.index_file.exists() and self._schema_outdated():
             self.logger.info(
                 '🔄 Tick index was written under an older schema — rebuilding')
             force_rebuild = True
+            reason = TickIndexRebuildReason.OLDER_SCHEMA
 
         # Fast path: Load existing index without checking staleness
         if not force_rebuild and self.index_file.exists():
@@ -136,6 +169,7 @@ class TickIndexManager:
                 self.logger.info(
                     f'📚 Loaded existing tick index ({len(self.index)} broker types)')
                 return
+            reason = TickIndexRebuildReason.NEWER_FILES
 
         # Check for legacy JSON and migrate
         if not force_rebuild and self._legacy_json_file.exists() and not self.index_file.exists():
@@ -144,7 +178,117 @@ class TickIndexManager:
                 self.logger.info('✅ Migration complete')
                 return
 
-        self.logger.info('🔍 Scanning Parquet files for tick index...')
+        self._rebuild_full(reason or TickIndexRebuildReason.NO_INDEX, on_file_scanned)
+
+    def get_full_rebuild_reason(self) -> Optional[TickIndexRebuildReason]:
+        """
+        Why the next update_index would scan every file instead of only the changed ones — asked
+        before it runs, by whoever shows or estimates it. Reads one file's schema at most.
+
+        Returns:
+            The reason, or None when an update will do
+        """
+        if not self.index_file.exists():
+            return TickIndexRebuildReason.NO_INDEX
+        if self._schema_outdated():
+            return TickIndexRebuildReason.OLDER_SCHEMA
+        if not self._holds_file_identities():
+            return TickIndexRebuildReason.NO_FILE_IDENTITIES
+        return None
+
+    def _holds_file_identities(self) -> bool:
+        """
+        Whether the index on disk records each file's size and modification time. An index
+        written before they existed is still current for every reader, but an update could
+        recognise none of its files: it would read them all while counting as an update, and its
+        time would be estimated as one.
+
+        Returns:
+            True when both columns are there
+        """
+        try:
+            names = pq.read_schema(self.index_file).names
+        except Exception:
+            return False
+        return 'file_size_bytes' in names and 'file_mtime_ns' in names
+
+    def update_index(self, on_file_scanned: Optional[Callable[[int, int], None]] = None) -> None:
+        """
+        Bring the index up to the tick files on disk, reading only what changed: a file the index
+        does not hold, or one whose size or modification time differs from what it recorded — a
+        re-import that rewrote it. Entries of files that are gone are dropped. Without an index,
+        or with one written under an older schema, every file is scanned; raising
+        INDEX_SCHEMA_VERSION is therefore also how a change to what a scan measures reaches every
+        file.
+
+        Args:
+            on_file_scanned: Called with (file number, file count) for each file this build scans
+        """
+        reason = self.get_full_rebuild_reason()
+        if reason is not None:
+            self._rebuild_full(reason, on_file_scanned)
+            return
+
+        self.logger.info('🔍 Updating the tick index from the files that changed...')
+        start_time = time.monotonic()
+        self._load_index()
+        held = {entry['path']: entry
+                for symbols in self.index.values()
+                for entries in symbols.values()
+                for entry in entries}
+        parquet_files = list(self.data_dir.glob('*/ticks/**/*.parquet'))
+        with ThreadPoolExecutor(max_workers=_STAT_THREADS) as pool:
+            file_stats = list(pool.map(_stat_or_none, parquet_files))
+
+        kept: List[Dict] = []
+        to_scan: List[Path] = []
+        present = set()
+        for parquet_file, file_stat in zip(parquet_files, file_stats):
+            # A file removed between the listing and its check is gone, not unreadable
+            if file_stat is None:
+                continue
+            path = str(parquet_file.absolute())
+            present.add(path)
+            entry = held.get(path)
+            if (entry is not None and entry.get('file_size_bytes') == file_stat.st_size
+                    and entry.get('file_mtime_ns') == file_stat.st_mtime_ns):
+                kept.append(entry)
+            else:
+                to_scan.append(parquet_file)
+
+        scanned, self._unreadable_files = self._scan_files(to_scan, on_file_scanned)
+        self.index = self._nest_entries(kept + scanned)
+        self._save_index()
+
+        elapsed = time.monotonic() - start_time
+        gone = len(set(held) - present)
+        self._last_run = TickIndexRun(
+            method=TickIndexMethod.UPDATE, rebuild_reason=None, scanned=len(to_scan),
+            unchanged=len(kept), gone=gone, elapsed_s=elapsed)
+        self.logger.info(
+            f'✅ Index updated: {len(to_scan)} file(s) scanned, {len(kept)} unchanged, '
+            f'{gone} gone, in {elapsed:.2f}s')
+
+    def get_last_run(self) -> Optional[TickIndexRun]:
+        """
+        How the last build of this manager went.
+
+        Returns:
+            The run, or None when this manager has only loaded the index
+        """
+        return self._last_run
+
+    def _rebuild_full(self, reason: TickIndexRebuildReason,
+                      on_file_scanned: Optional[Callable[[int, int], None]]) -> None:
+        """
+        Scan every tick file and write the index from them alone.
+
+        Args:
+            reason: Why every file is scanned
+            on_file_scanned: Called with (file number, file count) for each file scanned
+        """
+        self.logger.info(
+            f'🔍 Scanning Parquet files for tick index... (full rebuild: {reason.value})')
         start_time = time.monotonic()
 
         # Pattern: mt5/ticks/EURUSD/*.parquet
@@ -153,40 +297,20 @@ class TickIndexManager:
         if not parquet_files:
             self.logger.warning(f'No Parquet files found in {self.data_dir}')
             self.index = {}
+            self._last_run = TickIndexRun(
+                method=TickIndexMethod.FULL_REBUILD, rebuild_reason=reason, scanned=0,
+                unchanged=None, gone=None, elapsed_s=time.monotonic() - start_time)
             return
 
-        unreadable: List[str] = []
-        for file_no, parquet_file in enumerate(parquet_files, 1):
-            if on_file_scanned is not None:
-                on_file_scanned(file_no, len(parquet_files))
-            try:
-                entry = self._scan_file(parquet_file)
-                broker_type = entry['broker_type']
-                symbol = entry['symbol']
-
-                if broker_type not in self.index:
-                    self.index[broker_type] = {}
-
-                if symbol not in self.index[broker_type]:
-                    self.index[broker_type][symbol] = []
-
-                self.index[broker_type][symbol].append(entry)
-
-            except Exception as e:
-                self.logger.warning(
-                    f'Failed to index {parquet_file.name}: {e}')
-                unreadable.append(f'{parquet_file.name}: {e}')
-        self._unreadable_files = unreadable
-
-        # Sort files chronologically per broker_type/symbol
-        for broker_type in self.index:
-            for symbol in self.index[broker_type]:
-                self.index[broker_type][symbol].sort(
-                    key=lambda x: x['start_time'])
+        entries, self._unreadable_files = self._scan_files(parquet_files, on_file_scanned)
+        self.index = self._nest_entries(entries)
 
         self._save_index()
 
         elapsed = time.monotonic() - start_time
+        self._last_run = TickIndexRun(
+            method=TickIndexMethod.FULL_REBUILD, rebuild_reason=reason,
+            scanned=len(parquet_files), unchanged=None, gone=None, elapsed_s=elapsed)
         total_files = sum(
             len(files)
             for bt in self.index.values()
@@ -197,10 +321,58 @@ class TickIndexManager:
             f'in {elapsed:.2f}s'
         )
 
+    def _scan_files(self, parquet_files: List[Path],
+                    on_file_scanned: Optional[Callable[[int, int], None]]
+                    ) -> Tuple[List[Dict], List[str]]:
+        """
+        Scan tick files one by one; a file that cannot be read is named, not indexed.
+
+        Args:
+            parquet_files: The files to scan
+            on_file_scanned: Called with (file number, file count) for each file
+
+        Returns:
+            (the entries of the files read, one line per file that could not be read)
+        """
+        entries: List[Dict] = []
+        unreadable: List[str] = []
+        for file_no, parquet_file in enumerate(parquet_files, 1):
+            if on_file_scanned is not None:
+                on_file_scanned(file_no, len(parquet_files))
+            try:
+                entries.append(self._scan_file(parquet_file))
+            except Exception as e:
+                self.logger.warning(
+                    f'Failed to index {parquet_file.name}: {e}')
+                unreadable.append(f'{parquet_file.name}: {e}')
+        return entries, unreadable
+
+    @staticmethod
+    def _nest_entries(entries: List[Dict]) -> Dict[str, Dict[str, List[Dict]]]:
+        """
+        Group index entries by broker type and symbol, each list in time order.
+
+        Args:
+            entries: Flat index entries
+
+        Returns:
+            broker_type → symbol → entries, each list sorted by start time
+        """
+        nested: Dict[str, Dict[str, List[Dict]]] = {}
+        for entry in entries:
+            nested.setdefault(entry['broker_type'], {}).setdefault(entry['symbol'], []).append(entry)
+        for symbols in nested.values():
+            for symbol_entries in symbols.values():
+                symbol_entries.sort(key=lambda x: x['start_time'] or '')
+        return nested
+
     def _scan_file(self, parquet_file: Path) -> Dict:
         """
         Scan single Parquet file and extract metadata with statistics.
         """
+        # The identity an update compares, taken before the content is read: a file rewritten
+        # while it is scanned then differs from it and is scanned again by the next update
+        file_stat = parquet_file.stat()
         pq_file = pq.ParquetFile(parquet_file)
 
         try:
@@ -224,7 +396,7 @@ class TickIndexManager:
             b'source_file', b'unknown').decode('utf-8')
 
         tick_count = pq_file.metadata.num_rows
-        file_size_mb = round(parquet_file.stat().st_size / (1024 * 1024), 2)
+        file_size_mb = round(file_stat.st_size / (1024 * 1024), 2)
 
         # === STATISTICS CALCULATION ===
         if tick_count > 50000:
@@ -301,8 +473,10 @@ class TickIndexManager:
                 custom_metadata.get(b'source_meta_origin'))})
 
         # What the file LACKS, measured from its rows (#561) — here, because the index reads
-        # every file in full anyway, so a file imported before the measurement existed is
-        # measured on the next rebuild without being imported again.
+        # every file it scans in full anyway. An update scans only the files that changed, so a
+        # file imported before the measurement existed is measured on the next FULL rebuild,
+        # without being imported again — a change to this measurement raises
+        # INDEX_SCHEMA_VERSION, and that forces one.
         measurement = measure_tick_deficiencies(df)
 
         return {
@@ -317,6 +491,8 @@ class TickIndexManager:
             'anchor_max_correction_ms': anchor_max_correction_ms,
             'tick_count': tick_count,
             'file_size_mb': file_size_mb,
+            'file_size_bytes': file_stat.st_size,
+            'file_mtime_ns': file_stat.st_mtime_ns,
             'source_file': source_file,
             # When the importer wrote the file. A re-import that changes only VALUES keeps
             # the name, the count and the range; this is what still tells the file is new.
@@ -432,10 +608,12 @@ class TickIndexManager:
                         'symbol': symbol,
                         'file': entry['file'],
                         'path': entry['path'],
-                        'start_time': pd.to_datetime(entry['start_time']),
-                        'end_time': pd.to_datetime(entry['end_time']),
+                        'start_time': entry['start_time'],
+                        'end_time': entry['end_time'],
                         'tick_count': entry['tick_count'],
                         'file_size_mb': entry['file_size_mb'],
+                        'file_size_bytes': entry.get('file_size_bytes'),
+                        'file_mtime_ns': entry.get('file_mtime_ns'),
                         'source_file': entry['source_file'],
                         'processed_at': entry.get('processed_at', ''),
                         'num_row_groups': entry['num_row_groups'],
@@ -465,7 +643,8 @@ class TickIndexManager:
         # data_format_version got lost on persist in the first place.
         columns = [
             'broker_type', 'symbol', 'file', 'path', 'start_time', 'end_time',
-            'tick_count', 'file_size_mb', 'source_file', 'processed_at', 'num_row_groups',
+            'tick_count', 'file_size_mb', 'file_size_bytes', 'file_mtime_ns',
+            'source_file', 'processed_at', 'num_row_groups',
             'collected_start', 'collected_end',
             'anchor_resyncs', 'anchor_max_correction_ms',
             'statistics', 'sessions', 'data_format_version',
@@ -474,6 +653,15 @@ class TickIndexManager:
         ]
         df = pd.DataFrame(rows, columns=columns) if rows else pd.DataFrame(
             columns=columns)
+        # One conversion per column, not per row: per row it took about 4.7 s over 8,369 files
+        # (measured 2026-11-09), the column takes hundredths of a second. ISO8601, because the
+        # times come with and without a fraction of a second
+        for column in ('start_time', 'end_time'):
+            df[column] = pd.to_datetime(df[column], format='ISO8601')
+        # Exact integers, never floats: a nanosecond mtime does not survive a float64, and an
+        # entry loaded from an index written before these two columns existed has None here
+        for column in ('file_size_bytes', 'file_mtime_ns'):
+            df[column] = pd.array([row[column] for row in rows], dtype='Int64')
 
         # Add metadata
         metadata = {
@@ -527,17 +715,11 @@ class TickIndexManager:
         Returns:
             broker_type → symbol → entries, each list sorted by start time
         """
-        result = {}
+        entries = []
 
         for row in records:
             broker_type = row['broker_type']
             symbol = row['symbol']
-
-            if broker_type not in result:
-                result[broker_type] = {}
-
-            if symbol not in result[broker_type]:
-                result[broker_type][symbol] = []
 
             entry = {
                 'file': row['file'],
@@ -547,6 +729,11 @@ class TickIndexManager:
                 'end_time': row['end_time'].isoformat() if pd.notna(row['end_time']) else None,
                 'tick_count': int(row['tick_count']),
                 'file_size_mb': float(row['file_size_mb']),
+                # Tolerant, and not a schema change: only update_index reads these two. An index
+                # without them is rebuilt in full by the next update (get_full_rebuild_reason),
+                # and an entry without them is read again by it
+                'file_size_bytes': row.get('file_size_bytes'),
+                'file_mtime_ns': row.get('file_mtime_ns'),
                 'source_file': row['source_file'],
                 'num_row_groups': int(row['num_row_groups']),
                 # Tolerant: index files written before the arrival bounds were
@@ -583,15 +770,9 @@ class TickIndexManager:
                     if row['trade_id_gaps'] else None),
             }
 
-            result[broker_type][symbol].append(entry)
+            entries.append(entry)
 
-        # Sort by start_time
-        for broker_type in result:
-            for symbol in result[broker_type]:
-                result[broker_type][symbol].sort(
-                    key=lambda x: x['start_time'] or '')
-
-        return result
+        return self._nest_entries(entries)
 
     def _migrate_from_json(self) -> bool:
         """Migrate from legacy JSON format to Parquet."""

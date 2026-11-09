@@ -62,6 +62,11 @@ from python.framework.types.import_types.tick_inbox_types import (
     TickZipMember,
     TickZipSettlement,
 )
+from python.framework.types.import_types.tick_index_types import (
+    TickIndexMethod,
+    TickIndexRebuildReason,
+    TickIndexRun,
+)
 from python.framework.types.import_types.tick_package_types import (
     TickPackageFetch,
     TickPackageFetchOutcome,
@@ -80,6 +85,15 @@ from python.system.ui.import_live_display import ImportLiveDisplay
 from python.system.ui.ui_render_utils import BYTES_PER_MB, format_size
 
 vLog = get_global_logger()
+
+# Why a build of the tick index read every file, in words for the screen and the summary
+_INDEX_REBUILD_REASON_TEXTS: Dict[TickIndexRebuildReason, str] = {
+    TickIndexRebuildReason.ASKED_FOR: 'asked for',
+    TickIndexRebuildReason.NO_INDEX: 'no index yet',
+    TickIndexRebuildReason.OLDER_SCHEMA: 'the index was written under an older schema',
+    TickIndexRebuildReason.NO_FILE_IDENTITIES: 'the index predates the file identities',
+    TickIndexRebuildReason.NEWER_FILES: 'tick files newer than the index',
+}
 
 # The collector writes its metadata block first; broker_type sits well inside this many bytes.
 _HEAD_BYTES = 8192
@@ -184,6 +198,8 @@ class ImportCoordinator:
         self._zip_settlements: List[TickZipSettlement] = []
         # The zips refused or kept in the inbox, counted like the importers' own errors
         self._zip_errors: List[str] = []
+        # How the tick index was brought up to date — update or full rebuild — for the summary
+        self._tick_index_run: Optional[TickIndexRun] = None
         self._signal_importer: Optional[SignalDataImporter] = None
         self._bar_importer: Optional[BarImporter] = None
         self._tracker: Optional[ImportProgressTracker] = None
@@ -356,7 +372,7 @@ class ImportCoordinator:
             tracker.add_step(ImportStepId.TICKS_IMPORT, ImportSection.TICKS,
                              'Import tick files', counter_unit='files')
             tracker.add_step(ImportStepId.TICKS_INDEX, ImportSection.TICKS,
-                             'Rebuild tick index', counter_unit='files')
+                             'Tick index', counter_unit='files')
             tracker.add_step(ImportStepId.TICKS_ORDER, ImportSection.TICKS,
                              'Check archive order')
             if renders_bars:
@@ -744,8 +760,18 @@ class ImportCoordinator:
         tracker.set_total(ImportStepId.TICKS_IMPORT, len(scan.tick_files))
 
         tick_files = _index_row_count(target / TickIndexManager.INDEX_FILE_PARQUET)
-        tracker.set_quantity(ImportStepId.TICKS_INDEX, ImportRateUnit.FILE,
-                             tick_files + len(scan.tick_files))
+        rebuild_reason = TickIndexManager(data_dir=str(target)).get_full_rebuild_reason()
+        if rebuild_reason is None:
+            # An update reads in full only the files this import writes; checking the others is
+            # one stat each, run in parallel, and is left out of the quantity
+            tracker.set_quantity(ImportStepId.TICKS_INDEX, ImportRateUnit.IMPORTED_FILE,
+                                 len(scan.tick_files))
+            tracker.set_detail(ImportStepId.TICKS_INDEX, 'update — only the files that changed')
+        else:
+            tracker.set_quantity(ImportStepId.TICKS_INDEX, ImportRateUnit.FILE,
+                                 tick_files + len(scan.tick_files))
+            tracker.set_detail(ImportStepId.TICKS_INDEX,
+                               f'full rebuild — {_INDEX_REBUILD_REASON_TEXTS[rebuild_reason]}')
         tracker.set_quantity(ImportStepId.TICKS_ORDER, ImportRateUnit.FILE,
                              tick_files + len(scan.tick_files))
 
@@ -849,10 +875,14 @@ class ImportCoordinator:
 
         tracker.start_step(ImportStepId.TICKS_INDEX)
         errors_before = len(importer.errors)
-        index_manager = importer.rebuild_parquet_index(
+        index_manager = importer.update_parquet_index(
             on_file_scanned=lambda done, total: tracker.advance(
                 ImportStepId.TICKS_INDEX, done, total))
         self._update_counters()
+        if index_manager is not None:
+            self._tick_index_run = index_manager.get_last_run()
+        if self._tick_index_run is not None:
+            tracker.set_detail(ImportStepId.TICKS_INDEX, _index_run_phrase(self._tick_index_run))
         # A file the scan could not read fails the step, while the index it built — without
         # that file — still serves the order check and the render
         tracker.finish_step(ImportStepId.TICKS_INDEX, _status_after(
@@ -1341,6 +1371,9 @@ class ImportCoordinator:
                     f'{offset}h × {count} file(s)'
                     for offset, count in sorted(offset_counts.items()))
                 vLog.info(f'✅ UTC offsets applied: {broker_type}: {counts_str}')
+        if self._tick_index_run is not None:
+            vLog.info(f'📚 Tick index: {_index_run_phrase(self._tick_index_run)} · '
+                      f'{format_duration(self._tick_index_run.elapsed_s)}')
         for settlement in self._zip_settlements:
             vLog.info(_settlement_line(settlement))
         refused = self._refused_names()
@@ -1453,6 +1486,38 @@ def _broker_type_in_head(head: bytes) -> Optional[str]:
     """
     match = _BROKER_TYPE_PATTERN.search(head.decode('utf-8', errors='replace'))
     return match.group(1) if match else None
+
+
+def _index_run_phrase(run: TickIndexRun) -> str:
+    """
+    How the tick index was built, as one phrase: the method, for a full rebuild its reason, and
+    what it read.
+
+    Args:
+        run: The build
+
+    Returns:
+        The phrase
+    """
+    if run.method is TickIndexMethod.UPDATE:
+        return (f'update — {run.scanned:,} scanned · {_count_or_dash(run.unchanged)} unchanged · '
+                f'{_count_or_dash(run.gone)} gone')
+    reason = (_INDEX_REBUILD_REASON_TEXTS[run.rebuild_reason] if run.rebuild_reason is not None
+              else 'reason not recorded')
+    return f'full rebuild ({reason}) — {run.scanned:,} scanned'
+
+
+def _count_or_dash(value: Optional[int]) -> str:
+    """
+    A count with thousands separators, or a dash where none was measured.
+
+    Args:
+        value: The count, or None
+
+    Returns:
+        The text
+    """
+    return '—' if value is None else f'{value:,}'
 
 
 def _fetch_counts(fetches: List[TickPackageFetch]) -> str:
