@@ -31,6 +31,7 @@ session's record, and each seam that carries one is held here.
 | A file the backtest's code path reaches changes after the session's release, undeclared — or a declared one changes again | The divergence measures a change of code, not parity |
 | The backtest runs another strategy, strategy configuration, broker document or window than the session | The divergence measures that difference instead of the simulator |
 | A measure reports a divergence between a run and itself | What it measures is the instrument, not the difference between the two runs |
+| A day whose decision frame is missing on one side counts as agreeing | A one-sided day the verdict should have named slips through |
 | The parts of a day's change of account value do not add up to the change | The attribution names a cause for a divergence that is not where it says |
 
 Not here: the warmup read back from a record, bar for bar against the archive path — that is the
@@ -118,6 +119,7 @@ ledger's writer.
 | Test | Description |
 |------|-------------|
 | `TestTheSessionsWithoutAStream` | every session with its booking state, first tick, outcome, frame ends, lot step and base currency from the frozen document, code stand, release, rendered strategy and the code identity of its header; a session only the run index names has booked nothing yet; a deployment nobody names and one naming two brokers are refused |
+| `TestTheWarmupsReach` | the longest stretch a timeframe's required bars span; a record naming no timeframe has none |
 | `TestEverySessionsFrames` | each session's state frames read whole across its sealed days, in time order; a session that records none says so |
 | `TestTheSealedDays` | each day's records — its events in `seq` order, its label, its last frame, its position at the closing; an unbroken session is compared every day and the restart after its stop waits; a day record gone is not checked |
 
@@ -216,7 +218,7 @@ account.
 | `TestTheRunsAreWorthMeasuring` | each run filled orders and valued its frames |
 | `TestTheEquationAtSpot` | every window of the spot run is taken apart and its parts add up to its change of account value; the fees it paid are seen |
 | `test_a_margin_run_is_not_taken_apart_and_says_why` | the margin run is not taken apart, and says why |
-| `TestARunAgainstItself` | held against itself, every order measures nothing and the account values never part, in both account models; every part of the spot attribution is zero |
+| `TestARunAgainstItself` | held against itself, every decision agrees, every order measures nothing and the account values never part, in both account models; every part of the spot attribution is zero |
 
 ### `test_segment_measures.py`
 
@@ -225,4 +227,14 @@ recorded the same orders and account values.
 
 | Test | Description |
 |------|-------------|
-| `TestTheSegmentAgainstABacktestOfIt` | the days after the restart are compared where both sides are flat, and a position the backtest holds keeps a waiting day out; every compared day is paired with the backtest row of its boundary; the same records show nothing in any measure; what could not be read is named |
+| `TestTheSegmentAgainstABacktestOfIt` | the days after the restart are compared where both sides are flat, and a position the backtest holds keeps a waiting day out; every compared day is paired with the backtest row of its boundary; the same records show nothing in any measure, every decision agreeing; what could not be read is named, and so is a comparison given no decision timeframe |
+
+### `test_decision_divergence.py`
+
+Frames on both sides with a decision on the day bar's close; each test changes one thing.
+
+| Test | Description |
+|------|-------------|
+| `TestTwoDecisions` | the same action and orders agree and are counted in the table; a different action is one-sided; an order one side sent alone is one-sided though the actions agree; a side without its decision frame is not checked, never agreeing |
+| `TestTheProposedKind` | the live breaker held back the backtest's order; differing workers within a restart's warmup are a re-warmup; differing workers with no restart in reach are a capture, unconfirmed; agreeing workers and differing account values are the account value; a one-sided day with nothing differing stays unexplained |
+| `TestTheDecisionFrame` | a pass that closed no decision bar is no decision; the segment's first day decides on its first tick |

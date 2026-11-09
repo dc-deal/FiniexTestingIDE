@@ -13,7 +13,7 @@ What cannot be read is named on the session or the day and read as not checked, 
 """
 
 import copy
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -22,6 +22,7 @@ from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.bars.warmup_record_reader import read_warmup_record
 from python.framework.constants.run_layout_constants import DAY_LABEL_FORMAT
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
+from python.framework.exceptions.timeframe_errors import UnsupportedTimeframeError
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.reporting.builders.deployment_history_builder import (
     add_unbooked_sessions,
@@ -68,6 +69,7 @@ from python.framework.types.run_stream_types import RunStreamLines
 from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.utils.time_utils import parse_iso_datetime
+from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 # What a read can fail with when a record is missing, damaged or of a shape this reader does not
 # know — a data condition, named on the record; anything else is a fault and propagates
@@ -224,13 +226,14 @@ class LiveSideCollector:
         start = run.start_time if run is not None and run.start_time else (
             rows[0].run_timestamp if rows else '')
         pruned = next((row.records_pruned_at for row in rows if row.records_pruned_at), '')
+        first_tick, warmup_reach = self._warmup(run_id, unreadable)
         return LiveSessionCapture(
             run_id=run_id, start_time=_instant(start, 'start_time', unreadable), rows=rows,
             booking_state=booking_state, code_stand=identity['code_stand'],
             broker_type=identity['data_broker_type'] or '', symbol=symbol,
             rendered_config_id=identity['rendered_config_id'] or '',
             broker_config_id=broker_config_id, lot_step=lot_step, base_currency=base_currency,
-            first_tick=self._first_tick(run_id, unreadable),
+            first_tick=first_tick, warmup_reach=warmup_reach,
             outcome=self._outcome(run_id, unreadable),
             frame_ends=self._frame_ends(run_id, unreadable),
             records_pruned_at=_instant(pruned, 'records_pruned_at', unreadable),
@@ -314,23 +317,33 @@ class LiveSideCollector:
             return None
         return header.code_identity if header is not None else None
 
-    def _first_tick(self, run_id: str, unreadable: Dict[str, str]) -> Optional[datetime]:
+    def _warmup(self, run_id: str,
+                unreadable: Dict[str, str]) -> Tuple[Optional[datetime], Optional[timedelta]]:
         """
-        A session's first tick, from its warmup history.
+        A session's first tick and how far back its warmup reached, from its warmup history.
 
         Args:
             run_id: The session
             unreadable: Where a failed read is named
 
         Returns:
-            The instant; None where the record is missing or the tick never came
+            (the first tick, the longest stretch a timeframe's required bars span); each None where
+            the record is missing, the tick never came or no timeframe is known
         """
         try:
             record = read_warmup_record(run_id, self._reader)
         except _UNREADABLE as e:
             unreadable['warmup_history'] = str(e)
-            return None
-        return _instant(record.first_tick or '', 'first_tick', unreadable)
+            return None, None
+        reaches = []
+        for timeframe, history in record.timeframes.items():
+            try:
+                reaches.append(timedelta(minutes=TimeframeConfig.get_minutes(timeframe)
+                                         * history.required))
+            except UnsupportedTimeframeError:
+                unreadable['warmup_history'] = f'its timeframe {timeframe!r} is not known'
+        return (_instant(record.first_tick or '', 'first_tick', unreadable),
+                max(reaches) if reaches else None)
 
     def _outcome(self, run_id: str, unreadable: Dict[str, str]) -> Optional[WarningsErrorsOutcome]:
         """

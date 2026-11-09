@@ -10,7 +10,7 @@ ran, and the report's own declarations stay outside it.
 """
 
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -95,6 +95,8 @@ class LiveSessionCapture:
             position is; None as above
         first_tick: Its first tick, from its warmup history; None where the record is missing or
             the tick never came
+        warmup_reach: How far back its warmup reached — the longest stretch a timeframe's required
+            bars span; None where the record is missing or names no known timeframe
         outcome: How it ended, from its warnings-errors report; None while it runs, and where it
             died before writing one
         frame_ends: Its state-frame stream at both ends; None where it records no frames
@@ -124,6 +126,7 @@ class LiveSessionCapture:
     frame_ends: Optional[StateFrameStreamEnds]
     records_pruned_at: Optional[datetime]
     app_version: Optional[str] = None
+    warmup_reach: Optional[timedelta] = None
     rendered_strategy_config: Optional[Dict[str, Any]] = None
     code_identity: Optional[CodeIdentity] = None
     unreadable: Dict[str, str] = field(default_factory=dict)

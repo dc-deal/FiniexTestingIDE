@@ -1,10 +1,12 @@
 """
-The measures of one segment of the divergence report (#512): measure 2, measure 3 and the day
+The measures of one segment of the divergence report (#512): measures 1, 2 and 3 and the day
 attribution, beside a backtest of the segment's window.
 
 It runs the resumption rule first — the days after a break are compared again from the first
 opening at which both sides hold the same position, which the backtest's frames now tell — then
-pairs every compared day with the backtest row that closed at the same boundary and measures it.
+pairs every compared day with the backtest row that closed at the same boundary and measures it:
+its decision (measure 1), its orders (measure 2), the account values (measure 3) and the
+attribution of its change.
 Pure: it reads the records the two collectors hand it.
 """
 
@@ -14,6 +16,9 @@ from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 from python.framework.reporting.builders.divergence.day_attribution_builder import (
     OrderKey,
     attribute_day,
+)
+from python.framework.reporting.builders.divergence.decision_divergence_builder import (
+    compare_decisions,
 )
 from python.framework.reporting.builders.divergence.equity_divergence_builder import (
     track_equity,
@@ -29,6 +34,8 @@ from python.framework.reporting.builders.divergence.order_divergence_builder imp
 from python.framework.types.api.divergence_report_types import (
     DayAttribution,
     DayOrderDivergence,
+    DecisionComparison,
+    DecisionTable,
     LiveSegment,
     OrderOutcome,
     SegmentMeasures,
@@ -51,8 +58,8 @@ from python.framework.validators.divergence_day_validator import (
 def measure_segment(segment: LiveSegment, capture: LiveDeploymentCapture,
                     day_records: Mapping[Tuple[str, date], LiveDayRecords],
                     live_frames: Mapping[str, RecordedFrames], backtest: BacktestRunCapture,
-                    records: BacktestScenarioRecords,
-                    taker_rate_pct: Optional[float]) -> SegmentMeasures:
+                    records: BacktestScenarioRecords, taker_rate_pct: Optional[float],
+                    decision_timeframe: Optional[str]) -> SegmentMeasures:
     """
     One segment's compared days, measured against a backtest of its window.
 
@@ -64,9 +71,11 @@ def measure_segment(segment: LiveSegment, capture: LiveDeploymentCapture,
         backtest: The backtest run of the segment's window
         records: What its scenario recorded as it ran
         taker_rate_pct: The frozen broker configuration's taker rate, in percent
+        decision_timeframe: The timeframe whose bar's close is a day's decision, as the comparison
+            declares it; None leaves measure 1 out, and says so
 
     Returns:
-        The segment's days after the resumption rule, and measure 2, measure 3 and the day
+        The segment's days after the resumption rule, and measures 1, 2 and 3 and the day
         attribution of every compared day
     """
     sessions = [session for session in capture.sessions if session.run_id in segment.run_ids]
@@ -113,9 +122,21 @@ def measure_segment(segment: LiveSegment, capture: LiveDeploymentCapture,
             merged_live, live_events, _paired_live(measured),
             backtest_frames, backtest_events, _paired_backtest(measured),
             base_currency))
+    decisions: List[DecisionComparison] = []
+    table = DecisionTable()
+    if decision_timeframe is None:
+        unreadable.append('no decision timeframe was given, so measure 1 was not computed')
+    else:
+        restarts = {session.run_id: (session.start_time or session.first_tick,
+                                     session.warmup_reach)
+                    for session in sessions[1:]
+                    if (session.start_time or session.first_tick) is not None}
+        decisions, table = compare_decisions(
+            days, segment.window.start, merged_live, backtest_frames,
+            {measured.closing: measured for measured in orders}, decision_timeframe, restarts)
     return SegmentMeasures(
         segment_index=segment.index, scenario=records.scenario, days=days,
-        paired_days=paired_days, orders=orders,
+        paired_days=paired_days, decisions=decisions, decision_table=table, orders=orders,
         equity=track_equity(days, merged_live, backtest_frames, live_rows, backtest_by_closing),
         attribution=attribution, unreadable=unreadable)
 

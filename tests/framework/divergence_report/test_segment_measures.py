@@ -21,9 +21,13 @@ from python.framework.reporting.builders.divergence.live_trading_day_builder imp
 from python.framework.reporting.builders.divergence.segment_measures_builder import (
     measure_segment,
 )
-from python.framework.types.api.divergence_report_types import DayExclusionReason
+from python.framework.types.api.divergence_report_types import (
+    DayExclusionReason,
+    DecisionComparisonState,
+)
 from python.framework.types.api.report_types import OpenPositionRow
 from python.framework.types.api.state_frame_types import StateFrame, StateFrameCause
+from python.framework.types.decision_logic_types import DecisionLogicAction
 from python.framework.types.divergence_capture_types import (
     BacktestRunCapture,
     BacktestScenarioRecords,
@@ -50,10 +54,13 @@ def _at(day_offset: int, hours: float) -> datetime:
     return FIRST_TICK.replace(minute=0) + timedelta(days=day_offset, hours=hours)
 
 
-def _frame(at: datetime, eth: float = 0.0) -> StateFrame:
-    """A valued spot frame: 1000 USD and some ETH at a mid of 3000."""
+def _frame(at: datetime, eth: float = 0.0, decision_bar: bool = False) -> StateFrame:
+    """A valued spot frame: 1000 USD and some ETH at a mid of 3000, a FLAT decision where a day bar
+    closed in its pass."""
     return StateFrame(
         frame_time=at, written_at=at, written_for=StateFrameCause.CADENCE,
+        closed_bars={'D1': at - timedelta(days=1)} if decision_bar else {},
+        decision_action=DecisionLogicAction.FLAT if decision_bar else None,
         cadence_slot=at.replace(second=0, microsecond=0), ticks_processed=1, symbol=SYMBOL,
         account_currency='USD', last_price=3000.0, balance=1000.0,
         balances={'USD': 1000.0, 'ETH': eth}, equity=1000.0 + eth * 3000.0,
@@ -70,7 +77,7 @@ def _frames_over(first_day_offset: int, days: int,
         opening = closing_of(FIRST_DAY + timedelta(days=offset - 1), CRYPTO_ANCHOR)
         eth = (eth_at or {}).get(offset, 0.0)
         frames.append(_frame(opening - timedelta(seconds=30), eth))
-        frames.append(_frame(opening + timedelta(hours=12), eth))
+        frames.append(_frame(opening + timedelta(hours=12), eth, decision_bar=True))
     return frames
 
 
@@ -97,7 +104,8 @@ def _measured(backtest_eth_at: Optional[Dict[int, float]] = None):
     records = BacktestScenarioRecords(
         scenario=_SCENARIO, order_events=backtest_events,
         frames=RecordedFrames(_frames_over(0, 6, backtest_eth_at)))
-    return measure_segment(segment, capture, day_records, live_frames, backtest, records, 0.8)
+    return measure_segment(segment, capture, day_records, live_frames, backtest, records, 0.8,
+                           'D1')
 
 
 class TestTheSegmentAgainstABacktestOfIt:
@@ -129,6 +137,10 @@ class TestTheSegmentAgainstABacktestOfIt:
             assert len(day.orders) == 1 and day.orders[0].lots_difference == 0
             assert not day.live_one_sided and not day.backtest_one_sided
         assert measures.equity.shared_slots > 0 and measures.equity.largest_gap.gap == 0.0
+        assert len(measures.decisions) == len(measures.paired_days)
+        assert all(day.state is DecisionComparisonState.AGREE for day in measures.decisions)
+        cell, = measures.decision_table.cells
+        assert (cell.live_action, cell.backtest_action) == (DecisionLogicAction.FLAT,) * 2
         for day in measures.attribution:
             assert day.not_computed_because == ''
             assert all(value == 0.0 for value in day.difference.model_dump().values())
@@ -146,7 +158,8 @@ class TestTheSegmentAgainstABacktestOfIt:
         measures = measure_segment(
             segment, capture, day_records, {}, BacktestRunCapture(
                 run_id='b1', app_version='1.5.0', code_identity=None, rows=[], scenarios=[]),
-            records, None)
+            records, None, None)
         assert any('s1: no state frames were read' in note for note in measures.unreadable)
+        assert any('measure 1 was not computed' in note for note in measures.unreadable)
         assert any('backtest my_recorded_window state frames' in note
                    for note in measures.unreadable)

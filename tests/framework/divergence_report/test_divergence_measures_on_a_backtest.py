@@ -5,8 +5,9 @@ and a backtest held against itself.
 Two fixture scenarios run once each with state frames switched on — a spot account (ETHUSD) and a
 margin account (USDJPY) — in this process. At spot, every window of the run is taken apart and the
 parts add up to the change of account value exactly. At margin the attribution is not computed,
-and says why. Held against itself, a run shows no divergence in any measure, in either account
-model: what the measures report is what differs between the runs, never the instrument.
+and says why. Held against itself, a run shows no divergence in any measure — its decisions, its
+orders, its account values — in either account model: what the measures report is what differs
+between the runs, never the instrument.
 """
 
 import json
@@ -22,6 +23,9 @@ from python.framework.reporting.builders.divergence.day_attribution_builder impo
     attribute_day,
     decompose_day,
 )
+from python.framework.reporting.builders.divergence.decision_divergence_builder import (
+    compare_decisions,
+)
 from python.framework.reporting.builders.divergence.equity_divergence_builder import (
     track_equity,
 )
@@ -29,7 +33,10 @@ from python.framework.reporting.builders.divergence.order_divergence_builder imp
     measure_day_orders,
 )
 from python.framework.reporting.io.order_event_stream_io import order_event_row
-from python.framework.types.api.divergence_report_types import TradingDayClassification
+from python.framework.types.api.divergence_report_types import (
+    DecisionComparisonState,
+    TradingDayClassification,
+)
 from python.framework.types.api.report_types import OrderEventRow, RunReporting
 from python.framework.types.api.state_frame_types import StateFrame
 from python.framework.types.trading_env_types.order_event_types import OrderEventType
@@ -159,6 +166,22 @@ class TestARunAgainstItself:
         assert tracking.shared_slots > 0
         assert tracking.largest_gap.gap == 0.0
         assert all(day.difference_pct == 0.0 for day in tracking.days)
+
+    @pytest.mark.parametrize('model', sorted(_FIXTURES))
+    def test_every_decision_agrees(self, runs, model):
+        events, frames = runs[model]
+        opening, closing = _windows(frames)[0]
+        timeframes = [timeframe for frame in frames for timeframe in frame.closed_bars]
+        assert timeframes, f'{model}: no pass closed a bar'
+        decision_timeframe = max(set(timeframes), key=timeframes.count)
+        day = measure_day_orders(opening.date(), closing, [('my_run', e) for e in events],
+                                 {'my_run': frames}, 'my_run', events, frames, 0.8, 0)
+        comparisons, table = compare_decisions(
+            [_day(opening, closing)], None, frames, frames, {closing: day},
+            decision_timeframe, {})
+        comparison, = comparisons
+        assert comparison.state is DecisionComparisonState.AGREE, comparison.detail
+        assert table.not_checked == 0
 
     def test_every_part_of_the_spot_attribution_is_zero(self, runs):
         events, frames = runs['spot']

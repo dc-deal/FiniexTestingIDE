@@ -219,6 +219,20 @@ class TestTheSessionsWithoutAStream:
             tree.collector().collect_sessions(DEPLOYMENT)
 
 
+class TestTheWarmupsReach:
+
+    def test_the_longest_stretch_a_timeframes_required_bars_span(self, tree):
+        _two_sessions(tree)
+        warmup = RunDirReader(tree.root / 'runs' / 's2').path_of(RunEntryMemberId.WARMUP_HISTORY)
+        record = json.loads(warmup.read_text(encoding='utf-8'))
+        record['timeframes'] = {'H1': {'required': 30, 'bars': []},
+                                'D1': {'required': 3, 'bars': []}}
+        warmup.write_text(json.dumps(record), encoding='utf-8')
+        sessions = tree.collector().collect_sessions(DEPLOYMENT).sessions
+        assert sessions[1].warmup_reach == timedelta(days=3)
+        assert sessions[0].warmup_reach is None   # its record names no timeframe
+
+
 class TestEverySessionsFrames:
 
     def test_read_whole_across_the_sealed_days_in_time_order(self, tree):

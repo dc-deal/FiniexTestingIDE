@@ -10,11 +10,12 @@ look the rule up rather than guess it.
 
 from datetime import date, datetime
 from enum import StrEnum
-from typing import List, Optional
+from typing import Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from python.framework.types.api.report_types import DeploymentCodeChange
+from python.framework.types.decision_logic_types import DecisionLogicAction
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_types import OrderSide
 
@@ -713,6 +714,113 @@ class DayAttribution(BaseModel):
     not_computed_because: str = ''
 
 
+class ExplainedFlipKind(StrEnum):
+    """
+    Which of the four explained kinds a one-sided decision is proposed as — a proposal for a person
+    to check, never the verdict.
+
+    LIVE_BREAKER: the live circuit breaker held back an order the backtest sent — a backtest has no
+        breaker
+    REWARMUP: the day lies within the warmup's reach after a restart, where the session warmed up on
+        the venue's bars while the backtest ran on, and the workers' outputs differ
+    CAPTURE: the workers' outputs differ with no restart in reach — the decision bar's values differ
+        between the session's ticks and the archive's; unconfirmed until the venue's own trades
+        show it
+    ACCOUNT_VALUE: the workers' outputs agree and the two account values differ — the input that
+        changed the action is the account value the fills already moved
+    """
+    LIVE_BREAKER = 'live_breaker'
+    REWARMUP = 'rewarmup'
+    CAPTURE = 'capture'
+    ACCOUNT_VALUE = 'account_value'
+
+
+class DecisionComparisonState(StrEnum):
+    """
+    How one compared day's two decisions relate.
+
+    AGREE: the same action and the same number of orders
+    ONE_SIDED: a different action, or an order one side sent and the other did not
+    NOT_CHECKED: a side has no frame of its decision — never counted as agreeing
+    """
+    AGREE = 'agree'
+    ONE_SIDED = 'one_sided'
+    NOT_CHECKED = 'not_checked'
+
+
+class DayDecision(BaseModel):
+    """
+    One run's decision of one day: the frame of the pass in which the decision bar closed — on a
+    segment's first day, the pass of its first tick.
+
+    Args:
+        frame_time: When that pass ran
+        action: What it decided; None where the frame names no decision
+        order_count: How many orders the run submitted that day
+        equity: The account value in the frame; None where it is unvalued
+        safety_blocked: Whether the live circuit breaker was holding — always False in a backtest
+        worker_outputs: Every worker's outputs the decision read
+        decision_outputs: What the decision logic reported beside its action
+    """
+    frame_time: datetime
+    action: Optional[DecisionLogicAction] = None
+    order_count: int = 0
+    equity: Optional[float] = None
+    safety_blocked: bool = False
+    worker_outputs: Dict[str, Dict[str, JsonValue]] = {}
+    decision_outputs: Dict[str, JsonValue] = {}
+
+
+class DecisionComparison(BaseModel):
+    """
+    One compared day's decision on both sides (measure 1).
+
+    Args:
+        trading_day: The day's label
+        closing: When it closed
+        state: Whether the two decisions agree
+        live: The session's decision; None where no frame of it was found
+        backtest: The backtest's decision; None as above
+        proposed_kind: The explained kind a one-sided day is proposed as; None where none fits — the
+            day is then unexplained
+        detail: The day, the time and the figures behind the proposal, or why it was not checked
+    """
+    trading_day: date
+    closing: datetime
+    state: DecisionComparisonState
+    live: Optional[DayDecision] = None
+    backtest: Optional[DayDecision] = None
+    proposed_kind: Optional[ExplainedFlipKind] = None
+    detail: str = ''
+
+
+class DecisionTableCell(BaseModel):
+    """
+    How many compared days the session decided one action and the backtest another.
+
+    Args:
+        live_action: The session's action
+        backtest_action: The backtest's
+        days: How many days
+    """
+    live_action: DecisionLogicAction
+    backtest_action: DecisionLogicAction
+    days: int
+
+
+class DecisionTable(BaseModel):
+    """
+    The compared days, live action × backtest action — so the days with a trade cannot hide behind
+    the many on which neither side acted.
+
+    Args:
+        cells: Every pair of actions that occurred, with its days
+        not_checked: The days a side's decision was not found on
+    """
+    cells: List[DecisionTableCell] = []
+    not_checked: int = 0
+
+
 class SegmentMeasures(BaseModel):
     """
     What one segment's compared days show beside a backtest of its window — measure 2, measure 3
@@ -723,6 +831,9 @@ class SegmentMeasures(BaseModel):
         scenario: The backtest scenario the segment was held against
         days: The segment's days, the ones after a break decided by the resumption rule
         paired_days: Every compared day with the backtest row that closed at the same boundary
+        decisions: Each compared day's decision on both sides (measure 1); empty where no decision
+            timeframe was given
+        decision_table: The compared days, live action × backtest action
         orders: Each compared day's orders on both sides
         equity: How far the two account values ran apart
         attribution: Each compared day's difference of equity change, taken apart
@@ -732,6 +843,8 @@ class SegmentMeasures(BaseModel):
     scenario: str
     days: List[TradingDayClassification] = []
     paired_days: List[PairedDay] = []
+    decisions: List[DecisionComparison] = []
+    decision_table: DecisionTable = DecisionTable()
     orders: List[DayOrderDivergence] = []
     equity: EquityTracking = EquityTracking()
     attribution: List[DayAttribution] = []
