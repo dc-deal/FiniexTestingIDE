@@ -21,9 +21,9 @@ from python.framework.config_directory.config_directory import declared_run_purp
 from python.framework.reporting.builders.deployment_history_builder import (
     add_unbooked_sessions,
     build_deployment_histories,
+    compose_deployment_list,
     deployment_code_summary,
     deployment_comparability_advisory,
-    summarize_deployments,
 )
 from python.framework.reporting.console.deployment_history_summary import (
     render_deployment_history,
@@ -155,7 +155,7 @@ class RunIndexCli:
         # "which one do I open", the DETAIL answers "what happened inside it". Printing every
         # deployment's full table was neither — it buried the overview in the detail.
         if not deployment:
-            render_deployment_list(summarize_deployments(histories, advisories, code_summaries))
+            render_deployment_list(compose_deployment_list(rows, runs, now))
             return 0
 
         # The ledger holds the row of a session's close only at the end: a hard kill leaves the

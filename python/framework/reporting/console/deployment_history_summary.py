@@ -23,6 +23,7 @@ from python.framework.types.api.report_types import (
     DeploymentCodeChange,
     DeploymentCodeSummary,
     DeploymentComparabilityAdvisory,
+    DeploymentListResponse,
     DeploymentSessionRow,
     DeploymentSummary,
     SessionBookingState,
@@ -31,16 +32,17 @@ from python.framework.types.run_origin_types import FRAMEWORK_REPOSITORY
 from python.framework.utils.math_utils import negated_magnitude
 
 
-def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
+def render_deployment_list(listing: DeploymentListResponse) -> None:
     """
     Print every deployment as one line — the overview half.
 
     Formatting only; every figure was derived in the builder (§12).
 
     Args:
-        summaries: The roll-ups, already ordered
+        listing: The deployment list's answer — its roll-ups, already ordered, and their count
     """
-    print(f'\n{len(summaries)} deployment(s)')
+    summaries = listing.deployments
+    print(f'\n{listing.count} deployment(s)')
     print('─' * 155)
     # 32 holds a deployment id with its random half (31 characters) and the gap after it
     print(f'{"deployment":<32} {"bot":<22} {"bot id":<20} {"orders to":<16} {"sessions":>8} '
@@ -120,8 +122,7 @@ def render_deployment_history(
     first = caption.first_started.strftime('%Y-%m-%d %H:%M') if caption.first_started else '?'
     recorded = (f'{caption.session_count} session(s) · {unfinished} not completed'
                 if unfinished else f'{caption.session_count} session(s)')
-    bot_id = next((s.bot_id for s in sessions if s.bot_id), '')
-    identity = f' · bot {bot_id}' if bot_id else ''
+    identity = f' · bot {caption.bot_id}' if caption.bot_id else ''
     print(f'\n{deployment} — {recorded} · since {first} UTC{identity}')
     if code_summary is not None:
         print(_code_warning(code_summary))

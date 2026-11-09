@@ -108,4 +108,37 @@ across the units, not of the sums.
 `compute_ratio_pct` and `ticks_idle` are **null** on every totals row, because the row spans
 several units' tick counts and there is no single denominator to divide by. `compute_basis` and
 `last_compute_tick` describe one worker inside one unit and are not rolled up either — read those
-from the unit rows.
+from the unit rows. `unit_mean_time_ms` is on the totals rows only: the mean of the units' own
+mean call times, every unit weighing the same.
+
+## A unit's own sums
+
+A unit row carries `timed_worker_count` — the workers it timed, 0 where it did not track them; the
+configured count is `worker_count` on [scenario details](/api/v1/docs/scenario-details) — and its
+workers together: `worker_call_count` and `worker_time_ms`. Where the unit tracked its decisions it
+carries the algo path's own time too — `algo_time_ms`, the workers' time and the decision time,
+`algo_avg_per_tick_ms` that per tick — and `non_flat_signals`, the decisions that asked to buy or
+sell. Those three are null where nothing was tracked. All of them are read from the row itself, so
+an older run answers them too.
+
+## Over the tracked units: the decision totals and the slowest performers
+
+`decision_totals` and `bottlenecks` cover the units that tracked their decisions only; an
+untracked one has nothing to compare. Both are **null where no unit tracked its decisions** — the
+default in a backtest — and on a run recorded before contract 52.
+
+| `decision_totals` | Meaning |
+|---|---|
+| `total_ticks` · `total_decisions` · `total_non_flat_signals` | summed over the tracked units |
+| `decision_total_time_ms` | the decision time summed |
+| `decision_avg_time_ms` | that time over the decisions — never a mean of means; 0.0 without a decision |
+| `decision_unit_mean_time_ms` | the mean of the units' own mean decision times |
+
+`bottlenecks` names the slowest unit — `slowest_algo_unit`, by its `algo_avg_per_tick_ms`
+(`slowest_algo_unit_avg_per_tick_ms`), with its algo time (`slowest_algo_unit_time_ms`) — the
+slowest worker and the slowest decision logic, each by the mean of their units' mean call times,
+and the slowest worker's worst unit beside it. Each counts only above zero, and of equals the first
+in unit order wins; where nothing qualifies the fields are null. `worst_parallel_unit` is the unit
+whose parallel workers saved the least time, possibly below zero, with
+`worst_parallel_time_saved_ms`. These are measurements: whether one warrants a warning is decided
+in [warnings and errors](/api/v1/docs/warnings-errors).

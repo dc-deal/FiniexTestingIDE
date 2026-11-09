@@ -21,14 +21,19 @@ from contextlib import redirect_stdout
 import pytest
 
 from python.framework.reporting.builders.run_unit import RunUnit, run_units_from_session
+from python.framework.reporting.builders.worker_decision_breakdown_builder import (
+    build_worker_decision_breakdowns,
+)
 from python.framework.reporting.builders.worker_decision_report_builder import (
     build_worker_decision_report,
 )
 from python.framework.reporting.console.performance_summary import PerformanceSummary
 from python.framework.types.api.report_types import (
+    ProfilingOperationRow,
+    ProfilingReport,
+    ProfilingUnitRow,
     WorkerDecisionReport,
     WorkerDecisionUnitRow,
-    WorkerStatRow,
 )
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.performance_types.performance_stats_types import (
@@ -165,21 +170,18 @@ class TestPerformanceRender:
     """PerformanceSummary (#399 3d) — the single model-fed worker/decision performance view."""
 
     def _report(self) -> WorkerDecisionReport:
-        unit = WorkerDecisionUnitRow(
-            name='GBPUSD_w01', symbol='GBPUSD', decision_logic_name='aggressive_trend',
-            decision_logic_type='CORE/aggressive_trend', worker_decision_tracked=True,
-            decision_count=559,
-            decision_total_time_ms=269.0, decision_avg_time_ms=0.018,
-            decision_min_time_ms=0.005, decision_max_time_ms=0.9,
-            ticks_processed=15000, parallel_workers=False,
-            workers=[
-                WorkerStatRow(worker_type='CORE/bollinger', worker_name='bollinger_main',
-                              call_count=15000, total_time_ms=1118.0, avg_time_ms=0.075,
-                              min_time_ms=0.01, max_time_ms=0.5),
-                WorkerStatRow(worker_type='CORE/rsi', worker_name='rsi_fast',
-                              call_count=15000, total_time_ms=858.0, avg_time_ms=0.057,
-                              min_time_ms=0.01, max_time_ms=0.4)])
-        return WorkerDecisionReport(run_id=_RUN_ID, units=[unit])
+        # Built as a run builds it, so the folded totals and the slowest performers are there
+        unit = _unit(
+            name='GBPUSD_w01', symbol='GBPUSD',
+            workers=[_ws('bollinger_main', 1118.0, 15000), _ws('rsi_fast', 858.0, 15000)],
+            decision=DecisionLogicStats(
+                decision_logic_type='CORE/aggressive_trend', decision_logic_name='aggressive_trend',
+                decision_count=559, buy_signals=40, sell_signals=19, flat_signals=500,
+                decision_total_time_ms=269.0, decision_avg_time_ms=0.018,
+                decision_min_time_ms=0.005, decision_max_time_ms=0.9, tracked=True),
+            coordination=WorkerCoordinatorPerformanceStats(
+                parallel_workers=False, ticks_processed=15000))
+        return build_worker_decision_report(_RUN_ID, [unit])
 
     def _render(self, method_name: str) -> str:
         summary = PerformanceSummary(self._report())
@@ -259,3 +261,131 @@ class TestCadenceDerivedInBuilder:
             coordination=WorkerCoordinatorPerformanceStats(ticks_processed=1000))]).units[0]
         assert row.workers[0].ticks_idle is None
         assert row.workers[0].compute_ratio_pct == pytest.approx(0.1)
+
+
+def _decided(name, total_ms, avg_ms, count=100, buy=10, sell=5, logic='trend') -> DecisionLogicStats:
+    """A tracked decision logic's statistics."""
+    return DecisionLogicStats(
+        decision_logic_type='CORE/' + logic, decision_logic_name=logic, decision_count=count,
+        buy_signals=buy, sell_signals=sell, flat_signals=count - buy - sell,
+        decision_total_time_ms=total_ms, decision_avg_time_ms=avg_ms,
+        decision_min_time_ms=0.0, decision_max_time_ms=avg_ms * 2, tracked=True)
+
+
+def _ticks(count, parallel=False, saved=0.0) -> WorkerCoordinatorPerformanceStats:
+    """A unit's coordination: its ticks, and whether its workers ran in parallel."""
+    return WorkerCoordinatorPerformanceStats(
+        parallel_workers=parallel, ticks_processed=count, parallel_time_saved_ms=saved)
+
+
+class TestTheFiguresTheConsolePrintsAreFolded:
+    """
+    Every figure of the aggregated block and the bottleneck scan is on the report (#557): the
+    units' own sums, the decision totals and the slowest performers, over the tracked units.
+    """
+
+    def test_a_unit_carries_its_workers_and_its_algo_time(self):
+        row = build_worker_decision_report(_RUN_ID, [_unit(
+            workers=[_ws('a', 30.0), _ws('b', 10.0)], decision=_decided('s1', 20.0, 0.2),
+            coordination=_ticks(100))]).units[0]
+        assert (row.timed_worker_count, row.worker_call_count, row.worker_time_ms) == (2, 2000, 40.0)
+        assert (row.algo_time_ms, row.algo_avg_per_tick_ms) == (60.0, 0.6)
+        assert row.non_flat_signals == 15
+
+    def test_an_untracked_unit_has_no_algo_time(self):
+        row = build_worker_decision_report(_RUN_ID, [_unit(workers=[], coordination=_ticks(100))]).units[0]
+        assert (row.algo_time_ms, row.algo_avg_per_tick_ms, row.non_flat_signals) == (None, None, None)
+
+    def test_the_decision_totals_over_the_tracked_units(self):
+        report = build_worker_decision_report(_RUN_ID, [
+            _unit('s1', decision=_decided('s1', 20.0, 0.2, count=100), coordination=_ticks(1000)),
+            _unit('s2', decision=_decided('s2', 10.0, 0.4, count=25, buy=5, sell=0),
+                  coordination=_ticks(500)),
+            _unit('s3', coordination=_ticks(700))])          # untracked: not counted
+        t = report.decision_totals
+        assert (t.total_ticks, t.total_decisions, t.total_non_flat_signals) == (1500, 125, 20)
+        assert t.decision_total_time_ms == 30.0
+        assert t.decision_avg_time_ms == 30.0 / 125
+        assert t.decision_unit_mean_time_ms == pytest.approx(0.3)
+
+    def test_the_worker_totals_carry_the_mean_of_the_units_means(self):
+        report = build_worker_decision_report(_RUN_ID, [
+            _unit('s1', workers=[_ws('a', 10.0, 100)]), _unit('s2', workers=[_ws('a', 40.0, 100)])])
+        total = report.worker_totals[0]
+        assert total.unit_mean_time_ms == pytest.approx((0.1 + 0.4) / 2)
+        assert report.units[0].workers[0].unit_mean_time_ms is None   # a unit's row has none
+
+    def test_the_slowest_performers(self):
+        report = build_worker_decision_report(_RUN_ID, [
+            _unit('s1', workers=[_ws('a', 10.0, 100)], decision=_decided('s1', 5.0, 0.05),
+                  coordination=_ticks(100, parallel=True, saved=-2.0)),
+            _unit('s2', workers=[_ws('a', 40.0, 100)], decision=_decided('s2', 5.0, 0.05),
+                  coordination=_ticks(100, parallel=True, saved=3.0))])
+        b = report.bottlenecks
+        assert (b.slowest_algo_unit, b.slowest_algo_unit_avg_per_tick_ms,
+                b.slowest_algo_unit_time_ms) == ('s2', 0.45, 45.0)
+        assert (b.slowest_worker, b.slowest_worker_worst_unit) == ('a', 's2')
+        assert b.slowest_worker_worst_unit_ms == pytest.approx(0.4)
+        assert (b.slowest_decision_logic, b.slowest_decision_logic_mean_ms) == ('trend', 0.05)
+        assert (b.worst_parallel_unit, b.worst_parallel_time_saved_ms) == ('s1', -2.0)
+
+    def test_the_first_among_equals_and_nothing_above_zero(self):
+        equal = build_worker_decision_report(_RUN_ID, [
+            _unit('s1', workers=[_ws('a', 10.0, 100)], decision=_decided('s1', 0.0, 0.0),
+                  coordination=_ticks(100)),
+            _unit('s2', workers=[_ws('a', 10.0, 100)], decision=_decided('s2', 0.0, 0.0),
+                  coordination=_ticks(100))]).bottlenecks
+        assert equal.slowest_algo_unit == 's1' and equal.slowest_worker_worst_unit == 's1'
+        # No decision time above zero: no slowest logic; no parallel unit: no worst one
+        assert equal.slowest_decision_logic is None and equal.worst_parallel_unit is None
+        # Nothing tracked: no totals and no bottlenecks — never zeros that claim a measurement
+        nothing = build_worker_decision_report(_RUN_ID, [_unit('s1', coordination=_ticks(100))])
+        assert nothing.decision_totals is None and nothing.bottlenecks is None
+
+
+class TestTheBreakdownJoinsBothLayers:
+    """Where a unit's worker_decision time went (#399), derived on the profiling model (#557)."""
+
+    def _profiling(self, name, total_ms):
+        return ProfilingReport(run_id=_RUN_ID, units=[ProfilingUnitRow(
+            name=name, symbol='EURUSD', total_ticks=100,
+            operations=[ProfilingOperationRow(operation='worker_decision', total_time_ms=total_ms)])])
+
+    def test_the_coordination_is_what_the_two_leave(self):
+        report = build_worker_decision_report(_RUN_ID, [_unit(
+            workers=[_ws('a', 50.0)], decision=_decided('s1', 30.0, 0.3), coordination=_ticks(100))])
+        row = build_worker_decision_breakdowns(self._profiling('s1', 100.0), report)[0]
+        assert (row.worker_execution_ms, row.decision_logic_ms, row.coordination_overhead_ms) == (
+            50.0, 30.0, 20.0)
+        assert (row.worker_execution_pct, row.decision_logic_pct,
+                row.coordination_overhead_pct) == (50.0, 30.0, 20.0)
+
+    def test_never_below_zero_and_only_where_both_measured(self):
+        report = build_worker_decision_report(_RUN_ID, [_unit(
+            workers=[_ws('a', 80.0)], decision=_decided('s1', 40.0, 0.4), coordination=_ticks(100))])
+        assert build_worker_decision_breakdowns(
+            self._profiling('s1', 100.0), report)[0].coordination_overhead_ms == 0.0
+        assert build_worker_decision_breakdowns(self._profiling('other', 100.0), report) == []
+        assert build_worker_decision_breakdowns(self._profiling('s1', 0.0), report) == []
+
+
+class TestTheBottleneckScanShowsMeasurementsWithoutThresholds:
+    """
+    The scan prints what it measured (#557, 684.a): no fixed "too slow" threshold decides whether
+    the slowest decision logic appears, and the worst parallel unit appears whether its workers
+    saved time or cost it — that verdict is the post-run validator's.
+    """
+
+    def _render(self, report) -> str:
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            PerformanceSummary(report).render_bottleneck_analysis(ConsoleRenderer())
+        return re.sub(r'\x1b\[[0-9;]*m', '', buf.getvalue())
+
+    def test_a_fast_decision_logic_and_a_parallel_gain_are_still_shown(self):
+        report = build_worker_decision_report(_RUN_ID, [
+            _unit('s1', workers=[_ws('a', 10.0, 100)], decision=_decided('s1', 1.0, 0.01),
+                  coordination=_ticks(100, parallel=True, saved=3.0))])
+        out = self._render(report)
+        assert 'SLOWEST DECISION LOGIC' in out and '0.010ms' in out
+        assert 'WORST PARALLEL EFFICIENCY' in out and 'Faster' in out

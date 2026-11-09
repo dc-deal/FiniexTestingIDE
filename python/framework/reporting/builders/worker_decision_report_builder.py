@@ -15,7 +15,11 @@ here.
 
 from typing import List
 
-from python.framework.reporting.builders.report_aggregators import aggregate_worker_totals
+from python.framework.reporting.builders.report_aggregators import (
+    aggregate_decision_totals,
+    aggregate_worker_decision_bottlenecks,
+    aggregate_worker_totals,
+)
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import (
     WorkerDecisionReport,
@@ -36,7 +40,13 @@ def build_worker_decision_report(run_id: str, units: List[RunUnit]) -> WorkerDec
         WorkerDecisionReport — one row per unit + the per-worker timing totals
     """
     rows = [_to_unit_row(unit) for unit in units]
-    return WorkerDecisionReport(run_id=run_id, units=rows, worker_totals=aggregate_worker_totals(rows))
+    # The decision logic's totals and the slowest performers are over the units that tracked
+    # their decisions — an untracked one has no figures to compare
+    tracked = [row for row in rows if row.worker_decision_tracked]
+    return WorkerDecisionReport(
+        run_id=run_id, units=rows, worker_totals=aggregate_worker_totals(rows),
+        decision_totals=aggregate_decision_totals(tracked),
+        bottlenecks=aggregate_worker_decision_bottlenecks(tracked))
 
 
 def _to_unit_row(unit: RunUnit) -> WorkerDecisionUnitRow:

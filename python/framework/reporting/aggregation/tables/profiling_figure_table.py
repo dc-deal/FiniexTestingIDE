@@ -2,8 +2,10 @@
 The profiling aggregate's fold tables (#399, #557) — one run unit's profile per row.
 
 The run's processing time over its ticks, the most common bottleneck, the inter-tick P5 range, the
-budget the slowest units suggest, and the clipping a budget caused. The per-operation means are a
-table of their own, one operation's calls per row.
+budget the slowest units suggest, the clipping a budget caused, and the slowest unit beside the
+mean. The per-operation means are a table of their own, one operation's calls per row. The warmup's
+whole and its slowest phase are computed fields of the report, read from its own phases; each
+phase's share of that whole is `warmup_phase_share`.
 """
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -238,6 +240,37 @@ def average_per_tick(combined: Dict[str, Any], rows: Sequence[Any]) -> float:
     return combined['total_time_ms'] / total_ticks if total_ticks > 0 else 0.0
 
 
+def slowest_unit_deviation(combined: Dict[str, Any], rows: Sequence[Any]) -> Optional[float]:
+    """
+    How far the slowest unit's summed operation time lies above the units' mean.
+
+    Args:
+        combined: The figures being built, the mean and the slowest time already folded
+        rows: The units
+
+    Returns:
+        The distance in percent of the mean; None where the mean is not above zero
+    """
+    mean = combined['profiled_unit_mean_ms']
+    if mean is None or mean <= 0:
+        return None
+    return (combined['slowest_profiled_unit_ms'] - mean) / mean * 100
+
+
+def warmup_phase_share(phase: Any, total: float) -> float:
+    """
+    One warmup phase's share of the whole warmup.
+
+    Args:
+        phase: A warmup phase row
+        total: The whole warmup's duration, folded by the warmup table
+
+    Returns:
+        Its duration in percent of the total; 0.0 when the warmup took no time
+    """
+    return (phase.duration_s / total * 100) if total > 0 else 0.0
+
+
 def _bottleneck_status(operation: str, count: int) -> str:
     """
     Display classification only: 'expected' (intended hot path) vs 'infra', or 'none' when this
@@ -304,8 +337,16 @@ PROFILING_TABLE = FoldTable(
                                                     empty_value=0),
         'clipping_budgets': FigureDeclaration(Reduction.DISTINCT, source=clipping_budget),
         'bottlenecks': FigureDeclaration(Reduction.DERIVE),
+        # The units' summed operation time: its mean, and the slowest unit — the first among
+        # equals — with how far above the mean it lies
+        'profiled_unit_mean_ms': FigureDeclaration(Reduction.MEAN, source='total_ms'),
+        'slowest_profiled_unit_ms': FigureDeclaration(Reduction.MAX, source='total_ms'),
+        'slowest_profiled_unit': FigureDeclaration(
+            Reduction.COMPANION, companion_of='slowest_profiled_unit_ms', source='name'),
+        'slowest_profiled_unit_deviation_pct': FigureDeclaration(Reduction.DERIVE),
     },
     derivations={
+        'slowest_profiled_unit_deviation_pct': slowest_unit_deviation,
         'total_time_s': total_time_seconds,
         'avg_per_tick_ms': average_per_tick,
         'most_common_bottleneck': most_common_bottleneck,

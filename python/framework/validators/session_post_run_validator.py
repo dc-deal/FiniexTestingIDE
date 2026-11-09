@@ -24,6 +24,7 @@ run carrying it can never be read as a clean one.
 from typing import Optional
 
 from python.framework.reporting.builders.pending_orders_report_builder import submission_count
+from python.framework.reporting.builders.portfolio_report_builder import usable_funds
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.run_origin_types import CodeIdentity
@@ -37,6 +38,7 @@ from python.framework.validators.shared_advisory_checks import (
     check_order_event_stream,
     check_stress_test,
     check_unversioned_code,
+    check_usable_funds,
 )
 from python.framework.validators.uncommitted_code_validator import build_uncommitted_code_finding
 
@@ -88,6 +90,7 @@ class SessionPostRunValidator:
         self._check_uncommitted_code()
         self._check_unversioned_code()
         self._check_order_event_stream()
+        self._check_usable_funds()
         self._check_carried_readings()
 
     def _add_finding(self, finding: ValidationFinding) -> None:
@@ -119,6 +122,16 @@ class SessionPostRunValidator:
             [(self._config.get_unit_name(), submission_count(self._result.order_events),
               stats.orders_submitted)],
             _SESSION_UNIT_LABEL)
+        if finding is not None:
+            self._add_finding(finding)
+
+    def _check_usable_funds(self) -> None:
+        """Warn when the session's funds fall below zero once its own unfilled orders count."""
+        stats = self._result.portfolio_stats
+        if stats is None:
+            return
+        finding = check_usable_funds(
+            [(self._config.get_unit_name(), usable_funds(stats))], _SESSION_UNIT_LABEL)
         if finding is not None:
             self._add_finding(finding)
 

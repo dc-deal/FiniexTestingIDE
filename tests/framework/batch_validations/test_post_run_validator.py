@@ -18,6 +18,7 @@ from python.framework.types.performance_types.performance_stats_types import (
     WorkerCoordinatorPerformanceStats,
     WorkerPerformanceStats,
 )
+from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.process_data_types import (
     ClippingStats,
     ProcessProfileData,
@@ -27,6 +28,7 @@ from python.framework.types.process_data_types import (
 from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.spread_estimate_types import ModelledSpreadSummary
+from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_event_types import OrderEvent, OrderEventType
 from python.framework.types.trading_env_types.order_types import OrderFeature
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
@@ -460,3 +462,49 @@ class TestTheStreamHoldsEverySubmission:
     def test_a_complete_stream_says_nothing(self):
         out = _warnings(_batch_results([_stream_result('s1', 0, recorded=3, counted=3)]))
         assert 'order_event_stream_incomplete' not in out
+
+
+def _funds_result(name, idx, balances, committed) -> ProcessResult:
+    """
+    A spot scenario that ended holding `balances` while its unfilled orders claim `committed`.
+
+    Args:
+        name: Scenario name
+        idx: Scenario index
+        balances: Currency → what the account holds
+        committed: Currency → what its own unfilled orders claim
+
+    Returns:
+        The ProcessResult
+    """
+    stats = PortfolioStats(
+        broker_type=BrokerType.KRAKEN_SPOT, total_trades=0, total_long_trades=0,
+        total_short_trades=0, winning_trades=0, losing_trades=0, total_profit=0.0,
+        total_loss=0.0, account_max_drawdown=0.0, max_equity=0.0, account_max_drawdown_pct=0.0,
+        win_rate=0.0, profit_factor=None, total_spread_cost=0.0, total_modelled_spread_cost=0.0,
+        total_commission=0.0, total_swap=0.0, maker_fee=0.0, taker_fee=0.0, total_fees=0.0,
+        fees_charged=0.0, currency='USD', broker_name='kraken', current_conversion_rate=1.0,
+        current_balance=balances.get('USD', 0.0), initial_balance=1000.0, spot_mode=True,
+        balances=balances, committed_funds=committed, base_currency='BTC', quote_currency='USD')
+    return ProcessResult(success=True, scenario_name=name, scenario_index=idx,
+                         tick_loop_results=ProcessTickLoopResult(portfolio_stats=stats))
+
+
+class TestFundsBelowZeroAfterOwnOrdersAreAValidatorsVerdict:
+    """
+    A negative usable figure used to be a ⚠ the portfolio console decided on (#557, 679.b); it is
+    the validators' advisory now, and the console only shows the figure.
+    """
+
+    def test_a_claim_beyond_the_balance_is_reported(self):
+        out = _warnings(_batch_results([
+            _funds_result('s1', 0, {'USD': 100.0, 'BTC': 0.0}, {'USD': 150.0}),
+            _funds_result('s2', 1, {'USD': 500.0, 'BTC': 0.0}, {'USD': 150.0})]))
+        assert 'usable_funds_negative' in out
+        assert 's1 · USD -50.0000 usable' in out['usable_funds_negative']
+        assert 's2' not in out['usable_funds_negative']
+
+    def test_a_covered_claim_says_nothing(self):
+        out = _warnings(_batch_results([
+            _funds_result('s1', 0, {'USD': 500.0, 'BTC': 0.0}, {'USD': 150.0})]))
+        assert 'usable_funds_negative' not in out

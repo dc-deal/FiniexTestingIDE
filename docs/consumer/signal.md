@@ -49,7 +49,8 @@ A feed row therefore carries no continuity analysis, and says so by absence rath
 ## One row is one source
 
 `source` names it. Inside the row, `usages` is one entry per scenario's use of that source for one
-symbol — so a scenario reading two symbols from the same source has two entries.
+symbol — so a scenario reading two symbols from the same source has two entries; `usage_count`
+counts them.
 
 `scenario` on a usage carries the unit's name — the scenario in a backtest, the session's unit in a
 live session — which is the join into every other section of the run. This response declares no row

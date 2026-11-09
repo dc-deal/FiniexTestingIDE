@@ -18,7 +18,6 @@ from python.framework.types.api.report_types import (
     ExecutionRow,
     ExecutionStatsReport,
     OrderHistoryReport,
-    OrderHistoryRow,
     TradeAnalytics,
     TradeHistoryReport,
     TradeHistoryRow,
@@ -60,6 +59,9 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         self._report = report
         self._order_report = order_report
         self._failed_by_unit = {row.name: row.orders_failed for row in execution_report.units}
+        # How many of each unit's failed orders the history lists, as the model counts them
+        self._listed_by_unit = {
+            unit.scenario_name: unit.listed for unit in order_report.failed_by_unit}
         # The fills' slippage per reference kind over the whole run, as the model serves it (#631)
         self._fill_slippage = execution_report.fill_slippage_totals
         # Per-scenario footer totals from the model (no renderer re-sum)
@@ -114,8 +116,7 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         Args:
             renderer: ConsoleRenderer instance
         """
-        rows = self._report.trades
-        if not rows:
+        if not self._report.trades:
             return
 
         print()
@@ -123,19 +124,14 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         renderer.print_bold('📊 AGGREGATED TRADE STATISTICS')
         renderer.section_separator()
 
-        # Group by currency — no cross-currency P&L mixing (like the portfolio section).
-        groups: Dict[str, List[TradeHistoryRow]] = {}
-        for row in rows:
-            groups.setdefault(row.currency, []).append(row)
-        analytics_by_ccy = {a.currency: a for a in self._report.analytics}
-        multi = len(groups) > 1
+        # One block per account currency — no cross-currency P&L mixing (like the portfolio
+        # section); the model serves them sorted by currency.
+        multi = len(self._report.analytics) > 1
 
-        for currency in sorted(groups):
-            group_rows = groups[currency]
+        for analytics in self._report.analytics:
             if multi:
-                print(f"\n{renderer.bold(f'   💰 {currency} GROUP ({len(group_rows)} trades)')}")
-            self._render_aggregated_stats(
-                group_rows, analytics_by_ccy.get(currency), renderer)
+                print(f"\n{renderer.bold(f'   💰 {analytics.currency} GROUP ({analytics.trade_count} trades)')}")
+            self._render_aggregated_stats(analytics, renderer)
             if multi:
                 renderer.print_separator(width=120, char='·')
 
@@ -143,9 +139,8 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         self._render_fill_slippage(renderer)
 
         # Rejections are currency-agnostic — render once.
-        rejections = [o for o in self._order_report.orders if o.status in FAILED_ORDER_STATUSES]
-        if rejections:
-            self._render_aggregated_rejections(rejections, renderer)
+        if self._order_report.failed_by_reason:
+            self._render_aggregated_rejections(renderer)
         print()
 
     def _render_scenario_trades(
@@ -186,11 +181,12 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             o for o in self._order_report.orders
             if o.status in FAILED_ORDER_STATUSES and o.scenario_name == scenario_name
         ]
-        failed = self._failed_by_unit.get(scenario_name, len(rejections))
+        listed_count = self._listed_by_unit.get(scenario_name, 0)
+        failed = self._failed_by_unit.get(scenario_name, listed_count)
         if not failed:
             return
 
-        listed = '' if len(rejections) == failed else f' ({len(rejections)} listed)'
+        listed = '' if listed_count == failed else f' ({listed_count} listed)'
         print()
         print(renderer.yellow(f'   Failed Orders: {failed}{listed}'))
         header = (f"   {'#':>3} | {'Order ID':<20} | {'Status':<11} | {'Reason':<25} | "
@@ -199,26 +195,8 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         print(renderer.gray('   ' + '-' * 114))
         for idx, rej in enumerate(rejections, 1):
             row = (f'   {idx:>3} | {rej.order_id:<20} | {rej.status.value:<11} | '
-                   f'{self._reason_label(rej):<25} | {rej.rejection_message or ""}')
+                   f'{rej.failure_label():<25} | {rej.rejection_message or ""}')
             print(renderer.yellow(row))
-
-    @staticmethod
-    def _reason_label(order: OrderHistoryRow) -> str:
-        """
-        The reason column of a failed order.
-
-        Args:
-            order: The order's row
-
-        Returns:
-            Its rejection reason when refused, its end reason when not — or the status
-            alone, which for an undelivered order is the whole statement
-        """
-        if order.rejection_reason is not None:
-            return order.rejection_reason.value
-        if order.end_reason is not None:
-            return order.end_reason.value
-        return order.status.value
 
     def _print_table_header(self, renderer: ConsoleRenderer, unit: str) -> None:
         """Print trade table header. unit labels the MAE/MFE columns ('pip' / 'tick', #167)."""
@@ -248,7 +226,6 @@ class TradeHistorySummary(AbstractBatchSummarySection):
 
         sl_str = f'{row.stop_loss:>12.5f}' if row.stop_loss is not None else f"{'—':>12}"
         tp_str = f'{row.take_profit:>12.5f}' if row.take_profit is not None else f"{'—':>12}"
-        duration = row.exit_tick_index - row.entry_tick_index
 
         gross_str = self._format_value(row.gross_pnl, renderer)
         net_str = self._format_value(row.net_pnl, renderer)
@@ -259,7 +236,7 @@ class TradeHistorySummary(AbstractBatchSummarySection):
             f'   {idx:>3} | {dir_str} | {entry_type_str:>2} | {row.lots:>5.2f} | '
             f'{row.entry_price:>12.5f} | {row.exit_price:>12.5f} | '
             f'{sl_str} | {tp_str} | '
-            f'{row.entry_tick_index:>10} | {row.exit_tick_index:>10} | {duration:>8} | '
+            f'{row.entry_tick_index:>10} | {row.exit_tick_index:>10} | {row.duration_ticks:>8} | '
             f'{gross_str:>10} | {row.total_fees:>8.2f} | {row.swap_cost:>8.2f} | {net_str:>10} | '
             f'{row.mae_distance:>9.1f} | {row.mfe_distance:>9.1f} | {r_str} | {reason_str:>14}'
         )
@@ -313,68 +290,36 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         )
         print(renderer.bold(total_row))
 
-    def _render_aggregated_stats(
-        self,
-        rows: List[TradeHistoryRow],
-        analytics: TradeAnalytics,
-        renderer: ConsoleRenderer
-    ) -> None:
-        """Render aggregated statistics for one currency group (all from the model rows)."""
-        total_trades = len(rows)
-        long_trades = sum(1 for r in rows if r.direction == 'long')
-        short_trades = total_trades - long_trades
+    def _render_aggregated_stats(self, a: TradeAnalytics, renderer: ConsoleRenderer) -> None:
+        """Render aggregated statistics for one currency group — every figure from the model."""
+        currency = a.currency
 
-        # A trade that realised nothing is neither — the rule the portfolio counters, the trade
-        # analytics and the booking periods share (contract 18).
-        winning_trades = [r for r in rows if r.net_pnl > 0]
-        losing_trades = [r for r in rows if r.net_pnl < 0]
-
-        # P&L totals come straight from the model aggregate — analytics is always present here
-        # (one per currency; render_aggregated returns early when there are no trades).
-        total_gross = analytics.gross_pnl
-        total_fees = analytics.total_fees
-        total_net = analytics.net_pnl
-        avg_gross = total_gross / total_trades if total_trades else 0
-        avg_fees = total_fees / total_trades if total_trades else 0
-        avg_net = total_net / total_trades if total_trades else 0
-
-        durations = [r.exit_tick_index - r.entry_tick_index for r in rows]
-        avg_duration = sum(durations) / len(durations) if durations else 0
-        min_duration = min(durations) if durations else 0
-        max_duration = max(durations) if durations else 0
-
-        currency = rows[0].currency if rows else 'USD'
-
-        sl_closes = sum(1 for r in rows if r.close_reason == 'sl_triggered')
-        tp_closes = sum(1 for r in rows if r.close_reason == 'tp_triggered')
+        print(f"\n   {renderer.bold('📈 TRADE BREAKDOWN:')}")
+        print(f'      Total Trades: {a.trade_count} (Long: {a.long_trades} | Short: {a.short_trades})')
+        print(f'      Winners: {a.winning_trades} | Losers: {a.losing_trades}')
         # Zero today by construction: CloseReason.SCENARIO_END is RESERVED for the real
         # session-end close #487 makes buildable, and nothing produces it in between. The
         # line below prints only when the count is non-zero, so a dead-code sweep should
-        # leave both standing rather than trade one deletion for one re-addition.
-        scenario_closes = sum(1 for r in rows if r.close_reason == 'scenario_end')
-        manual_closes = total_trades - sl_closes - tp_closes - scenario_closes
-
-        print(f"\n   {renderer.bold('📈 TRADE BREAKDOWN:')}")
-        print(f'      Total Trades: {total_trades} (Long: {long_trades} | Short: {short_trades})')
-        print(f'      Winners: {len(winning_trades)} | Losers: {len(losing_trades)}')
+        # leave it standing rather than trade one deletion for one re-addition.
         print(
-            f'      Close Reasons: SL={sl_closes} | TP={tp_closes} | Manual={manual_closes}'
-            + (f' | Scenario End={scenario_closes}' if scenario_closes else ''))
+            f'      Close Reasons: SL={a.sl_closes} | TP={a.tp_closes} | Manual={a.manual_closes}'
+            + (f' | Scenario End={a.scenario_end_closes}' if a.scenario_end_closes else ''))
 
         print(f"\n   {renderer.bold('💰 P&L BREAKDOWN:')}")
-        print(f'      Gross P&L: {self._format_value(total_gross, renderer)} {currency}')
-        print(f'      Total Fees: -{total_fees:.2f} {currency}')
-        print(f'      Net P&L: {self._format_value(total_net, renderer)} {currency}')
+        print(f'      Gross P&L: {self._format_value(a.gross_pnl, renderer)} {currency}')
+        print(f'      Total Fees: -{a.total_fees:.2f} {currency}')
+        print(f'      Net P&L: {self._format_value(a.net_pnl, renderer)} {currency}')
 
         print(f"\n   {renderer.bold('📊 AVERAGES (per trade):')}")
         print(
-            f'      Avg Gross: {self._format_value(avg_gross, renderer)} | '
-            f'Avg Fees: -{avg_fees:.2f} | Avg Net: {self._format_value(avg_net, renderer)}')
+            f'      Avg Gross: {self._format_value(a.avg_gross_pnl, renderer)} | '
+            f'Avg Fees: -{a.avg_fees:.2f} | Avg Net: {self._format_value(a.avg_net_pnl, renderer)}')
 
         print(f"\n   {renderer.bold('⏱️  DURATION (ticks):')}")
-        print(f'      Avg: {avg_duration:.0f} | Min: {min_duration} | Max: {max_duration}')
+        print(f'      Avg: {a.avg_trade_duration_ticks:.0f} | Min: {a.min_trade_duration_ticks} | '
+              f'Max: {a.max_trade_duration_ticks}')
 
-        self._render_analytics(analytics, renderer)
+        self._render_analytics(a, renderer)
 
     def _render_analytics(self, analytics, renderer: ConsoleRenderer) -> None:
         """Render the #389 trade-analytics block from the (per-currency) TradeAnalytics."""
@@ -419,18 +364,12 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         print('      Positive is a cost. A limit fill can only meet or beat its limit, so the kinds '
               'are never averaged together.')
 
-    def _render_aggregated_rejections(
-        self, rejections: List[OrderHistoryRow], renderer: ConsoleRenderer) -> None:
-        """Render the breakdown of the failed orders, by status and reason."""
-        reason_counts: Dict[str, int] = {}
-        for rej in rejections:
-            reason = f'{rej.status.value} · {self._reason_label(rej)}'
-            reason_counts[reason] = reason_counts.get(reason, 0) + 1
-
+    def _render_aggregated_rejections(self, renderer: ConsoleRenderer) -> None:
+        """Render the breakdown of the listed failed orders, by status and reason, as counted."""
         print(f"\n   {renderer.bold('Failed Orders:')}")
-        print(f'      Total: {len(rejections)}')
-        for reason, count in sorted(reason_counts.items(), key=lambda x: -x[1]):
-            print(renderer.yellow(f'      {reason}: {count}'))
+        print(f'      Total: {self._order_report.failed_listed}')
+        for reason in self._order_report.failed_by_reason:
+            print(renderer.yellow(f'      {reason.status.value} · {reason.reason}: {reason.count}'))
 
     def _format_pnl(self, value: float, currency: str, renderer: ConsoleRenderer) -> str:
         """Format P&L value with color and currency."""

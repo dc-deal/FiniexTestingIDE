@@ -1,0 +1,462 @@
+{
+  "run_id": "20261109_145734_a6aa5b90",
+  "units": [
+    {
+      "name": "EURGBP_refusals_01",
+      "symbol": "EURGBP",
+      "currency": "EUR",
+      "total_trades": 2,
+      "winning_trades": 2,
+      "losing_trades": 0,
+      "win_rate": 1.0,
+      "profit_factor": null,
+      "total_profit": 0.7957452019729174,
+      "total_loss": 0.0,
+      "net_profit": 0.7957452019729174,
+      "account_max_drawdown": 2.9552209700377716,
+      "account_max_dd_pct": 0.02954985836859133,
+      "drawdown_carried_from": "",
+      "drawdown_restarts": 0,
+      "drawdown_started_at": "2026-11-09T14:57:52.896562+00:00",
+      "total_fees": 0.0,
+      "fees_charged": 0.0,
+      "data_broker_type": "mt5",
+      "data_sentiment_type": "",
+      "broker_name": "Vantage International Group Limited",
+      "spot_mode": false,
+      "total_long_trades": 1,
+      "total_short_trades": 1,
+      "max_equity": 10000.795745848298,
+      "current_balance": 10000.795745201973,
+      "initial_balance": 10000.0,
+      "conversion_rate": 0.879715,
+      "base_currency": "EUR",
+      "quote_currency": "GBP",
+      "spot_est_current": 0.0,
+      "spot_est_initial": 0.0,
+      "spot_est_pnl": 0.0,
+      "spot_est_pnl_pct": 0.0,
+      "total_spread_cost": 2.955825736078734,
+      "total_modelled_spread_cost": 0.0,
+      "total_commission": 0.0,
+      "total_swap": 0.0,
+      "maker_fee": 0.0,
+      "taker_fee": 0.0,
+      "fill_fees_by_source": {
+        "estimate": {
+          "fill_count": 5,
+          "fill_fees": 0.0
+        }
+      },
+      "has_error": false,
+      "balances": {
+        "EUR": 10000.795745201973
+      },
+      "initial_balances": {
+        "EUR": 10000.0
+      },
+      "committed_funds": {
+        "GBP": 0.0,
+        "EUR": 0.0
+      },
+      "usable_funds": {},
+      "last_price": 0.879715,
+      "open_positions": [
+        {
+          "position_id": "pos_eurgbp_7",
+          "direction": "short",
+          "lots": 0.1,
+          "entry_price": 0.87969,
+          "entry_time": "2025-10-31T05:57:59.234000+00:00",
+          "last_price": 0.879715,
+          "unrealized_pnl": -0.9093854259627266,
+          "valued": true,
+          "stop_loss": null,
+          "take_profit": null
+        }
+      ],
+      "unrealized_pnl": -0.9093854259627266,
+      "final_equity": 9999.88635977601,
+      "final_equity_valued": true,
+      "session_end_policy": "",
+      "open_position_count": 1
+    },
+    {
+      "name": "EURGBP_refusals_02",
+      "symbol": "EURGBP",
+      "currency": "EUR",
+      "total_trades": 3,
+      "winning_trades": 3,
+      "losing_trades": 0,
+      "win_rate": 1.0,
+      "profit_factor": null,
+      "total_profit": 2.989942604952009,
+      "total_loss": 0.0,
+      "net_profit": 2.989942604952009,
+      "account_max_drawdown": 10.224164992467195,
+      "account_max_dd_pct": 0.10220991459606912,
+      "drawdown_carried_from": "",
+      "drawdown_restarts": 0,
+      "drawdown_started_at": "2026-11-09T14:57:52.900314+00:00",
+      "total_fees": 0.0,
+      "fees_charged": 0.0,
+      "data_broker_type": "mt5",
+      "data_sentiment_type": "",
+      "broker_name": "Vantage International Group Limited",
+      "spot_mode": false,
+      "total_long_trades": 2,
+      "total_short_trades": 1,
+      "max_equity": 10003.104916849627,
+      "current_balance": 10002.989942604952,
+      "initial_balance": 10000.0,
+      "conversion_rate": 0.870225,
+      "base_currency": "EUR",
+      "quote_currency": "GBP",
+      "spot_est_current": 0.0,
+      "spot_est_initial": 0.0,
+      "spot_est_pnl": 0.0,
+      "spot_est_pnl_pct": 0.0,
+      "total_spread_cost": 4.140036801667436,
+      "total_modelled_spread_cost": 0.0,
+      "total_commission": 0.0,
+      "total_swap": 0.0,
+      "maker_fee": 0.0,
+      "taker_fee": 0.0,
+      "fill_fees_by_source": {
+        "estimate": {
+          "fill_count": 7,
+          "fill_fees": 0.0
+        }
+      },
+      "has_error": false,
+      "balances": {
+        "EUR": 10002.989942604952
+      },
+      "initial_balances": {
+        "EUR": 10000.0
+      },
+      "committed_funds": {
+        "GBP": 0.0,
+        "EUR": 0.0
+      },
+      "usable_funds": {},
+      "last_price": 0.870225,
+      "open_positions": [
+        {
+          "position_id": "pos_eurgbp_9",
+          "direction": "short",
+          "lots": 0.1,
+          "entry_price": 0.86968,
+          "entry_time": "2025-10-10T06:44:53.319000+00:00",
+          "last_price": 0.870225,
+          "unrealized_pnl": -6.894768594329569,
+          "valued": true,
+          "stop_loss": null,
+          "take_profit": null
+        }
+      ],
+      "unrealized_pnl": -6.894768594329569,
+      "final_equity": 9996.095174010623,
+      "final_equity_valued": true,
+      "session_end_policy": "",
+      "open_position_count": 1
+    },
+    {
+      "name": "ETHUSD_spot_two_balances",
+      "symbol": "ETHUSD",
+      "currency": "USD",
+      "total_trades": 10,
+      "winning_trades": 0,
+      "losing_trades": 10,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total_profit": 0.0,
+      "total_loss": 23.299776978383807,
+      "net_profit": -23.299776978383807,
+      "account_max_drawdown": 43.29579428432635,
+      "account_max_dd_pct": 1.4383483062659392,
+      "drawdown_carried_from": "",
+      "drawdown_restarts": 0,
+      "drawdown_started_at": "2026-11-09T14:57:53.008760+00:00",
+      "total_fees": 32.28105240345308,
+      "fees_charged": 33.89466365191294,
+      "data_broker_type": "kraken_spot",
+      "data_sentiment_type": "",
+      "broker_name": "Kraken",
+      "spot_mode": true,
+      "total_long_trades": 5,
+      "total_short_trades": 5,
+      "max_equity": 3010.105,
+      "current_balance": 1773.3852057156735,
+      "initial_balance": 2000.0,
+      "conversion_rate": null,
+      "base_currency": "ETH",
+      "quote_currency": "USD",
+      "spot_est_current": 2978.0352057156733,
+      "spot_est_initial": 3003.875,
+      "spot_est_pnl": -25.839794284326672,
+      "spot_est_pnl_pct": -0.8602153646315733,
+      "total_spread_cost": null,
+      "total_modelled_spread_cost": 0.35272457493076675,
+      "total_commission": 0.0,
+      "total_swap": 0.0,
+      "maker_fee": 0.0,
+      "taker_fee": 33.89466365191294,
+      "fill_fees_by_source": {
+        "estimate": {
+          "fill_count": 21,
+          "fill_fees": 33.89466365191294
+        }
+      },
+      "has_error": false,
+      "balances": {
+        "ETH": 0.6,
+        "USD": 1773.3852057156735
+      },
+      "initial_balances": {
+        "ETH": 0.5,
+        "USD": 2000.0
+      },
+      "committed_funds": {
+        "USD": 0.0,
+        "ETH": 0.0
+      },
+      "usable_funds": {},
+      "last_price": 2007.75,
+      "open_positions": [
+        {
+          "position_id": "pos_ethusd_11",
+          "direction": "long",
+          "lots": 0.1,
+          "entry_price": 2017.0140605748304,
+          "entry_time": "2026-02-11T02:47:37.806000+00:00",
+          "last_price": 2007.75,
+          "unrealized_pnl": -2.5563493395158448,
+          "valued": true,
+          "stop_loss": null,
+          "take_profit": null
+        }
+      ],
+      "unrealized_pnl": -2.5563493395158448,
+      "final_equity": 2978.0352057156733,
+      "final_equity_valued": true,
+      "session_end_policy": "",
+      "open_position_count": 1
+    },
+    {
+      "name": "EURGBP_left_open",
+      "symbol": "EURGBP",
+      "currency": "EUR",
+      "total_trades": 0,
+      "winning_trades": 0,
+      "losing_trades": 0,
+      "win_rate": 0.0,
+      "profit_factor": null,
+      "total_profit": 0.0,
+      "total_loss": 0.0,
+      "net_profit": 0.0,
+      "account_max_drawdown": 0.43704839936617645,
+      "account_max_dd_pct": 0.004370443794814537,
+      "drawdown_carried_from": "",
+      "drawdown_restarts": 0,
+      "drawdown_started_at": "2026-11-09T14:57:52.926475+00:00",
+      "total_fees": 0.0,
+      "fees_charged": 0.0,
+      "data_broker_type": "mt5",
+      "data_sentiment_type": "",
+      "broker_name": "Vantage International Group Limited",
+      "spot_mode": false,
+      "total_long_trades": 0,
+      "total_short_trades": 0,
+      "max_equity": 10000.93049971281,
+      "current_balance": 10000.0,
+      "initial_balance": 10000.0,
+      "conversion_rate": 0.870225,
+      "base_currency": "EUR",
+      "quote_currency": "GBP",
+      "spot_est_current": 0.0,
+      "spot_est_initial": 0.0,
+      "spot_est_pnl": 0.0,
+      "spot_est_pnl_pct": 0.0,
+      "total_spread_cost": 0.0,
+      "total_modelled_spread_cost": 0.0,
+      "total_commission": 0.0,
+      "total_swap": 0.0,
+      "maker_fee": 0.0,
+      "taker_fee": 0.0,
+      "fill_fees_by_source": {
+        "estimate": {
+          "fill_count": 1,
+          "fill_fees": 0.0
+        }
+      },
+      "has_error": false,
+      "balances": {
+        "EUR": 10000.0
+      },
+      "initial_balances": {
+        "EUR": 10000.0
+      },
+      "committed_funds": {
+        "GBP": 0.0,
+        "EUR": 0.0
+      },
+      "usable_funds": {},
+      "last_price": 0.870225,
+      "open_positions": [
+        {
+          "position_id": "pos_eurgbp_1",
+          "direction": "long",
+          "lots": 0.01,
+          "entry_price": 0.86963,
+          "entry_time": "2025-10-10T06:02:43.114000+00:00",
+          "last_price": 0.870225,
+          "unrealized_pnl": 0.6205291734895974,
+          "valued": true,
+          "stop_loss": null,
+          "take_profit": null
+        }
+      ],
+      "unrealized_pnl": 0.6205291734895974,
+      "final_equity": 10000.62052917349,
+      "final_equity_valued": true,
+      "session_end_policy": "",
+      "open_position_count": 1
+    },
+    {
+      "name": "EURGBP_partial_close",
+      "symbol": "EURGBP",
+      "currency": "EUR",
+      "total_trades": 3,
+      "winning_trades": 1,
+      "losing_trades": 2,
+      "win_rate": 0.3333333333333333,
+      "profit_factor": 0.5999174744506628,
+      "total_profit": 0.06820274402367658,
+      "total_loss": 0.11368687682606514,
+      "net_profit": -0.045484132802388555,
+      "account_max_drawdown": 0.4660777419740043,
+      "account_max_dd_pct": 0.004660618492758503,
+      "drawdown_carried_from": "",
+      "drawdown_restarts": 0,
+      "drawdown_started_at": "2026-11-09T14:57:52.925442+00:00",
+      "total_fees": 0.0,
+      "fees_charged": 0.0,
+      "data_broker_type": "mt5",
+      "data_sentiment_type": "",
+      "broker_name": "Vantage International Group Limited",
+      "spot_mode": false,
+      "total_long_trades": 3,
+      "total_short_trades": 0,
+      "max_equity": 10000.34099976599,
+      "current_balance": 9999.954515867197,
+      "initial_balance": 10000.0,
+      "conversion_rate": 0.879595,
+      "base_currency": "EUR",
+      "quote_currency": "GBP",
+      "spot_est_current": 0.0,
+      "spot_est_initial": 0.0,
+      "spot_est_pnl": 0.0,
+      "spot_est_pnl_pct": 0.0,
+      "total_spread_cost": 0.7219312394831263,
+      "total_modelled_spread_cost": 0.0,
+      "total_commission": 0.0,
+      "total_swap": 0.0,
+      "maker_fee": 0.0,
+      "taker_fee": 0.0,
+      "fill_fees_by_source": {
+        "estimate": {
+          "fill_count": 4,
+          "fill_fees": 0.0
+        }
+      },
+      "has_error": false,
+      "balances": {
+        "EUR": 9999.954515867197
+      },
+      "initial_balances": {
+        "EUR": 10000.0
+      },
+      "committed_funds": {
+        "GBP": 0.0,
+        "EUR": 0.0
+      },
+      "usable_funds": {},
+      "last_price": 0.879715,
+      "open_positions": [],
+      "unrealized_pnl": 0.0,
+      "final_equity": 9999.954515867197,
+      "final_equity_valued": true,
+      "session_end_policy": "",
+      "open_position_count": 0
+    }
+  ],
+  "aggregates": [
+    {
+      "currency": "EUR",
+      "unit_count": 4,
+      "total_trades": 8,
+      "winning_trades": 6,
+      "losing_trades": 2,
+      "win_rate": 0.75,
+      "profit_factor": 33.89916812337848,
+      "total_profit": 3.853890550948603,
+      "total_loss": 0.11368687682606514,
+      "net_profit": 3.740203674122538,
+      "account_max_drawdown": 10.224164992467195,
+      "max_equity": 10003.104916849627,
+      "account_max_dd_pct": 0.10220991459606912,
+      "account_max_drawdown_unit": "EURGBP_refusals_02",
+      "total_fees": 0.0,
+      "fees_charged": 0.0,
+      "fill_fees_by_source": {
+        "estimate": {
+          "fill_count": 17,
+          "fill_fees": 0.0
+        }
+      },
+      "unrealized_pnl": -7.183624846802698,
+      "final_equity": null,
+      "total_final_equity": 39996.55657882732,
+      "total_initial_balance": 40000.0,
+      "open_position_count": 3
+    },
+    {
+      "currency": "USD",
+      "unit_count": 1,
+      "total_trades": 10,
+      "winning_trades": 0,
+      "losing_trades": 10,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "total_profit": 0.0,
+      "total_loss": 23.299776978383807,
+      "net_profit": -23.299776978383807,
+      "account_max_drawdown": 43.29579428432635,
+      "max_equity": 3010.105,
+      "account_max_dd_pct": 1.4383483062659392,
+      "account_max_drawdown_unit": "ETHUSD_spot_two_balances",
+      "total_fees": 32.28105240345308,
+      "fees_charged": 33.89466365191294,
+      "fill_fees_by_source": {
+        "estimate": {
+          "fill_count": 21,
+          "fill_fees": 33.89466365191294
+        }
+      },
+      "unrealized_pnl": -2.5563493395158448,
+      "final_equity": 2978.0352057156733,
+      "total_final_equity": 2978.0352057156733,
+      "total_initial_balance": 2000.0,
+      "open_position_count": 1
+    }
+  ],
+  "keys": {
+    "units": [
+      "name"
+    ],
+    "aggregates": [
+      "currency"
+    ]
+  }
+}

@@ -11,6 +11,7 @@ carries the fill's slippage (#631), found through the order event the row was bo
 from typing import List, Optional
 
 from python.framework.reporting.builders.fill_slippage import derive_fill_slippage
+from python.framework.reporting.builders.report_aggregators import aggregate_failed_orders
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import OrderHistoryReport, OrderHistoryRow
 from python.framework.types.fill_slippage_types import FillSlippage
@@ -54,7 +55,8 @@ def _assemble(
             continue
         filtered.append(row)
     symbols = sorted({row.symbol for row in filtered if row.symbol})
-    return OrderHistoryReport(run_id=run_id, orders=filtered, count=len(filtered), symbols=symbols)
+    return OrderHistoryReport(run_id=run_id, orders=filtered, count=len(filtered), symbols=symbols,
+                              **aggregate_failed_orders(filtered))
 
 
 def _to_row(order: OrderResult, scenario_name: str = '',

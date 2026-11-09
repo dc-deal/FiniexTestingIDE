@@ -153,7 +153,8 @@ open is reported as what it is.
 - `unrealized_pnl` — what those positions were worth at the last tick; `0.0` when nothing was open
 - `final_equity` — the realised balance plus what the open positions are worth
 - `final_equity_valued` — whether `final_equity` is a real mark-to-market
-- `open_position_count` — on the aggregate row, how many positions the currency's accounts held
+- `open_position_count` — how many positions were still open: on a unit row the length of its
+  `open_positions`, on the aggregate row the positions the currency's accounts held
 
 **`final_equity_valued: false` is the one to respect.** It means something was still open that no
 tick could price, so the figure is the balance alone with the holding counted at zero — the very

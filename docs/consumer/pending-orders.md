@@ -94,7 +94,8 @@ unit carried a duration. That is an absence and not a delay of zero — see
 ## The orders still resting at the end
 
 `active_limit_orders` and `active_stop_orders` hold the orders that were still resting when the
-unit ended — a backtest's data end, a session's last step.
+unit ended — a backtest's data end, a session's last step. `active_limit_count`,
+`active_stop_count` and `active_order_count` (the two together) count them.
 
 **In a backtest they are not open orders.** The same step that takes this snapshot records every
 one of them `expired` in [order history](/api/v1/docs/order-history), so after the run none of

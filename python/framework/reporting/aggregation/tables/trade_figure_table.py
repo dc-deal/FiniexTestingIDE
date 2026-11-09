@@ -2,7 +2,7 @@
 The trade tables (#389, #557) — one trade per row.
 
 The trade analytics per account currency: the R and excursion figures, means over the trades of a
-kind, the longest streaks. Its P&L-denominated figures never mix currencies, because the currency is
+kind, the counts by direction, outcome and close, the totals per trade, the longest streaks. Its P&L-denominated figures never mix currencies, because the currency is
 the grain.
 
 The per-scenario totals under the trade table: each scenario's trades add up to its footer line. A
@@ -117,6 +117,171 @@ def mfe_magnitude(row: Any) -> float:
     return abs(row.mfe_pnl)
 
 
+def long_trade(row: Any) -> int:
+    """
+    Whether a trade was long — one count each.
+
+    Args:
+        row: A trade row
+
+    Returns:
+        1 when it was, else 0
+    """
+    return 1 if row.direction == 'long' else 0
+
+
+def winning_trade(row: Any) -> int:
+    """
+    Whether a trade won — one count each. A trade that realised nothing is neither.
+
+    Args:
+        row: A trade row
+
+    Returns:
+        1 when its net P&L was positive, else 0
+    """
+    return 1 if row.net_pnl > 0 else 0
+
+
+def losing_trade(row: Any) -> int:
+    """
+    Whether a trade lost — one count each. A trade that realised nothing is neither.
+
+    Args:
+        row: A trade row
+
+    Returns:
+        1 when its net P&L was negative, else 0
+    """
+    return 1 if row.net_pnl < 0 else 0
+
+
+def closed_by_stop_loss(row: Any) -> int:
+    """
+    Whether a trade was closed by its stop loss — one count each.
+
+    Args:
+        row: A trade row
+
+    Returns:
+        1 when it was, else 0
+    """
+    return 1 if row.close_reason == 'sl_triggered' else 0
+
+
+def closed_by_take_profit(row: Any) -> int:
+    """
+    Whether a trade was closed by its take profit — one count each.
+
+    Args:
+        row: A trade row
+
+    Returns:
+        1 when it was, else 0
+    """
+    return 1 if row.close_reason == 'tp_triggered' else 0
+
+
+def closed_at_scenario_end(row: Any) -> int:
+    """
+    Whether a trade was closed by the end of its scenario — one count each. Reserved today: nothing
+    closes a trade that way until the real session-end close (#487) exists.
+
+    Args:
+        row: A trade row
+
+    Returns:
+        1 when it was, else 0
+    """
+    return 1 if row.close_reason == 'scenario_end' else 0
+
+
+def short_trade_count(combined: Dict[str, Any], rows: Sequence[Any]) -> int:
+    """
+    The group's short trades — every trade that was not long.
+
+    Args:
+        combined: The figures being built, the counts already folded
+        rows: The trades
+
+    Returns:
+        The trade count less the long trades
+    """
+    return combined['trade_count'] - combined['long_trades']
+
+
+def manual_close_count(combined: Dict[str, Any], rows: Sequence[Any]) -> int:
+    """
+    The group's trades closed by neither stop loss, take profit nor the scenario's end.
+
+    Args:
+        combined: The figures being built, the counts already folded
+        rows: The trades
+
+    Returns:
+        The trade count less the three named kinds of close
+    """
+    return (combined['trade_count'] - combined['sl_closes'] - combined['tp_closes']
+            - combined['scenario_end_closes'])
+
+
+def _per_trade(combined: Dict[str, Any], total: str) -> float:
+    """
+    One folded total per trade of the group.
+
+    Args:
+        combined: The figures being built, the total and the trade count already folded
+        total: The figure to divide
+
+    Returns:
+        The total over the trade count; 0.0 over no trade
+    """
+    count = combined['trade_count']
+    return combined[total] / count if count else 0.0
+
+
+def gross_pnl_per_trade(combined: Dict[str, Any], rows: Sequence[Any]) -> float:
+    """
+    The group's gross P&L per trade.
+
+    Args:
+        combined: The figures being built
+        rows: The trades
+
+    Returns:
+        The gross P&L over the trade count; 0.0 over no trade
+    """
+    return _per_trade(combined, 'gross_pnl')
+
+
+def fees_per_trade(combined: Dict[str, Any], rows: Sequence[Any]) -> float:
+    """
+    The group's fees per trade.
+
+    Args:
+        combined: The figures being built
+        rows: The trades
+
+    Returns:
+        The fees over the trade count; 0.0 over no trade
+    """
+    return _per_trade(combined, 'total_fees')
+
+
+def net_pnl_per_trade(combined: Dict[str, Any], rows: Sequence[Any]) -> float:
+    """
+    The group's net P&L per trade.
+
+    Args:
+        combined: The figures being built
+        rows: The trades
+
+    Returns:
+        The net P&L over the trade count; 0.0 over no trade
+    """
+    return _per_trade(combined, 'net_pnl')
+
+
 def _longest_streak(rows: Sequence[Any], winners: bool) -> int:
     """
     The longest unbroken run of winners or losers, in REALISATION order.
@@ -202,10 +367,34 @@ TRADE_ANALYTICS_TABLE = FoldTable(
         'largest_mfe': FigureDeclaration(Reduction.MAX, source=mfe_magnitude, empty_value=0.0),
         'avg_trade_duration_s': FigureDeclaration(Reduction.MEAN, source='duration_s',
                                                   empty_value=0.0),
+        'avg_trade_duration_ticks': FigureDeclaration(Reduction.MEAN, source='duration_ticks',
+                                                      empty_value=0.0),
+        'min_trade_duration_ticks': FigureDeclaration(Reduction.MIN, source='duration_ticks',
+                                                      empty_value=0),
+        'max_trade_duration_ticks': FigureDeclaration(Reduction.MAX, source='duration_ticks',
+                                                      empty_value=0),
+        'long_trades': FigureDeclaration(Reduction.SUM, source=long_trade, empty_value=0),
+        'short_trades': FigureDeclaration(Reduction.DERIVE),
+        'winning_trades': FigureDeclaration(Reduction.SUM, source=winning_trade, empty_value=0),
+        'losing_trades': FigureDeclaration(Reduction.SUM, source=losing_trade, empty_value=0),
+        'sl_closes': FigureDeclaration(Reduction.SUM, source=closed_by_stop_loss, empty_value=0),
+        'tp_closes': FigureDeclaration(Reduction.SUM, source=closed_by_take_profit,
+                                       empty_value=0),
+        'scenario_end_closes': FigureDeclaration(Reduction.SUM, source=closed_at_scenario_end,
+                                                 empty_value=0),
+        'manual_closes': FigureDeclaration(Reduction.DERIVE),
+        'avg_gross_pnl': FigureDeclaration(Reduction.DERIVE),
+        'avg_fees': FigureDeclaration(Reduction.DERIVE),
+        'avg_net_pnl': FigureDeclaration(Reduction.DERIVE),
         'max_consecutive_wins': FigureDeclaration(Reduction.DERIVE),
         'max_consecutive_losses': FigureDeclaration(Reduction.DERIVE),
     },
-    derivations={'max_consecutive_wins': longest_winning_streak,
+    derivations={'short_trades': short_trade_count,
+                 'manual_closes': manual_close_count,
+                 'avg_gross_pnl': gross_pnl_per_trade,
+                 'avg_fees': fees_per_trade,
+                 'avg_net_pnl': net_pnl_per_trade,
+                 'max_consecutive_wins': longest_winning_streak,
                  'max_consecutive_losses': longest_losing_streak},
     order=GroupOrder.SORTED,
     grain=('currency',),

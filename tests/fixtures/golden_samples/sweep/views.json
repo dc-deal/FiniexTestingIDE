@@ -1,6 +1,6 @@
 {
  "run_list_figures": {
-  "20261108_143823_cd463257": {
+  "20261109_150545_07a99a28": {
    "results": [
     {
      "currency": "USD",
@@ -14,7 +14,7 @@
    "log_warning_count": 0,
    "tick_timespan_seconds": 835201.829
   },
-  "20261108_143923_8c4fc6a6": {
+  "20261109_150705_dff1be4e": {
    "results": [
     {
      "currency": "USD",
@@ -28,7 +28,7 @@
    "log_warning_count": 0,
    "tick_timespan_seconds": 835201.829
   },
-  "20261108_144021_f9d37fb8": {
+  "20261109_150814_e1bb02f4": {
    "results": [
     {
      "currency": "USD",
@@ -42,7 +42,7 @@
    "log_warning_count": 0,
    "tick_timespan_seconds": 835201.829
   },
-  "20261108_144118_9d1399f5": {
+  "20261109_150922_e6cd4ed6": {
    "results": [
     {
      "currency": "USD",
@@ -56,7 +56,7 @@
    "log_warning_count": 0,
    "tick_timespan_seconds": 835201.829
   },
-  "20261108_144215_87ab273e": {
+  "20261109_151032_7b8ee126": {
    "results": [
     {
      "currency": "USD",
@@ -70,7 +70,7 @@
    "log_warning_count": 0,
    "tick_timespan_seconds": 835201.829
   },
-  "20261108_144309_4e92f233": {
+  "20261109_151132_e3837098": {
    "results": [
     {
      "currency": "USD",
@@ -84,7 +84,7 @@
    "log_warning_count": 0,
    "tick_timespan_seconds": 835201.829
   },
-  "20261108_144404_a025f908": {
+  "20261109_151230_bad6feee": {
    "results": [
     {
      "currency": "USD",
@@ -98,7 +98,7 @@
    "log_warning_count": 0,
    "tick_timespan_seconds": 835201.829
   },
-  "20261108_144503_36d85337": {
+  "20261109_151329_9c8f99f7": {
    "results": [
     {
      "currency": "USD",
@@ -112,7 +112,7 @@
    "log_warning_count": 0,
    "tick_timespan_seconds": 835201.829
   },
-  "20261108_144609_a57c69ee": {
+  "20261109_151426_0c305450": {
    "results": [
     {
      "currency": "USD",
@@ -132,9 +132,9 @@
  "deployment_booking_periods": {},
  "sweeps": [
   {
-   "sweep_id": "sweep_20261108_143818_441afbf1",
-   "started": "2026-11-08T14:38:23.603889Z",
-   "duration_s": 465.429472,
+   "sweep_id": "sweep_20261109_150539_3bfe3982",
+   "started": "2026-11-09T15:05:45.558555Z",
+   "duration_s": 520.972354,
    "run_count": 9,
    "ok_count": 9,
    "error_count": 0,
@@ -150,12 +150,12 @@
   }
  ],
  "sweep_details": {
-  "sweep_20261108_143818_441afbf1": {
+  "sweep_20261109_150539_3bfe3982": {
    "key": [
     "run_id",
     "currency"
    ],
-   "sweep_id": "sweep_20261108_143818_441afbf1",
+   "sweep_id": "sweep_20261109_150539_3bfe3982",
    "objective": "net_pnl",
    "maximize": true,
    "combinations": [
@@ -164,20 +164,20 @@
      "param_hash": "5c6a99d93fca4fd812489f2ae44015c683d7aa1e83f134afca2514a531ab598e",
      "status": "ok",
      "error": null,
-     "run_id": "20261108_144404_a025f908",
-     "run_timestamp": "2026-11-08T14:44:04.232022+00:00",
-     "sweep_id": "sweep_20261108_143818_441afbf1",
+     "run_id": "20261109_151230_bad6feee",
+     "run_timestamp": "2026-11-09T15:12:30.072549+00:00",
+     "sweep_id": "sweep_20261109_150539_3bfe3982",
      "sweep_params": {
       "decision_logic_config.sl_mult": 1.5,
       "decision_logic_config.tp_mult": 1.5
      },
      "sweep_objective": "net_pnl",
      "sweep_maximize": true,
-     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261108_143818_441afbf1_c006",
+     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261109_150539_3bfe3982_c006",
      "app_version": "1.5.0",
-     "git_commit": "2912dd3e",
+     "git_commit": "4f1b5f5b",
      "git_branch": "dev-1-6-0",
-     "git_dirty": false,
+     "git_dirty": true,
      "decision_logic_type": "CORE/trend_channel_reference",
      "decision_version": "1.6.0",
      "worker_versions": {
@@ -205,7 +205,7 @@
      "rendered_config_id": "42fe8f52834b4ccfa05281cf367113537e48820667a58f1c67367cf5f933824c",
      "broker_config_id": "0b2f7077145eecd531909baeaffb3b214967ea87adfc527407b57640f9e3c5d9",
      "code_stand": null,
-     "recorded_at_utc": "2026-11-08T14:45:03.380559+00:00",
+     "recorded_at_utc": "2026-11-09T15:13:29.442159+00:00",
      "trial_count": 9,
      "run_outcome": "success",
      "error_count": 0,
@@ -275,20 +275,20 @@
      "param_hash": "5b8b9d8d170045fed64054ad8a3956a85ad93b6036f3443c11eb451275f49545",
      "status": "ok",
      "error": null,
-     "run_id": "20261108_144609_a57c69ee",
-     "run_timestamp": "2026-11-08T14:46:09.033361+00:00",
-     "sweep_id": "sweep_20261108_143818_441afbf1",
+     "run_id": "20261109_151426_0c305450",
+     "run_timestamp": "2026-11-09T15:14:26.530909+00:00",
+     "sweep_id": "sweep_20261109_150539_3bfe3982",
      "sweep_params": {
       "decision_logic_config.sl_mult": 1.5,
       "decision_logic_config.tp_mult": 3.0
      },
      "sweep_objective": "net_pnl",
      "sweep_maximize": true,
-     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261108_143818_441afbf1_c008",
+     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261109_150539_3bfe3982_c008",
      "app_version": "1.5.0",
-     "git_commit": "2912dd3e",
+     "git_commit": "4f1b5f5b",
      "git_branch": "dev-1-6-0",
-     "git_dirty": false,
+     "git_dirty": true,
      "decision_logic_type": "CORE/trend_channel_reference",
      "decision_version": "1.6.0",
      "worker_versions": {
@@ -316,7 +316,7 @@
      "rendered_config_id": "77b741fb82e17d506c5c7a364d164c204bfbbfb771b72cb22db1d0adf02933d4",
      "broker_config_id": "0b2f7077145eecd531909baeaffb3b214967ea87adfc527407b57640f9e3c5d9",
      "code_stand": null,
-     "recorded_at_utc": "2026-11-08T14:47:10.540299+00:00",
+     "recorded_at_utc": "2026-11-09T15:15:23.641558+00:00",
      "trial_count": 9,
      "run_outcome": "success",
      "error_count": 0,
@@ -386,20 +386,20 @@
      "param_hash": "bc9104345d0a8c16415202ac7f4e0d8425f1404707d3e9edeede01ce2e76bf5c",
      "status": "ok",
      "error": null,
-     "run_id": "20261108_144503_36d85337",
-     "run_timestamp": "2026-11-08T14:45:03.641879+00:00",
-     "sweep_id": "sweep_20261108_143818_441afbf1",
+     "run_id": "20261109_151329_9c8f99f7",
+     "run_timestamp": "2026-11-09T15:13:29.682384+00:00",
+     "sweep_id": "sweep_20261109_150539_3bfe3982",
      "sweep_params": {
       "decision_logic_config.sl_mult": 1.5,
       "decision_logic_config.tp_mult": 2.0
      },
      "sweep_objective": "net_pnl",
      "sweep_maximize": true,
-     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261108_143818_441afbf1_c007",
+     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261109_150539_3bfe3982_c007",
      "app_version": "1.5.0",
-     "git_commit": "2912dd3e",
+     "git_commit": "4f1b5f5b",
      "git_branch": "dev-1-6-0",
-     "git_dirty": false,
+     "git_dirty": true,
      "decision_logic_type": "CORE/trend_channel_reference",
      "decision_version": "1.6.0",
      "worker_versions": {
@@ -427,7 +427,7 @@
      "rendered_config_id": "3d667a52c20523d15165fd5c8131ccef772aff5cdf3f5b06e76406a9674806b5",
      "broker_config_id": "0b2f7077145eecd531909baeaffb3b214967ea87adfc527407b57640f9e3c5d9",
      "code_stand": null,
-     "recorded_at_utc": "2026-11-08T14:46:08.765543+00:00",
+     "recorded_at_utc": "2026-11-09T15:14:26.302092+00:00",
      "trial_count": 9,
      "run_outcome": "success",
      "error_count": 0,
@@ -497,20 +497,20 @@
      "param_hash": "af786739566b3127b7c57e78720d7c8f66b2741d3417c7186f1c4aaa92fbcef2",
      "status": "ok",
      "error": null,
-     "run_id": "20261108_144118_9d1399f5",
-     "run_timestamp": "2026-11-08T14:41:18.767317+00:00",
-     "sweep_id": "sweep_20261108_143818_441afbf1",
+     "run_id": "20261109_150922_e6cd4ed6",
+     "run_timestamp": "2026-11-09T15:09:22.482480+00:00",
+     "sweep_id": "sweep_20261109_150539_3bfe3982",
      "sweep_params": {
       "decision_logic_config.sl_mult": 1.0,
       "decision_logic_config.tp_mult": 1.5
      },
      "sweep_objective": "net_pnl",
      "sweep_maximize": true,
-     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261108_143818_441afbf1_c003",
+     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261109_150539_3bfe3982_c003",
      "app_version": "1.5.0",
-     "git_commit": "2912dd3e",
+     "git_commit": "4f1b5f5b",
      "git_branch": "dev-1-6-0",
-     "git_dirty": false,
+     "git_dirty": true,
      "decision_logic_type": "CORE/trend_channel_reference",
      "decision_version": "1.6.0",
      "worker_versions": {
@@ -538,7 +538,7 @@
      "rendered_config_id": "50ad40cb86b48c3e2811deaeb8f0a7f771953eb3f5798e8e5b0b07c9fb646470",
      "broker_config_id": "0b2f7077145eecd531909baeaffb3b214967ea87adfc527407b57640f9e3c5d9",
      "code_stand": null,
-     "recorded_at_utc": "2026-11-08T14:42:14.865214+00:00",
+     "recorded_at_utc": "2026-11-09T15:10:31.869703+00:00",
      "trial_count": 9,
      "run_outcome": "success",
      "error_count": 0,
@@ -608,20 +608,20 @@
      "param_hash": "cf0ecb7d65aa5d5dafaa073e5a9517a4190e155066929f60e54451631e374483",
      "status": "ok",
      "error": null,
-     "run_id": "20261108_144215_87ab273e",
-     "run_timestamp": "2026-11-08T14:42:15.118359+00:00",
-     "sweep_id": "sweep_20261108_143818_441afbf1",
+     "run_id": "20261109_151032_7b8ee126",
+     "run_timestamp": "2026-11-09T15:10:32.240448+00:00",
+     "sweep_id": "sweep_20261109_150539_3bfe3982",
      "sweep_params": {
       "decision_logic_config.sl_mult": 1.0,
       "decision_logic_config.tp_mult": 2.0
      },
      "sweep_objective": "net_pnl",
      "sweep_maximize": true,
-     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261108_143818_441afbf1_c004",
+     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261109_150539_3bfe3982_c004",
      "app_version": "1.5.0",
-     "git_commit": "2912dd3e",
+     "git_commit": "4f1b5f5b",
      "git_branch": "dev-1-6-0",
-     "git_dirty": false,
+     "git_dirty": true,
      "decision_logic_type": "CORE/trend_channel_reference",
      "decision_version": "1.6.0",
      "worker_versions": {
@@ -649,7 +649,7 @@
      "rendered_config_id": "d0d39979984bdbf6da6260795200abc66e78521dec9742743557a2e899a6a9b3",
      "broker_config_id": "0b2f7077145eecd531909baeaffb3b214967ea87adfc527407b57640f9e3c5d9",
      "code_stand": null,
-     "recorded_at_utc": "2026-11-08T14:43:09.030385+00:00",
+     "recorded_at_utc": "2026-11-09T15:11:31.834484+00:00",
      "trial_count": 9,
      "run_outcome": "success",
      "error_count": 0,
@@ -719,20 +719,20 @@
      "param_hash": "890b97e1d776454fc08b470b3182532c17608f6edb178c64a331b54cfda8c66e",
      "status": "ok",
      "error": null,
-     "run_id": "20261108_144309_4e92f233",
-     "run_timestamp": "2026-11-08T14:43:09.272171+00:00",
-     "sweep_id": "sweep_20261108_143818_441afbf1",
+     "run_id": "20261109_151132_e3837098",
+     "run_timestamp": "2026-11-09T15:11:32.062969+00:00",
+     "sweep_id": "sweep_20261109_150539_3bfe3982",
      "sweep_params": {
       "decision_logic_config.sl_mult": 1.0,
       "decision_logic_config.tp_mult": 3.0
      },
      "sweep_objective": "net_pnl",
      "sweep_maximize": true,
-     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261108_143818_441afbf1_c005",
+     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261109_150539_3bfe3982_c005",
      "app_version": "1.5.0",
-     "git_commit": "2912dd3e",
+     "git_commit": "4f1b5f5b",
      "git_branch": "dev-1-6-0",
-     "git_dirty": false,
+     "git_dirty": true,
      "decision_logic_type": "CORE/trend_channel_reference",
      "decision_version": "1.6.0",
      "worker_versions": {
@@ -760,7 +760,7 @@
      "rendered_config_id": "3e8cd3b6db0986512b0f57528317c6adb1debd27c561f7c1efb93fcc37eb51a1",
      "broker_config_id": "0b2f7077145eecd531909baeaffb3b214967ea87adfc527407b57640f9e3c5d9",
      "code_stand": null,
-     "recorded_at_utc": "2026-11-08T14:44:03.990711+00:00",
+     "recorded_at_utc": "2026-11-09T15:12:29.839264+00:00",
      "trial_count": 9,
      "run_outcome": "success",
      "error_count": 0,
@@ -830,20 +830,20 @@
      "param_hash": "46ef41af3b49476115d519a26ffcb8ca02ce148de29dbe1279c1f54951c3c421",
      "status": "ok",
      "error": null,
-     "run_id": "20261108_143823_cd463257",
-     "run_timestamp": "2026-11-08T14:38:23.603889+00:00",
-     "sweep_id": "sweep_20261108_143818_441afbf1",
+     "run_id": "20261109_150545_07a99a28",
+     "run_timestamp": "2026-11-09T15:05:45.558555+00:00",
+     "sweep_id": "sweep_20261109_150539_3bfe3982",
      "sweep_params": {
       "decision_logic_config.sl_mult": 0.8,
       "decision_logic_config.tp_mult": 1.5
      },
      "sweep_objective": "net_pnl",
      "sweep_maximize": true,
-     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261108_143818_441afbf1_c000",
+     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261109_150539_3bfe3982_c000",
      "app_version": "1.5.0",
-     "git_commit": "2912dd3e",
+     "git_commit": "4f1b5f5b",
      "git_branch": "dev-1-6-0",
-     "git_dirty": false,
+     "git_dirty": true,
      "decision_logic_type": "CORE/trend_channel_reference",
      "decision_version": "1.6.0",
      "worker_versions": {
@@ -871,7 +871,7 @@
      "rendered_config_id": "ff7a3361461f862d0f0e1c1edd6bfba1038bd162514df3c1701d0bbe98aa0721",
      "broker_config_id": "0b2f7077145eecd531909baeaffb3b214967ea87adfc527407b57640f9e3c5d9",
      "code_stand": null,
-     "recorded_at_utc": "2026-11-08T14:39:23.724452+00:00",
+     "recorded_at_utc": "2026-11-09T15:07:05.713804+00:00",
      "trial_count": 9,
      "run_outcome": "success",
      "error_count": 0,
@@ -941,20 +941,20 @@
      "param_hash": "818cda3bf05b79199982912bcf3e068e0620ac5c55c728c68e2eeeb1193d7c61",
      "status": "ok",
      "error": null,
-     "run_id": "20261108_143923_8c4fc6a6",
-     "run_timestamp": "2026-11-08T14:39:23.923910+00:00",
-     "sweep_id": "sweep_20261108_143818_441afbf1",
+     "run_id": "20261109_150705_dff1be4e",
+     "run_timestamp": "2026-11-09T15:07:05.979602+00:00",
+     "sweep_id": "sweep_20261109_150539_3bfe3982",
      "sweep_params": {
       "decision_logic_config.sl_mult": 0.8,
       "decision_logic_config.tp_mult": 2.0
      },
      "sweep_objective": "net_pnl",
      "sweep_maximize": true,
-     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261108_143818_441afbf1_c001",
+     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261109_150539_3bfe3982_c001",
      "app_version": "1.5.0",
-     "git_commit": "2912dd3e",
+     "git_commit": "4f1b5f5b",
      "git_branch": "dev-1-6-0",
-     "git_dirty": false,
+     "git_dirty": true,
      "decision_logic_type": "CORE/trend_channel_reference",
      "decision_version": "1.6.0",
      "worker_versions": {
@@ -982,7 +982,7 @@
      "rendered_config_id": "94e590bdb73eecc542007631e0708c3e639baccb328237cd7d7e99499b245672",
      "broker_config_id": "0b2f7077145eecd531909baeaffb3b214967ea87adfc527407b57640f9e3c5d9",
      "code_stand": null,
-     "recorded_at_utc": "2026-11-08T14:40:20.904860+00:00",
+     "recorded_at_utc": "2026-11-09T15:08:13.731430+00:00",
      "trial_count": 9,
      "run_outcome": "success",
      "error_count": 0,
@@ -1052,20 +1052,20 @@
      "param_hash": "41c7ea4a1ffb261fbe034fe2fc837056558fbb35bb04b888bc9d1f528bc45d07",
      "status": "ok",
      "error": null,
-     "run_id": "20261108_144021_f9d37fb8",
-     "run_timestamp": "2026-11-08T14:40:21.150550+00:00",
-     "sweep_id": "sweep_20261108_143818_441afbf1",
+     "run_id": "20261109_150814_e1bb02f4",
+     "run_timestamp": "2026-11-09T15:08:14.016450+00:00",
+     "sweep_id": "sweep_20261109_150539_3bfe3982",
      "sweep_params": {
       "decision_logic_config.sl_mult": 0.8,
       "decision_logic_config.tp_mult": 3.0
      },
      "sweep_objective": "net_pnl",
      "sweep_maximize": true,
-     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261108_143818_441afbf1_c002",
+     "scenario_set_name": "trend_channel_reference_sweep_base__sweep_20261109_150539_3bfe3982_c002",
      "app_version": "1.5.0",
-     "git_commit": "2912dd3e",
+     "git_commit": "4f1b5f5b",
      "git_branch": "dev-1-6-0",
-     "git_dirty": false,
+     "git_dirty": true,
      "decision_logic_type": "CORE/trend_channel_reference",
      "decision_version": "1.6.0",
      "worker_versions": {
@@ -1093,7 +1093,7 @@
      "rendered_config_id": "01bc89421a8ffd0af78cbb0947f2aff70e39b07b33aad619de29576332ae4fc3",
      "broker_config_id": "0b2f7077145eecd531909baeaffb3b214967ea87adfc527407b57640f9e3c5d9",
      "code_stand": null,
-     "recorded_at_utc": "2026-11-08T14:41:18.508865+00:00",
+     "recorded_at_utc": "2026-11-09T15:09:22.199309+00:00",
      "trial_count": 9,
      "run_outcome": "success",
      "error_count": 0,

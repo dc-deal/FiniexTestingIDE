@@ -46,6 +46,7 @@ the session in a live run — and it is the join into every other section.
 | `entry_type` | how the position was opened — `market`, `limit`, `stop`, `stop_limit` |
 | `entry_side` · `exit_side` | `buy` or `sell` — what each end actually did |
 | `entry_tick_index` · `exit_tick_index` | the chronological sort key within the unit |
+| `duration_ticks` | how many ticks of its unit the trade was open: `exit_tick_index` less `entry_tick_index`; null where the exit lies before the entry — a position a session restored at boot keeps the entry index of the session that opened it, so its two indices are not one numbering. `duration_s` holds for every trade |
 | `stop_loss` · `take_profit` | the levels in force when this row's close was booked — after any move, not the levels at entry; null where none was |
 | `currency` | the account currency every money figure on the row is in |
 | `close_type` | `full` or `partial` — whether this row closed all of the position or part of it |
@@ -196,7 +197,12 @@ entry names its `currency` and the `trade_count` it covers.
 | `avg_mfe_losers` | mean favourable excursion on losers — the "left on the table" read |
 | `largest_mae` · `largest_mfe` | the single worst and best excursion, as a P&L magnitude |
 | `avg_trade_duration_s` | mean holding time in seconds |
+| `avg_trade_duration_ticks` · `min_trade_duration_ticks` · `max_trade_duration_ticks` | the holding time in the unit's ticks, from each row's `duration_ticks`; 0 over no trade |
+| `long_trades` · `short_trades` | the trades by direction |
+| `winning_trades` · `losing_trades` | net P&L above and below zero — a trade that realised nothing is neither |
+| `sl_closes` · `tp_closes` · `scenario_end_closes` · `manual_closes` | the trades by `close_reason`; `manual_closes` is every trade the other three do not name |
 | `gross_pnl` · `net_pnl` · `total_fees` | sums over the group |
+| `avg_gross_pnl` · `avg_fees` · `avg_net_pnl` | those sums per trade |
 | `max_consecutive_wins` · `max_consecutive_losses` | the longest unbroken run, in realisation order |
 
 `avg_win_r` and `avg_loss_r` are **null when not measured, never `0.0`** — a measured zero and an

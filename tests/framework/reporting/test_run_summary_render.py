@@ -10,10 +10,12 @@ other executive sub-sections (timing, resources) are not exercised here.
 import io
 from contextlib import redirect_stdout
 
+from python.framework.reporting.builders.report_aggregators import aggregate_profiling
 from python.framework.reporting.console.sim_executive_summary import SimExecutiveSummary
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
     ProfilingReport,
+    ProfilingUnitRow,
     RunMetaReport,
     RunSummary,
     RunSummaryCurrency,
@@ -44,7 +46,7 @@ def _summary(currencies, sent=5, executed=5, rejected=0, sl_tp=0, units=5) -> Ru
 def _render(summary: RunSummary) -> str:
     # Only _render_run_summary is exercised — it reads self._run_summary alone.
     executive = SimExecutiveSummary(
-        app_config=None, run_summary=summary,
+        run_summary=summary,
         run_meta_report=RunMetaReport(run_id=_RUN_ID), profiling_report=ProfilingReport(run_id=_RUN_ID, units=[]),
         scenario_details_report=ScenarioDetailsReport(run_id=_RUN_ID, units=[]),
         warnings_errors_report=WarningsErrorsReport(run_id=_RUN_ID),
@@ -90,3 +92,19 @@ def test_no_currencies_renders_counts_only():
     out = _render(_summary([], units=0))
     assert 'RUN SUMMARY' in out
     assert 'Scenarios:          0' in out
+
+
+def test_the_slowest_scenario_is_shown_whatever_its_deviation():
+    # A measurement, not a verdict (#557, 684.a): +5 % above the mean is printed too
+    rows = [ProfilingUnitRow(name='fast', symbol='EURUSD', total_ticks=100, total_ms=95.0),
+            ProfilingUnitRow(name='slow', symbol='EURUSD', total_ticks=100, total_ms=105.0)]
+    profiling = ProfilingReport(run_id=_RUN_ID, units=rows,
+                                aggregate=aggregate_profiling(rows, budget_active=False))
+    executive = SimExecutiveSummary(
+        run_summary=RunSummary(run_id=_RUN_ID, currencies=[]),
+        run_meta_report=RunMetaReport(run_id=_RUN_ID), profiling_report=profiling,
+        scenario_details_report=ScenarioDetailsReport(run_id=_RUN_ID, units=[]),
+        warnings_errors_report=WarningsErrorsReport(run_id=_RUN_ID),
+        aggregated_report=AggregatedPortfolioReport(run_id=_RUN_ID))
+    line = executive._format_slowest_scenario_deviation()
+    assert 'Slowest Scenario: slow' in line and '+5% vs avg' in line

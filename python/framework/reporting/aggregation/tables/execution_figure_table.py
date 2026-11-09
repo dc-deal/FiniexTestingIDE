@@ -16,6 +16,7 @@ from python.framework.types.api.report_types import (
     ExecutionStatsTotals,
 )
 from python.framework.types.trading_env_types.trading_env_stats_types import EXECUTION_COUNT_FIELDS
+from python.framework.utils.trading_math.order_math import execution_rate_pct
 
 # One declaration per count, shared by both tables. Over no unit a count is 0.
 EXECUTION_COUNT_FIGURES: Dict[str, FigureDeclaration] = {
@@ -47,8 +48,8 @@ def execution_rate(combined: Dict[str, Any], rows: Sequence[Any]) -> float:
     Returns:
         Executed over sent plus adopted, in percent; 0.0 when none was handled
     """
-    handled = combined['orders_submitted'] + combined['orders_adopted']
-    return (combined['orders_executed'] / handled * 100) if handled > 0 else 0.0
+    return execution_rate_pct(combined['orders_executed'], combined['orders_submitted'],
+                              combined['orders_adopted'])
 
 
 AGGREGATED_EXECUTION_TABLE = FoldTable(

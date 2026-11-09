@@ -10,7 +10,7 @@ group per account currency; ratios (win rate / profit factor) are recomputed fro
 components, never summed.
 """
 
-from typing import AbstractSet, Dict, List, Optional
+from typing import AbstractSet, Any, Dict, List, Optional
 
 from python.framework.reporting.aggregation.aggregation_fold import (
     fold_group,
@@ -21,6 +21,10 @@ from python.framework.reporting.aggregation.aggregation_fold import (
 from python.framework.reporting.aggregation.tables.execution_figure_table import (
     AGGREGATED_EXECUTION_TABLE,
     EXECUTION_TOTALS_TABLE,
+)
+from python.framework.reporting.aggregation.tables.order_history_figure_table import (
+    FAILED_ORDER_REASON_TABLE,
+    FAILED_ORDERS_OF_UNIT_TABLE,
 )
 from python.framework.reporting.aggregation.tables.portfolio_figure_table import (
     AGGREGATED_PORTFOLIO_TABLE,
@@ -40,11 +44,19 @@ from python.framework.reporting.aggregation.tables.trade_figure_table import (
     TRADE_SCENARIO_TOTALS_TABLE,
     TRADE_SCENARIO_TOTALS_WITHOUT_QUOTE_TABLE,
 )
-from python.framework.reporting.aggregation.tables.worker_figure_table import WORKER_TOTALS_TABLE
+from python.framework.reporting.aggregation.tables.worker_figure_table import (
+    DECISION_TOTALS_TABLE,
+    WORKER_DECISION_BOTTLENECKS_TABLE,
+    WORKER_TOTALS_TABLE,
+)
 from python.framework.types.api.report_types import (
     AggregatedPortfolioRow,
+    DecisionTotals,
     ExecutionStatsRow,
     ExecutionStatsTotals,
+    FailedOrderReason,
+    FailedOrdersOfUnit,
+    OrderHistoryRow,
     PendingOrdersUnitRow,
     PortfolioAggregateRow,
     PortfolioUnitRow,
@@ -55,8 +67,13 @@ from python.framework.types.api.report_types import (
     TradeAnalytics,
     TradeHistoryRow,
     TradeScenarioTotals,
+    WorkerDecisionBottlenecks,
     WorkerDecisionUnitRow,
     WorkerStatRow,
+)
+from python.framework.types.trading_env_types.order_types import (
+    FAILED_ORDER_STATUSES,
+    FailedOrderOfReason,
 )
 
 # --- Trade analytics (per account currency) -------------------------------------------
@@ -73,6 +90,32 @@ def aggregate_trade_analytics(rows: List[TradeHistoryRow]) -> List[TradeAnalytic
         One TradeAnalytics per currency present (sorted), [] for no rows
     """
     return [TradeAnalytics(**figures) for figures in fold_rows(rows, TRADE_ANALYTICS_TABLE)]
+
+
+# --- Failed orders (the order history's listing) --------------------------------------
+
+def aggregate_failed_orders(rows: List[OrderHistoryRow]) -> Dict[str, Any]:
+    """
+    The failed orders among the listed rows, counted per unit and per status and reason.
+
+    Args:
+        rows: The order history's rows (already filtered)
+
+    Returns:
+        The report's `failed_listed`, `failed_by_unit` (first-appearance order) and
+        `failed_by_reason` (the most frequent first, first-appearance order among equals)
+    """
+    failed = [row for row in rows if row.status in FAILED_ORDER_STATUSES]
+    by_reason = [FailedOrderReason(**figures) for figures in fold_rows(
+        [FailedOrderOfReason(row.status, row.failure_label()) for row in failed],
+        FAILED_ORDER_REASON_TABLE)]
+    by_reason.sort(key=lambda reason: -reason.count)
+    return {
+        'failed_listed': fold_group(failed, FAILED_ORDERS_OF_UNIT_TABLE)['listed'],
+        'failed_by_unit': [FailedOrdersOfUnit(**figures)
+                           for figures in fold_rows(failed, FAILED_ORDERS_OF_UNIT_TABLE)],
+        'failed_by_reason': by_reason,
+    }
 
 
 # --- Trade per-scenario totals (the per-scenario table footer) ------------------------
@@ -191,6 +234,39 @@ def aggregate_worker_totals(rows: List[WorkerDecisionUnitRow]) -> List[WorkerSta
               fold_rows([w for row in rows for w in row.workers], WORKER_TOTALS_TABLE)]
     totals.sort(key=lambda w: w.total_time_ms, reverse=True)
     return totals
+
+
+def aggregate_decision_totals(rows: List[WorkerDecisionUnitRow]) -> Optional[DecisionTotals]:
+    """
+    The decision logic's figures over the units that tracked their decisions.
+
+    Args:
+        rows: The tracked units' rows
+
+    Returns:
+        The totals; None where no unit tracked its decisions — nothing was counted, which zeros
+        would claim was
+    """
+    if not rows:
+        return None
+    return DecisionTotals(**fold_group(rows, DECISION_TOTALS_TABLE))
+
+
+def aggregate_worker_decision_bottlenecks(
+        rows: List[WorkerDecisionUnitRow]) -> Optional[WorkerDecisionBottlenecks]:
+    """
+    The slowest performers over the units that tracked their decisions.
+
+    Args:
+        rows: The tracked units' rows
+
+    Returns:
+        The bottlenecks, each None where nothing qualifies; None where no unit tracked its
+        decisions
+    """
+    if not rows:
+        return None
+    return WorkerDecisionBottlenecks(**fold_group(rows, WORKER_DECISION_BOTTLENECKS_TABLE))
 
 
 # --- Profiling roll-up (cross-scenario, #399) -----------------------------------------

@@ -473,3 +473,55 @@ class TestAProtectiveExitIsMeasuredAgainstItsLevel:
 
         assert row.exit_slippage_measured_against is SlippageReference.SUBMISSION_MID
         assert row.exit_slippage == pytest.approx(0.0002), 'sold below the mid'
+
+
+class TestTheBreakdownIsFoldedOnTheModel:
+    """
+    The counts, the averages per trade and the holding time in ticks the console prints are
+    folded once, on the analytics (#557) — the console computes none of them.
+    """
+
+    def _analytics(self, trades):
+        return build_trade_history_report(_RUN_ID, _units(trades)).analytics[0]
+
+    def test_direction_outcome_and_close_are_counted(self):
+        trades = [
+            _trade(position_id='w1', net_pnl=20.0, close_reason=CloseReason.TP_TRIGGERED),
+            _trade(position_id='l1', direction=OrderDirection.SHORT, net_pnl=-10.0,
+                   close_reason=CloseReason.SL_TRIGGERED),
+            _trade(position_id='z1', direction=OrderDirection.SHORT, net_pnl=0.0,
+                   close_reason=CloseReason.MANUAL),
+        ]
+        a = self._analytics(trades)
+        assert (a.long_trades, a.short_trades) == (1, 2)
+        # A trade that realised nothing is neither a winner nor a loser
+        assert (a.winning_trades, a.losing_trades) == (1, 1)
+        assert (a.sl_closes, a.tp_closes, a.scenario_end_closes, a.manual_closes) == (1, 1, 0, 1)
+
+    def test_the_averages_divide_the_totals_by_the_trades(self):
+        a = self._analytics([_trade(position_id='w1', net_pnl=20.0),
+                             _trade(position_id='l1', net_pnl=-10.0)])
+        assert a.avg_net_pnl == a.net_pnl / 2
+        assert a.avg_gross_pnl == a.gross_pnl / 2
+        assert a.avg_fees == a.total_fees / 2
+
+    def test_the_holding_time_in_ticks_comes_from_each_row(self):
+        trades = [replace(_trade(position_id='p1'), entry_tick_index=10, exit_tick_index=40),
+                  replace(_trade(position_id='p2'), entry_tick_index=50, exit_tick_index=60)]
+        report = build_trade_history_report(_RUN_ID, _units(trades))
+        assert [row.duration_ticks for row in report.trades] == [30, 10]
+        a = report.analytics[0]
+        assert (a.avg_trade_duration_ticks, a.min_trade_duration_ticks,
+                a.max_trade_duration_ticks) == (20.0, 10, 30)
+
+    def test_a_filter_folds_them_again_over_what_it_kept(self):
+        report = build_trade_history_report(_RUN_ID, _units([
+            _trade(position_id='p1', symbol='EURUSD', net_pnl=20.0),
+            _trade(position_id='p2', symbol='GBPUSD', net_pnl=-10.0)]))
+        a = filter_trade_history_report(report, symbol='GBPUSD').analytics[0]
+        assert (a.trade_count, a.winning_trades, a.losing_trades) == (1, 0, 1)
+        assert a.avg_net_pnl == -10.0
+
+    def test_the_row_serves_its_duration_in_the_json(self):
+        row = build_trade_history_report(_RUN_ID, _units([_trade()])).trades[0]
+        assert row.model_dump(mode='json')['duration_ticks'] == 100

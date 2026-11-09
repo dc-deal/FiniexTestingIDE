@@ -30,6 +30,7 @@ from python.framework.reporting.builders.robustness_report_builder import (
 )
 from python.framework.reporting.builders.run_meta_report_builder import (
     build_run_meta_report_from_batch,
+    derive_run_throughput,
 )
 from python.framework.reporting.builders.run_unit import (
     run_units_from_batch,
@@ -40,6 +41,9 @@ from python.framework.reporting.builders.scenario_details_report_builder import 
 )
 from python.framework.reporting.builders.warnings_errors_report_builder import (
     build_warnings_errors_report_from_batch,
+)
+from python.framework.reporting.builders.worker_decision_breakdown_builder import (
+    build_worker_decision_breakdowns,
 )
 from python.framework.reporting.console.block_splitting_disposition import BlockSplittingDisposition
 from python.framework.reporting.console.booking_periods_summary import BookingPeriodsSummary
@@ -86,6 +90,7 @@ from python.framework.types.run_footprint_types import MemberExpectation
 from python.framework.types.run_results_types import SweepContext
 from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.console_renderer import ConsoleRenderer
+from python.framework.utils.machine_resources_reader import MachineResourcesReader
 from python.scenario.scenario_set import ScenarioSet
 
 
@@ -165,10 +170,24 @@ class BatchReportCoordinator:
             run_id, self._batch_execution_summary)
         # Run meta — run-level timing split + scenario identity (the orchestrator's primary
         # measurements), projected once so PRESENT reads the model instead of the raw type.
+        # The parallelism and the machine are read here, once — a console reading them while it
+        # renders would print what config and the machine say THEN (#557).
         run_meta_report = build_run_meta_report_from_batch(
-            run_id, self._batch_execution_summary, disabled_count)
+            run_id, self._batch_execution_summary, disabled_count,
+            parallel_scenarios=self._app_config.get_default_parallel_scenarios(),
+            max_parallel_scenarios=self._app_config.get_default_max_parallel_scenarios(),
+            generator_profiles=self._scenario_set.get_generator_profiles(),
+            machine=MachineResourcesReader().read())
         # Profiling — per-scenario operation timing + inter-tick + clipping + warmup (sim-only, #399).
         profiling_report = build_profiling_report_from_batch(run_id, self._batch_execution_summary)
+        # Where each unit's worker_decision time went — it joins the profiling and the
+        # worker/decision report
+        profiling_report = profiling_report.model_copy(update={
+            'worker_decision_breakdowns': build_worker_decision_breakdowns(
+                profiling_report, worker_decision_report)})
+        # The run's throughput — it reads the scenario details, the profiling and the run summary
+        run_meta_report = derive_run_throughput(
+            run_meta_report, scenario_details_report, profiling_report, run_summary)
         # Broker configuration — per-broker spec + scenarios + symbols (sim-only).
         broker_report = build_broker_report_from_batch(run_id, self._batch_execution_summary)
         # Warnings & errors — tiered, from the validation channels + log pots (#395).
@@ -198,8 +217,7 @@ class BatchReportCoordinator:
         console = RunConsoleRenderer(
             unit_count=run_summary.unit_count,
             threshold=threshold,
-            header_summary=ExecutionHeaderSummary(
-                run_meta_report, warnings_errors_report, self._app_config),
+            header_summary=ExecutionHeaderSummary(run_meta_report, warnings_errors_report),
             scenario_details_summary=ScenarioDetailsSummary(scenario_details_report),
             portfolio_summary=PortfolioSummary(
                 portfolio_report, pending_report, execution_stats_report, aggregated_portfolio_report),
@@ -221,9 +239,8 @@ class BatchReportCoordinator:
             # below carries it into `scenario_summary.log` like every other section (#537).
             booking_periods_summary=BookingPeriodsSummary(booking_periods_report),
             closing_block=SimExecutiveSummary(
-                self._app_config, run_summary, run_meta_report, profiling_report,
-                scenario_details_report, warnings_errors_report, aggregated_portfolio_report,
-                generator_profiles=self._scenario_set.get_generator_profiles()),
+                run_summary, run_meta_report, profiling_report, scenario_details_report,
+                warnings_errors_report, aggregated_portfolio_report),
         )
 
         summary_detail = self._app_config.get_summary_detail()

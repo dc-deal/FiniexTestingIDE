@@ -11,6 +11,7 @@ import io
 from contextlib import redirect_stdout
 from typing import Optional
 
+from python.framework.reporting.builders.report_aggregators import aggregate_failed_orders
 from python.framework.reporting.console.trade_history_summary import TradeHistorySummary
 from python.framework.types.api.report_types import (
     ExecutionRow,
@@ -82,11 +83,12 @@ def _execution(failed: int = 0, slippage=()) -> ExecutionStatsReport:
 
 
 def _rejected_orders(count: int) -> OrderHistoryReport:
-    """The order history holding `count` refused orders of the scenario."""
+    """The order history holding `count` refused orders of the scenario, counted as built."""
     rows = [OrderHistoryRow(order_id=f'pos_eurusd_{n}', symbol='EURUSD',
                             status=OrderStatus.REJECTED, commission=0.0,
                             scenario_name='AUDUSD_cont_00') for n in range(count)]
-    return OrderHistoryReport(run_id=_RUN_ID, orders=rows, count=count, symbols=['EURUSD'])
+    return OrderHistoryReport(run_id=_RUN_ID, orders=rows, count=count, symbols=['EURUSD'],
+                              **aggregate_failed_orders(rows))
 
 
 def _render(method_name: str, orders: Optional[OrderHistoryReport] = None,

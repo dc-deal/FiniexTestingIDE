@@ -26,9 +26,9 @@ way it ended — `executed` when it fills — and every close of a position adds
 position closed in three parts produces three close rows.
 
 The rows are in **append order within their unit**, and that position in the list is their
-identity. No combination of fields is unique, so this list declares **no row key**, which is a
-statement in itself rather than an omission: see [row keys](/api/v1/docs/row-keys). Keep the order
-the API served, and do not deduplicate.
+identity. No combination of fields is unique, so `keys` declares `[]` for `orders` — the
+position is the identity, a statement in itself rather than an omission: see
+[row keys](/api/v1/docs/row-keys). Keep the order the API served, and do not deduplicate.
 
 An order that ends without filling has a row for that ending too: its `status` says which way it
 ended, and on a cancelled, expired or unaccounted row `initiator` and `end_reason` say who ended it
@@ -142,6 +142,24 @@ is one way an order can end, and each has its own word because each is acted on 
 counts them together as `orders_failed` in [execution stats](/api/v1/docs/execution-stats).
 
 The `status` query parameter takes one of these values and matches it exactly.
+
+## The failed orders, counted
+
+Beside the rows, the report counts the failed rows it lists:
+
+| Field | Meaning |
+|---|---|
+| `failed_listed` | every failed row in `orders` |
+| `failed_by_unit` | per unit: `listed`, how many of its failed rows are here |
+| `failed_by_reason` | per `status` and `reason` — the reason a failed row names: its `rejection_reason`, else its `end_reason`, else its status — with its `count`; the most frequent first |
+
+`keys` declares what makes a row of each list unique: `scenario_name` for `failed_by_unit`, `status`
+and `reason` for `failed_by_reason`, and nothing for `orders`, whose rows are events identified by
+their place in the list.
+
+They count what is LISTED. A long session's history keeps only its newest rows, so these can be
+fewer than `orders_failed` in [execution stats](/api/v1/docs/execution-stats), which counts every
+one. A filter counts them again over the rows it kept.
 
 ## Who ended it, and why — `initiator` and `end_reason`
 

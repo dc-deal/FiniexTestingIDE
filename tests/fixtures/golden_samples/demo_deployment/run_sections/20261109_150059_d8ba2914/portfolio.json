@@ -1,0 +1,126 @@
+{
+  "run_id": "20261109_150059_d8ba2914",
+  "units": [
+    {
+      "name": "demo_btcusd_bot",
+      "symbol": "BTCUSD",
+      "currency": "USD",
+      "total_trades": 0,
+      "winning_trades": 0,
+      "losing_trades": 0,
+      "win_rate": 0.0,
+      "profit_factor": null,
+      "total_profit": 0.0,
+      "total_loss": 0.0,
+      "net_profit": 0.0,
+      "account_max_drawdown": 539.5260000000017,
+      "account_max_dd_pct": 5.361645613206252,
+      "drawdown_carried_from": "2026-11-09T15:00:47.424804+00:00",
+      "drawdown_restarts": 3,
+      "drawdown_started_at": "2026-11-09T14:58:44.217855+00:00",
+      "total_fees": 0.0,
+      "fees_charged": 57.00696,
+      "data_broker_type": "kraken_spot",
+      "data_sentiment_type": "",
+      "broker_name": "Kraken",
+      "spot_mode": true,
+      "total_long_trades": 0,
+      "total_short_trades": 0,
+      "max_equity": 10142.55992,
+      "current_balance": 2817.1230400000004,
+      "initial_balance": 10000.0,
+      "conversion_rate": null,
+      "base_currency": "BTC",
+      "quote_currency": "USD",
+      "spot_est_current": 9817.12304,
+      "spot_est_initial": 10000.0,
+      "spot_est_pnl": -182.8769599999996,
+      "spot_est_pnl_pct": -1.828769599999996,
+      "total_spread_cost": 0.0,
+      "total_modelled_spread_cost": 0.0,
+      "total_commission": 0.0,
+      "total_swap": 0.0,
+      "maker_fee": 0.0,
+      "taker_fee": 57.00696,
+      "fill_fees_by_source": {
+        "venue": {
+          "fill_count": 1,
+          "fill_fees": 57.00696
+        }
+      },
+      "has_error": false,
+      "balances": {
+        "USD": 2817.1230400000004,
+        "BTC": 0.1
+      },
+      "initial_balances": {
+        "USD": 10000.0,
+        "BTC": 0.0
+      },
+      "committed_funds": {
+        "USD": 0.0,
+        "BTC": 0.0
+      },
+      "usable_funds": {},
+      "last_price": 70000.0,
+      "open_positions": [
+        {
+          "position_id": "pos_btcusd_1",
+          "direction": "long",
+          "lots": 0.1,
+          "entry_price": 71258.7,
+          "entry_time": "2026-02-05T03:31:37.855000+00:00",
+          "last_price": 70000.0,
+          "unrealized_pnl": -182.8769599999997,
+          "valued": true,
+          "stop_loss": null,
+          "take_profit": null
+        }
+      ],
+      "unrealized_pnl": -182.8769599999997,
+      "final_equity": 9817.12304,
+      "final_equity_valued": true,
+      "session_end_policy": "cancel/leave",
+      "open_position_count": 1
+    }
+  ],
+  "aggregates": [
+    {
+      "currency": "USD",
+      "unit_count": 1,
+      "total_trades": 0,
+      "winning_trades": 0,
+      "losing_trades": 0,
+      "win_rate": 0.0,
+      "profit_factor": null,
+      "total_profit": 0.0,
+      "total_loss": 0.0,
+      "net_profit": 0.0,
+      "account_max_drawdown": 539.5260000000017,
+      "max_equity": 10142.55992,
+      "account_max_dd_pct": 5.361645613206252,
+      "account_max_drawdown_unit": "demo_btcusd_bot",
+      "total_fees": 0.0,
+      "fees_charged": 57.00696,
+      "fill_fees_by_source": {
+        "venue": {
+          "fill_count": 1,
+          "fill_fees": 57.00696
+        }
+      },
+      "unrealized_pnl": -182.8769599999997,
+      "final_equity": 9817.12304,
+      "total_final_equity": 9817.12304,
+      "total_initial_balance": 10000.0,
+      "open_position_count": 1
+    }
+  ],
+  "keys": {
+    "units": [
+      "name"
+    ],
+    "aggregates": [
+      "currency"
+    ]
+  }
+}

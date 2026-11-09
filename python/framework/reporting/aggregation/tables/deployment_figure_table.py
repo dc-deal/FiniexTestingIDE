@@ -1,9 +1,10 @@
 """
-The deployment summary's fold table (#497, #557) — one session of a deployment per row.
+The deployment tables (#497, #557) — one session of a deployment per row.
 
 A deployment's line in the list folds the sessions of one account currency. Which sessions those
 are — booked ones per currency, or the ones that booked nothing — is the family's choice
-(`deployment_history_builder.summarize_deployments`); how they fold is declared here.
+(`deployment_history_builder.summarize_deployments`); how they fold is declared here. The detail
+view's caption folds every session of the deployment, every currency.
 """
 
 from datetime import datetime
@@ -15,7 +16,11 @@ from python.framework.types.aggregation_types import (
     GroupOrder,
     Reduction,
 )
-from python.framework.types.api.report_types import DeploymentSessionRow, DeploymentSummary
+from python.framework.types.api.report_types import (
+    DeploymentCaption,
+    DeploymentSessionRow,
+    DeploymentSummary,
+)
 from python.framework.utils.time_utils import ensure_utc_aware
 
 
@@ -98,4 +103,21 @@ DEPLOYMENT_SUMMARY_TABLE = FoldTable(
         'configuration_changed': "a copy: whether the deployment's advisory exists",
         'code_summary': "a copy: the deployment's code summary",
     },
+)
+
+
+DEPLOYMENT_CAPTION_TABLE = FoldTable(
+    name='deployment_caption',
+    figures={
+        # Distinct runs, not rows: a session with two currencies is two rows
+        'session_count': FigureDeclaration(Reduction.COUNT_DISTINCT, source='run_id'),
+        'first_started': FigureDeclaration(Reduction.DERIVE),
+        # The currencies the rows produced a figure in; a failed start has none
+        'currencies': FigureDeclaration(Reduction.DISTINCT, source='currency'),
+        # The first bot id a session names
+        'bot_id': FigureDeclaration(Reduction.IDENTITY, empty_value=''),
+    },
+    derivations={'first_started': earliest_start},
+    row_model=DeploymentSessionRow,
+    served_as=DeploymentCaption,
 )

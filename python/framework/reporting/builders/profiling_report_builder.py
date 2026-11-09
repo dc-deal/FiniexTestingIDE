@@ -13,6 +13,9 @@ them via the now non-mutating `ProfilingData.from_dicts` (#398) — same path th
 
 from typing import Dict, Optional
 
+from python.framework.reporting.aggregation.tables.profiling_figure_table import (
+    warmup_phase_share,
+)
 from python.framework.reporting.builders.report_aggregators import aggregate_profiling
 from python.framework.types.api.report_types import (
     ClippingRow,
@@ -56,11 +59,26 @@ def build_profiling_report_from_batch(run_id: str, batch: BatchExecutionSummary)
         WarmupPhaseRow(name=phase.name, duration_s=phase.duration_s)
         for phase in (batch.warmup_phases or [])
     ]
-    return ProfilingReport(
+    return with_warmup_shares(ProfilingReport(
         run_id=run_id,
         units=rows,
         aggregate=aggregate_profiling(rows, budget_active=bool(clipping_map)),
-        warmup_phases=warmup)
+        warmup_phases=warmup))
+
+
+def with_warmup_shares(report: ProfilingReport) -> ProfilingReport:
+    """
+    Stamp each warmup phase with its share of the whole warmup, which the report computes.
+
+    Args:
+        report: The profiling report, its warmup phases in the order they ran
+
+    Returns:
+        The same report, every phase carrying its `pct`
+    """
+    for phase in report.warmup_phases:
+        phase.pct = warmup_phase_share(phase, report.warmup_total_s)
+    return report
 
 
 def _to_unit_row(

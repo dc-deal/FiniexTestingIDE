@@ -100,8 +100,9 @@ BUILD — at the end of a run
      │                         the one engine, aggregation_fold.py
      ▼
   the model (TradeAnalytics, PortfolioAggregateRow, …) on the report section
+     │                         + its computed fields: shares, differences, counts of its own lists
      ├─► io/        the section's JSON in the run directory                          PERSIST
-     ├─► console/   formats, computes nothing                                        PRESENT
+     ├─► console/   formats, computes nothing — not a count, not a share, not a sum  PRESENT
      └─► API        GET /api/v1/reports/runs/{run_id}/<section> serves that JSON
 
 READ — when a list is asked for
@@ -118,6 +119,42 @@ tables themselves are what #657 serves next (through #582): per figure its reduc
 what its empty value means and what one row is, so a reader that combines figures itself — a total
 over a selection, the sessions of a deployment — follows the declaration instead of a formula of
 its own.
+
+### What a console may do — and what it may not (#557)
+
+The console is one surface among the file, the CSV and the API, so it gets no number the others do
+not. Every figure it prints is a field of the model — a COUNT included: the number of positions
+still open, of resting orders, of periods, of workers is a field beside its list
+(`open_position_count`, `active_order_count`, `period_count`, `worker_count`), served to every
+surface, never a `len()` a renderer takes while it prints.
+
+What a renderer may still do — and nothing more:
+
+- **format one value:** a unit (ms → s, s → h → d, bytes → GB), a ratio as a percent, a sign, a
+  rounding, a width, a bar's length;
+- **loop over a served list:** sort or group it for display, find a row by its key;
+- **choose whether a line prints** from whether something is empty;
+- **choose a colour or an order** by a threshold — presentation, as long as the threshold never
+  decides whether a warning fires.
+
+Where a figure lives, by what it is read from:
+
+| The figure reads | It is | Example |
+|---|---|---|
+| fields of ONE model — a share, a difference, the count or the sum of its own list | a computed field on that model (`@computed_field`): derived where the model is, served with it, unable to drift from what it reads; a stored artifact written before the field existed answers it rightly when it is read | `ScenarioDetailsRow.non_flat_signal_pct`, `AggregatedPortfolioRow.total_costs`, `WorkerDecisionUnitRow.worker_time_ms`, `ProfilingReport.warmup_total_s` |
+| ROWS — a total, a mean, the slowest of them | a figure of the rows' fold table, stored; a field added later is OPTIONAL and null on an artifact written before it, never a zero that claims a measurement | `TradeAnalytics.winning_trades`, `DecisionTotals`, `WorkerDecisionBottlenecks` |
+| SEVERAL sections | derived once in the coordinator, when every section it reads exists | the run's throughput on the run meta (`derive_run_throughput`), the worker/decision breakdown on the profiling report |
+| something outside the run — configuration, the machine | read once at DERIVE and carried on the model | the batch's parallelism and the machine reading on the run meta |
+
+A verdict — does this warrant a warning? — is a validator's, never a renderer's. Where the console
+and a validator both need the same classification, it is declared once, beside its members, and
+both read it: `BatchStatus.of_counts`, `WalkForwardClass.of`.
+
+**The lock is a test.** `tests/framework/reporting/test_consoles_compute_nothing.py` walks every
+console module the two report coordinators reach, through their imports, and refuses an aggregate
+call in one — a `sum`, a `max` over values, a mean; a `max` over string lengths, which sizes a
+column, passes. A console added to the end-of-run report is covered the moment a coordinator
+imports it.
 
 **A new aggregate is a fold table, not a loop.** Its figures are declared under
 `aggregation/tables/`, the table is listed in `figure_tables.py`, and its family calls the fold.
@@ -426,7 +463,7 @@ open work to finish migrating the section (issue ref where one exists; ✅ = don
 
 | Section | Domain | Model | Console | Remaining work |
 |---|---|---|---|---|
-| Trade History (#389 analytics) | unified | ✅ | ✅ — the slippage block sits in the aggregated statistics of a multi-unit run and follows the trade table of a single unit, so an AutoTrader session prints it too; it renders the execution statistics' `fill_slippage_totals`, one line per reference kind, and computes nothing (#631) | offload the still-inline per-currency aggregates: trade-breakdown counts · duration · rejection-by-reason |
+| Trade History (#389 analytics) | unified | ✅ | ✅ — the slippage block sits in the aggregated statistics of a multi-unit run and follows the trade table of a single unit, so an AutoTrader session prints it too; it renders the execution statistics' `fill_slippage_totals`, one line per reference kind, and computes nothing (#631). The trade breakdown — direction, outcome and close counts, the per-trade averages, the holding time in ticks — is on `TradeAnalytics`, and the failed orders by unit and by reason are on the order history (#557) | — |
 | Order History | unified | ✅ | ✅ | — a row names the order event it was booked with (`order_event_seq`, stamped where the row is booked), so a fill's row carries that fill's slippage against the reference its order names (#631): derived in `fill_slippage` from the unit's order events and the level each stop-loss or take-profit close fired at, which the executor keeps per fill as it books it — uncapped, unlike the trade history — in both pipelines; served and in the CSV, not printed |
 | Portfolio — per-unit | unified | ✅ | ✅ (linear, boxes removed) | — `max_dd_pct`, the spot dual-balance estimate and `final_equity` are derived in the builder; the renderer's `symbol[-3:]` currency split was replaced by the broker-config split stamped at capture (#265). Carries `open_positions` / `unrealized_pnl` / `session_end_policy` (#492) |
 | Portfolio — aggregated (by currency) | sim | ✅ (`AggregatedPortfolioReport`) | ✅ from the model (byte-identical; `PortfolioAggregator` retired) | — |
@@ -435,7 +472,7 @@ open work to finish migrating the section (issue ref where one exists; ✅ = don
 | Execution — aggregated ORDER EXECUTION | sim | ✅ (in `AggregatedPortfolioReport`) | ✅ from the model | — (folded into the portfolio aggregate, #397) |
 | Scenario Details | **sim-only** | ✅ | ✅ (linear, incl. failed + `account_currency` hint) | — |
 | Run Summary (#390) | unified | ✅ | ✅ executive headline | — |
-| Worker / Decision (#398/#399) | unified | ✅ (`WorkerDecisionReport`) | ✅ — `performance_summary` (worker details / aggregated / bottleneck) + the breakdown read the model (overhead Total from the profiling model, #399); the duplicate per-scenario worker list was removed. Per-worker cadence (`compute_ratio_pct`, `ticks_idle`) and `parallel_avg_saved_per_tick_ms` are derived in the builder | **still console-only:** the AGGREGATED STATS block and the bottleneck scan (slowest scenario / worst worker / worst decision logic) build their aggregates and pick their winners inside the renderer — a section migration, not a move |
+| Worker / Decision (#398/#399) | unified | ✅ (`WorkerDecisionReport`) | ✅ — `performance_summary` (worker details / aggregated / bottleneck) + the breakdown read the model (overhead Total from the profiling model, #399); the duplicate per-scenario worker list was removed. Per-worker cadence (`compute_ratio_pct`, `ticks_idle`) and `parallel_avg_saved_per_tick_ms` are derived in the builder. The AGGREGATED STATS block reads `decision_totals` and `worker_totals`, the bottleneck scan `bottlenecks` (#557) | — |
 | Profiling — operations + inter-tick + clipping (#399) | **sim-only** | ✅ (`ProfilingReport`) | ✅ from the model | — |
 | Warmup phases (#399) | **sim-only** | ✅ (in `ProfilingReport`) | ✅ from the model (`ProfilingSummary.render_warmup`; `warmup_phase_summary` retired) | — |
 | Block-Splitting Disposition | **sim-only** (Profile Run) | ⏳ | ✅ inline | **separate follow-up** — generation-quality metric (`generator_profiles` + the tick loop's open positions / trade history), not runtime profiling |

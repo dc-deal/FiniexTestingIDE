@@ -12,7 +12,7 @@ several currencies), and a function over its inputs is testable without building
 division the reporting pipeline already uses — shared derivation, pipeline-specific coordinators.
 """
 
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
@@ -168,3 +168,31 @@ def check_order_event_stream(
               for name, recorded, counted in short]
     return _finding('order_event_stream_incomplete', ValidationDomain.EXECUTION, '\n'.join(lines))
 
+
+
+def check_usable_funds(
+    units: List[Tuple[str, Dict[str, float]]], unit_label: str
+) -> Optional[ValidationFinding]:
+    """
+    Warn when a unit's funds in a currency fall below zero once its own unfilled orders count.
+
+    The balance moved past a claim this bot still holds — most often a resting order adopted at
+    boot, whose reserve the account had already spent. The order can no longer be filled in full
+    from what the account holds, and the venue may reject it when it fills.
+
+    Args:
+        units: One (unit name, currency → balance less its claim) pair per unit
+        unit_label: What a unit is called in the message ('Scenarios' / 'Session')
+
+    Returns:
+        The finding, or None when every claimed currency's funds stay at or above zero
+    """
+    short = [(name, currency, usable) for name, funds in units
+             for currency, usable in funds.items() if usable < 0]
+    if not short:
+        return None
+    lines = [f'FUNDS BELOW ZERO AFTER OWN ORDERS — {unit_label}: an unfilled order claims more '
+             f'than the account holds; check the resting orders']
+    lines += [f'   {name} · {currency} {usable:,.4f} usable'
+              for name, currency, usable in short]
+    return _finding('usable_funds_negative', ValidationDomain.PORTFOLIO, '\n'.join(lines))
