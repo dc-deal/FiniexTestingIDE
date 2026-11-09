@@ -37,7 +37,8 @@ Data Collectors (JSON)
   ├─ Write Parquet (with source metadata)
   └─ Move the file out of the inbox: finished/ when the archive holds it, refused/ when not
        ↓
-  Tick index rebuild, then the archive order check (target_dir-aware)
+  Tick index update — only the files that changed are read — then the archive order check
+  (target_dir-aware)
        ↓
   BarImporter (same target_dir, the broker types this import wrote)
   ├─ Load all ticks for symbol (from target_dir, not config)
@@ -520,7 +521,7 @@ in as the steps run:
 │  ✅  Scan import inboxes              46/46 files  kraken_spot 16 · mt5 24 · signals 6    0s  │
 │ ticks ──────────────────────────────────────────────────────────────────────────────────────  │
 │  ✅  Import tick files                40/40 files  100 % ████████████████████       1m 53s  │
-│  ⏳  Rebuild tick index           384/6427 files    6 % █░░░░░░░░░░░░░░░░░░░       ~3m 5s  │
+│  ⏳  Tick index                      12/40 files   30 % ██████░░░░░░░░░░░░░░          ~2s  │
 │  ⬜  Render bars                     0/17 symbols                                   ~6m 4s  │
 │        #1 kraken_spot/DASHUSD      rendering 5/8                                    1.3 GB  │
 │ ⚠ 0 warning(s)   ❌ 0 error(s)                                                              │
@@ -565,12 +566,27 @@ in as the steps run:
   ```
   ⏱  Estimated at the start → took:
      Import tick files             ~1m 28s  →  1m 53s     +28 %
-     Rebuild tick index            ~3m 18s  →  3m 50s     +16 %
+     Tick index                        ~5s  →  4s         -20 %
      Total                        ~15m 53s  →  17m 6s     +8 %
   ```
+- **The tick index is updated, not rebuilt.** The step reads in full only the tick files that
+  changed — new ones, or ones rewritten under `--override` — and keeps every other entry, which it
+  recognises by the size and modification time it recorded (one stat per file, run in parallel).
+  It reads every file only where the index is missing, was written under an older schema
+  version, or predates the file identities; a change to what the scan measures raises that
+  version, which is how such a change reaches files imported before it. The screen says which of the two will run before the step
+  starts, and the summary says what it did:
+  ```
+  📚 Tick index: update — 51 scanned · 8,318 unchanged · 0 gone · 4s
+  📚 Tick index: full rebuild (no index yet) — 8,369 scanned · 9m 3s
+  ```
+  An update is estimated by the files this import writes and a full rebuild by the files of the
+  archive. The timings keep one rate per step, so after a switch between the two the step runs
+  once without an estimate rather than with a wrong one. A full rebuild by hand stays
+  `tick_index_cli.py rebuild`.
 - **The counters and the bottom line** count the warnings and errors the importers record — the
   ones the summary lists — and pin the newest of them. An interrupted render and bars kept because
-  the tick index does not list their symbol are counted warnings; an index rebuild that failed or
+  the tick index does not list their symbol are counted warnings; an index update that failed or
   could not read a file is a counted error. A file replaced under `--override` logs a warning but
   is not counted, so it is not pinned either.
 

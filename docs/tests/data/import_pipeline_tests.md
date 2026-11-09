@@ -304,6 +304,29 @@ Validates that `data_format_version` survives the tick index write/read cycle â€
 **TestLegacyIndexTolerance:**
 - An index file without the version column still loads (entries intact) and reads as `'unknown'` â€” never an exception that silently empties the index
 
+### test_tick_index_update.py
+
+An import used to rebuild the tick index by reading every tick file in full. It now updates the
+index: it reads only the files that changed and keeps every other entry, and it rebuilds in full
+only where it must. These tests pin which files an update reads and that its index equals a full
+rebuild's.
+
+**TestAnUpdateReadsOnlyWhatChanged:**
+- A second import reads only its own file; an update with nothing changed reads none
+- A file whose modification time moved is read again; a removed file leaves the index
+
+**TestAnUpdateFallsBackToAFullRebuild:**
+- No index, or one written under an older schema version, means a full rebuild, with the reason
+- An index written before the file identities existed is rebuilt in full once, with that reason, and updated after
+
+**TestAnUpdateEqualsAFullRebuild:**
+- After new, rewritten and removed files, the updated index equals a full rebuild row for row
+- Size and modification time are stored as exact integers, so a nanosecond time does not drift
+
+**TestTheImportShowsWhichMethodRan:**
+- The summary names the method, a full rebuild its reason, and the counts
+- An update is estimated per file the import writes, a full rebuild per file of the archive; every rebuild reason has its words
+
 ### test_tick_index_lookup.py
 
 Every backtest batch asks the tick index which files cover a symbol's window. The lookup used to

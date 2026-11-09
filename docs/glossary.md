@@ -425,6 +425,11 @@ swap on every position, open ones included. They differ by the fees of what is s
 **field study** — The real-money acceptance test of the live execution stack, whose record becomes
 a release certificate. See [Field Study](tests/live_field_study/field_study_guide.md).
 
+**file identity** (tick index: `file_size_bytes`, `file_mtime_ns`) — A tick file's size and
+modification time as the tick index records them. An index update keeps the entry of a file whose
+size and time are unchanged and reads every other file again; an index that records none is
+rebuilt in full once. Not the *code identity* of a run, and not an `IDENTITY` column of the ledger.
+
 **first start** (`--first-start`, served as `origin.first_start`) — A start declared the bot's
 first: the one way a session trading real money starts without a carry-over to continue. A
 declared first start that finds a usable carry-over is refused. See

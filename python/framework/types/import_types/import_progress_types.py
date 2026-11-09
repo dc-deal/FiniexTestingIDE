@@ -83,6 +83,8 @@ class ImportRateUnit(Enum):
     """
     MB = 'mb'
     FILE = 'file'
+    # The tick files this import writes: what an index update reads in full
+    IMPORTED_FILE = 'imported_file'
     MILLION_TICKS = 'million_ticks'
     BAR_FILE = 'bar_file'
 
