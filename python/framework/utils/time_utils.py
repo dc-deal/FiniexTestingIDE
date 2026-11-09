@@ -217,6 +217,19 @@ def parse_iso_datetime(text: str) -> datetime:
     return ensure_utc_aware(datetime.fromisoformat(text))
 
 
+def format_iso_or_empty(moment: Optional[datetime]) -> str:
+    """
+    ISO-8601 string of a UTC moment, the shape a report serves an instant in.
+
+    Args:
+        moment: The instant, or None
+
+    Returns:
+        Its `isoformat()`, '' when absent
+    """
+    return moment.isoformat() if moment is not None else ''
+
+
 def parse_age_duration(text: str) -> timedelta:
     """
     Parse an operator-written age such as '30d' or '12h' into a duration.

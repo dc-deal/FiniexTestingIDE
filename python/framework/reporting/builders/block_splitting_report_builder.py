@@ -14,11 +14,21 @@ block as clean while the edge keeps cutting the same trades.
 """
 from typing import Dict, List
 
+from python.framework.reporting.aggregation.aggregation_fold import (
+    fold_group,
+    fold_rows,
+    served_part,
+)
+from python.framework.reporting.aggregation.tables.block_splitting_figure_table import (
+    BLOCK_SYMBOL_TABLE,
+    BLOCK_TOTALS_TABLE,
+)
 from python.framework.reporting.builders.pending_orders_report_builder import (
     first_in_flight_endings,
 )
 from python.framework.types.api.report_types import BlockSplittingReport, BlockSplittingSymbolRow
 from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.block_splitting_types import BlockOfSymbol
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.scenario_types.window_set_types import WindowSet
 from python.framework.types.trading_env_types.order_event_types import (
@@ -53,7 +63,8 @@ def build_block_splitting_report_from_batch(
     scenario_by_name: Dict[str, SingleScenario] = {
         s.name: s for s in batch.single_scenario_list or []}
 
-    rows_by_symbol = {}
+    # One fold row per block, with its symbol, its mode and its own end-of-block figures
+    blocks: List[BlockOfSymbol] = []
     for result in batch.process_result_list:
         if not result.success or not result.tick_loop_results:
             continue
@@ -66,47 +77,26 @@ def build_block_splitting_report_from_batch(
             continue
         symbol = parts[0]
 
-        row = rows_by_symbol.get(symbol)
-        if row is None:
-            row = BlockSplittingSymbolRow(
-                symbol=symbol, generator_mode=profile_mode.get(symbol, 'unknown'))
-            rows_by_symbol[symbol] = row
-
         loop = result.tick_loop_results
         positions = loop.open_positions or []
         trades = loop.trade_history or []
+        blocks.append(BlockOfSymbol(
+            symbol=symbol, generator_mode=profile_mode.get(symbol, 'unknown'),
+            open_trades=len(positions),
+            # Unrealised, and it is a running mark: a position that never saw a tick carries
+            # 0.0, which is honest — nothing valued it — rather than an invented number.
+            open_pnl=sum(position.unrealized_pnl for position in positions),
+            closed_trades=len(trades),
+            closed_pnl=sum(trade.net_pnl for trade in trades),
+            # The orders the block's end met on their way: expired before the venue took them
+            discarded_orders=sum(
+                1 for event in first_in_flight_endings(loop.order_events or []).values()
+                if IN_FLIGHT_ENDING_BY_EVENT[event.event_type] is InFlightEnding.EXPIRED)))
 
-        row.block_count += 1
-        row.open_at_boundary_trades += len(positions)
-        # Unrealised, and it is a running mark: a position that never saw a tick carries
-        # 0.0, which is honest — nothing valued it — rather than an invented number.
-        row.open_at_boundary_pnl += sum(position.unrealized_pnl for position in positions)
-        row.natural_closed_trades += len(trades)
-        row.natural_closed_pnl += sum(trade.net_pnl for trade in trades)
-        # The orders the block's end met on their way: expired before the venue took them
-        row.discarded_pending_orders += sum(
-            1 for event in first_in_flight_endings(loop.order_events or []).values()
-            if IN_FLIGHT_ENDING_BY_EVENT[event.event_type] is InFlightEnding.EXPIRED)
-
-    rows = sorted(rows_by_symbol.values(), key=lambda r: r.symbol)
-    for row in rows:
-        row.total_trades = row.open_at_boundary_trades + row.natural_closed_trades
-        row.total_pnl = row.open_at_boundary_pnl + row.natural_closed_pnl
-        row.open_at_boundary_pct = (
-            row.open_at_boundary_trades / row.total_trades * 100) if row.total_trades else 0.0
-        row.disposition_pct = (
-            abs(row.open_at_boundary_pnl) / abs(row.total_pnl) * 100) if row.total_pnl else 0.0
-
-    agg_open = sum(r.open_at_boundary_trades for r in rows)
-    agg_trades = sum(r.total_trades for r in rows)
-    agg_open_pnl = sum(r.open_at_boundary_pnl for r in rows)
-    agg_pnl = sum(r.total_pnl for r in rows)
-
+    # Per symbol, then over the symbols — both declared in the block-splitting tables
+    rows = [BlockSplittingSymbolRow(**figures) for figures in fold_rows(blocks, BLOCK_SYMBOL_TABLE)]
     return BlockSplittingReport(
         run_id=run_id,
         symbols=rows,
-        agg_open_at_boundary_trades=agg_open,
-        agg_total_trades=agg_trades,
-        agg_open_at_boundary_pct=(agg_open / agg_trades * 100) if agg_trades else 0.0,
-        agg_disposition_pct=(abs(agg_open_pnl) / abs(agg_pnl) * 100) if agg_pnl else 0.0,
+        **served_part(fold_group(rows, BLOCK_TOTALS_TABLE), BLOCK_TOTALS_TABLE),
     )

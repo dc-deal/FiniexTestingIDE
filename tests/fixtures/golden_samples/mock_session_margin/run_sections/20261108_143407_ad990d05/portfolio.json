@@ -1,0 +1,110 @@
+{
+  "run_id": "20261108_143407_ad990d05",
+  "units": [
+    {
+      "name": "partial_close_lifecycle",
+      "symbol": "USDJPY",
+      "currency": "JPY",
+      "total_trades": 4,
+      "winning_trades": 2,
+      "losing_trades": 2,
+      "win_rate": 0.5,
+      "profit_factor": 0.5342465753425871,
+      "total_profit": 156.0000000000059,
+      "total_loss": 291.99999999994475,
+      "net_profit": -135.99999999993884,
+      "account_max_drawdown": 286.0,
+      "account_max_dd_pct": 0.285745686339158,
+      "drawdown_carried_from": "",
+      "drawdown_restarts": 0,
+      "drawdown_started_at": "2026-11-08T14:34:12.278572+00:00",
+      "total_fees": 0.0,
+      "fees_charged": 0.0,
+      "data_broker_type": "mt5",
+      "data_sentiment_type": "",
+      "broker_name": "Vantage International Group Limited",
+      "spot_mode": false,
+      "total_long_trades": 3,
+      "total_short_trades": 1,
+      "max_equity": 100089.00000000006,
+      "current_balance": 99864.00000000007,
+      "initial_balance": 100000.0,
+      "conversion_rate": null,
+      "base_currency": "USD",
+      "quote_currency": "JPY",
+      "spot_est_current": 0.0,
+      "spot_est_initial": 0.0,
+      "spot_est_pnl": 0.0,
+      "spot_est_pnl_pct": 0.0,
+      "total_spread_cost": 125.75000000005332,
+      "total_modelled_spread_cost": 0.0,
+      "total_commission": 0.0,
+      "total_swap": 0.0,
+      "maker_fee": 0.0,
+      "taker_fee": 0.0,
+      "fill_fees_by_source": {
+        "estimate": {
+          "fill_count": 6,
+          "fill_fees": 0.0
+        }
+      },
+      "has_error": false,
+      "balances": {
+        "JPY": 99864.00000000007
+      },
+      "initial_balances": {
+        "JPY": 100000.0
+      },
+      "committed_funds": {
+        "JPY": 0.0,
+        "USD": 0.0
+      },
+      "usable_funds": {},
+      "last_price": 147.14499999999998,
+      "open_positions": [],
+      "unrealized_pnl": 0.0,
+      "final_equity": 99864.00000000007,
+      "final_equity_valued": true,
+      "session_end_policy": "cancel/leave"
+    }
+  ],
+  "aggregates": [
+    {
+      "currency": "JPY",
+      "unit_count": 1,
+      "total_trades": 4,
+      "winning_trades": 2,
+      "losing_trades": 2,
+      "win_rate": 0.5,
+      "profit_factor": 0.5342465753425871,
+      "total_profit": 156.0000000000059,
+      "total_loss": 291.99999999994475,
+      "net_profit": -135.99999999993884,
+      "account_max_drawdown": 286.0,
+      "max_equity": 100089.00000000006,
+      "account_max_dd_pct": 0.285745686339158,
+      "account_max_drawdown_unit": "partial_close_lifecycle",
+      "total_fees": 0.0,
+      "fees_charged": 0.0,
+      "fill_fees_by_source": {
+        "estimate": {
+          "fill_count": 6,
+          "fill_fees": 0.0
+        }
+      },
+      "unrealized_pnl": 0.0,
+      "final_equity": 99864.00000000007,
+      "total_final_equity": 99864.00000000007,
+      "total_initial_balance": 100000.0,
+      "open_position_count": 0
+    }
+  ],
+  "keys": {
+    "units": [
+      "name"
+    ],
+    "aggregates": [
+      "currency"
+    ]
+  }
+}

@@ -15,15 +15,18 @@ one by rename, so both move the stamp.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
-from python.framework.reporting.aggregation.aggregation_fold import aggregate_ledger_rows
+from python.framework.reporting.aggregation.aggregation_fold import (
+    aggregate_ledger_rows,
+    fold_rows,
+)
+from python.framework.reporting.aggregation.tables.run_list_figure_table import RUN_LIST_TABLE
 from python.framework.reporting.store.run_ledger_index import RunLedgerIndex
 from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS, RunResultsLedger
 from python.framework.types.api.report_types import (
     SESSION_KEY,
     RunListFigures,
-    RunResultFigures,
     RunResultRow,
 )
 
@@ -80,35 +83,8 @@ def fold_run_list_figures(rows: List[RunResultRow]) -> Dict[str, RunListFigures]
     Returns:
         run_id → its figures
     """
-    by_run: Dict[str, List[RunResultRow]] = {}
-    for row in aggregate_ledger_rows(rows, by=SESSION_KEY):
-        by_run.setdefault(row.run_id, []).append(row)
-    return {
-        run_id: RunListFigures(
-            # The figureless error row a run that produced nothing writes has no currency, and
-            # its zeros are not figures anybody measured.
-            results=[RunResultFigures(currency=row.currency, net_pnl=row.net_pnl,
-                                      total_trades=row.total_trades)
-                     for row in run_rows if row.currency],
-            run_outcome=_agreed(run_rows, 'run_outcome'),
-            error_count=_agreed(run_rows, 'error_count'),
-            warning_count=_agreed(run_rows, 'warning_count'),
-            log_warning_count=_agreed(run_rows, 'log_warning_count'),
-            tick_timespan_seconds=_agreed(run_rows, 'tick_timespan_seconds'))
-        for run_id, run_rows in by_run.items()
-    }
-
-
-def _agreed(rows: List[RunResultRow], column: str) -> Any:
-    """
-    A run-level column's value, when every currency row of the run carries the same one.
-
-    Args:
-        rows: The run's folded rows, one per currency
-        column: A column that is one value per run
-
-    Returns:
-        That value, or None when the rows disagree or none recorded it
-    """
-    values = {getattr(row, column) for row in rows}
-    return values.pop() if len(values) == 1 else None
+    # Per run and currency first, by the ledger's own table; then per run, where a run-level
+    # column is served only when every currency row agrees on it (the run list's fold table).
+    per_currency = aggregate_ledger_rows(rows, by=SESSION_KEY)
+    return {figures.pop('run_id'): RunListFigures(**figures)
+            for figures in fold_rows(per_currency, RUN_LIST_TABLE)}

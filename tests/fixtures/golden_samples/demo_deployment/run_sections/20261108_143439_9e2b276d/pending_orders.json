@@ -1,0 +1,24 @@
+{
+  "run_id": "20261108_143439_9e2b276d",
+  "units": [
+    {
+      "name": "demo_btcusd_bot",
+      "symbol": "BTCUSD",
+      "total_submitted": 4,
+      "total_accepted": 4,
+      "total_rejected": 0,
+      "total_never_confirmed": 0,
+      "total_expired": 0,
+      "avg_in_flight_ms": 1.4950907507227384,
+      "min_in_flight_ms": 1.0691179995774291,
+      "max_in_flight_ms": 2.2055260014894884,
+      "in_flight_count": 4,
+      "never_confirmed_orders": [],
+      "active_limit_orders": [],
+      "active_stop_orders": []
+    }
+  ],
+  "key": [
+    "name"
+  ]
+}

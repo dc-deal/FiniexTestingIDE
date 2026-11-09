@@ -15,11 +15,20 @@ be combined at all (CLAUDE.md §48).
 A test holds the catalog and `LEDGER_COLUMNS` to the same key set, so a column cannot be added
 without an answer, and another holds every nullable figure of the typed row to a declared
 `null_meaning`, both ways.
+
+The weighted means add in a loop, as they always have (`Addition.SEQUENTIAL`); #657 decides whether
+they move to the compensated sum the rest of the fold uses. The rates' derivations and the rest of
+what the fold needs for the ledger are in `tables/ledger_figure_table.py`.
 """
 
 from typing import Dict
 
-from python.framework.types.aggregation_types import FigureDeclaration, NullMeaning, Reduction
+from python.framework.types.aggregation_types import (
+    Addition,
+    FigureDeclaration,
+    NullMeaning,
+    Reduction,
+)
 
 LEDGER_FIGURES: Dict[str, FigureDeclaration] = {
     # --- identity, provenance: must agree across the rows, or they are not comparable
@@ -141,14 +150,17 @@ LEDGER_FIGURES: Dict[str, FigureDeclaration] = {
     # ranking leaves such a run out and counts it. A row from before this column could be empty
     # reads 0.0 with `r_trade_count` 0, and a fold of it reads empty like this one
     'expectancy': FigureDeclaration(
-        Reduction.DERIVE, NullMeaning.UNMEASURED, weighted_by='r_trade_count'),
+        Reduction.DERIVE, NullMeaning.UNMEASURED, weighted_by='r_trade_count',
+        addition=Addition.SEQUENTIAL),
     'profit_factor': FigureDeclaration(Reduction.DERIVE, NullMeaning.UNDEFINED),   # no losing trade
     'win_rate': FigureDeclaration(Reduction.DERIVE, NullMeaning.UNMEASURED),       # as net_pnl
     # Empty for an empty R subset
     'avg_win_r': FigureDeclaration(
-        Reduction.DERIVE, NullMeaning.UNDEFINED, weighted_by='r_win_count'),
+        Reduction.DERIVE, NullMeaning.UNDEFINED, weighted_by='r_win_count',
+        addition=Addition.SEQUENTIAL),
     'avg_loss_r': FigureDeclaration(
-        Reduction.DERIVE, NullMeaning.UNDEFINED, weighted_by='r_loss_count'),
+        Reduction.DERIVE, NullMeaning.UNDEFINED, weighted_by='r_loss_count',
+        addition=Addition.SEQUENTIAL),
     # Empty without a signal worker in the run
     'signal_fresh_ratio': FigureDeclaration(Reduction.DERIVE, NullMeaning.UNDEFINED),
 
@@ -193,13 +205,17 @@ LEDGER_FIGURES: Dict[str, FigureDeclaration] = {
     'largest_mae': FigureDeclaration(Reduction.MAX_ABS, NullMeaning.UNDEFINED),
     'largest_mfe': FigureDeclaration(Reduction.MAX_ABS, NullMeaning.UNDEFINED),
     'avg_mae_winners': FigureDeclaration(
-        Reduction.DERIVE, NullMeaning.UNDEFINED, weighted_by='winning_trades'),
+        Reduction.DERIVE, NullMeaning.UNDEFINED, weighted_by='winning_trades',
+        addition=Addition.SEQUENTIAL),
     'avg_mae_losers': FigureDeclaration(
-        Reduction.DERIVE, NullMeaning.UNDEFINED, weighted_by='losing_trades'),
+        Reduction.DERIVE, NullMeaning.UNDEFINED, weighted_by='losing_trades',
+        addition=Addition.SEQUENTIAL),
     'avg_mfe_losers': FigureDeclaration(
-        Reduction.DERIVE, NullMeaning.UNDEFINED, weighted_by='losing_trades'),
+        Reduction.DERIVE, NullMeaning.UNDEFINED, weighted_by='losing_trades',
+        addition=Addition.SEQUENTIAL),
     'avg_trade_duration_s': FigureDeclaration(
-        Reduction.DERIVE, NullMeaning.UNDEFINED, weighted_by='total_trades'),
+        Reduction.DERIVE, NullMeaning.UNDEFINED, weighted_by='total_trades',
+        addition=Addition.SEQUENTIAL),
     # DERIVE, and this is the one where the obvious answer is wrong. A streak can CROSS a
     # period boundary, so `max()` of two periods understates the truth: 2 and 3 in adjacent
     # periods can be a run of 5. It has to be re-derived over the records of the wider window.

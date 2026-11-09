@@ -11,9 +11,10 @@ Its mean and maximum are reduced here by hand, not by the ledger fold, because f
 ledger rows; the run's figure is re-derived over all fills, never combined from unit figures.
 """
 
-from collections import defaultdict
-from typing import Dict, List
+from typing import List
 
+from python.framework.reporting.aggregation.aggregation_fold import fold_rows
+from python.framework.reporting.aggregation.tables.slippage_figure_table import SLIPPAGE_TABLE
 from python.framework.reporting.builders.fill_slippage import derive_fill_slippage
 from python.framework.reporting.builders.report_aggregators import aggregate_execution_totals
 from python.framework.reporting.builders.run_unit import RunUnit
@@ -72,29 +73,8 @@ def slippage_summaries(fills: List[FillSlippage]) -> List[FillSlippageSummary]:
     Returns:
         One summary per kind, in the kinds' declared order
     """
-    by_kind: Dict[SlippageReference, List[FillSlippage]] = defaultdict(list)
-    for fill in fills:
-        by_kind[fill.measured_against].append(fill)
-    return [_slippage_summary(kind, by_kind[kind]) for kind in SlippageReference
-            if kind in by_kind]
-
-
-def _slippage_summary(kind: SlippageReference, fills: List[FillSlippage]) -> FillSlippageSummary:
-    """
-    The slippage of the fills of one reference kind — per fill, unweighted.
-
-    Args:
-        kind: What the fills are measured against
-        fills: The fills of that kind
-
-    Returns:
-        Their count, how many were measured, and the mean and maximum in percent
-    """
-    measured = [fill.slippage_pct for fill in fills if fill.slippage_pct is not None]
-    return FillSlippageSummary(
-        measured_against=kind, fills=len(fills), fills_measured=len(measured),
-        adverse_pct_mean=sum(measured) / len(measured) if measured else None,
-        adverse_pct_max=max(measured) if measured else None)
+    by_kind = {figures['measured_against']: figures for figures in fold_rows(fills, SLIPPAGE_TABLE)}
+    return [FillSlippageSummary(**by_kind[kind]) for kind in SlippageReference if kind in by_kind]
 
 
 def failed_order_count(stats: ExecutionStats) -> int:

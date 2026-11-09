@@ -8,7 +8,7 @@ run index rows the same way the routes compose them from the stores. The freezer
 checks before it writes a sample, the suite runs them on every committed one, and both compare
 field by field: a float equal to the last bit, a missing field a difference like any other.
 
-Three families are frozen and not rebuilt yet, and say why in `FROZEN_NOT_REBUILT`.
+What is frozen and cannot be rebuilt says why in `FROZEN_NOT_REBUILT`.
 """
 
 from datetime import datetime
@@ -19,6 +19,16 @@ from pydantic import BaseModel
 from python.framework.optimization.optimization_analysis import (
     compose_sweep_detail,
     compose_sweep_list,
+)
+from python.framework.reporting.aggregation.aggregation_fold import fold_group, fold_rows
+from python.framework.reporting.aggregation.tables.booking_figure_table import (
+    BOOKING_RUN_TOTALS_TABLE,
+    BOOKING_UNIT_CLOSE_TABLE,
+)
+from python.framework.reporting.aggregation.tables.feed_stability_figure_table import (
+    FEED_COUNTER_TABLE,
+    FEED_SOURCE_TABLE,
+    FEED_TOTALS_TABLE,
 )
 from python.framework.reporting.builders.aggregated_portfolio_report_builder import (
     build_aggregated_portfolio_report,
@@ -60,11 +70,13 @@ from python.framework.reporting.io.artifact_specs import (
 from python.framework.reporting.io.report_artifact_io import ArtifactSpec
 from python.framework.reporting.store.run_list_figures import fold_run_list_figures
 from python.framework.types.api.report_types import (
+    FeedStabilitySourceRow,
     FillSlippageRow,
     RunInfo,
     RunResultRow,
     UnitRoster,
 )
+from python.framework.types.disturbance_episode_types import FeedEpisodeInSource
 from python.framework.types.fill_slippage_types import FillSlippage
 from python.framework.types.golden_sample_types import (
     FrozenRun,
@@ -92,16 +104,15 @@ FROZEN_SECTIONS: Tuple[Tuple[str, ArtifactSpec], ...] = (
     ('scenario_details', SCENARIO_DETAILS_ARTIFACT),
 )
 
-# Frozen, and not rebuilt yet — each aggregate is folded where nothing a run persists can feed
-# it again. Their samples are the reference #557's package 2 rebuilds them against once it lifts
-# each fold out of its builder.
+# Frozen, and not rebuilt — each is folded from inputs that exist only while a run runs, so
+# nothing the run persists can feed it again.
 FROZEN_NOT_REBUILT: Dict[str, str] = {
     'signal': 'merged from per-worker counters and per-symbol coverages that exist only while '
-              'the run runs; checked by producing the entry again',
-    'feed_stability': 'folded inline over the run units; rebuilt from the frozen episodes once '
-                      'the fold takes episode rows',
-    'booking-periods.run_totals': 'folded inline over the sealed periods; rebuilt from the '
-                                  'frozen periods once the fold takes period rows',
+              'the run runs; its folds are declared in the signal tables, and checked by '
+              'producing the entry again',
+    'feed-stability.counters': "joined onto the source rows from the units' tick and signal "
+                               'counters, which exist only while the run runs; block J leaves '
+                               'them out on both sides',
 }
 
 # The session-span fields of the run summary: a backtest's spans are in its scenario details, an
@@ -449,6 +460,118 @@ def _recorded_booking_unit_totals(run: FrozenRun) -> Any:
     return run.booking_periods.unit_totals
 
 
+def _feed_view(units: Sequence[FeedStabilitySourceRow], totals: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    The feed stability as block J compares it — the source rows without their counters, and the
+    totals over them.
+
+    Args:
+        units: The source rows
+        totals: The report's totals
+
+    Returns:
+        The comparable view
+    """
+    return {'units': [{name: value for name, value in unit.model_dump().items()
+                       if name not in FEED_COUNTER_TABLE.figures} for unit in units],
+            **totals}
+
+
+def _rebuild_feed_stability(run: FrozenRun) -> Any:
+    """
+    Block J — the feed stability's source rows and totals, from the frozen episodes.
+
+    The recorded rows are already in the served order, so they are fed in reverse — each row's own
+    episodes kept in their order, because the stale seconds add in it. Only the fold's group order
+    can then put them back, and a change to it shows here.
+
+    Args:
+        run: The frozen run
+
+    Returns:
+        The rebuilt view
+    """
+    episodes = [FeedEpisodeInSource(
+        source=row.source, domain=row.domain, unit=episode.unit, symbol=episode.symbol,
+        stale_from=episode.stale_from, stale_to=episode.stale_to,
+        duration_seconds=episode.duration_seconds, origin=episode.origin, label=episode.label)
+        for row in reversed(run.feed_stability.units) for episode in row.episodes]
+    rows = [FeedStabilitySourceRow(**figures) for figures in fold_rows(episodes, FEED_SOURCE_TABLE)]
+    return _feed_view(rows, fold_group(rows, FEED_TOTALS_TABLE))
+
+
+def _recorded_feed_stability(run: FrozenRun) -> Any:
+    """
+    Block J — the feed stability as the run recorded it.
+
+    Args:
+        run: The frozen run
+
+    Returns:
+        The recorded view
+    """
+    report = run.feed_stability
+    return _feed_view(report.units,
+                      {name: getattr(report, name) for name in FEED_TOTALS_TABLE.figures})
+
+
+def _feed_stability_left_out(run: FrozenRun) -> FrozenSet[str]:
+    """
+    A run without a disturbance serves no totals, only the report's defaults.
+
+    Args:
+        run: The frozen run
+
+    Returns:
+        The totals for a run without a source row, else nothing
+    """
+    return frozenset() if run.feed_stability.units else frozenset(FEED_TOTALS_TABLE.figures)
+
+
+_BOOKING_RUN_TOTALS = (*BOOKING_RUN_TOTALS_TABLE.figures, *BOOKING_UNIT_CLOSE_TABLE.figures)
+
+
+def _rebuild_booking_run_totals(run: FrozenRun) -> Any:
+    """
+    Block K — the booking periods' run totals, from the frozen periods and unit totals.
+
+    Args:
+        run: The frozen run
+
+    Returns:
+        The rebuilt totals
+    """
+    report = run.booking_periods
+    return {**fold_group(report.periods, BOOKING_RUN_TOTALS_TABLE),
+            **fold_group(report.unit_totals, BOOKING_UNIT_CLOSE_TABLE)}
+
+
+def _recorded_booking_run_totals(run: FrozenRun) -> Any:
+    """
+    Block K — the run totals as the run recorded them.
+
+    Args:
+        run: The frozen run
+
+    Returns:
+        The recorded totals
+    """
+    return {name: getattr(run.booking_periods, name) for name in _BOOKING_RUN_TOTALS}
+
+
+def _booking_run_totals_left_out(run: FrozenRun) -> FrozenSet[str]:
+    """
+    A run that booked no period in its reported currency serves no totals, only the defaults.
+
+    Args:
+        run: The frozen run
+
+    Returns:
+        Every total for a run without a period, else nothing
+    """
+    return frozenset() if run.booking_periods.periods else frozenset(_BOOKING_RUN_TOTALS)
+
+
 GOLDEN_SAMPLE_BLOCKS: Tuple[GoldenSampleBlock, ...] = (
     GoldenSampleBlock('portfolio.aggregates', 'A · the portfolio headline per account currency',
                       ('portfolio',), _rebuild_portfolio_headline, _recorded_portfolio_headline),
@@ -473,6 +596,12 @@ GOLDEN_SAMPLE_BLOCKS: Tuple[GoldenSampleBlock, ...] = (
                       ('worker_decision',), _rebuild_worker_totals, _recorded_worker_totals),
     GoldenSampleBlock('profiling.aggregate', 'I · the profiling aggregate',
                       ('profiling',), _rebuild_profiling, _recorded_profiling),
+    GoldenSampleBlock('feed-stability', 'J · the feed stability per source, without its counters',
+                      ('feed_stability',), _rebuild_feed_stability, _recorded_feed_stability,
+                      _feed_stability_left_out),
+    GoldenSampleBlock('booking-periods.run_totals', 'K · the booking periods per run',
+                      ('booking_periods',), _rebuild_booking_run_totals,
+                      _recorded_booking_run_totals, _booking_run_totals_left_out),
     GoldenSampleBlock('booking-periods.unit_totals', 'L · the booking periods per unit',
                       ('booking_periods',), _rebuild_booking_unit_totals,
                       _recorded_booking_unit_totals),

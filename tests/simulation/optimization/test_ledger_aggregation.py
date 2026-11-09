@@ -14,7 +14,6 @@ a streak that cannot be recovered at all.
 from typing import List
 
 from python.framework.reporting.aggregation.aggregation_fold import (
-    DERIVATION_OF,
     FOLD_OF_REDUCTION,
     aggregate_ledger_rows,
     identity_conflicts,
@@ -23,8 +22,9 @@ from python.framework.reporting.aggregation.figure_catalog import (
     COLUMN_COMPANION_OF,
     COLUMN_REDUCTION,
     COLUMN_WEIGHTED_BY,
-    LEDGER_FIGURES,
 )
+from python.framework.reporting.aggregation.figure_tables import FIGURE_TABLES
+from python.framework.reporting.aggregation.tables.ledger_figure_table import LEDGER_TABLE
 from python.framework.types.aggregation_types import FigureKind, Reduction
 from python.framework.types.api.report_types import RunResultRow
 
@@ -312,15 +312,16 @@ class TestEveryDeclaredReductionCanBeApplied:
         assert set(FOLD_OF_REDUCTION) == on_its_own
 
     def test_every_member_is_declared_by_some_figure(self):
-        # A member no figure declares is a branch nothing reaches.
-        declared = {declaration.reduction for declaration in LEDGER_FIGURES.values()}
+        # A member no figure of any table declares is a branch nothing reaches.
+        declared = {declaration.reduction for table in FIGURE_TABLES.values()
+                    for declaration in table.figures.values()}
         assert declared == set(Reduction)
 
     def test_every_derived_figure_has_exactly_one_derivation(self):
         derived = {column for column, reduction in COLUMN_REDUCTION.items()
                    if reduction is Reduction.DERIVE}
-        assert set(COLUMN_WEIGHTED_BY) | set(DERIVATION_OF) == derived
-        assert not set(COLUMN_WEIGHTED_BY) & set(DERIVATION_OF)
+        assert set(COLUMN_WEIGHTED_BY) | set(LEDGER_TABLE.derivations) == derived
+        assert not set(COLUMN_WEIGHTED_BY) & set(LEDGER_TABLE.derivations)
 
     def test_a_mean_is_weighted_by_a_count_that_adds_up(self):
         # A weight is the population the mean was taken over, and populations add up over rows.

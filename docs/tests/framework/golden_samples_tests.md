@@ -21,8 +21,8 @@ the field; the entry is then produced and frozen again, and the review reads the
 
 | Class | What it pins |
 |---|---|
-| `TestEveryFrozenAggregateRebuilds` | every block — portfolio headline, run summary, aggregated portfolio, trade analytics and per-scenario totals, execution totals and fill slippage, worker totals, profiling, booking-period unit totals — rebuilt from its frozen sections for every run it applies to; the read-time views — run list figures, the deployment list, detail and booking periods, the sweep list and detail — composed from the frozen ledger and run index rows |
-| `TestTheSamplesCoverWhatTheyMustCover` | every catalog entry the samples are taken from is frozen; every block is checked by some sample; every view has a subject; every family frozen but not rebuilt yet is frozen with content somewhere |
+| `TestEveryFrozenAggregateRebuilds` | every block — portfolio headline, run summary, aggregated portfolio, trade analytics and per-scenario totals, execution totals and fill slippage, worker totals, profiling, feed stability without its counters, booking-period run and unit totals — rebuilt from its frozen sections for every run it applies to; the read-time views — run list figures, the deployment list, detail and booking periods, the sweep list and detail — composed from the frozen ledger and run index rows |
+| `TestTheSamplesCoverWhatTheyMustCover` | every catalog entry the samples are taken from is frozen; every block is checked by some sample; every view has a subject; whatever is frozen and cannot be rebuilt is frozen with content somewhere |
 | `TestEachSampleSaysWhereItComesFrom` | each header names its production, its contract, when it was frozen, and for every run a commit and whether its tree was clean; its files are the runs it names, with the sections it lists |
 | `TestTheFrozenSectionsMatchTheRun` | the declared frozen sections and the fields that hold them, both ways; no block needs a section a run cannot freeze |
 

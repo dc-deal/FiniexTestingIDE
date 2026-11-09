@@ -10,6 +10,11 @@ block-splitting disposition is copied in as the trust-gate input for that verdic
 import statistics
 from typing import Dict, List, Optional
 
+from python.framework.reporting.aggregation.aggregation_fold import fold_group, served_part
+from python.framework.reporting.aggregation.tables.robustness_figure_table import (
+    ROBUSTNESS_DISTRIBUTION_TABLE,
+    ROBUSTNESS_ROLE_TABLE,
+)
 from python.framework.reporting.builders.block_splitting_report_builder import (
     build_block_splitting_report_from_batch,
 )
@@ -139,24 +144,8 @@ def _distribution(rows: List[RobustnessWindowRow]) -> Optional[RobustnessDistrib
     """Compute the metric distribution across all windows (None when there are no windows)."""
     if not rows:
         return None
-    values = [r.metric_value for r in rows]
-    mean = statistics.fmean(values)
-    std = statistics.pstdev(values) if len(values) > 1 else 0.0
-    best = max(rows, key=lambda r: r.metric_value)
-    worst = min(rows, key=lambda r: r.metric_value)
-    profitable = sum(1 for r in rows if r.profitable)
-    return RobustnessDistribution(
-        window_count=len(rows),
-        pct_profitable=profitable / len(rows) * 100,
-        mean=mean,
-        median=statistics.median(values),
-        std=std,
-        best_value=best.metric_value,
-        best_window=best.name,
-        worst_value=worst.metric_value,
-        worst_window=worst.name,
-        coefficient_of_variation=(std / abs(mean)) if mean else 0.0,
-    )
+    return RobustnessDistribution(**served_part(
+        fold_group(rows, ROBUSTNESS_DISTRIBUTION_TABLE), ROBUSTNESS_DISTRIBUTION_TABLE))
 
 
 def _role_aggregate(
@@ -166,15 +155,8 @@ def _role_aggregate(
     role_rows = [r for r in rows if r.role == role.value]
     if not role_rows:
         return None
-    values = [r.metric_value for r in role_rows]
-    profitable = sum(1 for r in role_rows if r.profitable)
-    return RobustnessRoleAggregate(
-        role=role.value,
-        window_count=len(role_rows),
-        mean_metric=statistics.fmean(values),
-        median_metric=statistics.median(values),
-        pct_profitable=profitable / len(role_rows) * 100,
-    )
+    return RobustnessRoleAggregate(**served_part(
+        fold_group(role_rows, ROBUSTNESS_ROLE_TABLE), ROBUSTNESS_ROLE_TABLE))
 
 
 def _walk_forward_efficiency(

@@ -3,13 +3,14 @@ Aggregation types (#557) — the vocabulary every combined figure is declared in
 
 `Reduction` says how a figure combines when several rows are read as one, `FigureKind` what kind of
 figure that makes it, and `NullMeaning` what its empty cell means. `FigureDeclaration` holds the
-three answers for one figure; the figure catalog (`reporting/aggregation/figure_catalog.py`)
-declares one per figure, and the fold applies them.
+answers for one figure; a `FoldTable` holds the declarations of one kind of row — the ledger's in
+the figure catalog (`reporting/aggregation/figure_catalog.py`), every other one under
+`reporting/aggregation/tables/` — and the fold applies them.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, FrozenSet, List, Optional
+from typing import Any, Callable, Dict, FrozenSet, List, Optional, Sequence, Tuple, Union
 
 
 class FigureKind(Enum):
@@ -77,6 +78,27 @@ class Reduction(Enum):
     # defect #497 removed from the console aggregate (report_aggregators.py:160-163 states it).
     # The column it follows is declared beside it (`FigureDeclaration.companion_of`).
     COMPANION = 'companion'
+    # How many rows carry the value — every row when the figure names no source. A count with a
+    # condition is a SUM over a 0/1 source instead: False is a value, and COUNT would count it.
+    COUNT = 'count'
+    # How many DIFFERENT values the rows carry — runs, where one run writes many rows. Never
+    # added across groups: two groups can hold the same value, so it is re-derived from the rows.
+    COUNT_DISTINCT = 'count_distinct'
+    # A total only over a complete set: None as soon as one row did not measure it, because a
+    # sum over the rows that did would claim a figure for the ones that did not.
+    SUM_COMPLETE = 'sum_complete'
+    # The FIRST ROW's own value, in the order the rows came, as it is — no age order, no skipping
+    # of an empty value. What a hand-written aggregate read as `group[0]`. IDENTITY skips an empty
+    # first row and FIRST orders by age and reads one account; neither is that. It is also how a
+    # table reads its grain: every row of a group carries the key, an empty one included.
+    FIRST_ROW = 'first_row'
+    # The different values the rows carry, as a sorted list, each kept as it is. UNION is the
+    # ledger's comma-joined set; this one keeps the members' own type.
+    DISTINCT = 'distinct'
+    # The plain mean of the values the rows carry, each row one event of equal weight — a fill,
+    # a trade. A mean over rows that are themselves means is a mean of means and wants `weighted_by`
+    # instead; where one survives, its declaration says so.
+    MEAN = 'mean'
 
     def figure_kind(self) -> FigureKind:
         """
@@ -129,6 +151,13 @@ _FIGURE_KIND_OF: Dict[Reduction, FigureKind] = {
     Reduction.UNION: FigureKind.DESCRIPTION,
     Reduction.SPAN_START: FigureKind.DESCRIPTION,
     Reduction.SPAN_END: FigureKind.DESCRIPTION,
+    Reduction.COUNT: FigureKind.FLOW,
+    Reduction.SUM_COMPLETE: FigureKind.FLOW,
+    # Re-derived from the rows like a rate: two groups' counts do not add up when they share values
+    Reduction.COUNT_DISTINCT: FigureKind.RATIO,
+    Reduction.FIRST_ROW: FigureKind.DESCRIPTION,
+    Reduction.DISTINCT: FigureKind.DESCRIPTION,
+    Reduction.MEAN: FigureKind.RATIO,
 }
 
 # Rebuilt from other columns' folded values (`Reduction.folds_on_its_own`). A test holds the members
@@ -138,7 +167,7 @@ _REBUILT_FROM_OTHER_COLUMNS: FrozenSet[Reduction] = frozenset({Reduction.DERIVE,
 # The members whose fold picks one row's value (`Reduction.selects`).
 _SELECTING: FrozenSet[Reduction] = frozenset({
     Reduction.MAX, Reduction.MAX_ABS, Reduction.MIN, Reduction.LAST, Reduction.FIRST,
-    Reduction.IDENTITY, Reduction.SPAN_START, Reduction.SPAN_END,
+    Reduction.IDENTITY, Reduction.SPAN_START, Reduction.SPAN_END, Reduction.FIRST_ROW,
 })
 
 
@@ -162,6 +191,38 @@ class NullMeaning(Enum):
     UNMEASURED = 'unmeasured'
 
 
+class Addition(Enum):
+    """
+    How a figure's values are added — the two ways give different last bits.
+
+    Since Python 3.12 the built-in `sum()` adds floats with error compensation, while a loop that
+    adds one value at a time does not: `[0.1, 0.2, 0.3]` sums to 0.6 one way and to
+    0.6000000000000001 the other (measured on 3.12.11). The hand-written aggregates used both, and
+    a fold that moves them must keep each one's way or the served numbers change in their last
+    bit. Which way a figure adds is therefore declared, not assumed.
+    """
+    COMPENSATED = 'compensated'     # the built-in sum()
+    SEQUENTIAL = 'sequential'       # a loop from 0.0, one value at a time — #657 retires it
+    EXACT = 'exact'                 # math.fsum, exactly rounded — how statistics.fmean adds
+
+
+class GroupOrder(Enum):
+    """
+    The order a fold hands back its groups in. A listing ordered by anything else — by a figure,
+    by an enum's declared order — is sorted by the family that serves it, as before.
+    """
+    SORTED = 'sorted'               # by the group key, compared as strings
+    FIRST_SEEN = 'first_seen'       # in the order the groups first appear in the rows
+
+
+# A figure's value when no row carries one, where a served field kept the old habit of a number
+# instead of None — #657 retires each one.
+EmptyValue = Union[float, int, str, bool, None]
+
+# Where a figure reads its value on a row: the field of that name, or a named function of the row.
+FigureSource = Union[str, Callable[[Any], Any], None]
+
+
 @dataclass(frozen=True)
 class FigureDeclaration:
     """
@@ -181,11 +242,23 @@ class FigureDeclaration:
             that population, so it is the mean the same records would have produced in one pass —
             an unweighted average of averages would let a period with two trades count as much
             as one with two hundred. None for everything that is no mean
+        source: Where the value is read on a row — a field name, or a named function of the row
+            for a per-row projection (a magnitude, a count of a list, a value kept only for
+            winners). None reads the field the figure is named after
+        empty_value: What the figure answers when no row carries a value. None by the rule; 0 for
+            a count over no rows, which is the truth; any other number or '' only where a served
+            field kept that habit, which #657 retires. Applied when the figure is folded, so a
+            derivation reads the figure as served
+        addition: How its values are added — the built-in sum() unless the aggregate it replaces
+            added in a loop (`Addition`)
     """
     reduction: Reduction
     null_meaning: Optional[NullMeaning] = None
     companion_of: Optional[str] = None
     weighted_by: Optional[str] = None
+    source: FigureSource = None
+    empty_value: EmptyValue = None
+    addition: Addition = Addition.COMPENSATED
 
 
 @dataclass(slots=True)
@@ -202,10 +275,12 @@ class FoldInput:
             column of the group
         one_account: Whether every row belongs to one unit — a reading of an account at an
             instant is only defined then
+        addition: How the column's values are added
     """
     values: List[Any]
     oldest_order: List[int]
     one_account: bool
+    addition: Addition = Addition.COMPENSATED
 
     def present(self) -> List[Any]:
         """
@@ -225,3 +300,79 @@ class FoldInput:
             The values in the order the rows were recorded
         """
         return [self.values[index] for index in self.oldest_order]
+
+
+# A derivation: one figure rebuilt from the group's folded values and its rows.
+Derivation = Callable[[Dict[str, Any], Sequence[Any]], Any]
+
+
+@dataclass(frozen=True, eq=False)
+class FoldTable:
+    """
+    The declarations of one kind of row, and what the fold needs to apply them.
+
+    Compared and hashed by identity: a table is a declaration that exists once, and the fold keeps
+    its resolved plan per table.
+
+    Args:
+        name: The table's name — a ledger row, a trade, a portfolio unit
+        figures: Every figure the fold produces, each with its declaration, in output order
+        derivations: For each DERIVE figure that is no weighted mean, how it is rebuilt from the
+            group's folded values and its rows
+        account_key: The row field that names the account a row belongs to — a reading of one
+            account (LAST, FIRST) is only defined when the group holds one. None when the rows
+            carry no account; such a table declares no reading of one
+        recency: The row fields that order a row against its siblings, the first one a row carries
+            winning. Empty when the rows' own order is their age
+        order: The order the groups come back in
+        served_as: The model one group is served as, when its fields are the figures plus the
+            ones named in `outside_the_fold` — a test holds the two to each other, both ways.
+            None where another test holds the figures (the ledger's columns)
+        outside_the_fold: The fields on one side only, each with why — served but not folded (a
+            group's identity or an input its family passes in, a copy, a listing), or folded but
+            not served (the key a list is indexed by)
+        row_model: The model of one row, so a test can tell which figures can come back empty —
+            a figure read from a field that is never empty never is
+        grain: The row fields one group is keyed by — what one served entry is: one per sweep,
+            one per run. The fold groups by it unless a caller names another key; its family folds
+            only rows that carry it. Empty where a family hands over the rows of one entry, or
+            where the table folds at several grains (the ledger)
+        serves_whole: False for a table that folds one PART of a served model — its execution
+            counts, its pending orders — beside the table that names the whole; its own
+            `outside_the_fold` then names only the figures it folds and the model does not serve
+    """
+    name: str
+    figures: Dict[str, FigureDeclaration]
+    derivations: Dict[str, Derivation] = field(default_factory=dict)
+    account_key: Optional[str] = None
+    recency: Tuple[str, ...] = ()
+    order: GroupOrder = GroupOrder.SORTED
+    served_as: Optional[type] = None
+    outside_the_fold: Dict[str, str] = field(default_factory=dict)
+    row_model: Optional[type] = None
+    grain: Tuple[str, ...] = ()
+    serves_whole: bool = True
+
+
+@dataclass(frozen=True)
+class FoldPlan:
+    """
+    A fold table resolved once: each figure bound to the function that produces it. Built by the
+    fold (`aggregation_fold.fold_plan_of`), which refuses a declaration it cannot apply.
+
+    Args:
+        table: The table it was resolved from
+        folded_on_their_own: Each figure folded from its own values: its name, its fold, the
+            reader of its column, its empty value and its addition — taken out of the declaration
+            once, because the fold reads them for every figure of every group
+        companions: Each COMPANION with its declaration and the leader it follows
+        weighted_means: Each weighted mean with its declaration and its weight's declaration
+        derived: Each other DERIVE figure with its declaration and derivation
+    """
+    table: FoldTable
+    folded_on_their_own: Tuple[
+        Tuple[str, Callable[[FoldInput], Any], Callable[[List[Any]], List[Any]], EmptyValue,
+              Addition], ...]
+    companions: Tuple[Tuple[str, FigureDeclaration, str], ...]
+    weighted_means: Tuple[Tuple[str, FigureDeclaration, FigureDeclaration], ...]
+    derived: Tuple[Tuple[str, FigureDeclaration, Derivation], ...]

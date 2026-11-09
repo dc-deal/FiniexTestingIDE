@@ -113,10 +113,8 @@ _BLOCK_CASES = _block_cases()
 # What makes the frozen section of each family not rebuilt yet a reference worth having.
 _HAS_CONTENT: Dict[str, Callable[[FrozenRun], bool]] = {
     'signal': lambda run: run.signal is not None and bool(run.signal.units),
-    'feed_stability': lambda run: (run.feed_stability is not None
-                                   and run.feed_stability.episode_count > 0),
-    'booking-periods.run_totals': lambda run: (run.booking_periods is not None
-                                               and bool(run.booking_periods.periods)),
+    'feed-stability.counters': lambda run: (run.feed_stability is not None and any(
+        row.fresh_ticks or row.stale_ticks or row.blind_ticks for row in run.feed_stability.units)),
 }
 
 
