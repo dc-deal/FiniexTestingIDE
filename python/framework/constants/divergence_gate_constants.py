@@ -51,7 +51,7 @@ ALLOWED_CHANGES_BY_RELEASE = {
             'syntax_digest': 'f672cc94ed5a2317dbc38f47c689db65d8afd6400ce07f9c149aca08ca5c645f'},
         'python/framework/data_preparation/broker_data_preparator.py': {
             'categories': ('inputs_of_record',),
-            'syntax_digest': 'da209c96007b7ffdd1c3de107f9d72449cedcfaa550d0c0d8f9184164be21ec9'},
+            'syntax_digest': '603c8e78e9170dda0450644056a724f4e919791ef6dce3860429256120595c05'},
         'python/framework/decision_logic/core/test_probes/observer_probe.py': {
             'categories': ('algo_view',),
             'syntax_digest': '7c7116347abefdb487c18ad340ce9c719e603bd66c0a21c6461bfa30744ed539'},

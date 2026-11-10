@@ -6,8 +6,8 @@
   "broker_type": "kraken_spot",
   "adapter_type": "mock",
   "deployment": {
-    "_comment": "One session, one deployment: the divergence report compares it with a backtest of its window — across a trading-day boundary (00:00 UTC), so one whole day is sealed and compared, inside the collector's own data.",
-    "continuous": false
+    "_comment": "One deployment, so the divergence report has one to compare with a backtest of its window — across a trading-day boundary (00:00 UTC), so one whole day is sealed and compared, inside the collector's own data.",
+    "continuous": true
   },
   "strategy_config": {
     "decision_logic_type": "CORE/simple_consensus",

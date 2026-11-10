@@ -162,7 +162,7 @@ class LiveSideCollector:
             run_id, rows_by_run.get(run_id, []), run_by_id.get(run_id),
             states.get(run_id, SessionBookingState.NOT_BOOKED_YET)) for run_id in run_ids]
         sessions.sort(key=lambda session: (
-            session.start_time is None, session.start_time or _NO_START, session.run_id))
+            session.get_began() is None, session.get_began() or _NO_START, session.run_id))
         return LiveDeploymentCapture(
             deployment_id=deployment_id, broker_type=brokers[0],
             anchor=self._market_config.get_trading_day_anchor(brokers[0]),

@@ -323,7 +323,8 @@ class BrokerDataPreparator:
             # A copy: building injects hashes into the dict it is given
             document = copy.deepcopy(scenario.broker_config_document_content)
             try:
-                if 'broker_type' not in document:
+                typed_here = 'broker_type' not in document
+                if typed_here:
                     # A venue's runtime cache names its type; a static seed is typed by the folder
                     # it lives in, which its frozen copy no longer sits in
                     seed_path = MarketConfigManager().get_broker_config_path(
@@ -334,6 +335,11 @@ class BrokerDataPreparator:
                     document['broker_type'] = self._config_path_cache[seed_path].broker_type.value
                 self._config_path_cache[cache_key] = BrokerConfigFactory.build_from_dict(
                     document, source=cache_key)
+                if typed_here:
+                    # Typed for the build only: the adapter holds this dict, and the run freezes
+                    # what it holds — the session's document as the session froze it, so the two
+                    # carry one id
+                    document.pop('broker_type')
             except (OSError, ValueError, KeyError) as error:
                 problem = f'{cache_key} cannot be built: {error}'
         if not problem:

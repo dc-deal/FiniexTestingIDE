@@ -256,6 +256,19 @@ class TestTheFrozenBrokerDocument:
         assert document in info.config_path
         assert 'ETHUSD' in next(iter(configs.values()))['symbols']
 
+    def test_a_static_seed_s_document_is_frozen_again_under_its_own_id(self):
+        """A static seed names no broker type — its folder does. The build is typed, and the run
+        still freezes the document as the session froze it, so the two carry one id."""
+        document = self._frozen_id()
+        content = read_frozen_broker_config(document)
+        assert 'broker_type' not in content
+        scenario = self._scenario('segment_1', document, content)
+        preparator = BrokerDataPreparator([scenario], MagicMock())
+        preparator.prepare()
+        (info,) = preparator.get_broker_scenario_map().values()
+        freeze_broker_config(info.broker_config, MagicMock())
+        assert info.broker_config.get_frozen_config_id() == document
+
     def test_an_unknown_document_is_refused_at_load(self):
         with pytest.raises(FileNotFoundError, match='not in the run-config store'):
             read_frozen_broker_config('f' * 64)

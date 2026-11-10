@@ -128,7 +128,8 @@ def decompose_day(opening: datetime, closing: datetime, frames: Sequence[StateFr
     delay = execution = end_price = one_sided = fees = 0.0
     for run_id, event in events:
         fill_time = _fill_time(event)
-        if fill_time is None or not start.frame_time < fill_time <= end.frame_time:
+        if (fill_time is None or not holds_fill(end, event, fill_time)
+                or holds_fill(start, event, fill_time)):
             continue
         sign = _sign(event)
         if sign is None:
@@ -152,6 +153,26 @@ def decompose_day(opening: datetime, closing: datetime, frames: Sequence[StateFr
         equity_change=equity_change, held=held, delay=delay, execution=execution,
         end_price=end_price, one_sided=one_sided, fees=fees, valuation=valuation,
         residual=residual), ''
+
+
+def holds_fill(frame: StateFrame, event: OrderEventRow, fill_time: datetime) -> bool:
+    """
+    Whether a fill is already in a frame's holdings: one before the frame, or one at its very
+    instant — except a fill of the order the frame itself sent. An order frame shows the state its
+    decision left, before that order filled; a venue that fills at once stamps the fill with the
+    frame's own instant, and the frame still holds nothing of it.
+
+    Args:
+        frame: The frame
+        event: A fill
+        fill_time: When the fill executed
+
+    Returns:
+        True where the frame's holdings include it
+    """
+    if fill_time != frame.frame_time:
+        return fill_time < frame.frame_time
+    return frame.order_id is None or event.order_id != frame.order_id
 
 
 def _valuation(frame: StateFrame, base_currency: str) -> float:

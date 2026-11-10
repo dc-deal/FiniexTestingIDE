@@ -314,7 +314,7 @@ class DivergenceReportCoordinator:
         backtest = backtest_collector.collect_run(run_id)
         scenario_name = backtest.scenarios[0].name if backtest.scenarios else ''
         in_window = [s for s in derived.sessions
-                     if s.start_time is None or s.start_time < window.end]
+                     if s.get_began() is None or s.get_began() < window.end]
         gate = check_divergence_gate(in_window, backtest, window)
         gate_report = _gate_report(gate)
         named = named.model_copy(update={'backtest_run_id': run_id, 'gate': gate_report})

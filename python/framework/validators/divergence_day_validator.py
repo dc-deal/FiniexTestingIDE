@@ -121,7 +121,7 @@ def _alive_spans(segment: DerivedSegment) -> List[Tuple[str, datetime, datetime]
     """
     spans: List[Tuple[str, datetime, datetime]] = []
     for session, end in zip(segment.sessions, segment.ends):
-        began = session.start_time or session.first_tick
+        began = session.get_began()
         if began is None:
             continue
         spans.append((session.run_id, began, end.at if end.at is not None else began))

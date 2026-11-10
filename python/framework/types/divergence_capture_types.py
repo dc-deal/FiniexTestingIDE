@@ -134,6 +134,19 @@ class LiveSessionCapture:
     code_identity: Optional[CodeIdentity] = None
     unreadable: Dict[str, str] = field(default_factory=dict)
 
+    def get_began(self) -> Optional[datetime]:
+        """
+        When the session began, in the time of its events — its first tick, and its start on the
+        machine's clock only where no first tick is recorded. The comparison's windows and days
+        are event time, so its sessions are too: a replay of recorded data starts on today's clock
+        with ticks of another month, and a live session's first tick follows its start by the
+        seconds its boot takes.
+
+        Returns:
+            The instant; None where neither is known
+        """
+        return self.first_tick or self.start_time
+
 
 @dataclass(frozen=True)
 class LiveDeploymentCapture:

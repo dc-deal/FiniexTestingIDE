@@ -16,6 +16,7 @@ import pytest
 from python.framework.reporting.builders.divergence.day_attribution_builder import (
     attribute_day,
     decompose_day,
+    holds_fill,
 )
 from python.framework.types.api.divergence_report_types import OrderOutcome
 from python.framework.types.api.report_types import OpenPositionRow, OrderEventRow
@@ -93,6 +94,34 @@ class TestOneSpotDay:
         parts, _ = decompose_day(_OPENING, _CLOSING, _frames(),
                                  [('s1', _buy(at=_OPENING - timedelta(minutes=5)))], {}, 'ETH')
         assert parts.fees == 0.0
+
+    def test_the_order_an_opening_frame_sent_fills_inside_the_day(self):
+        """A venue that fills at once stamps the fill with the order frame's own instant, and the
+        frame still holds nothing of it — the day's first decision, filled on its first tick."""
+        opening = _spot_frame(_OPENING + timedelta(seconds=1), 1000.0, 0.0, 3000.0).model_copy(
+            update={'written_for': StateFrameCause.ORDER, 'order_id': 'order_1'})
+        frames = [opening, _frames()[1]]
+        parts, _ = decompose_day(_OPENING, _CLOSING, frames,
+                                 [('s1', _buy(at=opening.frame_time))], _paired(), 'ETH')
+        assert parts.fees == pytest.approx(-0.6)
+        assert parts.residual == pytest.approx(0.0, abs=1e-9)
+
+
+class TestWhatAFrameHolds:
+
+    @staticmethod
+    def _frame(order_id: Optional[str]) -> StateFrame:
+        return _spot_frame(_FILLED, 1000.0, 0.0, 3000.0).model_copy(update={'order_id': order_id})
+
+    def test_a_fill_before_the_frame_is_held_one_after_it_is_not(self):
+        frame = self._frame(None)
+        assert holds_fill(frame, _buy(), _FILLED - timedelta(seconds=1))
+        assert not holds_fill(frame, _buy(), _FILLED + timedelta(seconds=1))
+
+    def test_a_fill_at_the_frame_s_instant_is_held_unless_the_frame_sent_its_order(self):
+        assert holds_fill(self._frame(None), _buy(), _FILLED)
+        assert holds_fill(self._frame('order_9'), _buy(), _FILLED)
+        assert not holds_fill(self._frame('order_1'), _buy(), _FILLED)
 
 
 class TestWhatIsNotTakenApart:

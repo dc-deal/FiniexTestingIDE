@@ -57,7 +57,7 @@ and a backtest the gate lets through, and change one thing each.
 | `TestEveryBlockIsDeclared` | every block of a rendered profile, and every field of its execution block, is declared once — where it goes in the backtest, or why it has no counterpart — and says why |
 | `TestTheScenarioSet` | the built set names the session's warmup run and broker document and the window; the strategy is the rendered one without the projected type keys; the heartbeat cadence, the frame cadence and the order guard are carried; every field of the execution model and of the simulator model is written, so no workspace override reaches one; a regular comparison declares no purpose; another history depth and a document without blocks are refused |
 | `TestTheLoaderReadsTheRecordedWarmup` | a scenario naming `warmup_from_run` carries that run's record; a record of another symbol is refused; a copy of the records is read through the reader and the store the loader was given |
-| `TestTheFrozenBrokerDocument` | a scenario naming `broker_config_document` trades with the frozen document; an unknown document is refused at load; a document is read from the store it is given; a document no configuration can be built from is that scenario's error; one broker from a document and from another source in one set is refused |
+| `TestTheFrozenBrokerDocument` | a scenario naming `broker_config_document` trades with the frozen document; an unknown document is refused at load; a document is read from the store it is given; a document no configuration can be built from is that scenario's error; one broker from a document and from another source in one set is refused; a static seed's document, which names no broker type, is frozen again by the backtest under its own id |
 
 ### `test_inputs_of_record_events.py`
 
@@ -92,6 +92,7 @@ The trading days as the report places them, and the counting a day is checked by
 | Test | Description |
 |------|-------------|
 | `TestTheBoundaryDetectors` | every boundary kind but the deployment's start has exactly one detector; the same code is one segment; a code change begins one and names what moved; a stand nobody could read counts as moved; a session without booked figures never cuts; a further boundary kind is one more detector, and one segment names both boundaries |
+| `TestWhenASessionBegan` | a session is placed by its first tick — a replay started on today's clock with ticks of another month is placed in that month; its start only where no tick came |
 | `TestSessionsThatCoverNoDay` | a session that failed before it measured anything, one that refused at its first tick and one that recorded neither a tick nor a frame are named with why |
 | `TestWhereASessionEnds` | a close row with its report says closed, Ctrl+C or crashed (its cause quoted); without its close a session was killed when a later one followed, and is open when none did |
 | `TestTheWindow` | it starts at the first tick, never at the first period's opening; it ends at the boundary asked for once sealed, at the last sealed boundary while that one is not, and there without one asked for; a requested end that is no boundary is refused; no recorded first tick leaves it without a start |
@@ -209,7 +210,8 @@ decided at 2999, submitted at 3000 — and a mid of 3010 at the end.
 
 | Test | Description |
 |------|-------------|
-| `TestOneSpotDay` | a paired fill splits at its decision and its submission and the parts add up; an unpaired fill stays whole; what was held at the start is valued over the day; a missing quantity leaves a residual; a fill outside the two frames belongs to another day |
+| `TestOneSpotDay` | a paired fill splits at its decision and its submission and the parts add up; an unpaired fill stays whole; what was held at the start is valued over the day; a missing quantity leaves a residual; a fill outside the two frames belongs to another day; the order an opening frame sent fills inside the day, though a venue that fills at once stamps it with the frame's own instant |
+| `TestWhatAFrameHolds` | a fill before a frame is in its holdings, one after it is not; a fill at the frame's instant is held unless the frame sent its order |
 | `TestWhatIsNotTakenApart` | a margin day says why; a day without frames at both ends; a spot day without a base currency |
 | `TestTwoRuns` | the difference is taken part by part; a side that cannot be taken apart names itself |
 
@@ -264,7 +266,7 @@ classes; the Kraken readers themselves are held in the venue history suite.
 | `TestACaptureDifference` | the decision bar is the one that closed in the pass; only one-sided days proposed as a capture are fetched; trades the archive lacks confirm it, an archive holding every one refutes it |
 | `TestTheAccountsMovements` | the bot's own trade moves nothing, a deposit, a conversion, a trade of another order and a trade without an order each count; another currency and a zero movement count nothing; the bot's orders are every handle its events carry |
 | `TestTheLedgerDecidesTheWindow` | a movement ends the window at the last boundary before it; a ledger without movements overrides a position change the frames show; a movement before the window counts nothing; the live side carries the movements |
-| `TestTheVenueSide` | each run is answered and a failed one is named; a venue without a trade list or a ledger reader says so; a ledger that gave up is never an empty one; the bars' trades |
+| `TestTheVenueSide` | each run is answered and a failed one is named; a venue without a trade list or a ledger reader says so; a deployment with no venue to ask says why in every answer; a ledger that gave up is never an empty one; the bars' trades |
 
 ### `test_divergence_verdict.py`
 
@@ -309,4 +311,17 @@ compare is built from the stream's own record shapes.
 | `TestTheVerdict` | the same events on the claimed code are identical, a difference is one; the release on another commit or uncommitted, the current tree uncommitted, two broker documents, a bar rendered between the runs, no indexed bar file, an unread stream or a failed run each leave the window not checked — never a pass, even where values differ; a short and a long hash name one commit |
 | `TestTheExitCode` | 0 every window identical; 3 a window differs; 2 refused, no window, or one not checked |
 | `TestTheRefusals` | no data home, a data home holding code, a release tree without the strategy runner, sessions on two commits — each refused before anything runs; a good setup runs |
+
+### `test_divergence_report_end_to_end.py`
+
+The comparison from end to end over a session's real records: a mock session
+(`configs/autotrader_profiles/mock/divergence_report_test.json`) replays the collector's own BTCUSD
+ticks across a trading-day boundary, buying on its first tick, and the comparison runs over its
+deployment as the command runs it. About 50 seconds.
+
+| Test | Description |
+|------|-------------|
+| `TestTheRecord` | the record keeps the generated set, the warmup and the report; the kept warmup is the session's own, byte for byte; the printed text is kept |
+| `TestTheLiveSide` | one segment of one session, its window opening at the first tick on the replayed day; a session on the mock adapter is asked of no venue |
+| `TestTheGateAndTheVerdict` | the gate sees the session and both froze one broker document, so its only possible refusal is uncommitted code; on a committed tree the chain reaches the verdict and the backtest of the session's own window passes, decisions and attribution included |
 

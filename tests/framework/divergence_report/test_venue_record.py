@@ -266,6 +266,13 @@ class TestTheVenueSide:
         ledger = collector.read_venue_ledger(_at(0), _at(1))
         assert "the account's ledger has no reader" in ledger.unreadable
 
+    def test_a_deployment_without_a_venue_says_why_in_every_answer(self):
+        why = 'the sessions ran on the mock adapter, so no venue holds their record'
+        collector = VenueSideCollector('kraken_spot', None, None, not_read_because=why)
+        assert collector.answer_runs('ETHUSD', [_run()]).unreadable[0].startswith(why)
+        assert collector.bar_trades('ETHUSD', []).unreadable[0].startswith(why)
+        assert collector.read_venue_ledger(_at(0), _at(1)).unreadable.startswith(why)
+
     def test_a_ledger_that_gave_up_is_never_an_empty_one(self):
         read = VenueSideCollector('kraken_spot', None, _Ledger()).read_venue_ledger(_at(0), _at(1))
         assert read.entries is None and 'EAPI:Invalid key' in read.unreadable

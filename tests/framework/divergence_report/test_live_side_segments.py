@@ -118,6 +118,21 @@ class TestTheBoundaryDetectors:
         assert len(segments) == 2 and len(segments[1][0]) == 2, 'one segment names both'
 
 
+class TestWhenASessionBegan:
+    """Windows and days are event time, so a session is placed by its first tick — a replay of
+    recorded data starts on today's clock with ticks of another month."""
+
+    def test_its_first_tick_places_it(self):
+        replay = session('s1', FIRST_TICK, days_from(FIRST_DAY, 1),
+                         start_time=FIRST_TICK + timedelta(days=300))
+        assert replay.get_began() == FIRST_TICK
+
+    def test_its_start_only_where_no_tick_came(self):
+        silent = session('s2', None, [], start_time=FIRST_TICK)
+        assert silent.get_began() == FIRST_TICK
+        assert session('s3', None, []).get_began() is None
+
+
 class TestSessionsThatCoverNoDay:
 
     def test_a_failed_a_refused_and_a_silent_session_are_named(self):

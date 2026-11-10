@@ -280,7 +280,7 @@ def _account_change_end(sessions: Sequence[LiveSessionCapture], ends: Sequence[S
         stopped, restarted = sessions[position], sessions[position + 1]
         if any(_covers(stop, stopped, restarted) for stop in declared):
             continue
-        stopped_at = ends[position].at or restarted.start_time or start
+        stopped_at = ends[position].at or restarted.get_began() or start
         last = stopped.frame_ends.last if stopped.frame_ends is not None else None
         first = restarted.frame_ends.first if restarted.frame_ends is not None else None
         lot_step = (restarted.lot_step if restarted.lot_step is not None
@@ -302,8 +302,8 @@ def _account_change_end(sessions: Sequence[LiveSessionCapture], ends: Sequence[S
 
 def _covers(stop: DeclaredStop, stopped: LiveSessionCapture, restarted: LiveSessionCapture) -> bool:
     """
-    Whether a declared stop is the one between two sessions — it falls from the first one's start
-    to the second one's.
+    Whether a declared stop is the one between two sessions — it falls from the first one's
+    beginning to the second one's.
 
     Args:
         stop: The declared stop
@@ -313,9 +313,10 @@ def _covers(stop: DeclaredStop, stopped: LiveSessionCapture, restarted: LiveSess
     Returns:
         True where it falls between them
     """
-    if stopped.start_time is None or restarted.start_time is None:
+    stopped_began, restarted_began = stopped.get_began(), restarted.get_began()
+    if stopped_began is None or restarted_began is None:
         return False
-    return stopped.start_time <= stop.instant < restarted.start_time
+    return stopped_began <= stop.instant < restarted_began
 
 
 def segment_window(sessions: Sequence[LiveSessionCapture], ends: Sequence[SessionEnd],
@@ -392,8 +393,8 @@ def derive_segments(
     for index, (started_by, sessions) in enumerate(cut, start=1):
         ends = [session_end_of(session, has_successor=order[session.run_id] < last_position)
                 for session in sessions]
-        segment_start = sessions[0].start_time or sessions[0].first_tick
-        next_start = cut[index][1][0].start_time if index < len(cut) else None
+        segment_start = sessions[0].get_began()
+        next_start = cut[index][1][0].get_began() if index < len(cut) else None
         declared = [stop for stop in declared_stops
                     if (segment_start is None or stop.instant >= segment_start)
                     and (next_start is None or stop.instant < next_start)]

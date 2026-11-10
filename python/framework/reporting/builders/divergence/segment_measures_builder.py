@@ -138,10 +138,8 @@ def measure_segment(segment: LiveSegment, capture: LiveDeploymentCapture,
     if decision_timeframe is None:
         unreadable.append('no decision timeframe was given, so measure 1 was not computed')
     else:
-        restarts = {session.run_id: (session.start_time or session.first_tick,
-                                     session.warmup_reach)
-                    for session in sessions[1:]
-                    if (session.start_time or session.first_tick) is not None}
+        restarts = {session.run_id: (session.get_began(), session.warmup_reach)
+                    for session in sessions[1:] if session.get_began() is not None}
         decisions, table = compare_decisions(
             days, segment.window.start, merged_live, backtest_frames,
             {measured.closing: measured for measured in orders}, decision_timeframe, restarts,
