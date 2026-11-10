@@ -875,6 +875,9 @@ logs. Parameter names are not checked here: that happens at the start of a batch
 | **CLI** | `python python/cli/divergence_report_cli.py compare --deployment <id> --decision-timeframe D1` |
 | **Purpose** | Hold a live deployment against backtests of exactly its windows, built from what its sessions recorded, and judge the divergence by the rules fixed before the run (#512) |
 
+Step by step, from copying the live system's records to reading the verdict:
+[Comparing a Live Bot With Its Backtest](user_guides/divergence_report_guide.md).
+
 The live side is read from the deployment's records — this machine's stores, or `--records` a copy of
 the bot host's data home. Each segment's window is backtested from the session's own warmup and
 frozen broker configuration; the gate refuses a backtest that does not run the session's code; the
