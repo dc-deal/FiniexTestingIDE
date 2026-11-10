@@ -34,6 +34,7 @@ session's record, and each seam that carries one is held here.
 | A day whose decision frame is missing on one side counts as agreeing | A one-sided day the verdict should have named slips through |
 | A stretch one side did not see stays in a measure | The divergence measures a capture or an outage, not the simulator |
 | The parts of a day's change of account value do not add up to the change | The attribution names a cause for a divergence that is not where it says |
+| The A/A reads IDENTICAL for two runs whose code, broker document or bars nobody can vouch for | The proof that the instrument did not change rests on runs that may not have read the same inputs |
 
 Not here: the warmup read back from a record, bar for bar against the archive path — that is the
 warmup history suite (`test_warmup_from_record.py`); the count of a day's order events held to the
@@ -294,4 +295,18 @@ The steps of the command that join the building blocks.
 | `test_a_capture_difference_is_confirmed_by_the_trades_the_archive_lacks` | the venue's trades in the decision bar against the archive's ids |
 | `test_a_segment_not_compared_is_printed_with_why_and_kept` | the text names the cause; the record holds the report as JSON and as text, read back equal |
 | `TestTheWarmupItStartedFrom` | the session's warmup history is copied beside the comparison as `warmup_segment_<n>.json`; a session without one keeps nothing |
+
+### `test_divergence_aa.py`
+
+The A/A: one window backtested on the sessions' release and on the current tree with the same
+inputs. The two backtests run as processes of their own trees and cannot run here; what they would
+compare is built from the stream's own record shapes.
+
+| Test | Description |
+|------|-------------|
+| `TestTheSetBothStandsRead` | the release's set holds only the strategy, the shared execution fields, the account and the window — no recorded warmup, no frozen broker document; only the current tree's set records frames, and otherwise the two sets are equal; every shared execution field is one the comparison carries |
+| `TestTheComparison` | equal streams differ nowhere; a differing value is named with its position and both values; a value one record leaves out is null; a record only one side holds is named whole; a trade field only one stand writes is named and not compared; fills are counted, partial or whole |
+| `TestTheVerdict` | the same events on the claimed code are identical, a difference is one; the release on another commit or uncommitted, the current tree uncommitted, two broker documents, a bar rendered between the runs, no indexed bar file, an unread stream or a failed run each leave the window not checked — never a pass, even where values differ; a short and a long hash name one commit |
+| `TestTheExitCode` | 0 every window identical; 3 a window differs; 2 refused, no window, or one not checked |
+| `TestTheRefusals` | no data home, a data home holding code, a release tree without the strategy runner, sessions on two commits — each refused before anything runs; a good setup runs |
 

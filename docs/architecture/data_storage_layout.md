@@ -84,8 +84,10 @@ it generated and the warmup history the segment's backtest started from — copi
 whose own record lies on another machine. Beside them: the run index it read a copy's sessions
 through, only where the sessions were read from a copy of another machine's data home, and its
 report, as `report.json` and as the `report.txt` the command printed. Its backtests are runs of row
-1: found by the scenario set's name, named in the report, never copied into it. It keeps no index;
-a comparison is opened by its id.
+1: found by the scenario set's name, named in the report, never copied into it. An A/A — one
+window backtested on the sessions' release and on the current tree — keeps its two scenario sets
+per window and its report (`aa_report.json`, `aa_report.txt`) the same way. It keeps no index; a
+comparison is opened by its id.
 
 **Ticks and bars are two stores, and bars are DERIVED.** Ticks are IMPORTED from the collector's
 JSON; bars are GENERATED from those ticks, by a render that writes each symbol's files anew from

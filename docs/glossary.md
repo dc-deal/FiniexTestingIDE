@@ -24,6 +24,11 @@ run fit together; the linked documents explain the rest.
 
 ---
 
+**A/A** (`divergence_report_cli.py aa`) — One window backtested twice with the same inputs, on the
+release a deployment's sessions ran and on the current tree, and the two compared event by event
+(#512). Replay is deterministic, so they must be identical; a difference means the instrument
+changed, not the market. See [CLI Tools Guide](cli_tools_guide.md).
+
 **accept composite change** (`--accept-composite-change <key>`, served as
 `origin.accept_composite_change`) — A start told it may continue what the venue still holds — this
 bot's position, its resting orders — under a configuration that defines another *composite* than

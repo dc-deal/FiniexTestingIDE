@@ -1,5 +1,6 @@
 """
-The divergence report as text (#512) — printed by the command and kept as `report.txt`.
+The divergence report as text (#512) — printed by the command and kept as `report.txt`; an A/A of
+two code stands the same way, kept as `aa_report.txt`.
 
 Formatting only: every figure is a field of the report model, derived and judged before it gets
 here; this unit loops and formats.
@@ -8,6 +9,9 @@ here; this unit loops and formats.
 from typing import List, Optional
 
 from python.framework.types.api.divergence_report_types import (
+    AaReport,
+    AaStandRun,
+    AaWindowResult,
     DayExclusionReason,
     DivergenceReport,
     MeasureVerdict,
@@ -48,6 +52,99 @@ def render_divergence_report(report: DivergenceReport) -> str:
         lines.extend(_segment(segment))
     lines.append(_RULE)
     return '\n'.join(lines)
+
+
+def render_aa_report(report: AaReport) -> str:
+    """
+    An A/A as the operator reads it.
+
+    Args:
+        report: The A/A
+
+    Returns:
+        The text, lines joined
+    """
+    dirty = ' (uncommitted changes)' if report.current_dirty else ''
+    lines: List[str] = [
+        _RULE,
+        f'A/A {report.report_id} · deployment {report.deployment_id} · {report.symbol} · '
+        f'release {report.session_commit[:8] or "unknown"} against this tree '
+        f'{report.current_commit[:8] or "unknown"}{dirty}',
+        _RULE,
+        f'Release tree: {report.release_tree} · data home: {report.data_home or "none"} · '
+        f'records: {report.records_root or "this machine"}',
+    ]
+    if report.refused_because:
+        lines.append(f'REFUSED: {report.refused_because}')
+    for window in report.windows:
+        lines.extend(_aa_window(window))
+    lines.append(_RULE)
+    return '\n'.join(lines)
+
+
+def _aa_window(window: AaWindowResult) -> List[str]:
+    """
+    One A/A window's lines.
+
+    Args:
+        window: The window's result
+
+    Returns:
+        Its lines
+    """
+    lines = [
+        '',
+        f'WINDOW {window.index} · {_when(window.start) or "no start"} → '
+        f'{_when(window.end) or "no end"} · {window.verdict.value.upper()}'
+        + (f' — {window.not_checked_because}' if window.not_checked_because else ''),
+    ]
+    for run in (window.release, window.current):
+        lines.append(f'  {_aa_run(run)}')
+    if window.render_stamps_before:
+        moved = window.render_stamps_before != window.render_stamps_after
+        lines.append(f'  Bars: {len(window.render_stamps_before)} file(s) · '
+                     + ('a render stamp moved between the runs' if moved else 'unchanged'))
+    if window.one_sided_fields:
+        lines.append('  Trade fields only one stand writes (not compared): '
+                     + ', '.join(window.one_sided_fields))
+    if window.difference_count:
+        lines.append(f'  {window.difference_count} value(s) differ; the first:')
+        for difference in window.differences:
+            lines.append(f'    {difference.stream} #{difference.position} {difference.field}: '
+                         f'release {difference.release_value} · this tree '
+                         f'{difference.current_value}')
+    return lines
+
+
+def _aa_run(run: AaStandRun) -> str:
+    """
+    One stand's backtest in a line.
+
+    Args:
+        run: The stand's backtest
+
+    Returns:
+        The line
+    """
+    if run.failed_because:
+        return f'{run.stand.value}: did not run — {run.failed_because}'
+    dirty = ' (uncommitted)' if run.framework_dirty else ''
+    return (f'{run.stand.value}: run {run.run_id} · code {run.framework_commit or "unknown"}{dirty}'
+            f' · broker {run.broker_config_id or "none"} · {_count(run.order_events)} order '
+            f'event(s), {_count(run.fills)} fill(s), {_count(run.trades)} trade(s)')
+
+
+def _count(value: Optional[int]) -> str:
+    """
+    A count as the report prints it.
+
+    Args:
+        value: The count, or None where it was not read
+
+    Returns:
+        The number, or '—' for none
+    """
+    return str(value) if value is not None else '—'
 
 
 def _segment(report: SegmentReport) -> List[str]:

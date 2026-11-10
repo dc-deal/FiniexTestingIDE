@@ -6,27 +6,37 @@ segment's window backtested from what its sessions recorded, the gate, the measu
 record, and the verdict by the rules fixed before the run. The report is kept under
 `runs/divergence/<report_id>/` and printed.
 
+`aa` proves the instrument first: the same windows backtested on the release the sessions ran (a
+checkout of its commit) and on this tree, with the same inputs, compared event by event.
+
 Usage:
     python python/cli/divergence_report_cli.py compare --deployment <id> --decision-timeframe D1
     python python/cli/divergence_report_cli.py compare --deployment <id> --decision-timeframe D1 \\
         --until 2026-12-24T00:00:00Z --records <copy of the bot host's data home>
     python python/cli/divergence_report_cli.py compare --deployment <id> --decision-timeframe D1 \\
         --reading rehearsal --declared-stop 2026-12-05T10:00:00Z,changed,sold by hand
+    python python/cli/divergence_report_cli.py aa --deployment <id> \\
+        --release-tree <checkout of the sessions' release> --window 2026-08-15,2026-11-06
 
-Exit codes: 0 every segment compared and passed · 2 a segment not compared (archive, backtest or
-gate) · 3 a compared segment failed or was not checked · 1 an error.
+Exit codes, compare: 0 every segment compared and passed · 2 a segment not compared (archive,
+backtest or gate) · 3 a compared segment failed or was not checked · 1 an error.
+Exit codes, aa: 0 every window identical · 2 refused, or a window not checked · 3 a window differs
+· 1 an error.
 """
 
 import argparse
 import sys
 import traceback
+from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.reporting.divergence_aa_coordinator import DivergenceAaCoordinator
 from python.framework.reporting.divergence_report_coordinator import DivergenceReportCoordinator
 from python.framework.types.api.divergence_report_types import DeclaredStop, DivergenceReading
 from python.framework.utils.time_utils import parse_datetime
+from python.framework.validators.divergence_aa_validator import aa_exit_code
 from python.framework.validators.divergence_verdict_validator import exit_code_of
 
 
@@ -62,6 +72,51 @@ class DivergenceReportCli:
         print(text)
         print(f'Kept in {report_dir}')
         return exit_code_of(report.segments)
+
+    def cmd_aa(self, deployment: str, release_tree: str, windows: List[str],
+               until: Optional[str], records: Optional[str]) -> int:
+        """
+        Backtest a deployment's windows on its release and on this tree and compare them.
+
+        Args:
+            deployment: The deployment id
+            release_tree: A checkout of the release the deployment's sessions ran
+            windows: Each window as '<start>,<end>'; empty for the deployment's own windows
+            until: The boundary the deployment's own windows end at, ISO; None for the last one
+                sealed
+            records: A copy of the bot host's data home; None for this machine's stores
+
+        Returns:
+            The exit code
+        """
+        coordinator = DivergenceAaCoordinator(
+            deployment_id=deployment, release_tree=Path(release_tree),
+            windows=[_window(text) for text in windows],
+            until=parse_datetime(until) if until else None,
+            records_root=Path(records) if records else None)
+        report, text, report_dir = coordinator.run()
+        print(text)
+        print(f'Kept in {report_dir}')
+        return aa_exit_code(report)
+
+
+def _window(text: str) -> Tuple[datetime, datetime]:
+    """
+    A window as the command line names it.
+
+    Args:
+        text: '<start>,<end>', each an ISO instant or date in UTC
+
+    Returns:
+        (start, end)
+    """
+    parts = text.split(',')
+    if len(parts) != 2:
+        raise ValueError(f"--window '{text}': expected <start>,<end>")
+    start, end = parse_datetime(parts[0]), parse_datetime(parts[1])
+    if end <= start:
+        raise ValueError(f"--window '{text}': the end is not after the start")
+    return start, end
 
 
 def _declared_stop(text: str) -> DeclaredStop:
@@ -108,6 +163,19 @@ def main():
                                 default='venues/kraken_ledger_credentials.json',
                                 help="The key that may read the venue's ledger, as configured")
 
+    aa_parser = subparsers.add_parser(
+        'aa', help="Backtest a deployment's windows on its release and on this tree, and compare")
+    aa_parser.add_argument('--deployment', required=True, help='The deployment id')
+    aa_parser.add_argument('--release-tree', required=True,
+                           help="A checkout of the release the deployment's sessions ran")
+    aa_parser.add_argument('--window', action='append', default=[],
+                           help='A window to backtest: <start>,<end> (UTC, ISO); repeatable; '
+                                "without one, the deployment's own windows")
+    aa_parser.add_argument('--until', default=None,
+                           help="The boundary the deployment's own windows end at (UTC, ISO)")
+    aa_parser.add_argument('--records', default=None,
+                           help="A copy of the bot host's data home to read the sessions from")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -121,6 +189,9 @@ def main():
             sys.exit(cli.cmd_compare(args.deployment, args.decision_timeframe, args.reading,
                                      args.until, args.records, args.declared_stop,
                                      args.ledger_credentials))
+        if args.command == 'aa':
+            sys.exit(cli.cmd_aa(args.deployment, args.release_tree, args.window, args.until,
+                                args.records))
 
     except KeyboardInterrupt:
         print('\n\n⚠️  Interrupted by user')

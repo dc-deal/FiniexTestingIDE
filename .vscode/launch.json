@@ -1359,6 +1359,27 @@
             }
         },
         {
+            "name": "🔀 Divergence Report: aa (prompt)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/divergence_report_cli.py",
+            "args": [
+                "aa",
+                "--deployment",
+                "${input:deploymentId}",
+                "--release-tree",
+                "${input:aaReleaseTree}",
+                "--window",
+                "${input:aaWindow}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 9
+            }
+        },
+        {
             "name": "🔀 Divergence Report: compare (prompt)",
             "type": "debugpy",
             "request": "launch",
@@ -1374,7 +1395,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 9
+                "order": 10
             }
         },
         {
@@ -1391,7 +1412,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 10
+                "order": 11
             }
         },
         {
@@ -1406,7 +1427,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 11
+                "order": 12
             }
         },
         {
@@ -1423,7 +1444,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 12
+                "order": 13
             }
         },
         {
@@ -1441,7 +1462,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 13
+                "order": 14
             }
         },
         {
@@ -1459,7 +1480,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 14
+                "order": 15
             }
         },
         // ====================================================
@@ -4818,6 +4839,16 @@
             "type": "promptString",
             "description": "Deployment id to report on (e.g. deploy_20260918_091413 — the `deployments` entry lists them)",
             "default": "deploy_20260918_091413"
+        },
+        {
+            "id": "aaReleaseTree",
+            "type": "promptString",
+            "description": "A checkout of the release the sessions ran (git worktree add --detach <dir> v1.5.0)"
+        },
+        {
+            "id": "aaWindow",
+            "type": "promptString",
+            "description": "The window to backtest on both code stands: <start>,<end> (UTC) — one where the strategy trades"
         },
         {
             "id": "optimizationSweepId",

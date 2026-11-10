@@ -147,12 +147,15 @@ class SweepEntryMemberId(StrEnum):
 
 
 class DivergenceEntryMemberId(StrEnum):
-    """Every file a divergence comparison's directory holds (#512)."""
+    """Every file a divergence comparison's or an A/A's directory holds (#512)."""
     SCENARIO_SET = 'scenario_set'
     WARMUP_RECORD = 'warmup_record'
     LIVE_INDEX = 'live_index'
     REPORT = 'report'
     REPORT_TEXT = 'report_text'
+    AA_SCENARIO_SET = 'aa_scenario_set'
+    AA_REPORT = 'aa_report'
+    AA_REPORT_TEXT = 'aa_report_text'
 
 
 @dataclass(frozen=True)

@@ -424,6 +424,21 @@ def preflight(derived: DerivedSegment, broker_type: str, symbol: str) -> str:
     if window.start is None or window.end is None:
         missing = 'start' if window.start is None else 'end'
         return f'the window has no {missing} ({window.end_cause.value})'
+    return archive_reaches_past(broker_type, symbol, window.end)
+
+
+def archive_reaches_past(broker_type: str, symbol: str, end: datetime) -> str:
+    """
+    Whether the archive holds a symbol's ticks past a window's end, so a backtest can cover it.
+
+    Args:
+        broker_type: The broker
+        symbol: The symbol
+        end: The window's end
+
+    Returns:
+        Why not, in a sentence; '' where it does
+    """
     tick_index = TickIndexManager()
     tick_index.load_index()
     coverage = tick_index.get_symbol_file_coverage(broker_type, symbol)
@@ -432,9 +447,9 @@ def preflight(derived: DerivedSegment, broker_type: str, symbol: str) -> str:
     archive_end = pd.Timestamp(coverage['end_time'])
     archive_end = (archive_end.tz_localize('UTC') if archive_end.tzinfo is None
                    else archive_end.tz_convert('UTC')).to_pydatetime()
-    if archive_end <= window.end:
+    if archive_end <= end:
         return (f'the archive ends {archive_end.isoformat()}, not past the window\'s end '
-                f'{window.end.isoformat()} — wait for the import that covers it')
+                f'{end.isoformat()} — wait for the import that covers it')
     return ''
 
 

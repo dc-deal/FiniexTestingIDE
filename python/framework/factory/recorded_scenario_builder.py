@@ -17,7 +17,7 @@ it can silently go missing from the comparison.
 import json
 from dataclasses import fields
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.autotrader.run_record.rendered_profile_builder import NOT_A_BLOCK
@@ -80,6 +80,10 @@ RENDERED_EXECUTION_TARGETS: Dict[str, str] = {
                      '(#653), carried as the session ran them'),
 }
 
+# The execution fields an A/A's set carries: those both code stands read — `verification` (#653)
+# is unknown to 1.5.0 and is left to each stand's default.
+SHARED_EXECUTION_FIELDS = ('parallel_workers', 'heartbeat_interval_ms')
+
 # The execution fields with no counterpart in a backtest, and why.
 RENDERED_EXECUTION_WITHOUT_COUNTERPART: Dict[str, str] = {
     'bar_max_history': 'app-level in a backtest; a session that kept another depth is refused',
@@ -116,6 +120,73 @@ class RecordedScenarioBuilder:
         Returns:
             The scenario set document, JSON-serialisable
         """
+        blocks, strategy, execution = RecordedScenarioBuilder._checked_profile(inputs)
+        return RecordedScenarioBuilder._document(
+            inputs, blocks, strategy,
+            description='A backtest of a session segment, built from what the session recorded '
+                        '(#512).',
+            # The release's execution model in full, with what the session ran over it: a
+            # workspace override of the backtesting defaults must reach no field
+            execution_config={
+                **DefaultScenarioExecutionConfig().model_dump(mode='json'),
+                'parallel_workers': execution.get('parallel_workers'),
+                'heartbeat_interval_ms': execution.get('heartbeat_interval_ms'),
+                'verification': execution.get(
+                    'verification', VerificationConfig().model_dump(mode='json')),
+                # The frames the divergence report reads, on the slots the session recorded on
+                'state_frames': RecordedScenarioBuilder._state_frames(blocks),
+            },
+            # The release's own simulator in full, every field written: a workspace override
+            # of the backtesting defaults must not reach the comparison. The account currency
+            # stays derived from the symbol's quote currency, as the session derived it
+            trade_simulator_config=TradeSimulatorDefaults(
+                balances=dict(inputs.balances)).model_dump(mode='json'),
+            inputs_of_record={'warmup_from_run': inputs.warmup_from_run,
+                              'broker_config_document': inputs.broker_config_document})
+
+    @staticmethod
+    def build_shared(inputs: RecordedScenarioInputs, record_frames: bool) -> Dict[str, Any]:
+        """
+        The scenario set of one window of an A/A — the same window backtested on two code stands —
+        holding only what both stands read: the strategy, the order guard and the execution fields
+        the session's profile carries, the account and the window. The warmup comes from the
+        archive and the broker configuration from its file, so the inputs' warmup run and broker
+        document are not used; every other field takes each stand's own default, read from the
+        one data home both run against.
+
+        Args:
+            inputs: The window's inputs
+            record_frames: Whether the backtest records its state frames — only a stand that has
+                them may be asked to
+
+        Returns:
+            The scenario set document, JSON-serialisable
+        """
+        blocks, strategy, execution = RecordedScenarioBuilder._checked_profile(inputs)
+        execution_config: Dict[str, Any] = {
+            key: execution[key] for key in SHARED_EXECUTION_FIELDS if key in execution}
+        if record_frames:
+            execution_config['state_frames'] = RecordedScenarioBuilder._state_frames(blocks)
+        return RecordedScenarioBuilder._document(
+            inputs, blocks, strategy,
+            description='One window of an A/A, built from what both code stands read (#512).',
+            execution_config=execution_config,
+            trade_simulator_config={'balances': dict(inputs.balances)},
+            inputs_of_record={})
+
+    @staticmethod
+    def _checked_profile(inputs: RecordedScenarioInputs
+                         ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+        """
+        The rendered profile's blocks, strategy and execution block, refused where a backtest
+        could not run what the session ran.
+
+        Args:
+            inputs: The window's inputs
+
+        Returns:
+            (the blocks, the strategy, the execution block)
+        """
         blocks = inputs.rendered_profile.get('blocks')
         strategy = inputs.rendered_profile.get('strategy_config')
         if not isinstance(blocks, dict) or not isinstance(strategy, dict):
@@ -129,33 +200,53 @@ class RecordedScenarioBuilder:
                 f"{inputs.scenario_name}: the session kept {execution.get('bar_max_history')} bars "
                 f'per timeframe, a backtest keeps {app_depth} (app_config.json) — a worker reading '
                 f'its history would see another depth.')
+        return blocks, strategy, execution
+
+    @staticmethod
+    def _state_frames(blocks: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        A backtest's state frames block, switched on with the session's cadence.
+
+        Args:
+            blocks: The rendered profile's blocks
+
+        Returns:
+            The block
+        """
+        return {
+            'enabled': True,
+            'cadence_timeframe': (blocks.get('state_frames') or {}).get(
+                'cadence_timeframe', StateFramesDefaults().cadence_timeframe),
+        }
+
+    @staticmethod
+    def _document(inputs: RecordedScenarioInputs, blocks: Dict[str, Any],
+                  strategy: Dict[str, Any], description: str, execution_config: Dict[str, Any],
+                  trade_simulator_config: Dict[str, Any],
+                  inputs_of_record: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        A scenario set of one window, from its parts.
+
+        Args:
+            inputs: The window's inputs
+            blocks: The rendered profile's blocks
+            strategy: The rendered profile's strategy
+            description: The set's description
+            execution_config: The set's execution block
+            trade_simulator_config: The set's simulator block
+            inputs_of_record: The scenario's keys naming the session's own records, if any
+
+        Returns:
+            The scenario set document, JSON-serialisable
+        """
         declared_archive = (blocks.get('scenario_settings') or {}).get('data_broker_type', '')
         document: Dict[str, Any] = {
             'scenario_set_name': inputs.scenario_set_name,
-            'description': ('A backtest of a session segment, built from what the session recorded '
-                            '(#512).'),
+            'description': description,
             'global': {
                 'strategy_config': RecordedScenarioBuilder._strategy_for_factories(strategy),
-                # The release's execution model in full, with what the session ran over it: a
-                # workspace override of the backtesting defaults must reach no field
-                'execution_config': {
-                    **DefaultScenarioExecutionConfig().model_dump(mode='json'),
-                    'parallel_workers': execution.get('parallel_workers'),
-                    'heartbeat_interval_ms': execution.get('heartbeat_interval_ms'),
-                    'verification': execution.get(
-                        'verification', VerificationConfig().model_dump(mode='json')),
-                    # The frames the divergence report reads, on the slots the session recorded on
-                    'state_frames': {
-                        'enabled': True,
-                        'cadence_timeframe': (blocks.get('state_frames') or {}).get(
-                            'cadence_timeframe', StateFramesDefaults().cadence_timeframe),
-                    },
-                },
-                # The release's own simulator in full, every field written: a workspace override
-                # of the backtesting defaults must not reach the comparison. The account currency
-                # stays derived from the symbol's quote currency, as the session derived it
-                'trade_simulator_config': TradeSimulatorDefaults(
-                    balances=dict(inputs.balances)).model_dump(mode='json'),
+                'execution_config': execution_config,
+                'trade_simulator_config': trade_simulator_config,
                 'order_guard': dict(blocks.get('order_guard', {})),
             },
             'scenarios': [{
@@ -164,8 +255,7 @@ class RecordedScenarioBuilder:
                 'data_broker_type': declared_archive or blocks.get('broker_type'),
                 'start_date': inputs.start.isoformat(),
                 'end_date': inputs.end.isoformat(),
-                'warmup_from_run': inputs.warmup_from_run,
-                'broker_config_document': inputs.broker_config_document,
+                **inputs_of_record,
             }],
         }
         # Absent means regular: a set in a user-owned directory may not declare a purpose at all

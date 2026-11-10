@@ -132,7 +132,7 @@ ALLOWED_CHANGES_BY_RELEASE = {
             'syntax_digest': '057d0685e3160ab6867a1c65da3236d31c223bb60e4792040ab8be7ae9b80f63'},
         'python/framework/types/store_member_types.py': {
             'categories': ('recording_only',),
-            'syntax_digest': '8a93538c74df0c90a70aff86de26ef66c54e5dcb895b06cb4c4fe66c8d906442'},
+            'syntax_digest': '44c3f6c5f9ea358f836e51ea0bae2ff426051e3ad4aa395f5ed9ad11d40d70b0'},
         'python/framework/types/store_types.py': {
             'categories': ('recording_only',),
             'syntax_digest': '0395c1e2ade00aea7ce0f55b9b850098c3f79886118038062570b4d77ba479ce'},

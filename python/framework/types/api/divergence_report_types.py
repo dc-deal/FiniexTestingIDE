@@ -1265,3 +1265,143 @@ class DivergenceReport(BaseModel):
     segments: List[SegmentReport] = []
     venue_ledger_unread: str = ''
     unreadable: List[str] = []
+
+
+class AaStand(StrEnum):
+    """
+    The two code stands an A/A backtests a window on.
+
+    RELEASE: the release the deployment's sessions ran, checked out as a tree of its own
+    CURRENT: the tree the command runs from — the one the verdict's backtests run on
+    """
+    RELEASE = 'release'
+    CURRENT = 'current'
+
+
+class AaVerdict(StrEnum):
+    """
+    What an A/A found for one window.
+
+    IDENTICAL: both stands computed the same order events and trades, value by value
+    DIFFERENT: they did not; the first differing values are listed
+    NOT_CHECKED: the two runs could not be compared, with why — never a pass
+    """
+    IDENTICAL = 'identical'
+    DIFFERENT = 'different'
+    NOT_CHECKED = 'not_checked'
+
+
+class AaStandRun(BaseModel):
+    """
+    One code stand's backtest of an A/A window.
+
+    Args:
+        stand: Which stand
+        tree: The tree the backtest ran from
+        scenario_set_name: Its scenario set's name, which also finds its run
+        run_id: Its run; '' where it did not run
+        framework_commit: The framework commit its run's header records
+        framework_dirty: Whether that tree held uncommitted changes; None where no header says
+        broker_config_id: The broker document its run froze
+        order_events: How many order events its scenario recorded; None where unread
+        fills: How many of them are fills
+        trades: How many trades its trade history holds; None where unread
+        failed_because: Why it did not run or could not be read; '' where it did
+    """
+    stand: AaStand
+    tree: str
+    scenario_set_name: str
+    run_id: str = ''
+    framework_commit: str = ''
+    framework_dirty: Optional[bool] = None
+    broker_config_id: str = ''
+    order_events: Optional[int] = None
+    fills: Optional[int] = None
+    trades: Optional[int] = None
+    failed_because: str = ''
+
+
+class AaDifference(BaseModel):
+    """
+    One value the two stands disagree on.
+
+    Args:
+        stream: 'order_events' or 'trades'
+        position: The record's position in its stream, from 1
+        field: The field
+        release_value: The release's value as JSON; None where its record has no such value
+        current_value: The current tree's value as JSON; None where its record has no such value
+    """
+    stream: str
+    position: int
+    field: str
+    release_value: Optional[str] = None
+    current_value: Optional[str] = None
+
+
+class AaWindowResult(BaseModel):
+    """
+    One window of an A/A: the two backtests and what comparing them found.
+
+    Args:
+        index: The window's number, from 1
+        start: The window's start; None where the deployment's window has none
+        end: The window's end; None the same way
+        release: The release's backtest
+        current: The current tree's backtest
+        render_stamps_before: The symbol's bar files before the first backtest
+        render_stamps_after: The same after the last — a bar rendered between makes the two runs
+            read different inputs
+        verdict: What the comparison found
+        not_checked_because: Why it could not compare; '' where it did
+        difference_count: How many values differ in all
+        differences: The first of them, at most the constant's number
+        one_sided_fields: Trade fields only one stand writes — named, not compared
+    """
+    index: int
+    start: Optional[datetime] = None
+    end: Optional[datetime] = None
+    release: AaStandRun
+    current: AaStandRun
+    render_stamps_before: List[RenderStamp] = []
+    render_stamps_after: List[RenderStamp] = []
+    verdict: AaVerdict = AaVerdict.NOT_CHECKED
+    not_checked_because: str = ''
+    difference_count: int = 0
+    differences: List[AaDifference] = []
+    one_sided_fields: List[str] = []
+
+
+class AaReport(BaseModel):
+    """
+    An A/A of a deployment's code (#512): its windows backtested on the release the sessions ran
+    and on the current tree, with the same inputs, compared event by event.
+
+    Args:
+        report_id: The A/A's id, its directory's name
+        created_at: When it was made, on the wall clock
+        deployment_id: The deployment whose strategy and account were backtested
+        symbol: Its symbol
+        broker_type: Its broker
+        session_commit: The framework commit the deployment's sessions ran — the release's
+        release_tree: The tree the release's backtests ran from
+        current_commit: The framework commit of the current tree
+        current_dirty: Whether the current tree held uncommitted changes
+        records_root: The copy of the session records read; '' where the configured stores were read
+        data_home: The data home both stands ran against
+        windows: Each window's result
+        refused_because: Why no window was backtested; '' where they were
+    """
+    report_id: str
+    created_at: datetime
+    deployment_id: str
+    symbol: str = ''
+    broker_type: str = ''
+    session_commit: str = ''
+    release_tree: str = ''
+    current_commit: str = ''
+    current_dirty: bool = False
+    records_root: str = ''
+    data_home: str = ''
+    windows: List[AaWindowResult] = []
+    refused_because: str = ''
