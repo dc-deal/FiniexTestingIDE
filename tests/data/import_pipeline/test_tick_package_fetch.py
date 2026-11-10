@@ -303,6 +303,26 @@ class TestAPackageIsFetchedImportedAndAcknowledged:
         assert _status(coordinator, ImportStepId.PACKAGES_RECEIPT) == ImportStepStatus.SKIPPED
 
 
+    def test_a_source_the_import_never_saw_is_fetched_like_the_others(self, tmp_path, service):
+        # A further collector instance, such as an experimental line, comes as a source of its own;
+        # the import needs nothing for it beyond what the list names
+        paths = _paths(tmp_path)
+        start = '2026.01.15 10:00:00'
+        packages = {f'{source}-0001-20261115': {_export_name(symbol, start): _export_bytes(symbol, start)}
+                    for source, symbol in (('kraken', 'AAAUSD'), ('mt5', 'BBBUSD'),
+                                           ('krakendev', 'CCCUSD'))}
+        for package_id, members in packages.items():
+            service.add(package_id, members)
+
+        coordinator = _run(paths, _client(service))
+
+        assert _outcome(coordinator) == ImportOutcome.COMPLETED
+        assert len(_tick_files(paths)) == 3
+        for package_id in packages:
+            assert (paths.tick_finished / f'{package_id}.zip').exists()
+            assert service.packages[package_id]['receipt'] is not None
+
+
 class TestWhatArrivesIsProven:
     """Nothing is imported or acknowledged that is not the package."""
 

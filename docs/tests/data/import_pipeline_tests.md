@@ -454,7 +454,8 @@ the list, a manifest, the zip with `Range` support, and the receipt:
 - **TestAPackageIsFetchedImportedAndAcknowledged** — the whole exchange: the zip and its manifest end
   in finished/, the inbox is empty, the receipt carries the zip's SHA-256 and what the import did; a
   download that breaks off is resumed with a `Range` request (the client reads small chunks here, so
-  a break-off leaves something to resume from); a delivered package is left alone
+  a break-off leaves something to resume from); a delivered package is left alone; a source the
+  import never saw, such as an experimental collector line, is fetched and acknowledged like the others
 - **TestWhatArrivesIsProven** — a zip that does not match its hash is removed and nothing imported or
   acknowledged; a zip whose files differ from its manifest, or one file whose SHA-256 does, is refused
   whole with its manifest beside it, and not acknowledged
