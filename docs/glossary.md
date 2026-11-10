@@ -1010,6 +1010,16 @@ session's threshold, and how many failed. *Venue*, because the IDE serves an API
 this says nothing about. Only a session that watched its venue's API has it. See
 [Venue API performance](consumer/venue-api-performance.md).
 
+**venue ledger** — The account's ledger as its venue keeps it: every movement of a balance the
+venue booked — each leg of a trade, a deposit, a withdrawal, a conversion, a reward — with the
+order behind each trade. The divergence report reads it to find what moved the account that is
+no order of the bot. Not the results ledger our runs write, and not the session's own books.
+
+**venue trade** — One trade a venue published for a symbol on its public trade list: two parties
+met at a price, numbered by the venue. Not a *trade* of ours, which is one close of a position.
+Read to tell a trade our collector missed from a number the venue allocated and never
+published.
+
 **wall clock** — The machine's clock. It stamps when WE did or saw something (`ts_init`, a run's
 `start_time`) and measures durations — on its monotonic form, because the wall clock itself can
 step backwards. Never the time a decision reads — that is the *canonical clock*. Where the one

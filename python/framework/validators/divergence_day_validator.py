@@ -427,7 +427,8 @@ def live_side_of(capture: LiveDeploymentCapture, segments: Sequence[DerivedSegme
             run_ids=[session.run_id for session in segment.sessions], window=segment.window,
             session_ends=segment.ends, declared_stops=segment.declared_stops,
             days=classify_trading_days(segment, day_records, capture.anchor,
-                                       capture.weekend_closure))
+                                       capture.weekend_closure),
+            venue_account_changes=segment.venue_account_changes)
             for segment in segments])
 
 

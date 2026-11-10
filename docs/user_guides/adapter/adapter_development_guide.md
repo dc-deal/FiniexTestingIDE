@@ -291,6 +291,40 @@ proving something about settings nobody obeys is not a gate.
 
 ---
 
+## The Keys a Venue Needs — Which, With What Rights, From When
+
+A live adapter is not reached through one key. Each job that talks to a venue's account gets a key
+of its own, with the rights that job calls and nothing more — so a stolen copy can do no more than
+its job, and two jobs never share what one key can only do once at a time. Every venue names its
+rights differently and changes them over time, so this section names roles, not permissions; the
+venue's own setup guide names the exact rights.
+
+| Role | Account | Rights | Where it lives | Needed from |
+|---|---|---|---|---|
+| none | — | — | — | Backtests, mock sessions and the venue's public market data — its ticks, its bars, its trade list |
+| **Development key** | an account of its own, small, never the live bot's — orders of a certificate must not touch the live account's book or its figures | what the adapter calls to trade: query balances, query open and closed orders and trades, place, amend, cancel — and, where a venue probe measures the account's own records, its ledger | the development machine, and the machine that runs the release certificates | the first run against the real venue: the live adapter gate, a dry run, the field study, the security study, an observation session |
+| **Live trading key** | the account the bot trades | the same as the development key | only the machine the bot runs on | the start of a real run. During it no other key trades the account, and the development key is taken off that machine |
+| **Record key** | the account the bot trades | read only: the account's ledger and its closed orders and trades — nothing that trades, nothing that reads the balance | wherever a run is evaluated | the first evaluation of a real run — the divergence report reads every movement of the account from it |
+
+**What every venue's keys inherit:**
+
+1. **Withdrawal never**, on no key. A stolen key may trade the account; it cannot take the money out.
+2. **One signer per key at a time**, where the venue's signature carries a counter that may only rise
+   (Kraken's nonce). Two processes on one key overtake each other's counter and the venue refuses a
+   request — at worst an order. Every independent reader gets a key of its own; a report never signs
+   with a running bot's key.
+3. **An address binding only where the address is stable** — a server. A key used from a machine
+   whose address changes, a home connection, gets none, or it stops working at the next reconnect.
+4. **The secret is shown once.** A lost key is replaced, never recovered. It travels as a file into
+   `user_configs/credentials/venues/`, never through a chat, a ticket or a document.
+5. **A reader that matches the ledger to orders needs the closed orders and trades beside the
+   ledger.** At Kraken a ledger entry names its trade, and only the trade names its order.
+
+A new adapter fills every role for its venue in its own setup guide, with the rights in the venue's
+own words — Kraken's are sections 1 and 1b of the [Kraken setup guide](setup_kraken_adapter.md).
+Where a venue cannot fill a role (no key that only reads), its guide says so, and what reads the
+role's record answers *not read* instead.
+
 ## Credentials Cascade
 
 The cascade is the framework's, not the adapter's. `python/configuration/credentials_cascade.py`

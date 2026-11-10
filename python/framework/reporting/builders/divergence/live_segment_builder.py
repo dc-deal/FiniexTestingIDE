@@ -32,6 +32,7 @@ from python.framework.types.api.divergence_report_types import (
     SegmentBoundaryKind,
     SessionEnd,
     SessionEndKind,
+    VenueAccountChange,
     WindowEndCause,
 )
 from python.framework.types.api.report_types import SessionBookingState
@@ -240,10 +241,13 @@ def check_until(until: Optional[datetime], anchor: DayAnchorConfig) -> None:
 
 def _account_change_end(sessions: Sequence[LiveSessionCapture], ends: Sequence[SessionEnd],
                         declared: Sequence[DeclaredStop], start: datetime, anchor: DayAnchorConfig,
-                        weekend_closure: bool) -> Optional[Tuple[datetime, WindowEndCause, str]]:
+                        weekend_closure: bool,
+                        venue_changes: Optional[Sequence[VenueAccountChange]] = None,
+                        ) -> Optional[Tuple[datetime, WindowEndCause, str]]:
     """
-    The earliest end a stop sets: a declared stop that changed the account, or — where no stop is
-    declared across a restart — a position or holding that moved across it.
+    The earliest end a stop sets: a declared stop that changed the account, or a change of the
+    account nobody declared — read from the venue's ledger where it was read, else from a
+    position or holding that moved across a restart.
 
     Args:
         sessions: The segment's sessions, oldest first
@@ -252,6 +256,8 @@ def _account_change_end(sessions: Sequence[LiveSessionCapture], ends: Sequence[S
         start: The window's start
         anchor: Where the market's day flips
         weekend_closure: Whether the market closes at all
+        venue_changes: The account's movements the venue's ledger shows that are no order of the
+            bot; None where the ledger was not read
 
     Returns:
         (the boundary the window ends at, why, who and when), or None where no stop ends it
@@ -263,6 +269,13 @@ def _account_change_end(sessions: Sequence[LiveSessionCapture], ends: Sequence[S
                           WindowEndCause.DECLARED_STOP,
                           f'declared stop at {stop.instant.isoformat()}'
                           + (f': {stop.note}' if stop.note else '')))
+    if venue_changes is not None:
+        # The venue's own ledger decides where it was read; the frames are only the net beneath it
+        found.extend((last_boundary_at_or_before(change.at, start, anchor, weekend_closure),
+                      WindowEndCause.VENUE_ACCOUNT_CHANGE,
+                      f'{change.at.isoformat()} {change.detail}')
+                     for change in venue_changes if change.at >= start)
+        return min(found, key=lambda entry: entry[0]) if found else None
     for position in range(len(sessions) - 1):
         stopped, restarted = sessions[position], sessions[position + 1]
         if any(_covers(stop, stopped, restarted) for stop in declared):
@@ -307,7 +320,8 @@ def _covers(stop: DeclaredStop, stopped: LiveSessionCapture, restarted: LiveSess
 
 def segment_window(sessions: Sequence[LiveSessionCapture], ends: Sequence[SessionEnd],
                    declared: Sequence[DeclaredStop], until: Optional[datetime],
-                   anchor: DayAnchorConfig, weekend_closure: bool) -> CompareWindow:
+                   anchor: DayAnchorConfig, weekend_closure: bool,
+                   venue_changes: Optional[Sequence[VenueAccountChange]] = None) -> CompareWindow:
     """
     The compared window of one segment.
 
@@ -318,6 +332,8 @@ def segment_window(sessions: Sequence[LiveSessionCapture], ends: Sequence[Sessio
         until: The boundary asked for, or None
         anchor: Where the market's day flips
         weekend_closure: Whether the market closes at all
+        venue_changes: The account's movements the venue's ledger shows that are no order of the
+            bot; None where the ledger was not read
 
     Returns:
         The window: its start, its end and what ends it
@@ -330,7 +346,8 @@ def segment_window(sessions: Sequence[LiveSessionCapture], ends: Sequence[Sessio
     if start is None:
         return CompareWindow(start=None, end=None, end_cause=WindowEndCause.START_UNKNOWN,
                              until_requested=until, last_sealed=last_sealed)
-    stop_end = _account_change_end(sessions, ends, declared, start, anchor, weekend_closure)
+    stop_end = _account_change_end(sessions, ends, declared, start, anchor, weekend_closure,
+                                   venue_changes)
     if stop_end is not None and (until is None or stop_end[0] <= until):
         end, cause, detail = stop_end
         return CompareWindow(start=start, end=end, end_cause=cause, until_requested=until,
@@ -350,6 +367,7 @@ def derive_segments(
     until: Optional[datetime] = None,
     declared_stops: Sequence[DeclaredStop] = (),
     detectors: SegmentBoundaryDetectors = SEGMENT_BOUNDARY_DETECTORS,
+    venue_changes: Optional[Sequence[VenueAccountChange]] = None,
 ) -> Tuple[List[DerivedSegment], List[NamedSession]]:
     """
     A deployment's segments, each with where its sessions end and its compared window.
@@ -359,6 +377,8 @@ def derive_segments(
         until: The boundary the report is asked for; None for the last one sealed
         declared_stops: The stops the operator declared
         detectors: The boundary kinds and their detectors
+        venue_changes: The account's movements the venue's ledger shows that are no order of the
+            bot, over the whole deployment; None where the ledger was not read
 
     Returns:
         (the segments, oldest first; the sessions that cover no day, with why)
@@ -377,11 +397,15 @@ def derive_segments(
         declared = [stop for stop in declared_stops
                     if (segment_start is None or stop.instant >= segment_start)
                     and (next_start is None or stop.instant < next_start)]
+        changes = None if venue_changes is None else [
+            change for change in venue_changes
+            if (segment_start is None or change.at >= segment_start)
+            and (next_start is None or change.at < next_start)]
         segments.append(DerivedSegment(
             index=index, started_by=started_by, sessions=list(sessions), ends=ends,
             window=segment_window(sessions, ends, declared, until, capture.anchor,
-                                  capture.weekend_closure),
-            declared_stops=declared))
+                                  capture.weekend_closure, changes),
+            declared_stops=declared, venue_account_changes=changes))
     return segments, named
 
 

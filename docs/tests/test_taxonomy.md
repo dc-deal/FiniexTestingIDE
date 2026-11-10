@@ -149,7 +149,10 @@ tests/
 │   │                      side's segments, windows and trading days, each day compared or excluded with every cause; the
 │   │                      gate — code path, strategy, configuration, broker document, window — that refuses a pair; the
 │   │                      measures — each day's decision, each order, the account values, the day attribution — on
-│   │                      real backtests too; the window's gaps and what they leave out (#512)
+│   │                      real backtests too; the window's gaps and what they leave out; what the venue's own record
+│   │                      confirms and refutes — its trades, the account's movements in its ledger (#512)
+│   ├── venue_history/     unit — what a venue itself records, read from Kraken: the public trade list and an account's
+│   │                      ledger at the venue, against recorded answers; the seam that hands readers out (#512, #127)
 │   ├── composite/         unit — which accounts may add up: the composite definition and its floor, the key projected from
 │   │                      the rendered configuration, joins and splits, the excluded member, every shipped value classified (#615)
 │   ├── rendered_config/   unit — what a run records it ran with: the one strategy renderer and its portable type key, every shipped

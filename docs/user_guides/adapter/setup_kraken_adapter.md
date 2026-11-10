@@ -38,13 +38,38 @@ shows the labels in your language; the English ones are used here.
 | Switch | Setting | Why |
 |---|---|---|
 | WebSocket Interface | off | private calls go over REST; the public market data feed needs no key |
-| IP Address Restriction | **on**, the address of the machine the session runs on | the key is useless from anywhere else. It also means the key does not work from your development machine |
+| IP Address Restriction | **on** for a key on a server: the address of the machine the session runs on; **off** for a key used from a machine whose address changes | bound, the key is useless from anywhere else — and from your development machine too. A home connection's address changes at the next reconnect, so a key used from there is not bound |
 | Key Expiration | off | an expiry stops the session on that date, whatever it is doing |
 | Query Start Date and Query End Date | off | a session reads its own recent orders |
 | Custom Nonce Window | off | the adapter keeps its nonce strictly increasing; turn it on only when Kraken reports nonce errors from network trouble |
 
 **Generate the key** and copy the **API Key** and the **Private Key**: both are shown once, at creation. Put them into the
 credentials file below; never into a chat, a ticket or a document.
+
+## 1b. A Read-Only Key for the Record
+
+The divergence report reads every movement of the bot's account from Kraken's ledger, and the order
+behind every trade in it. It never uses the bot's trading key for that: Kraken's nonce rises per key,
+so a second reader on the same key would overtake the running bot's counter, and Kraken would refuse
+one of its requests. It gets a key of its own on the bot's account:
+
+| Group | Permission | Why |
+|---|---|---|
+| Data | Query Ledger Entries | every movement of a balance (`Ledgers`) |
+| Orders and trades | Query Closed Orders & Trades | a ledger entry names its trade, and only the trade names its order (`QueryTrades`) |
+
+Everything else stays off — it cannot trade, cancel, read the balance or withdraw. The switches stay
+off as in section 1, the address binding by the same rule. Its file is
+`user_configs/credentials/venues/kraken_ledger_credentials.json`, with the same two fields as below.
+
+**Which key does what** — the roles are explained in the
+[adapter development guide](adapter_development_guide.md#the-keys-a-venue-needs--which-with-what-rights-from-when):
+
+| Role | Account | Permissions | File |
+|---|---|---|---|
+| Development key | a development account of its own | section 1, plus Data → Query Ledger Entries: the venue probes measure what the ledger booked | `venues/kraken_credentials.json` on the development machine and the certificates' machine |
+| Live trading key | the bot's account | section 1, bound to the server's address | the bot's credentials file on its server only |
+| Record key | the bot's account | this section | `venues/kraken_ledger_credentials.json` where the run is evaluated |
 
 ## 2. Credentials File
 

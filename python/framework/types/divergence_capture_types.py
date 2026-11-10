@@ -19,6 +19,7 @@ from python.framework.types.api.divergence_report_types import (
     DeclaredStop,
     SegmentBoundary,
     SessionEnd,
+    VenueAccountChange,
 )
 from python.framework.types.api.report_types import (
     DataWindow,
@@ -38,6 +39,7 @@ from python.framework.types.trading_env_types.order_event_types import (
 from python.framework.types.trading_env_types.trading_env_stats_types import (
     EXECUTION_STATS_FIELD_BY_STATUS,
 )
+from python.framework.types.venue_history_types import VenueLedgerEntry, VenueTrade
 
 # Which ExecutionStats column counts each event of a day's order-event record — what the record
 # is checked against its ledger row by. The endings are derived from the two maps the executor
@@ -243,6 +245,8 @@ class DerivedSegment:
         ends: Where each of them ends, in the same order
         window: The stretch of it that is compared
         declared_stops: The declared stops that fall into it
+        venue_account_changes: The movements of the account the venue's ledger shows in it that
+            are no order of the bot; None where the ledger was not read
     """
     index: int
     started_by: List[SegmentBoundary]
@@ -250,6 +254,7 @@ class DerivedSegment:
     ends: List[SessionEnd]
     window: CompareWindow
     declared_stops: List[DeclaredStop]
+    venue_account_changes: Optional[List[VenueAccountChange]] = None
 
 
 @dataclass(frozen=True)
@@ -337,4 +342,46 @@ class RecordedOutages:
         unreadable: Why the record could not be read in full; '' where it could
     """
     outages: List[TickStreamOutage]
+    unreadable: str = ''
+
+
+@dataclass
+class VenueRunAnswers:
+    """
+    What the venue's trade list says about each run of missing trade ids.
+
+    Args:
+        counts: How many trades the venue published inside each run, by the run's two archive
+            trade ids
+        unreadable: Each run whose stretch could not be read, with the reason; or why the venue's
+            list is not read at all
+    """
+    counts: Dict[Tuple[int, int], int] = field(default_factory=dict)
+    unreadable: List[str] = field(default_factory=list)
+
+
+@dataclass
+class VenueBarTrades:
+    """
+    The venue's trades of each decision bar a capture difference is proposed for.
+
+    Args:
+        trades: The venue's trades, by the bar's opening
+        unreadable: Each bar that could not be read, with the reason; or why the venue's list is
+            not read at all
+    """
+    trades: Dict[datetime, List[VenueTrade]] = field(default_factory=dict)
+    unreadable: List[str] = field(default_factory=list)
+
+
+@dataclass
+class VenueLedgerRead:
+    """
+    The account's ledger at its venue over a stretch.
+
+    Args:
+        entries: Its entries in booking order; None where it was not read
+        unreadable: Why it was not read; '' where it was
+    """
+    entries: Optional[List[VenueLedgerEntry]] = None
     unreadable: str = ''

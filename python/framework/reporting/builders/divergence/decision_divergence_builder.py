@@ -96,11 +96,11 @@ def compare_day(day: TradingDayClassification, first_tick: Optional[datetime],
         return DecisionComparison(
             trading_day=day.trading_day, closing=day.closing,
             state=DecisionComparisonState.NOT_CHECKED,
-            live=_decision(live_frame, live_orders), backtest=_decision(backtest_frame,
-                                                                       backtest_orders),
+            live=_decision(live_frame, live_orders, decision_timeframe),
+            backtest=_decision(backtest_frame, backtest_orders, decision_timeframe),
             detail=f'no {decision_timeframe} decision frame on the {missing} side')
-    live = _decision(live_frame, live_orders)
-    backtest = _decision(backtest_frame, backtest_orders)
+    live = _decision(live_frame, live_orders, decision_timeframe)
+    backtest = _decision(backtest_frame, backtest_orders, decision_timeframe)
     in_gap = _in_gap(day, first_tick, (live_frame, backtest_frame), decision_timeframe,
                      excluded)
     if in_gap:
@@ -253,13 +253,15 @@ def _bar_close(frame: StateFrame, timeframe: str) -> datetime:
     return frame.closed_bars[timeframe] + timedelta(minutes=TimeframeConfig.get_minutes(timeframe))
 
 
-def _decision(frame: Optional[StateFrame], order_count: int) -> Optional[DayDecision]:
+def _decision(frame: Optional[StateFrame], order_count: int,
+              decision_timeframe: str) -> Optional[DayDecision]:
     """
     A run's decision as its frame recorded it.
 
     Args:
         frame: The decision frame; None where none was found
         order_count: How many orders the run submitted that day
+        decision_timeframe: The timeframe whose bar's close is the decision
 
     Returns:
         The decision; None without a frame
@@ -269,7 +271,8 @@ def _decision(frame: Optional[StateFrame], order_count: int) -> Optional[DayDeci
     return DayDecision(frame_time=frame.frame_time, action=frame.decision_action,
                        order_count=order_count, equity=frame.equity,
                        safety_blocked=frame.safety_blocked, worker_outputs=frame.worker_outputs,
-                       decision_outputs=frame.decision_outputs)
+                       decision_outputs=frame.decision_outputs,
+                       decision_bar_open=frame.closed_bars.get(decision_timeframe))
 
 
 def _differing_outputs(live: Mapping[str, Mapping[str, object]],

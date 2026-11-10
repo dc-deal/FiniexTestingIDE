@@ -18,6 +18,7 @@ from python.framework.types.api.report_types import DeploymentCodeChange
 from python.framework.types.decision_logic_types import DecisionLogicAction
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.types.trading_env_types.order_types import OrderSide
+from python.framework.types.venue_history_types import VenueLedgerEntryKind
 
 
 class SegmentBoundaryKind(StrEnum):
@@ -132,6 +133,28 @@ class DeclaredStop(BaseModel):
     note: str = ''
 
 
+class VenueAccountChange(BaseModel):
+    """
+    A movement of the account's balance in the venue's own ledger that is no order of the bot.
+
+    Args:
+        at: When the venue booked it
+        kind: What moved the balance
+        asset: The currency it moved
+        balance_change: What it did to that balance — the amount less the fee
+        venue_ref: The venue's reference of the entry
+        order_ref: The order a trade's leg belongs to, where the venue named one; None otherwise
+        detail: Why it counts, in a few words
+    """
+    at: datetime
+    kind: VenueLedgerEntryKind
+    asset: str
+    balance_change: float
+    venue_ref: str
+    order_ref: Optional[str] = None
+    detail: str = ''
+
+
 class WindowEndCause(StrEnum):
     """
     What ends a compared window.
@@ -142,6 +165,9 @@ class WindowEndCause(StrEnum):
     DECLARED_STOP: a stop the operator declared as one that changed the account
     UNDECLARED_ACCOUNT_CHANGE: a position or holding moved across a restart and no stop was
         declared — until the operator declares the stop as one that changed nothing
+    VENUE_ACCOUNT_CHANGE: the venue's own ledger shows a movement of the account that is no order
+        of the bot — a deposit, a withdrawal, a conversion, a trade of another order; where the
+        ledger is read it decides instead of the state frames
     START_UNKNOWN: the segment's first tick is not recorded, so the window has no start
     """
     UNTIL = 'until'
@@ -149,6 +175,7 @@ class WindowEndCause(StrEnum):
     NOT_REACHED = 'not_reached'
     DECLARED_STOP = 'declared_stop'
     UNDECLARED_ACCOUNT_CHANGE = 'undeclared_account_change'
+    VENUE_ACCOUNT_CHANGE = 'venue_account_change'
     START_UNKNOWN = 'start_unknown'
 
 
@@ -387,6 +414,9 @@ class LiveSegment(BaseModel):
         session_ends: Where each of its sessions' records end
         declared_stops: The declared stops that fall into it
         days: Every trading day of it, in order — compared or excluded
+        venue_account_changes: Every movement of the account the venue's ledger shows in it that
+            is no order of the bot; None where the ledger was not read — the state frames then
+            judge a restart
     """
     index: int
     started_by: List[SegmentBoundary]
@@ -395,6 +425,7 @@ class LiveSegment(BaseModel):
     session_ends: List[SessionEnd] = []
     declared_stops: List[DeclaredStop] = []
     days: List[TradingDayClassification] = []
+    venue_account_changes: Optional[List[VenueAccountChange]] = None
 
 
 class LiveSide(BaseModel):
@@ -769,6 +800,8 @@ class DayDecision(BaseModel):
         safety_blocked: Whether the live circuit breaker was holding — always False in a backtest
         worker_outputs: Every worker's outputs the decision read
         decision_outputs: What the decision logic reported beside its action
+        decision_bar_open: When the decision bar that closed in the pass opened; None on a
+            segment's first day, decided at the first tick, and where no such bar closed
     """
     frame_time: datetime
     action: Optional[DecisionLogicAction] = None
@@ -777,6 +810,7 @@ class DayDecision(BaseModel):
     safety_blocked: bool = False
     worker_outputs: Dict[str, Dict[str, JsonValue]] = {}
     decision_outputs: Dict[str, JsonValue] = {}
+    decision_bar_open: Optional[datetime] = None
 
 
 class DecisionComparison(BaseModel):
@@ -792,6 +826,10 @@ class DecisionComparison(BaseModel):
         proposed_kind: The explained kind a one-sided day is proposed as; None where none fits — the
             day is then unexplained
         detail: The day, the time and the figures behind the proposal, or why it was not checked
+        capture_confirmed: For a day proposed as a capture, whether the venue's trades in the
+            decision bar show trades our archive lacks; None where that was not checked
+        capture_missing_trades: How many of the venue's trades in the decision bar the archive
+            lacks; None where that was not checked
     """
     trading_day: date
     closing: datetime
@@ -800,6 +838,8 @@ class DecisionComparison(BaseModel):
     backtest: Optional[DayDecision] = None
     proposed_kind: Optional[ExplainedFlipKind] = None
     detail: str = ''
+    capture_confirmed: Optional[bool] = None
+    capture_missing_trades: Optional[int] = None
 
 
 class DecisionTableCell(BaseModel):
@@ -860,6 +900,11 @@ class DivergenceGap(BaseModel):
         confirmed: Whether it counts as a gap — a run of missing trade ids counts only once the
             venue's own trade list confirms it; every other source always counts
         detail: What was found, in a few words
+        trade_id_before: For a run of missing trade ids, the archive's last trade before it
+        trade_id_after: For such a run, the archive's first trade after it
+        venue_trades: For such a run, how many trades the venue published between the two;
+            None where its list was not read. Zero means the venue allocated those ids without a
+            public trade — no gap
     """
     source: GapSource
     start: datetime
@@ -867,6 +912,9 @@ class DivergenceGap(BaseModel):
     run_id: str = ''
     confirmed: bool = True
     detail: str = ''
+    trade_id_before: Optional[int] = None
+    trade_id_after: Optional[int] = None
+    venue_trades: Optional[int] = None
 
 
 class ExcludedSpan(BaseModel):
@@ -888,11 +936,14 @@ class GapList(BaseModel):
     Args:
         gaps: Every gap that counts, in time order
         unconfirmed: The runs of missing trade ids that wait for the venue's trade list
+        refuted: The runs of missing trade ids the venue's list shows without a single trade —
+            ids it allocated and never published; they leave nothing out
         excluded: The confirmed gaps merged into stretches, in time order
         unreadable: What could not be read, with the reason
     """
     gaps: List[DivergenceGap] = []
     unconfirmed: List[DivergenceGap] = []
+    refuted: List[DivergenceGap] = []
     excluded: List[ExcludedSpan] = []
     unreadable: List[str] = []
 

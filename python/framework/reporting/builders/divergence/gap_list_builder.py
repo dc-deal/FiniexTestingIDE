@@ -4,7 +4,8 @@ did not see what the other saw, whose minutes are left out on both sides.
 
 Four sources: more than the gap bound between two consecutive M1 bars of the archive (the coverage
 report's own gaps); a run of missing trade ids spanning more than the gap bound, which counts only
-once the venue's trade list confirms it; an outage the session's tick stream recorded; and more
+once the venue's trade list shows trades inside it — the venue also allocates ids it never
+publishes; an outage the session's tick stream recorded; and more
 than the gap bound between two consecutive state frames of a session — a frozen process or a
 sleeping host records no outage, so only its frames show it.
 
@@ -15,7 +16,7 @@ deficiency scan — are left untouched, so a gap found here changes nothing the 
 
 from bisect import bisect_right
 from datetime import datetime, timedelta, timezone
-from typing import Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -37,7 +38,7 @@ def build_gap_list(start: datetime, end: datetime, archive_gaps: Sequence[Gap],
                    trade_id_runs: Sequence[DivergenceGap],
                    outages: Mapping[str, Sequence[TickStreamOutage]],
                    frames: Mapping[str, Sequence[StateFrame]],
-                   confirmed_runs: Iterable[Tuple[datetime, datetime]] = (),
+                   venue_answers: Optional[Mapping[Tuple[int, int], int]] = None,
                    unreadable: Sequence[str] = ()) -> GapList:
     """
     Every gap of a window, and the stretches the confirmed ones leave out.
@@ -49,15 +50,15 @@ def build_gap_list(start: datetime, end: datetime, archive_gaps: Sequence[Gap],
         trade_id_runs: The runs of missing trade ids over the gap bound, unconfirmed
         outages: Each session's tick-stream outages
         frames: Each session's state frames, in time order
-        confirmed_runs: The runs the venue's trade list confirmed, by their two ends
+        venue_answers: How many trades the venue published inside each run, by the run's two
+            archive trade ids — a run with trades counts as a gap, a run without is refuted, a
+            run with no answer waits; None where the venue's list was not read
         unreadable: What could not be read, carried into the list
 
     Returns:
-        The gaps that count, the runs still waiting, and the merged stretches
+        The gaps that count, the runs still waiting or refuted, and the merged stretches
     """
-    confirmed = set(confirmed_runs)
-    runs = [run.model_copy(update={'confirmed': (run.start, run.end) in confirmed})
-            for run in trade_id_runs]
+    runs = [_answered(run, venue_answers or {}) for run in trade_id_runs]
     gaps = [gap for gap in (archive_gaps_in(archive_gaps, start, end)
                             + [run for run in runs if run.confirmed]
                             + [gap for run_id, recorded in sorted(outages.items())
@@ -67,8 +68,30 @@ def build_gap_list(start: datetime, end: datetime, archive_gaps: Sequence[Gap],
                                for gap in frame_pauses(run_id, recorded)
                                if gap.start < end and gap.end > start])]
     gaps.sort(key=lambda gap: (gap.start, gap.end))
-    return GapList(gaps=gaps, unconfirmed=[run for run in runs if not run.confirmed],
+    return GapList(gaps=gaps,
+                   unconfirmed=[run for run in runs if run.venue_trades is None],
+                   refuted=[run for run in runs if run.venue_trades == 0],
                    excluded=merged_spans(gaps), unreadable=list(unreadable))
+
+
+def _answered(run: DivergenceGap, venue_answers: Mapping[Tuple[int, int], int]) -> DivergenceGap:
+    """
+    A run of missing trade ids with the venue's answer on it.
+
+    Args:
+        run: The run, unconfirmed
+        venue_answers: How many trades the venue published inside each run, by its two ids
+
+    Returns:
+        The run, confirmed where the venue published trades inside it
+    """
+    answer = venue_answers.get((run.trade_id_before, run.trade_id_after))
+    if answer is None:
+        return run
+    found = (f'the venue published {answer} trade(s) in it' if answer
+             else 'the venue published none of these ids — allocated without a trade')
+    return run.model_copy(update={'confirmed': answer > 0, 'venue_trades': answer,
+                                  'detail': f'{run.detail} · {found}'})
 
 
 def archive_gaps_in(archive_gaps: Sequence[Gap], start: datetime,
@@ -121,6 +144,7 @@ def trade_id_runs(trade_ids: np.ndarray, event_msc: np.ndarray) -> List[Divergen
         first, last = int(ids[index]) + 1, int(ids[index + 1]) - 1
         runs.append(DivergenceGap(
             source=GapSource.TRADE_ID_RUN, start=before, end=after, confirmed=False,
+            trade_id_before=int(ids[index]), trade_id_after=int(ids[index + 1]),
             detail=f'trade ids {first}–{last} ({last - first + 1} missing) over '
                    f'{(after - before).total_seconds():.0f} s'))
     return runs

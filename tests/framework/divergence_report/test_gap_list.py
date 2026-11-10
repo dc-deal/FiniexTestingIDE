@@ -86,6 +86,7 @@ class TestEachSource:
         msc = np.array([int(_at(m).timestamp() * 1000) for m in (2.5, 0, 0.5, 1, 6, 6.5)])
         run, = trade_id_runs(ids, msc)
         assert (run.start, run.end) == (_at(2.5), _at(6)) and not run.confirmed
+        assert (run.trade_id_before, run.trade_id_after) == (5, 10)
         assert 'trade ids 6–9 (4 missing)' in run.detail
 
     def test_a_short_run_is_no_gap(self):
@@ -129,11 +130,21 @@ class TestTheList:
 
     def test_a_run_the_venue_confirmed_leaves_its_minutes_out(self):
         run = DivergenceGap(source=GapSource.TRADE_ID_RUN, start=_at(40), end=_at(45),
-                            confirmed=False)
+                            confirmed=False, trade_id_before=100, trade_id_after=140)
         gap_list = build_gap_list(_at(0), _at(60), [], [run], {}, {},
-                                  confirmed_runs=[(_at(40), _at(45))])
-        assert gap_list.unconfirmed == []
+                                  venue_answers={(100, 140): 31})
+        assert gap_list.unconfirmed == [] and gap_list.refuted == []
         assert gap_list.excluded == [ExcludedSpan(start=_at(40), end=_at(45))]
+        assert gap_list.gaps[0].venue_trades == 31
+
+    def test_a_run_the_venue_published_no_trade_in_is_refuted(self):
+        run = DivergenceGap(source=GapSource.TRADE_ID_RUN, start=_at(40), end=_at(45),
+                            confirmed=False, trade_id_before=100, trade_id_after=140)
+        gap_list = build_gap_list(_at(0), _at(60), [], [run], {}, {},
+                                  venue_answers={(100, 140): 0})
+        assert gap_list.gaps == [] and gap_list.excluded == [] and gap_list.unconfirmed == []
+        refuted, = gap_list.refuted
+        assert refuted.venue_trades == 0 and 'allocated without a trade' in refuted.detail
 
     def test_a_stretch_holds_its_start_and_not_its_end(self):
         spans = merged_spans([DivergenceGap(source=GapSource.FRAME_PAUSE, start=_at(10),

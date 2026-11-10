@@ -238,7 +238,7 @@ recorded the same orders and account values.
 | Test | Description |
 |------|-------------|
 | `TestEachSource` | an archive gap across the window's edge counts; a run of missing trade ids longer than the bound, a short one is none; an outage between the venue's trades, else from loss to restoration, and none without an end; an outage reads back as written; a pause in the frames longer than the bound |
-| `TestTheList` | gaps merge into stretches and an unconfirmed run leaves nothing out; a run the venue confirmed does; a stretch holds its start and not its end |
+| `TestTheList` | gaps merge into stretches and an unconfirmed run leaves nothing out; a run the venue published trades in does; a run it published none in is refuted and leaves nothing out; a stretch holds its start and not its end |
 | `TestWhatAGapLeavesOut` | a decision whose bar closed in a gap, and one whose pass came late after its bar closed; an order submitted or filled in a gap is named and left out; a slot in a gap leaves measure 3 |
 
 ### `test_decision_divergence.py`
@@ -250,3 +250,17 @@ Frames on both sides with a decision on the day bar's close; each test changes o
 | `TestTwoDecisions` | the same action and orders agree and are counted in the table; a different action is one-sided; an order one side sent alone is one-sided though the actions agree; a side without its decision frame is not checked, never agreeing |
 | `TestTheProposedKind` | the live breaker held back the backtest's order; differing workers within a restart's warmup are a re-warmup; differing workers with no restart in reach are a capture, unconfirmed; agreeing workers and differing account values are the account value; a one-sided day with nothing differing stays unexplained |
 | `TestTheDecisionFrame` | a pass that closed no decision bar is no decision; the segment's first day decides on its first tick |
+
+### `test_venue_record.py`
+
+What the venue's own record says: its trades inside a run of ids our archive lacks, its trades in
+a decision bar, and its ledger's movements of the account. The venue's readers stand in as small
+classes; the Kraken readers themselves are held in the venue history suite.
+
+| Test | Description |
+|------|-------------|
+| `TestARunOfMissingIds` | the venue's trades strictly between the run's two archive trades are counted; ids it never published count none; a run without its ids is refused |
+| `TestACaptureDifference` | the decision bar is the one that closed in the pass; only one-sided days proposed as a capture are fetched; trades the archive lacks confirm it, an archive holding every one refutes it |
+| `TestTheAccountsMovements` | the bot's own trade moves nothing, a deposit, a conversion, a trade of another order and a trade without an order each count; another currency and a zero movement count nothing; the bot's orders are every handle its events carry |
+| `TestTheLedgerDecidesTheWindow` | a movement ends the window at the last boundary before it; a ledger without movements overrides a position change the frames show; a movement before the window counts nothing; the live side carries the movements |
+| `TestTheVenueSide` | each run is answered and a failed one is named; a venue without a trade list or a ledger reader says so; a ledger that gave up is never an empty one; the bars' trades |
