@@ -11,6 +11,7 @@ from python.framework.constants.divergence_report_constants import (
     DIVERGENCE_LIVE_INDEX_FILE,
     DIVERGENCE_REPORT_FILE,
     DIVERGENCE_REPORT_TEXT_FILE,
+    DIVERGENCE_WARMUP_RECORD_FILE,
 )
 from python.framework.constants.run_layout_constants import RUN_TYPE_SIMULATION
 from python.framework.types.store_member_types import (
@@ -34,6 +35,13 @@ DIVERGENCE_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
         DivergenceEntryMemberId.SCENARIO_SET, 'divergence_{name}.json',
         EntryMemberShape.SNAPSHOT,
         "a segment's backtest, built from what its sessions recorded",
+        (EntryMemberWrite(RUN_TYPE_SIMULATION, EntryMemberMoment.ON_DEMAND,
+                          'a segment reached its backtest'),),
+        EntryMemberWriteMode.IN_PLACE, _DOC_DIVERGENCE),
+    EntryMember(
+        DivergenceEntryMemberId.WARMUP_RECORD, DIVERGENCE_WARMUP_RECORD_FILE,
+        EntryMemberShape.SNAPSHOT,
+        "the warmup history a segment's backtest started from, copied from its first session",
         (EntryMemberWrite(RUN_TYPE_SIMULATION, EntryMemberMoment.ON_DEMAND,
                           'a segment reached its backtest'),),
         EntryMemberWriteMode.IN_PLACE, _DOC_DIVERGENCE),

@@ -12,6 +12,8 @@ DIVERGENCE_SUBDIR = 'divergence'
 DIVERGENCE_REPORT_FILE = 'report.json'
 DIVERGENCE_REPORT_TEXT_FILE = 'report.txt'
 DIVERGENCE_LIVE_INDEX_FILE = 'live_index.parquet'
+# The warmup history a segment's backtest started from, kept beside the comparison
+DIVERGENCE_WARMUP_RECORD_FILE = 'warmup_segment_{segment}.json'
 
 # A comparison's scenario sets are named after it, so its backtest runs are found by that name;
 # each set's file carries the same name

@@ -13,6 +13,7 @@ A segment whose window the archive does not cover yet, whose backtest does not s
 gate refuses is named with why and not measured — never measured in part.
 """
 
+import shutil
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
@@ -25,6 +26,7 @@ from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.constants.divergence_report_constants import (
     DIVERGENCE_LIVE_INDEX_FILE,
     DIVERGENCE_SCENARIO_SET_NAME,
+    DIVERGENCE_WARMUP_RECORD_FILE,
 )
 from python.framework.constants.divergence_verdict_constants import (
     ATTRIBUTION_RESIDUAL_BOUND,
@@ -106,7 +108,9 @@ from python.framework.types.divergence_gate_types import DivergenceGateResult
 from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.scenario_types.recorded_scenario_types import RecordedScenarioInputs
+from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.validation_types import Severity
+from python.framework.utils.atomic_file_utils import write_file_atomic
 from python.framework.utils.git_info_utils import get_git_info
 from python.framework.validators.divergence_day_validator import live_side_of
 from python.framework.validators.divergence_gate_validator import check_divergence_gate
@@ -263,6 +267,10 @@ class DivergenceReportCoordinator:
         refusal = preflight(derived, capture.broker_type, symbol)
         if refusal:
             return named.model_copy(update={'not_compared_because': refusal})
+        warmup_file = keep_warmup_record(
+            records.reader.path_of(derived.sessions[0].run_id, RunEntryMemberId.WARMUP_HISTORY),
+            report_dir, derived.index)
+        named = named.model_copy(update={'warmup_record_file': warmup_file})
         run_id, refusal = self._backtest(derived, set_name, records, report_dir)
         if refusal:
             return named.model_copy(update={'not_compared_because': refusal})
@@ -380,6 +388,26 @@ class DivergenceReportCoordinator:
         return measures.model_copy(update={'decisions': decisions}), found.unreadable
 
 
+def keep_warmup_record(source: Optional[Path], report_dir: Path, segment: int) -> str:
+    """
+    A copy of the warmup history a segment's backtest starts from, kept beside the comparison — the
+    session's own record lies on another machine or in a copy that may not stay.
+
+    Args:
+        source: The session's warmup history; None where its run is unknown
+        report_dir: The comparison's directory
+        segment: The segment's number
+
+    Returns:
+        The kept file's name; '' where the session holds none
+    """
+    if source is None or not source.exists():
+        return ''
+    name = DIVERGENCE_WARMUP_RECORD_FILE.format(segment=segment)
+    write_file_atomic(report_dir / name, lambda path: shutil.copyfile(source, path))
+    return name
+
+
 def preflight(derived: DerivedSegment, broker_type: str, symbol: str) -> str:
     """
     Whether a segment can be backtested at all.
@@ -410,17 +438,18 @@ def preflight(derived: DerivedSegment, broker_type: str, symbol: str) -> str:
     return ''
 
 
-def newest_run_named(set_name: str) -> Optional[str]:
+def newest_run_named(set_name: str, index_path: Optional[Path] = None) -> Optional[str]:
     """
     The newest run of a scenario set in the run index — a comparison's set names one backtest.
 
     Args:
         set_name: The set's name
+        index_path: The run index; the configured one when omitted
 
     Returns:
         The run id; None where no run is named so
     """
-    index_path = Path(AppConfigManager().get_file_logging_config_object().run_index)
+    index_path = index_path or Path(AppConfigManager().get_file_logging_config_object().run_index)
     if not index_path.exists():
         return None
     rows = pd.read_parquet(index_path, columns=['run_id', 'run_name', 'start_time'])

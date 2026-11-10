@@ -17,6 +17,7 @@ from python.framework.reporting.builders.divergence.venue_side_collector import 
 from python.framework.reporting.console.divergence_report_console import render_divergence_report
 from python.framework.reporting.divergence_report_coordinator import (
     DivergenceReportCoordinator,
+    keep_warmup_record,
     newest_run_named,
     preflight,
 )
@@ -77,18 +78,15 @@ class TestTheArchiveCoversTheWindow:
             'kraken_spot', 'MYSYMBOL')
 
 
-def test_the_backtest_is_found_by_its_sets_name():
-    index_path = Path(AppConfigManager().get_file_logging_config_object().run_index)
-    index_path.parent.mkdir(parents=True, exist_ok=True)
+def test_the_backtest_is_found_by_its_sets_name(tmp_path):
+    index_path = tmp_path / 'runs_index.parquet'
     rows = pd.DataFrame({'run_id': ['r_old', 'r_new', 'r_other'],
                          'run_name': ['divergence_x_segment_1'] * 2 + ['my_set'],
                          'start_time': ['2026-11-10T09:00:00+00:00', '2026-11-10T10:00:00+00:00',
                                         '2026-11-10T11:00:00+00:00']})
-    if index_path.exists():
-        rows = pd.concat([pd.read_parquet(index_path), rows], ignore_index=True)
     rows.to_parquet(index_path)
-    assert newest_run_named('divergence_x_segment_1') == 'r_new'
-    assert newest_run_named('divergence_nobody_segment_1') is None
+    assert newest_run_named('divergence_x_segment_1', index_path) == 'r_new'
+    assert newest_run_named('divergence_nobody_segment_1', index_path) is None
 
 
 class _Trades(AbstractPublicTradeReader):
@@ -158,3 +156,21 @@ def test_a_segment_not_compared_is_printed_with_why_and_kept(tmp_path):
     assert sorted(p.name for p in report_dir.iterdir()) == ['report.json', 'report.txt']
     assert DivergenceReport.model_validate_json(
         (report_dir / 'report.json').read_text(encoding='utf-8')) == report
+
+
+class TestTheWarmupItStartedFrom:
+
+    def test_the_sessions_warmup_is_kept_beside_the_comparison(self, tmp_path):
+        source = tmp_path / 'session' / 'warmup_history.json'
+        source.parent.mkdir()
+        source.write_text('{"symbol": "ETHUSD"}', encoding='utf-8')
+        report_dir = tmp_path / 'my_report'
+        report_dir.mkdir()
+        name = keep_warmup_record(source, report_dir, 2)
+        assert name == 'warmup_segment_2.json'
+        assert (report_dir / name).read_text(encoding='utf-8') == '{"symbol": "ETHUSD"}'
+
+    def test_a_session_without_one_keeps_nothing(self, tmp_path):
+        assert keep_warmup_record(None, tmp_path, 1) == ''
+        assert keep_warmup_record(tmp_path / 'missing.json', tmp_path, 1) == ''
+        assert list(tmp_path.iterdir()) == []

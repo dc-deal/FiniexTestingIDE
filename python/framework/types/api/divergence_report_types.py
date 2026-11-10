@@ -1206,6 +1206,8 @@ class SegmentReport(BaseModel):
     Args:
         segment: The live side's segment, its window and its days
         scenario_set_name: The generated scenario set its backtest ran
+        warmup_record_file: The warmup history its backtest started from, copied from its first
+            session into the comparison's directory; '' where none was kept
         backtest_run_id: The backtest's run; None where none ran
         not_compared_because: Why the segment was not compared; '' where it was
         gate: The gate's answer; None where no backtest ran
@@ -1215,6 +1217,7 @@ class SegmentReport(BaseModel):
     """
     segment: LiveSegment
     scenario_set_name: str = ''
+    warmup_record_file: str = ''
     backtest_run_id: Optional[str] = None
     not_compared_because: str = ''
     gate: Optional[GateReport] = None

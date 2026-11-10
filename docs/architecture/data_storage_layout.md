@@ -79,11 +79,13 @@ its combinations rank are read from the ledger.
 ### A divergence comparison keeps its own record
 
 One directory per comparison of a live deployment with backtests of its windows (#512), under
-`runs/divergence/<report_id>/`, the id minted like a run's. It holds the scenario set it generated
-for each segment, the run index it read a copy's sessions through — only where the sessions were
-read from a copy of another machine's data home — and its report, as `report.json` and as the
-`report.txt` the command printed. Its backtests are runs of row 1: found by the scenario set's name,
-named in the report, never copied into it. It keeps no index; a comparison is opened by its id.
+`runs/divergence/<report_id>/`, the id minted like a run's. It holds, per segment, the scenario set
+it generated and the warmup history the segment's backtest started from — copied from the session,
+whose own record lies on another machine. Beside them: the run index it read a copy's sessions
+through, only where the sessions were read from a copy of another machine's data home, and its
+report, as `report.json` and as the `report.txt` the command printed. Its backtests are runs of row
+1: found by the scenario set's name, named in the report, never copied into it. It keeps no index;
+a comparison is opened by its id.
 
 **Ticks and bars are two stores, and bars are DERIVED.** Ticks are IMPORTED from the collector's
 JSON; bars are GENERATED from those ticks, by a render that writes each symbol's files anew from

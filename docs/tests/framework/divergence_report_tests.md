@@ -290,7 +290,8 @@ The steps of the command that join the building blocks.
 | Test | Description |
 |------|-------------|
 | `TestTheArchiveCoversTheWindow` | a window past the archive waits for the import; one inside it may be backtested; a window without a start and a symbol the archive lacks are named |
-| `test_the_backtest_is_found_by_its_sets_name` | the newest run of the comparison's scenario set; none where no run carries the name |
+| `test_the_backtest_is_found_by_its_sets_name` | the newest run of the comparison's scenario set; none where no run carries the name — read from an index of its own, never the shared one |
 | `test_a_capture_difference_is_confirmed_by_the_trades_the_archive_lacks` | the venue's trades in the decision bar against the archive's ids |
 | `test_a_segment_not_compared_is_printed_with_why_and_kept` | the text names the cause; the record holds the report as JSON and as text, read back equal |
+| `TestTheWarmupItStartedFrom` | the session's warmup history is copied beside the comparison as `warmup_segment_<n>.json`; a session without one keeps nothing |
 

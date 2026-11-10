@@ -76,7 +76,9 @@ def _segment(report: SegmentReport) -> List[str]:
         lines.append(f'  excluded {day.trading_day.isoformat()}: '
                      + ', '.join(cause.value for cause in day.exclusions))
     lines.append(f'  Backtest: {report.backtest_run_id or "none"} · scenario set '
-                 f'{report.scenario_set_name}')
+                 f'{report.scenario_set_name}'
+                 + (f' · warmup kept as {report.warmup_record_file}' if report.warmup_record_file
+                    else ' · no warmup history kept'))
     if report.gate is not None:
         gate = report.gate
         lines.append(f'  Gate: {"comparable" if gate.comparable else "REFUSED"} · release '
