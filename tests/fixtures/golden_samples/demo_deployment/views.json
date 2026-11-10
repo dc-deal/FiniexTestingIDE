@@ -1,6 +1,6 @@
 {
  "run_list_figures": {
-  "20261109_170634_843ba099": {
+  "20261110_145808_d1ce0565": {
    "results": [
     {
      "currency": "USD",
@@ -14,7 +14,7 @@
    "log_warning_count": 0,
    "tick_timespan_seconds": 75641.721
   },
-  "20261109_170713_84f65be1": {
+  "20261110_145848_f16e76f8": {
    "results": [
     {
      "currency": "USD",
@@ -28,7 +28,7 @@
    "log_warning_count": 0,
    "tick_timespan_seconds": 87591.504
   },
-  "20261109_170756_16e8aed9": {
+  "20261110_145930_c1df9fa3": {
    "results": [
     {
      "currency": "USD",
@@ -42,7 +42,7 @@
    "log_warning_count": 0,
    "tick_timespan_seconds": 80445.679
   },
-  "20261109_170835_2980fc31": {
+  "20261110_150009_54b215d0": {
    "results": [
     {
      "currency": "USD",
@@ -56,7 +56,7 @@
    "log_warning_count": 0,
    "tick_timespan_seconds": 62680.037
   },
-  "20261109_170933_7b3f9ba5": {
+  "20261110_150107_90e88f45": {
    "results": [
     {
      "currency": "USD",
@@ -73,12 +73,12 @@
  },
  "deployments": [
   {
-   "deployment_id": "deploy_20261109_170933_0301befb",
+   "deployment_id": "deploy_20261110_150107_11c4d414",
    "sessions": 1,
    "sessions_without_figures": 0,
    "sessions_failed": 0,
-   "first_started": "2026-11-09T17:09:33.698434Z",
-   "last_started": "2026-11-09T17:09:33.698434Z",
+   "first_started": "2026-11-10T15:01:07.151060Z",
+   "last_started": "2026-11-10T15:01:07.151060Z",
    "net_pnl": 0.0,
    "max_drawdown": 334.1393599999992,
    "max_drawdown_pct": 3.341393599999992,
@@ -94,19 +94,19 @@
    ]
   },
   {
-   "deployment_id": "deploy_20261109_170634_ee56285c",
+   "deployment_id": "deploy_20261110_145808_6b55f50f",
    "sessions": 4,
    "sessions_without_figures": 1,
    "sessions_failed": 0,
-   "first_started": "2026-11-09T17:06:34.438010Z",
-   "last_started": "2026-11-09T17:08:35.796600Z",
+   "first_started": "2026-11-10T14:58:08.143091Z",
+   "last_started": "2026-11-10T15:00:09.647855Z",
    "net_pnl": 23.036319999998213,
    "max_drawdown": 539.5260000000017,
    "max_drawdown_pct": 5.361645613206252,
    "currency": "USD",
    "bot": "demo_btcusd_bot",
    "bot_id": "demo-btc",
-   "longest_gap_hours": 0.0033637541666666666,
+   "longest_gap_hours": 0.0036501038888888887,
    "changed": true,
    "configuration_changed": true,
    "code_summary": null,
@@ -116,18 +116,18 @@
   }
  ],
  "deployment_details": {
-  "deploy_20261109_170634_ee56285c": {
+  "deploy_20261110_145808_6b55f50f": {
    "key": [
     "run_id",
     "currency"
    ],
    "code_changes_key": [],
-   "deployment_id": "deploy_20261109_170634_ee56285c",
+   "deployment_id": "deploy_20261110_145808_6b55f50f",
    "sessions": [
     {
      "index": 1,
-     "run_id": "20261109_170634_843ba099",
-     "started": "2026-11-09T17:06:34.438010Z",
+     "run_id": "20261110_145808_d1ce0565",
+     "started": "2026-11-10T14:58:08.143091Z",
      "net_pnl": 1.2142399999996911,
      "max_drawdown": 201.40000000000146,
      "max_drawdown_pct": 2.0104678492450327,
@@ -135,8 +135,8 @@
      "booking_state": "booked",
      "bot": "demo_btcusd_bot",
      "bot_id": "demo-btc",
-     "ended": "2026-11-09T17:07:01.712884Z",
-     "ran_hours": 0.007576353888888889,
+     "ended": "2026-11-10T14:58:35.709799Z",
+     "ran_hours": 0.007657418888888889,
      "gap_hours": null,
      "gap_between_starts": false,
      "strategy_changed": false,
@@ -147,8 +147,8 @@
     },
     {
      "index": 2,
-     "run_id": "20261109_170713_84f65be1",
-     "started": "2026-11-09T17:07:13.494556Z",
+     "run_id": "20261110_145848_f16e76f8",
+     "started": "2026-11-10T14:58:48.342886Z",
      "net_pnl": -30.361600000001175,
      "max_drawdown": 539.5260000000017,
      "max_drawdown_pct": 5.361645613206252,
@@ -156,9 +156,9 @@
      "booking_state": "booked",
      "bot": "demo_btcusd_bot",
      "bot_id": "demo-btc",
-     "ended": "2026-11-09T17:07:44.728641Z",
-     "ran_hours": 0.008676134722222222,
-     "gap_hours": 0.0032726866666666667,
+     "ended": "2026-11-10T14:59:17.386532Z",
+     "ran_hours": 0.008067679444444444,
+     "gap_hours": 0.0035091908333333335,
      "gap_between_starts": false,
      "strategy_changed": false,
      "operation_changed": false,
@@ -168,8 +168,8 @@
     },
     {
      "index": 3,
-     "run_id": "20261109_170756_16e8aed9",
-     "started": "2026-11-09T17:07:56.838156Z",
+     "run_id": "20261110_145930_c1df9fa3",
+     "started": "2026-11-10T14:59:30.526906Z",
      "net_pnl": 52.1836799999997,
      "max_drawdown": 539.5260000000017,
      "max_drawdown_pct": 5.361645613206252,
@@ -177,9 +177,9 @@
      "booking_state": "booked",
      "bot": "demo_btcusd_bot",
      "bot_id": "demo-btc",
-     "ended": "2026-11-09T17:08:24.529559Z",
-     "ran_hours": 0.007692056388888889,
-     "gap_hours": 0.0033637541666666666,
+     "ended": "2026-11-10T14:59:57.133820Z",
+     "ran_hours": 0.007390809444444445,
+     "gap_hours": 0.0036501038888888887,
      "gap_between_starts": false,
      "strategy_changed": true,
      "operation_changed": false,
@@ -189,8 +189,8 @@
     },
     {
      "index": 4,
-     "run_id": "20261109_170835_2980fc31",
-     "started": "2026-11-09T17:08:35.796600Z",
+     "run_id": "20261110_150009_54b215d0",
+     "started": "2026-11-10T15:00:09.647855Z",
      "net_pnl": 0.0,
      "max_drawdown": 539.5260000000017,
      "max_drawdown_pct": 5.361645613206252,
@@ -198,9 +198,9 @@
      "booking_state": "booked",
      "bot": "demo_btcusd_bot",
      "bot_id": "demo-btc",
-     "ended": "2026-11-09T17:09:04.255877Z",
-     "ran_hours": 0.007905354722222223,
-     "gap_hours": 0.0031297336111111114,
+     "ended": "2026-11-10T15:00:35.367345Z",
+     "ran_hours": 0.007144302777777778,
+     "gap_hours": 0.0034761208333333334,
      "gap_between_starts": false,
      "strategy_changed": false,
      "operation_changed": true,
@@ -210,8 +210,8 @@
     },
     {
      "index": 1,
-     "run_id": "20261109_170914_af5be647",
-     "started": "2026-11-09T17:09:14.751813Z",
+     "run_id": "20261110_150047_2028c175",
+     "started": "2026-11-10T15:00:47.747364Z",
      "net_pnl": null,
      "max_drawdown": null,
      "max_drawdown_pct": null,
@@ -243,18 +243,18 @@
    },
    "code_summary": null
   },
-  "deploy_20261109_170933_0301befb": {
+  "deploy_20261110_150107_11c4d414": {
    "key": [
     "run_id",
     "currency"
    ],
    "code_changes_key": [],
-   "deployment_id": "deploy_20261109_170933_0301befb",
+   "deployment_id": "deploy_20261110_150107_11c4d414",
    "sessions": [
     {
      "index": 1,
-     "run_id": "20261109_170933_7b3f9ba5",
-     "started": "2026-11-09T17:09:33.698434Z",
+     "run_id": "20261110_150107_90e88f45",
+     "started": "2026-11-10T15:01:07.151060Z",
      "net_pnl": 0.0,
      "max_drawdown": 334.1393599999992,
      "max_drawdown_pct": 3.341393599999992,
@@ -262,8 +262,8 @@
      "booking_state": "booked",
      "bot": "demo_btcusd_bot",
      "bot_id": "demo-btc",
-     "ended": "2026-11-09T17:10:01.461690Z",
-     "ran_hours": 0.007712015555555555,
+     "ended": "2026-11-10T15:01:34.791398Z",
+     "ran_hours": 0.0076778716666666665,
      "gap_hours": null,
      "gap_between_starts": false,
      "strategy_changed": false,
@@ -280,13 +280,13 @@
   }
  },
  "deployment_booking_periods": {
-  "deploy_20261109_170634_ee56285c": {
+  "deploy_20261110_145808_6b55f50f": {
    "key": [
     "run_id",
     "unit_name",
     "period_no"
    ],
-   "deployment_id": "deploy_20261109_170634_ee56285c",
+   "deployment_id": "deploy_20261110_145808_6b55f50f",
    "periods": [
     {
      "unit_name": "demo_btcusd_bot",
@@ -314,7 +314,7 @@
      "account_max_dd_pct": 2.0104678492450327,
      "unrealized_pnl": -62.1912000000003,
      "open_position_count": 1,
-     "run_id": "20261109_170634_843ba099"
+     "run_id": "20261110_145808_d1ce0565"
     },
     {
      "unit_name": "demo_btcusd_bot",
@@ -342,7 +342,7 @@
      "account_max_dd_pct": 2.0104678492450327,
      "unrealized_pnl": 0.0,
      "open_position_count": 0,
-     "run_id": "20261109_170634_843ba099"
+     "run_id": "20261110_145808_d1ce0565"
     },
     {
      "unit_name": "demo_btcusd_bot",
@@ -370,7 +370,7 @@
      "account_max_dd_pct": 2.0104678492450327,
      "unrealized_pnl": 0.0,
      "open_position_count": 0,
-     "run_id": "20261109_170713_84f65be1"
+     "run_id": "20261110_145848_f16e76f8"
     },
     {
      "unit_name": "demo_btcusd_bot",
@@ -398,7 +398,7 @@
      "account_max_dd_pct": 5.361645613206252,
      "unrealized_pnl": -433.34024000000034,
      "open_position_count": 1,
-     "run_id": "20261109_170713_84f65be1"
+     "run_id": "20261110_145848_f16e76f8"
     },
     {
      "unit_name": "demo_btcusd_bot",
@@ -426,7 +426,7 @@
      "account_max_dd_pct": 5.361645613206252,
      "unrealized_pnl": 25.08991999999941,
      "open_position_count": 1,
-     "run_id": "20261109_170756_16e8aed9"
+     "run_id": "20261110_145930_c1df9fa3"
     },
     {
      "unit_name": "demo_btcusd_bot",
@@ -454,7 +454,7 @@
      "account_max_dd_pct": 5.361645613206252,
      "unrealized_pnl": -281.5771199999991,
      "open_position_count": 1,
-     "run_id": "20261109_170756_16e8aed9"
+     "run_id": "20261110_145930_c1df9fa3"
     },
     {
      "unit_name": "demo_btcusd_bot",
@@ -482,7 +482,7 @@
      "account_max_dd_pct": 5.361645613206252,
      "unrealized_pnl": 0.0,
      "open_position_count": 0,
-     "run_id": "20261109_170835_2980fc31"
+     "run_id": "20261110_150009_54b215d0"
     },
     {
      "unit_name": "demo_btcusd_bot",
@@ -510,7 +510,7 @@
      "account_max_dd_pct": 5.361645613206252,
      "unrealized_pnl": -182.8769599999997,
      "open_position_count": 1,
-     "run_id": "20261109_170835_2980fc31"
+     "run_id": "20261110_150009_54b215d0"
     }
    ],
    "count": 8,
@@ -520,13 +520,13 @@
    "sessions": 4,
    "sessions_without_periods": 1
   },
-  "deploy_20261109_170933_0301befb": {
+  "deploy_20261110_150107_11c4d414": {
    "key": [
     "run_id",
     "unit_name",
     "period_no"
    ],
-   "deployment_id": "deploy_20261109_170933_0301befb",
+   "deployment_id": "deploy_20261110_150107_11c4d414",
    "periods": [
     {
      "unit_name": "demo_btcusd_bot",
@@ -554,7 +554,7 @@
      "account_max_dd_pct": 0.0,
      "unrealized_pnl": 0.0,
      "open_position_count": 0,
-     "run_id": "20261109_170933_7b3f9ba5"
+     "run_id": "20261110_150107_90e88f45"
     },
     {
      "unit_name": "demo_btcusd_bot",
@@ -582,7 +582,7 @@
      "account_max_dd_pct": 3.341393599999992,
      "unrealized_pnl": -142.2393599999994,
      "open_position_count": 1,
-     "run_id": "20261109_170933_7b3f9ba5"
+     "run_id": "20261110_150107_90e88f45"
     }
    ],
    "count": 2,

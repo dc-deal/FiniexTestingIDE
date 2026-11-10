@@ -5,15 +5,15 @@
    "param_hash": "6b61093dfdf9458d8e991da6493d012032a6dbd143d320e72fc93ffc42a80833",
    "status": "ok",
    "error": null,
-   "run_id": "20261109_170634_843ba099",
-   "run_timestamp": "2026-11-09T17:06:34.438010+00:00",
+   "run_id": "20261110_145808_d1ce0565",
+   "run_timestamp": "2026-11-10T14:58:08.143091+00:00",
    "sweep_id": null,
    "sweep_params": null,
    "sweep_objective": null,
    "sweep_maximize": null,
    "scenario_set_name": "demo_btcusd_bot",
    "app_version": "1.5.0",
-   "git_commit": "cee42210",
+   "git_commit": "6a375c1a",
    "git_branch": "dev-1-6-0",
    "git_dirty": false,
    "decision_logic_type": "CORE/simple_consensus",
@@ -36,7 +36,7 @@
    "unstamped_input_files": 2,
    "price_bases": "order_driven",
    "features_beyond_venue": "",
-   "deployment_id": "deploy_20261109_170634_ee56285c",
+   "deployment_id": "deploy_20261110_145808_6b55f50f",
    "bot_id": "demo-btc",
    "profile_hash": "e3c5bdd7a79f627f1c0022a532625ccc6c5a0e858ab5985e16b7236b60a8aed0",
    "run_type": "autotrader",
@@ -47,11 +47,14 @@
     "repositories": [
      {
       "repository": "framework",
-      "commit": "cee42210bee0",
+      "commit": "6a375c1a032b",
       "dirty": false,
       "diff_hash": null,
-      "subject": "The end-of-run consoles compute nothing: every figure they print is a field of the report model (contract 52)",
+      "subject": "A stop fills at the market, a spot close is funded, session-end orders settle",
       "recent_commits": [
+       "6a375c1a032b",
+       "4193e94f606e",
+       "d747e5e3caf7",
        "cee42210bee0",
        "4f1b5f5b843a",
        "e45700529929",
@@ -98,15 +101,12 @@
        "7a196eb350b8",
        "121cafc4dca4",
        "16a535353dcd",
-       "d60fbd968d03",
-       "77a76b9295e0",
-       "d76d315e3c16",
-       "1236fa2dfd27"
+       "d60fbd968d03"
       ]
      }
     ]
    },
-   "recorded_at_utc": "2026-11-09T17:07:01.712791+00:00",
+   "recorded_at_utc": "2026-11-10T14:58:35.709744+00:00",
    "trial_count": 1,
    "run_outcome": "success",
    "error_count": 0,
@@ -176,15 +176,15 @@
    "param_hash": "6b61093dfdf9458d8e991da6493d012032a6dbd143d320e72fc93ffc42a80833",
    "status": "ok",
    "error": null,
-   "run_id": "20261109_170634_843ba099",
-   "run_timestamp": "2026-11-09T17:06:34.438010+00:00",
+   "run_id": "20261110_145808_d1ce0565",
+   "run_timestamp": "2026-11-10T14:58:08.143091+00:00",
    "sweep_id": null,
    "sweep_params": null,
    "sweep_objective": null,
    "sweep_maximize": null,
    "scenario_set_name": "demo_btcusd_bot",
    "app_version": "1.5.0",
-   "git_commit": "cee42210",
+   "git_commit": "6a375c1a",
    "git_branch": "dev-1-6-0",
    "git_dirty": false,
    "decision_logic_type": "CORE/simple_consensus",
@@ -207,7 +207,7 @@
    "unstamped_input_files": 2,
    "price_bases": "order_driven",
    "features_beyond_venue": "",
-   "deployment_id": "deploy_20261109_170634_ee56285c",
+   "deployment_id": "deploy_20261110_145808_6b55f50f",
    "bot_id": "demo-btc",
    "profile_hash": "e3c5bdd7a79f627f1c0022a532625ccc6c5a0e858ab5985e16b7236b60a8aed0",
    "run_type": "autotrader",
@@ -218,11 +218,14 @@
     "repositories": [
      {
       "repository": "framework",
-      "commit": "cee42210bee0",
+      "commit": "6a375c1a032b",
       "dirty": false,
       "diff_hash": null,
-      "subject": "The end-of-run consoles compute nothing: every figure they print is a field of the report model (contract 52)",
+      "subject": "A stop fills at the market, a spot close is funded, session-end orders settle",
       "recent_commits": [
+       "6a375c1a032b",
+       "4193e94f606e",
+       "d747e5e3caf7",
        "cee42210bee0",
        "4f1b5f5b843a",
        "e45700529929",
@@ -269,15 +272,12 @@
        "7a196eb350b8",
        "121cafc4dca4",
        "16a535353dcd",
-       "d60fbd968d03",
-       "77a76b9295e0",
-       "d76d315e3c16",
-       "1236fa2dfd27"
+       "d60fbd968d03"
       ]
      }
     ]
    },
-   "recorded_at_utc": "2026-11-09T17:07:01.712884+00:00",
+   "recorded_at_utc": "2026-11-10T14:58:35.709799+00:00",
    "trial_count": 1,
    "run_outcome": "success",
    "error_count": 0,
@@ -347,15 +347,15 @@
    "param_hash": "6b61093dfdf9458d8e991da6493d012032a6dbd143d320e72fc93ffc42a80833",
    "status": "ok",
    "error": null,
-   "run_id": "20261109_170713_84f65be1",
-   "run_timestamp": "2026-11-09T17:07:13.494556+00:00",
+   "run_id": "20261110_145848_f16e76f8",
+   "run_timestamp": "2026-11-10T14:58:48.342886+00:00",
    "sweep_id": null,
    "sweep_params": null,
    "sweep_objective": null,
    "sweep_maximize": null,
    "scenario_set_name": "demo_btcusd_bot",
    "app_version": "1.5.0",
-   "git_commit": "cee42210",
+   "git_commit": "6a375c1a",
    "git_branch": "dev-1-6-0",
    "git_dirty": false,
    "decision_logic_type": "CORE/simple_consensus",
@@ -378,7 +378,7 @@
    "unstamped_input_files": 2,
    "price_bases": "order_driven",
    "features_beyond_venue": "",
-   "deployment_id": "deploy_20261109_170634_ee56285c",
+   "deployment_id": "deploy_20261110_145808_6b55f50f",
    "bot_id": "demo-btc",
    "profile_hash": "e3c5bdd7a79f627f1c0022a532625ccc6c5a0e858ab5985e16b7236b60a8aed0",
    "run_type": "autotrader",
@@ -389,11 +389,14 @@
     "repositories": [
      {
       "repository": "framework",
-      "commit": "cee42210bee0",
+      "commit": "6a375c1a032b",
       "dirty": false,
       "diff_hash": null,
-      "subject": "The end-of-run consoles compute nothing: every figure they print is a field of the report model (contract 52)",
+      "subject": "A stop fills at the market, a spot close is funded, session-end orders settle",
       "recent_commits": [
+       "6a375c1a032b",
+       "4193e94f606e",
+       "d747e5e3caf7",
        "cee42210bee0",
        "4f1b5f5b843a",
        "e45700529929",
@@ -440,15 +443,12 @@
        "7a196eb350b8",
        "121cafc4dca4",
        "16a535353dcd",
-       "d60fbd968d03",
-       "77a76b9295e0",
-       "d76d315e3c16",
-       "1236fa2dfd27"
+       "d60fbd968d03"
       ]
      }
     ]
    },
-   "recorded_at_utc": "2026-11-09T17:07:44.728536+00:00",
+   "recorded_at_utc": "2026-11-10T14:59:17.386458+00:00",
    "trial_count": 1,
    "run_outcome": "success",
    "error_count": 0,
@@ -518,15 +518,15 @@
    "param_hash": "6b61093dfdf9458d8e991da6493d012032a6dbd143d320e72fc93ffc42a80833",
    "status": "ok",
    "error": null,
-   "run_id": "20261109_170713_84f65be1",
-   "run_timestamp": "2026-11-09T17:07:13.494556+00:00",
+   "run_id": "20261110_145848_f16e76f8",
+   "run_timestamp": "2026-11-10T14:58:48.342886+00:00",
    "sweep_id": null,
    "sweep_params": null,
    "sweep_objective": null,
    "sweep_maximize": null,
    "scenario_set_name": "demo_btcusd_bot",
    "app_version": "1.5.0",
-   "git_commit": "cee42210",
+   "git_commit": "6a375c1a",
    "git_branch": "dev-1-6-0",
    "git_dirty": false,
    "decision_logic_type": "CORE/simple_consensus",
@@ -549,7 +549,7 @@
    "unstamped_input_files": 2,
    "price_bases": "order_driven",
    "features_beyond_venue": "",
-   "deployment_id": "deploy_20261109_170634_ee56285c",
+   "deployment_id": "deploy_20261110_145808_6b55f50f",
    "bot_id": "demo-btc",
    "profile_hash": "e3c5bdd7a79f627f1c0022a532625ccc6c5a0e858ab5985e16b7236b60a8aed0",
    "run_type": "autotrader",
@@ -560,11 +560,14 @@
     "repositories": [
      {
       "repository": "framework",
-      "commit": "cee42210bee0",
+      "commit": "6a375c1a032b",
       "dirty": false,
       "diff_hash": null,
-      "subject": "The end-of-run consoles compute nothing: every figure they print is a field of the report model (contract 52)",
+      "subject": "A stop fills at the market, a spot close is funded, session-end orders settle",
       "recent_commits": [
+       "6a375c1a032b",
+       "4193e94f606e",
+       "d747e5e3caf7",
        "cee42210bee0",
        "4f1b5f5b843a",
        "e45700529929",
@@ -611,15 +614,12 @@
        "7a196eb350b8",
        "121cafc4dca4",
        "16a535353dcd",
-       "d60fbd968d03",
-       "77a76b9295e0",
-       "d76d315e3c16",
-       "1236fa2dfd27"
+       "d60fbd968d03"
       ]
      }
     ]
    },
-   "recorded_at_utc": "2026-11-09T17:07:44.728641+00:00",
+   "recorded_at_utc": "2026-11-10T14:59:17.386532+00:00",
    "trial_count": 1,
    "run_outcome": "success",
    "error_count": 0,
@@ -689,15 +689,15 @@
    "param_hash": "70c4132c1fb9202cfe77f8eabc75c09ec92fc0a5e6b37ebf6bef214b1ea8d4d0",
    "status": "ok",
    "error": null,
-   "run_id": "20261109_170756_16e8aed9",
-   "run_timestamp": "2026-11-09T17:07:56.838156+00:00",
+   "run_id": "20261110_145930_c1df9fa3",
+   "run_timestamp": "2026-11-10T14:59:30.526906+00:00",
    "sweep_id": null,
    "sweep_params": null,
    "sweep_objective": null,
    "sweep_maximize": null,
    "scenario_set_name": "demo_btcusd_bot",
    "app_version": "1.5.0",
-   "git_commit": "cee42210",
+   "git_commit": "6a375c1a",
    "git_branch": "dev-1-6-0",
    "git_dirty": false,
    "decision_logic_type": "CORE/simple_consensus",
@@ -720,7 +720,7 @@
    "unstamped_input_files": 3,
    "price_bases": "order_driven",
    "features_beyond_venue": "",
-   "deployment_id": "deploy_20261109_170634_ee56285c",
+   "deployment_id": "deploy_20261110_145808_6b55f50f",
    "bot_id": "demo-btc",
    "profile_hash": "e3c5bdd7a79f627f1c0022a532625ccc6c5a0e858ab5985e16b7236b60a8aed0",
    "run_type": "autotrader",
@@ -731,11 +731,14 @@
     "repositories": [
      {
       "repository": "framework",
-      "commit": "cee42210bee0",
+      "commit": "6a375c1a032b",
       "dirty": false,
       "diff_hash": null,
-      "subject": "The end-of-run consoles compute nothing: every figure they print is a field of the report model (contract 52)",
+      "subject": "A stop fills at the market, a spot close is funded, session-end orders settle",
       "recent_commits": [
+       "6a375c1a032b",
+       "4193e94f606e",
+       "d747e5e3caf7",
        "cee42210bee0",
        "4f1b5f5b843a",
        "e45700529929",
@@ -782,15 +785,12 @@
        "7a196eb350b8",
        "121cafc4dca4",
        "16a535353dcd",
-       "d60fbd968d03",
-       "77a76b9295e0",
-       "d76d315e3c16",
-       "1236fa2dfd27"
+       "d60fbd968d03"
       ]
      }
     ]
    },
-   "recorded_at_utc": "2026-11-09T17:08:24.529430+00:00",
+   "recorded_at_utc": "2026-11-10T14:59:57.133756+00:00",
    "trial_count": 1,
    "run_outcome": "success",
    "error_count": 0,
@@ -860,15 +860,15 @@
    "param_hash": "70c4132c1fb9202cfe77f8eabc75c09ec92fc0a5e6b37ebf6bef214b1ea8d4d0",
    "status": "ok",
    "error": null,
-   "run_id": "20261109_170756_16e8aed9",
-   "run_timestamp": "2026-11-09T17:07:56.838156+00:00",
+   "run_id": "20261110_145930_c1df9fa3",
+   "run_timestamp": "2026-11-10T14:59:30.526906+00:00",
    "sweep_id": null,
    "sweep_params": null,
    "sweep_objective": null,
    "sweep_maximize": null,
    "scenario_set_name": "demo_btcusd_bot",
    "app_version": "1.5.0",
-   "git_commit": "cee42210",
+   "git_commit": "6a375c1a",
    "git_branch": "dev-1-6-0",
    "git_dirty": false,
    "decision_logic_type": "CORE/simple_consensus",
@@ -891,7 +891,7 @@
    "unstamped_input_files": 3,
    "price_bases": "order_driven",
    "features_beyond_venue": "",
-   "deployment_id": "deploy_20261109_170634_ee56285c",
+   "deployment_id": "deploy_20261110_145808_6b55f50f",
    "bot_id": "demo-btc",
    "profile_hash": "e3c5bdd7a79f627f1c0022a532625ccc6c5a0e858ab5985e16b7236b60a8aed0",
    "run_type": "autotrader",
@@ -902,11 +902,14 @@
     "repositories": [
      {
       "repository": "framework",
-      "commit": "cee42210bee0",
+      "commit": "6a375c1a032b",
       "dirty": false,
       "diff_hash": null,
-      "subject": "The end-of-run consoles compute nothing: every figure they print is a field of the report model (contract 52)",
+      "subject": "A stop fills at the market, a spot close is funded, session-end orders settle",
       "recent_commits": [
+       "6a375c1a032b",
+       "4193e94f606e",
+       "d747e5e3caf7",
        "cee42210bee0",
        "4f1b5f5b843a",
        "e45700529929",
@@ -953,15 +956,12 @@
        "7a196eb350b8",
        "121cafc4dca4",
        "16a535353dcd",
-       "d60fbd968d03",
-       "77a76b9295e0",
-       "d76d315e3c16",
-       "1236fa2dfd27"
+       "d60fbd968d03"
       ]
      }
     ]
    },
-   "recorded_at_utc": "2026-11-09T17:08:24.529559+00:00",
+   "recorded_at_utc": "2026-11-10T14:59:57.133820+00:00",
    "trial_count": 1,
    "run_outcome": "success",
    "error_count": 0,
@@ -1031,15 +1031,15 @@
    "param_hash": "70c4132c1fb9202cfe77f8eabc75c09ec92fc0a5e6b37ebf6bef214b1ea8d4d0",
    "status": "ok",
    "error": null,
-   "run_id": "20261109_170835_2980fc31",
-   "run_timestamp": "2026-11-09T17:08:35.796600+00:00",
+   "run_id": "20261110_150009_54b215d0",
+   "run_timestamp": "2026-11-10T15:00:09.647855+00:00",
    "sweep_id": null,
    "sweep_params": null,
    "sweep_objective": null,
    "sweep_maximize": null,
    "scenario_set_name": "demo_btcusd_bot",
    "app_version": "1.5.0",
-   "git_commit": "cee42210",
+   "git_commit": "6a375c1a",
    "git_branch": "dev-1-6-0",
    "git_dirty": false,
    "decision_logic_type": "CORE/simple_consensus",
@@ -1062,7 +1062,7 @@
    "unstamped_input_files": 2,
    "price_bases": "order_driven",
    "features_beyond_venue": "",
-   "deployment_id": "deploy_20261109_170634_ee56285c",
+   "deployment_id": "deploy_20261110_145808_6b55f50f",
    "bot_id": "demo-btc",
    "profile_hash": "58490ac3a61c8967393d2e0f8e3665733e54ca648689c7e1b8176d2cb5a3e5fa",
    "run_type": "autotrader",
@@ -1073,11 +1073,14 @@
     "repositories": [
      {
       "repository": "framework",
-      "commit": "cee42210bee0",
+      "commit": "6a375c1a032b",
       "dirty": false,
       "diff_hash": null,
-      "subject": "The end-of-run consoles compute nothing: every figure they print is a field of the report model (contract 52)",
+      "subject": "A stop fills at the market, a spot close is funded, session-end orders settle",
       "recent_commits": [
+       "6a375c1a032b",
+       "4193e94f606e",
+       "d747e5e3caf7",
        "cee42210bee0",
        "4f1b5f5b843a",
        "e45700529929",
@@ -1124,15 +1127,12 @@
        "7a196eb350b8",
        "121cafc4dca4",
        "16a535353dcd",
-       "d60fbd968d03",
-       "77a76b9295e0",
-       "d76d315e3c16",
-       "1236fa2dfd27"
+       "d60fbd968d03"
       ]
      }
     ]
    },
-   "recorded_at_utc": "2026-11-09T17:09:04.255829+00:00",
+   "recorded_at_utc": "2026-11-10T15:00:35.367277+00:00",
    "trial_count": 1,
    "run_outcome": "success",
    "error_count": 0,
@@ -1202,15 +1202,15 @@
    "param_hash": "70c4132c1fb9202cfe77f8eabc75c09ec92fc0a5e6b37ebf6bef214b1ea8d4d0",
    "status": "ok",
    "error": null,
-   "run_id": "20261109_170835_2980fc31",
-   "run_timestamp": "2026-11-09T17:08:35.796600+00:00",
+   "run_id": "20261110_150009_54b215d0",
+   "run_timestamp": "2026-11-10T15:00:09.647855+00:00",
    "sweep_id": null,
    "sweep_params": null,
    "sweep_objective": null,
    "sweep_maximize": null,
    "scenario_set_name": "demo_btcusd_bot",
    "app_version": "1.5.0",
-   "git_commit": "cee42210",
+   "git_commit": "6a375c1a",
    "git_branch": "dev-1-6-0",
    "git_dirty": false,
    "decision_logic_type": "CORE/simple_consensus",
@@ -1233,7 +1233,7 @@
    "unstamped_input_files": 2,
    "price_bases": "order_driven",
    "features_beyond_venue": "",
-   "deployment_id": "deploy_20261109_170634_ee56285c",
+   "deployment_id": "deploy_20261110_145808_6b55f50f",
    "bot_id": "demo-btc",
    "profile_hash": "58490ac3a61c8967393d2e0f8e3665733e54ca648689c7e1b8176d2cb5a3e5fa",
    "run_type": "autotrader",
@@ -1244,11 +1244,14 @@
     "repositories": [
      {
       "repository": "framework",
-      "commit": "cee42210bee0",
+      "commit": "6a375c1a032b",
       "dirty": false,
       "diff_hash": null,
-      "subject": "The end-of-run consoles compute nothing: every figure they print is a field of the report model (contract 52)",
+      "subject": "A stop fills at the market, a spot close is funded, session-end orders settle",
       "recent_commits": [
+       "6a375c1a032b",
+       "4193e94f606e",
+       "d747e5e3caf7",
        "cee42210bee0",
        "4f1b5f5b843a",
        "e45700529929",
@@ -1295,15 +1298,12 @@
        "7a196eb350b8",
        "121cafc4dca4",
        "16a535353dcd",
-       "d60fbd968d03",
-       "77a76b9295e0",
-       "d76d315e3c16",
-       "1236fa2dfd27"
+       "d60fbd968d03"
       ]
      }
     ]
    },
-   "recorded_at_utc": "2026-11-09T17:09:04.255877+00:00",
+   "recorded_at_utc": "2026-11-10T15:00:35.367345+00:00",
    "trial_count": 1,
    "run_outcome": "success",
    "error_count": 0,
@@ -1373,15 +1373,15 @@
    "param_hash": "70c4132c1fb9202cfe77f8eabc75c09ec92fc0a5e6b37ebf6bef214b1ea8d4d0",
    "status": "ok",
    "error": null,
-   "run_id": "20261109_170933_7b3f9ba5",
-   "run_timestamp": "2026-11-09T17:09:33.698434+00:00",
+   "run_id": "20261110_150107_90e88f45",
+   "run_timestamp": "2026-11-10T15:01:07.151060+00:00",
    "sweep_id": null,
    "sweep_params": null,
    "sweep_objective": null,
    "sweep_maximize": null,
    "scenario_set_name": "demo_btcusd_bot",
    "app_version": "1.5.0",
-   "git_commit": "cee42210",
+   "git_commit": "6a375c1a",
    "git_branch": "dev-1-6-0",
    "git_dirty": false,
    "decision_logic_type": "CORE/simple_consensus",
@@ -1404,7 +1404,7 @@
    "unstamped_input_files": 3,
    "price_bases": "order_driven",
    "features_beyond_venue": "",
-   "deployment_id": "deploy_20261109_170933_0301befb",
+   "deployment_id": "deploy_20261110_150107_11c4d414",
    "bot_id": "demo-btc",
    "profile_hash": "58490ac3a61c8967393d2e0f8e3665733e54ca648689c7e1b8176d2cb5a3e5fa",
    "run_type": "autotrader",
@@ -1415,11 +1415,14 @@
     "repositories": [
      {
       "repository": "framework",
-      "commit": "cee42210bee0",
+      "commit": "6a375c1a032b",
       "dirty": false,
       "diff_hash": null,
-      "subject": "The end-of-run consoles compute nothing: every figure they print is a field of the report model (contract 52)",
+      "subject": "A stop fills at the market, a spot close is funded, session-end orders settle",
       "recent_commits": [
+       "6a375c1a032b",
+       "4193e94f606e",
+       "d747e5e3caf7",
        "cee42210bee0",
        "4f1b5f5b843a",
        "e45700529929",
@@ -1466,15 +1469,12 @@
        "7a196eb350b8",
        "121cafc4dca4",
        "16a535353dcd",
-       "d60fbd968d03",
-       "77a76b9295e0",
-       "d76d315e3c16",
-       "1236fa2dfd27"
+       "d60fbd968d03"
       ]
      }
     ]
    },
-   "recorded_at_utc": "2026-11-09T17:10:01.461642+00:00",
+   "recorded_at_utc": "2026-11-10T15:01:34.791348+00:00",
    "trial_count": 1,
    "run_outcome": "success",
    "error_count": 0,
@@ -1544,15 +1544,15 @@
    "param_hash": "70c4132c1fb9202cfe77f8eabc75c09ec92fc0a5e6b37ebf6bef214b1ea8d4d0",
    "status": "ok",
    "error": null,
-   "run_id": "20261109_170933_7b3f9ba5",
-   "run_timestamp": "2026-11-09T17:09:33.698434+00:00",
+   "run_id": "20261110_150107_90e88f45",
+   "run_timestamp": "2026-11-10T15:01:07.151060+00:00",
    "sweep_id": null,
    "sweep_params": null,
    "sweep_objective": null,
    "sweep_maximize": null,
    "scenario_set_name": "demo_btcusd_bot",
    "app_version": "1.5.0",
-   "git_commit": "cee42210",
+   "git_commit": "6a375c1a",
    "git_branch": "dev-1-6-0",
    "git_dirty": false,
    "decision_logic_type": "CORE/simple_consensus",
@@ -1575,7 +1575,7 @@
    "unstamped_input_files": 3,
    "price_bases": "order_driven",
    "features_beyond_venue": "",
-   "deployment_id": "deploy_20261109_170933_0301befb",
+   "deployment_id": "deploy_20261110_150107_11c4d414",
    "bot_id": "demo-btc",
    "profile_hash": "58490ac3a61c8967393d2e0f8e3665733e54ca648689c7e1b8176d2cb5a3e5fa",
    "run_type": "autotrader",
@@ -1586,11 +1586,14 @@
     "repositories": [
      {
       "repository": "framework",
-      "commit": "cee42210bee0",
+      "commit": "6a375c1a032b",
       "dirty": false,
       "diff_hash": null,
-      "subject": "The end-of-run consoles compute nothing: every figure they print is a field of the report model (contract 52)",
+      "subject": "A stop fills at the market, a spot close is funded, session-end orders settle",
       "recent_commits": [
+       "6a375c1a032b",
+       "4193e94f606e",
+       "d747e5e3caf7",
        "cee42210bee0",
        "4f1b5f5b843a",
        "e45700529929",
@@ -1637,15 +1640,12 @@
        "7a196eb350b8",
        "121cafc4dca4",
        "16a535353dcd",
-       "d60fbd968d03",
-       "77a76b9295e0",
-       "d76d315e3c16",
-       "1236fa2dfd27"
+       "d60fbd968d03"
       ]
      }
     ]
    },
-   "recorded_at_utc": "2026-11-09T17:10:01.461690+00:00",
+   "recorded_at_utc": "2026-11-10T15:01:34.791398+00:00",
    "trial_count": 1,
    "run_outcome": "success",
    "error_count": 0,
@@ -1713,7 +1713,7 @@
  ],
  "run_index": [
   {
-   "run_id": "20261109_170933_7b3f9ba5",
+   "run_id": "20261110_150107_90e88f45",
    "group": "autotrader",
    "name": "demo_btcusd_bot",
    "artifacts": [
@@ -1740,15 +1740,15 @@
     "state_frames.jsonl"
    ],
    "recording": null,
-   "start_time": "2026-11-09T17:09:33.698434+00:00",
-   "parent_id": "deploy_20261109_170933_0301befb",
+   "start_time": "2026-11-10T15:01:07.151060+00:00",
+   "parent_id": "deploy_20261110_150107_11c4d414",
    "parent_kind": "deployment",
    "config_id": "03297e1327bbd4f9b11b3bf62b5bff485dc858a1e46497572d9fd45917bef6ba",
    "app_version": "1.5.0",
-   "git_commit": "cee42210",
+   "git_commit": "6a375c1a",
    "config_snapshot": "demo_btcusd_bot_s6.json",
    "reporting": "expected",
-   "size_bytes": 1788210,
+   "size_bytes": 1789239,
    "ticks_from": "archive",
    "orders_to": "simulated",
    "data_windows": [
@@ -1759,7 +1759,7 @@
     }
    ],
    "run_purpose": "fixture",
-   "report_contract": 52,
+   "report_contract": 53,
    "origin_channel": "cli",
    "origin_client": "console",
    "origin_principal": "operator",
@@ -1774,7 +1774,7 @@
    "has_reports": true
   },
   {
-   "run_id": "20261109_170914_af5be647",
+   "run_id": "20261110_150047_2028c175",
    "group": "autotrader",
    "name": "demo_btcusd_bot",
    "artifacts": [],
@@ -1783,12 +1783,12 @@
     "state_frames.jsonl"
    ],
    "recording": null,
-   "start_time": "2026-11-09T17:09:14.751813+00:00",
-   "parent_id": "deploy_20261109_170634_ee56285c",
+   "start_time": "2026-11-10T15:00:47.747364+00:00",
+   "parent_id": "deploy_20261110_145808_6b55f50f",
    "parent_kind": "deployment",
    "config_id": "4bc7464fa238e696b707aaf3616d0046a431eb1385c03aab080b83fd7f31a51b",
    "app_version": "1.5.0",
-   "git_commit": "cee42210",
+   "git_commit": "6a375c1a",
    "config_snapshot": "demo_btcusd_bot_s5.json",
    "reporting": "expected",
    "size_bytes": 0,
@@ -1802,7 +1802,7 @@
     }
    ],
    "run_purpose": "fixture",
-   "report_contract": 52,
+   "report_contract": 53,
    "origin_channel": "cli",
    "origin_client": "console",
    "origin_principal": "operator",
@@ -1817,7 +1817,7 @@
    "has_reports": false
   },
   {
-   "run_id": "20261109_170835_2980fc31",
+   "run_id": "20261110_150009_54b215d0",
    "group": "autotrader",
    "name": "demo_btcusd_bot",
    "artifacts": [
@@ -1844,15 +1844,15 @@
     "state_frames.jsonl"
    ],
    "recording": null,
-   "start_time": "2026-11-09T17:08:35.796600+00:00",
-   "parent_id": "deploy_20261109_170634_ee56285c",
+   "start_time": "2026-11-10T15:00:09.647855+00:00",
+   "parent_id": "deploy_20261110_145808_6b55f50f",
    "parent_kind": "deployment",
    "config_id": "df1f470df85dc5f2260995aa2c6058a370461cacc591749b15af37fe553bec9f",
    "app_version": "1.5.0",
-   "git_commit": "cee42210",
+   "git_commit": "6a375c1a",
    "config_snapshot": "demo_btcusd_bot_s4.json",
    "reporting": "expected",
-   "size_bytes": 1157808,
+   "size_bytes": 1157727,
    "ticks_from": "archive",
    "orders_to": "simulated",
    "data_windows": [
@@ -1863,7 +1863,7 @@
     }
    ],
    "run_purpose": "fixture",
-   "report_contract": 52,
+   "report_contract": 53,
    "origin_channel": "cli",
    "origin_client": "console",
    "origin_principal": "operator",
@@ -1878,7 +1878,7 @@
    "has_reports": true
   },
   {
-   "run_id": "20261109_170756_16e8aed9",
+   "run_id": "20261110_145930_c1df9fa3",
    "group": "autotrader",
    "name": "demo_btcusd_bot",
    "artifacts": [
@@ -1905,15 +1905,15 @@
     "state_frames.jsonl"
    ],
    "recording": null,
-   "start_time": "2026-11-09T17:07:56.838156+00:00",
-   "parent_id": "deploy_20261109_170634_ee56285c",
+   "start_time": "2026-11-10T14:59:30.526906+00:00",
+   "parent_id": "deploy_20261110_145808_6b55f50f",
    "parent_kind": "deployment",
    "config_id": "2a4da01f02c304f05d27805497fdda1e0c881b91d8f2a150818e74981746d5e7",
    "app_version": "1.5.0",
-   "git_commit": "cee42210",
+   "git_commit": "6a375c1a",
    "config_snapshot": "demo_btcusd_bot_s3.json",
    "reporting": "expected",
-   "size_bytes": 1511168,
+   "size_bytes": 1511128,
    "ticks_from": "archive",
    "orders_to": "simulated",
    "data_windows": [
@@ -1924,7 +1924,7 @@
     }
    ],
    "run_purpose": "fixture",
-   "report_contract": 52,
+   "report_contract": 53,
    "origin_channel": "cli",
    "origin_client": "console",
    "origin_principal": "operator",
@@ -1939,7 +1939,7 @@
    "has_reports": true
   },
   {
-   "run_id": "20261109_170713_84f65be1",
+   "run_id": "20261110_145848_f16e76f8",
    "group": "autotrader",
    "name": "demo_btcusd_bot",
    "artifacts": [
@@ -1966,15 +1966,15 @@
     "state_frames.jsonl"
    ],
    "recording": null,
-   "start_time": "2026-11-09T17:07:13.494556+00:00",
-   "parent_id": "deploy_20261109_170634_ee56285c",
+   "start_time": "2026-11-10T14:58:48.342886+00:00",
+   "parent_id": "deploy_20261110_145808_6b55f50f",
    "parent_kind": "deployment",
    "config_id": "05240f6822a68bc8024cfaa915ce3aa0c00e6b9dabc2baf50de12123a37a8992",
    "app_version": "1.5.0",
-   "git_commit": "cee42210",
+   "git_commit": "6a375c1a",
    "config_snapshot": "demo_btcusd_bot_s2.json",
    "reporting": "expected",
-   "size_bytes": 1821143,
+   "size_bytes": 1821012,
    "ticks_from": "archive",
    "orders_to": "simulated",
    "data_windows": [
@@ -1985,7 +1985,7 @@
     }
    ],
    "run_purpose": "fixture",
-   "report_contract": 52,
+   "report_contract": 53,
    "origin_channel": "cli",
    "origin_client": "console",
    "origin_principal": "operator",
@@ -2000,7 +2000,7 @@
    "has_reports": true
   },
   {
-   "run_id": "20261109_170634_843ba099",
+   "run_id": "20261110_145808_d1ce0565",
    "group": "autotrader",
    "name": "demo_btcusd_bot",
    "artifacts": [
@@ -2027,15 +2027,15 @@
     "state_frames.jsonl"
    ],
    "recording": null,
-   "start_time": "2026-11-09T17:06:34.438010+00:00",
-   "parent_id": "deploy_20261109_170634_ee56285c",
+   "start_time": "2026-11-10T14:58:08.143091+00:00",
+   "parent_id": "deploy_20261110_145808_6b55f50f",
    "parent_kind": "deployment",
-   "config_id": "f0cca77614c9fa5a5e59314af2aec9b2d4b4285e151e04b4feb2381556b6534f",
+   "config_id": "",
    "app_version": "1.5.0",
-   "git_commit": "cee42210",
+   "git_commit": "6a375c1a",
    "config_snapshot": "demo_btcusd_bot_s1.json",
    "reporting": "expected",
-   "size_bytes": 1429689,
+   "size_bytes": 1428953,
    "ticks_from": "archive",
    "orders_to": "simulated",
    "data_windows": [
@@ -2046,7 +2046,7 @@
     }
    ],
    "run_purpose": "fixture",
-   "report_contract": 52,
+   "report_contract": 53,
    "origin_channel": "cli",
    "origin_client": "console",
    "origin_principal": "operator",

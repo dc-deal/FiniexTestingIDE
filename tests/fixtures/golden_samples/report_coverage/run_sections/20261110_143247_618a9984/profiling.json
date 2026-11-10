@@ -1,0 +1,556 @@
+{
+  "run_id": "20261110_143247_618a9984",
+  "units": [
+    {
+      "name": "EURGBP_refusals_01",
+      "symbol": "EURGBP",
+      "total_ticks": 1883,
+      "avg_per_tick_ms": 0.29989504722939975,
+      "total_ms": 564.7023739329597,
+      "bottleneck_operation": "worker_decision",
+      "bottleneck_pct": 65.47111754448676,
+      "operations": [
+        {
+          "operation": "worker_decision",
+          "total_time_ms": 369.71695501415525,
+          "avg_time_ms": 0.1963446388816544,
+          "call_count": 1883,
+          "pct": 65.47111754448676
+        },
+        {
+          "operation": "equity_sample",
+          "total_time_ms": 67.89132497942774,
+          "avg_time_ms": 0.036054872532887805,
+          "call_count": 1883,
+          "pct": 12.022496825467153
+        },
+        {
+          "operation": "trade_simulator",
+          "total_time_ms": 42.412798989971634,
+          "avg_time_ms": 0.02252405681889094,
+          "call_count": 1883,
+          "pct": 7.51064648348845
+        },
+        {
+          "operation": "bar_rendering",
+          "total_time_ms": 30.193725917342817,
+          "avg_time_ms": 0.016034904895030705,
+          "call_count": 1883,
+          "pct": 5.346838850181166
+        },
+        {
+          "operation": "order_execution",
+          "total_time_ms": 27.020545090636006,
+          "avg_time_ms": 0.014349731859073822,
+          "call_count": 1883,
+          "pct": 4.784917921000953
+        },
+        {
+          "operation": "live_update",
+          "total_time_ms": 5.79701299284352,
+          "avg_time_ms": 0.0030786048820199254,
+          "call_count": 1883,
+          "pct": 1.0265607619938444
+        }
+      ],
+      "inter_tick": {
+        "min_ms": 1.0,
+        "p5_ms": 1.0,
+        "median_ms": 1000.0,
+        "mean_ms": 1905.4197662061636,
+        "p95_ms": 6000.0,
+        "max_ms": 49000.0,
+        "interval_count": 1882,
+        "gaps_removed": 0,
+        "threshold_s": 300.0
+      },
+      "clipping": null
+    },
+    {
+      "name": "EURGBP_refusals_02",
+      "symbol": "EURGBP",
+      "total_ticks": 2445,
+      "avg_per_tick_ms": 0.2809116372096201,
+      "total_ms": 686.8289529775211,
+      "bottleneck_operation": "worker_decision",
+      "bottleneck_pct": 65.75778932073949,
+      "operations": [
+        {
+          "operation": "worker_decision",
+          "total_time_ms": 451.64353589279926,
+          "avg_time_ms": 0.18472128257374204,
+          "call_count": 2445,
+          "pct": 65.75778932073949
+        },
+        {
+          "operation": "equity_sample",
+          "total_time_ms": 70.92772905161837,
+          "avg_time_ms": 0.029009296135631236,
+          "call_count": 2445,
+          "pct": 10.326840291769082
+        },
+        {
+          "operation": "trade_simulator",
+          "total_time_ms": 53.76781400991604,
+          "avg_time_ms": 0.021990925975425783,
+          "call_count": 2445,
+          "pct": 7.828414014409753
+        },
+        {
+          "operation": "order_execution",
+          "total_time_ms": 41.907280901796184,
+          "avg_time_ms": 0.017139992188873694,
+          "call_count": 2445,
+          "pct": 6.10156003472494
+        },
+        {
+          "operation": "bar_rendering",
+          "total_time_ms": 37.01974398791208,
+          "avg_time_ms": 0.01514099958605811,
+          "call_count": 2445,
+          "pct": 5.389950995429816
+        },
+        {
+          "operation": "live_update",
+          "total_time_ms": 6.913115928909974,
+          "avg_time_ms": 0.002827450277672791,
+          "call_count": 2445,
+          "pct": 1.0065265738930245
+        }
+      ],
+      "inter_tick": {
+        "min_ms": 1.0,
+        "p5_ms": 1.0,
+        "median_ms": 1000.0,
+        "mean_ms": 1470.949263502455,
+        "p95_ms": 4000.85,
+        "max_ms": 28000.0,
+        "interval_count": 2444,
+        "gaps_removed": 0,
+        "threshold_s": 300.0
+      },
+      "clipping": null
+    },
+    {
+      "name": "ETHUSD_spot_two_balances",
+      "symbol": "ETHUSD",
+      "total_ticks": 20000,
+      "avg_per_tick_ms": 0.17675912193462864,
+      "total_ms": 3535.1824386925728,
+      "bottleneck_operation": "worker_decision",
+      "bottleneck_pct": 77.85389175467152,
+      "operations": [
+        {
+          "operation": "worker_decision",
+          "total_time_ms": 2752.2771091498726,
+          "avg_time_ms": 0.13761385545749363,
+          "call_count": 20000,
+          "pct": 77.85389175467152
+        },
+        {
+          "operation": "bar_rendering",
+          "total_time_ms": 229.45022182466346,
+          "avg_time_ms": 0.011472511091233173,
+          "call_count": 20000,
+          "pct": 6.490477529909934
+        },
+        {
+          "operation": "trade_simulator",
+          "total_time_ms": 200.50117131177103,
+          "avg_time_ms": 0.010025058565588552,
+          "call_count": 20000,
+          "pct": 5.6715933276112045
+        },
+        {
+          "operation": "equity_sample",
+          "total_time_ms": 108.94101068697637,
+          "avg_time_ms": 0.005447050534348819,
+          "call_count": 20000,
+          "pct": 3.0816234402676645
+        },
+        {
+          "operation": "order_execution",
+          "total_time_ms": 67.01389598310925,
+          "avg_time_ms": 0.0033506947991554627,
+          "call_count": 20000,
+          "pct": 1.895627655581283
+        },
+        {
+          "operation": "live_update",
+          "total_time_ms": 36.286022997956024,
+          "avg_time_ms": 0.0018143011498978011,
+          "call_count": 20000,
+          "pct": 1.0264257538961918
+        }
+      ],
+      "inter_tick": {
+        "min_ms": 1.0,
+        "p5_ms": 1.0,
+        "median_ms": 212.0,
+        "mean_ms": 3247.7593379668983,
+        "p95_ms": 16857.599999999977,
+        "max_ms": 160508.0,
+        "interval_count": 19999,
+        "gaps_removed": 0,
+        "threshold_s": 600.0
+      },
+      "clipping": null
+    },
+    {
+      "name": "EURGBP_left_open",
+      "symbol": "EURGBP",
+      "total_ticks": 2445,
+      "avg_per_tick_ms": 0.27555689816008433,
+      "total_ms": 673.7366160014062,
+      "bottleneck_operation": "worker_decision",
+      "bottleneck_pct": 68.46886528618403,
+      "operations": [
+        {
+          "operation": "worker_decision",
+          "total_time_ms": 461.29981599369785,
+          "avg_time_ms": 0.1886706813880155,
+          "call_count": 2445,
+          "pct": 68.46886528618403
+        },
+        {
+          "operation": "equity_sample",
+          "total_time_ms": 87.59950091189239,
+          "avg_time_ms": 0.03582801673288032,
+          "call_count": 2445,
+          "pct": 13.002039496055765
+        },
+        {
+          "operation": "bar_rendering",
+          "total_time_ms": 54.1549239642336,
+          "avg_time_ms": 0.02214925315510577,
+          "call_count": 2445,
+          "pct": 8.037996255219202
+        },
+        {
+          "operation": "trade_simulator",
+          "total_time_ms": 28.263557029276853,
+          "avg_time_ms": 0.011559737026289102,
+          "call_count": 2445,
+          "pct": 4.195045416563476
+        },
+        {
+          "operation": "order_execution",
+          "total_time_ms": 11.689120939990971,
+          "avg_time_ms": 0.004780826560323506,
+          "call_count": 2445,
+          "pct": 1.734968927377783
+        },
+        {
+          "operation": "live_update",
+          "total_time_ms": 6.8745939279324375,
+          "avg_time_ms": 0.0028116948580500767,
+          "call_count": 2445,
+          "pct": 1.0203681623737204
+        }
+      ],
+      "inter_tick": {
+        "min_ms": 1.0,
+        "p5_ms": 1.0,
+        "median_ms": 1000.0,
+        "mean_ms": 1470.949263502455,
+        "p95_ms": 4000.85,
+        "max_ms": 28000.0,
+        "interval_count": 2444,
+        "gaps_removed": 0,
+        "threshold_s": 300.0
+      },
+      "clipping": null
+    },
+    {
+      "name": "EURGBP_partial_close",
+      "symbol": "EURGBP",
+      "total_ticks": 1883,
+      "avg_per_tick_ms": 0.28376310307120983,
+      "total_ms": 534.3259230830881,
+      "bottleneck_operation": "worker_decision",
+      "bottleneck_pct": 66.81705126352088,
+      "operations": [
+        {
+          "operation": "worker_decision",
+          "total_time_ms": 357.02082594070816,
+          "avg_time_ms": 0.1896021380460479,
+          "call_count": 1883,
+          "pct": 66.81705126352088
+        },
+        {
+          "operation": "equity_sample",
+          "total_time_ms": 58.86197793370229,
+          "avg_time_ms": 0.03125968026218921,
+          "call_count": 1883,
+          "pct": 11.016118700374042
+        },
+        {
+          "operation": "bar_rendering",
+          "total_time_ms": 42.6782570539217,
+          "avg_time_ms": 0.022665032954817685,
+          "call_count": 1883,
+          "pct": 7.987307972569617
+        },
+        {
+          "operation": "trade_simulator",
+          "total_time_ms": 34.91100493920385,
+          "avg_time_ms": 0.01854009821519057,
+          "call_count": 1883,
+          "pct": 6.533653605605648
+        },
+        {
+          "operation": "order_execution",
+          "total_time_ms": 16.584769979090197,
+          "avg_time_ms": 0.008807631428088263,
+          "call_count": 1883,
+          "pct": 3.1038677448766134
+        },
+        {
+          "operation": "live_update",
+          "total_time_ms": 5.409824960224796,
+          "avg_time_ms": 0.002872981922583535,
+          "call_count": 1883,
+          "pct": 1.0124578888124738
+        }
+      ],
+      "inter_tick": {
+        "min_ms": 1.0,
+        "p5_ms": 1.0,
+        "median_ms": 1000.0,
+        "mean_ms": 1905.4197662061636,
+        "p95_ms": 6000.0,
+        "max_ms": 49000.0,
+        "interval_count": 1882,
+        "gaps_removed": 0,
+        "threshold_s": 300.0
+      },
+      "clipping": null
+    }
+  ],
+  "aggregate": {
+    "scenarios": 5,
+    "total_ticks": 28656,
+    "total_time_s": 5.994776304687548,
+    "avg_per_tick_ms": 0.20919794474761125,
+    "most_common_bottleneck": "worker_decision",
+    "most_common_bottleneck_pct": 100.0,
+    "p5_min_ms": 1.0,
+    "p5_max_ms": 1.0,
+    "p95_processing_ms": 0.29989504722939975,
+    "suggested_budget_ms": 0.33,
+    "budget_active": false,
+    "scenarios_over_p5": 0,
+    "clipping_total_ticks": 0,
+    "clipping_total_kept": 0,
+    "clipping_total_clipped": 0,
+    "clipping_budgets": [],
+    "avg_operation_times": [
+      {
+        "operation": "worker_decision",
+        "total_time_ms": 0.0,
+        "avg_time_ms": 0.17939051926939067,
+        "call_count": 0,
+        "pct": 0.0
+      },
+      {
+        "operation": "equity_sample",
+        "total_time_ms": 0.0,
+        "avg_time_ms": 0.02751978323958748,
+        "call_count": 0,
+        "pct": 0.0
+      },
+      {
+        "operation": "bar_rendering",
+        "total_time_ms": 0.0,
+        "avg_time_ms": 0.017492540336449088,
+        "call_count": 0,
+        "pct": 0.0
+      },
+      {
+        "operation": "trade_simulator",
+        "total_time_ms": 0.0,
+        "avg_time_ms": 0.01692797532027699,
+        "call_count": 0,
+        "pct": 0.0
+      },
+      {
+        "operation": "order_execution",
+        "total_time_ms": 0.0,
+        "avg_time_ms": 0.00968577536710295,
+        "call_count": 0,
+        "pct": 0.0
+      },
+      {
+        "operation": "live_update",
+        "total_time_ms": 0.0,
+        "avg_time_ms": 0.002681006618044826,
+        "call_count": 0,
+        "pct": 0.0
+      }
+    ],
+    "bottlenecks": [
+      {
+        "operation": "worker_decision",
+        "scenario_count": 5,
+        "total_scenarios": 5,
+        "pct": 100.0,
+        "status": "expected"
+      },
+      {
+        "operation": "bar_rendering",
+        "scenario_count": 0,
+        "total_scenarios": 5,
+        "pct": 0.0,
+        "status": "none"
+      },
+      {
+        "operation": "equity_sample",
+        "scenario_count": 0,
+        "total_scenarios": 5,
+        "pct": 0.0,
+        "status": "none"
+      },
+      {
+        "operation": "live_update",
+        "scenario_count": 0,
+        "total_scenarios": 5,
+        "pct": 0.0,
+        "status": "none"
+      },
+      {
+        "operation": "order_execution",
+        "scenario_count": 0,
+        "total_scenarios": 5,
+        "pct": 0.0,
+        "status": "none"
+      },
+      {
+        "operation": "trade_simulator",
+        "scenario_count": 0,
+        "total_scenarios": 5,
+        "pct": 0.0,
+        "status": "none"
+      }
+    ],
+    "profiled_unit_mean_ms": 1198.9552609375096,
+    "slowest_profiled_unit": "ETHUSD_spot_two_balances",
+    "slowest_profiled_unit_ms": 3535.1824386925728,
+    "slowest_profiled_unit_deviation_pct": 194.85524221548323,
+    "clipping_budget_count": 0,
+    "clipping_rate_pct": 0.0
+  },
+  "warmup_phases": [
+    {
+      "name": "Config Validation",
+      "duration_s": 0.045020341873168945,
+      "pct": 1.3554539886865689
+    },
+    {
+      "name": "Index & Coverage",
+      "duration_s": 1.4823575019836426,
+      "pct": 44.63021170260509
+    },
+    {
+      "name": "Availability Check",
+      "duration_s": 0.0006093978881835938,
+      "pct": 0.018347501681854318
+    },
+    {
+      "name": "Requirements",
+      "duration_s": 0.09832644462585449,
+      "pct": 2.960372267650713
+    },
+    {
+      "name": "Data Loading → Ticks (parquet)",
+      "duration_s": 1.133476734161377,
+      "pct": 34.1262526333259
+    },
+    {
+      "name": "Data Loading → Bars (parquet)",
+      "duration_s": 0.49136924743652344,
+      "pct": 14.793943773951886
+    },
+    {
+      "name": "Data Loading → Packaging",
+      "duration_s": 0.016209840774536133,
+      "pct": 0.4880392378120475
+    },
+    {
+      "name": "Quality Validation",
+      "duration_s": 0.054052114486694336,
+      "pct": 1.6273788942859448
+    }
+  ],
+  "worker_decision_breakdowns": [
+    {
+      "name": "EURGBP_refusals_01",
+      "total_time_ms": 369.71695501415525,
+      "total_ticks": 1883,
+      "worker_execution_ms": 0.0,
+      "decision_logic_ms": 0.0,
+      "coordination_overhead_ms": 369.71695501415525,
+      "worker_execution_pct": 0.0,
+      "decision_logic_pct": 0.0,
+      "coordination_overhead_pct": 100.0
+    },
+    {
+      "name": "EURGBP_refusals_02",
+      "total_time_ms": 451.64353589279926,
+      "total_ticks": 2445,
+      "worker_execution_ms": 0.0,
+      "decision_logic_ms": 0.0,
+      "coordination_overhead_ms": 451.64353589279926,
+      "worker_execution_pct": 0.0,
+      "decision_logic_pct": 0.0,
+      "coordination_overhead_pct": 100.0
+    },
+    {
+      "name": "ETHUSD_spot_two_balances",
+      "total_time_ms": 2752.2771091498726,
+      "total_ticks": 20000,
+      "worker_execution_ms": 0.0,
+      "decision_logic_ms": 0.0,
+      "coordination_overhead_ms": 2752.2771091498726,
+      "worker_execution_pct": 0.0,
+      "decision_logic_pct": 0.0,
+      "coordination_overhead_pct": 100.0
+    },
+    {
+      "name": "EURGBP_left_open",
+      "total_time_ms": 461.29981599369785,
+      "total_ticks": 2445,
+      "worker_execution_ms": 0.0,
+      "decision_logic_ms": 0.0,
+      "coordination_overhead_ms": 461.29981599369785,
+      "worker_execution_pct": 0.0,
+      "decision_logic_pct": 0.0,
+      "coordination_overhead_pct": 100.0
+    },
+    {
+      "name": "EURGBP_partial_close",
+      "total_time_ms": 357.02082594070816,
+      "total_ticks": 1883,
+      "worker_execution_ms": 0.0,
+      "decision_logic_ms": 0.0,
+      "coordination_overhead_ms": 357.02082594070816,
+      "worker_execution_pct": 0.0,
+      "decision_logic_pct": 0.0,
+      "coordination_overhead_pct": 100.0
+    }
+  ],
+  "keys": {
+    "units": [
+      "name"
+    ],
+    "warmup_phases": [
+      "name"
+    ],
+    "worker_decision_breakdowns": [
+      "name"
+    ]
+  },
+  "warmup_total_s": 3.3214216232299805,
+  "warmup_slowest_phase": "Index & Coverage",
+  "warmup_slowest_s": 1.4823575019836426,
+  "warmup_slowest_pct": 44.63021170260509
+}
