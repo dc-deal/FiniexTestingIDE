@@ -22,6 +22,7 @@ Event → payload → hook map:
     PARTIAL_CLOSE     → PartialCloseEvent     → on_partial_close
     POSITION_CLOSED   → PositionClosedEvent   → on_position_closed
     SESSION_END       → SessionEndEvent       → on_session_end
+    SESSION_END_ORDER_OUTCOME → SessionEndOrderOutcomeEvent → on_session_end_order_outcome
 """
 
 from dataclasses import dataclass
@@ -34,6 +35,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderEndReason,
     OrderResult,
+    OrderStatus,
     RejectionReason,
 )
 
@@ -47,6 +49,7 @@ class DecisionEventType(StrEnum):
     PARTIAL_CLOSE = 'partial_close'
     POSITION_CLOSED = 'position_closed'
     SESSION_END = 'session_end'
+    SESSION_END_ORDER_OUTCOME = 'session_end_order_outcome'
 
 
 class SessionEndSeverity(StrEnum):
@@ -236,6 +239,31 @@ class SessionEndEvent:
     tick_time: Optional[datetime] = None
 
 
+@dataclass(frozen=True, slots=True)
+class SessionEndOrderOutcomeEvent:
+    """
+    How an order the strategy sent from on_session_end ended. Delivered to
+    on_session_end_order_outcome(), once, after the session-end event (#642).
+
+    The session is over when it arrives: an order sent from this hook is withdrawn, never sent.
+    Every ending is reported, not only a fill — a close that was refused or never accounted for
+    is what the strategy most needs to hear.
+
+    Args:
+        order_id: Internal order id
+        position_id: The position the order opened or closed, None where its row has none
+        status: How the order ended: executed, rejected, undelivered, unaccounted, cancelled
+            (withdrawn) or expired
+        result: The order's booked row, for the price, the lots and the reason
+        tick_time: Tick timestamp at delivery (sim time / wall-clock)
+    """
+    order_id: str
+    position_id: Optional[str]
+    status: OrderStatus
+    result: OrderResult
+    tick_time: Optional[datetime] = None
+
+
 # Union of all event payloads — the buffer element type carried by the dispatcher.
 DecisionEvent = Union[
     OrderFilledEvent,
@@ -245,4 +273,5 @@ DecisionEvent = Union[
     PartialCloseEvent,
     PositionClosedEvent,
     SessionEndEvent,
+    SessionEndOrderOutcomeEvent,
 ]

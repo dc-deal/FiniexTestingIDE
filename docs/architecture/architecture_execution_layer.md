@@ -448,6 +448,18 @@ if new_side == OrderSide.SELL and self.trading_api.is_spot_mode():
         return None  # silent skip — no base to sell
 ```
 
+**A close is funded like any order (#639).** At spot, closing a LONG sells the base and closing a
+SHORT buys it back with the quote, so `close_position` is checked by the same calculation an open
+uses — what the account holds, less what its unfilled orders claim. A close of coins the account no
+longer holds (sold by a SELL, claimed by a resting sell) is DENIED with `insufficient_funds` at
+submission, and the position stays in the book. Before, it went through and left the base balance
+negative, a sell no venue executes. At the fill the open's split holds: the simulation refuses a
+close it cannot fund (`REJECTED`), a live session books the close the venue executed and reports
+that the book disagrees. A level the simulation holds for a position fires once when its close is
+refused there: the level is not tried again, as a venue cancels a stop it cannot fund, where it
+used to add a rejected row and a protective close on every tick. Margin moves no coins on a close
+and is not checked.
+
 The executor's INSUFFICIENT_FUNDS branch remains in place as a hard safety net for edge cases (race conditions on live broker state, algos that forget the check), but in normal operation the algo decides.
 
 #### Clock / Time Source

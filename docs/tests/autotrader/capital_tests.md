@@ -72,6 +72,22 @@ at 1006.88 USD.
 | `test_live_books_it_despite_our_shortfall` | A live session books the fill the venue made and reports the disagreement as an error, in both account models — refusing to book it left the venue holding coins the book did not. The margin case needs the market to move with the fill, because the margin check prices the current tick and the spot check the fill itself |
 | `test_the_simulation_still_refuses_it` | The simulation plays the venue, and a venue refuses an order it cannot fund |
 
+#### `TestASpotCloseIsCheckedLikeASell` — a close is funded like any order (#639)
+
+A LONG of 0.01 BTC whose coins a SELL has since sold: closing it used to go through and leave the
+base balance at −0.01, while a SELL of the same coins was denied.
+
+| Test | What it verifies |
+|---|---|
+| `test_the_simulation_denies_the_close` | DENIED with `insufficient_funds` at submission; the base stays at zero and the LONG stays in the book |
+| `test_the_live_executor_denies_it_too` | The same denial in a live session over the mock venue |
+| `test_a_close_the_account_can_fund_goes_through` | The regression guard: a LONG whose coins are held closes as before |
+| `test_closing_a_short_needs_the_quote_it_buys_back_with` | Closing a spot SHORT buys back with the quote, and a resting BUY's claim on it is counted |
+| `test_coins_gone_before_the_fill_refuse_the_simulated_fill` | Coins leaving between submission and fill: the simulation refuses the fill (`REJECTED`) and the position stays |
+| `test_live_books_a_close_the_venue_executed` | The same in a live session: the venue sold the coins, so the book follows it |
+| `test_a_stop_the_account_cannot_fund_fires_once` | A breached stop whose close the simulated venue refuses is booked rejected once and not tried again; it counts no protective close |
+| `test_margin_is_not_checked` | A margin close moves no coins and is not checked |
+
 #### `TestWhatTheEndReleased` — an order the end booked gives its funds back
 
 The end of a session or a scenario books its resting orders cancelled or expired and leaves them in

@@ -279,6 +279,9 @@ class AbstractTradeExecutor(ABC):
         self._session_end_requested: bool = False
         self._session_end_reason: str = ''
         self._session_end_severity: SessionEndSeverity = SessionEndSeverity.NORMAL
+        # The orders sent once the session-end event went out (#642): the strategy's from its
+        # session-end hooks, told apart from those already on their way. None until then
+        self._sent_after_session_end: Optional[Set[str]] = None
 
         # Monotonic counter for synthetic BrokerTrade IDs (#330). Ensures each
         # _synthesize_pending_trade() call produces a unique trade_id, so that
@@ -631,6 +634,8 @@ class AbstractTradeExecutor(ABC):
             submission_mid=pending.submission.tick_mid_price,
             submission_time_msc=pending.submission.tick_time_msc,
         )
+        if self._sent_after_session_end is not None:
+            self._sent_after_session_end.add(pending.pending_order_id)
 
     def _record_adoption(self, pending: PendingOrder) -> None:
         """
@@ -1124,6 +1129,83 @@ class AbstractTradeExecutor(ABC):
             )
 
         return None
+
+    def refuse_unfunded_close(
+        self,
+        position: Position,
+        lots: Optional[float]
+    ) -> Optional[OrderResult]:
+        """
+        Refuse a spot close the account cannot fund, as the same sell or buy is refused (#639).
+
+        At spot a close is a trade like any other: closing a LONG sells the base, closing a
+        SHORT buys it back with the quote. A SELL of coins the account no longer holds is denied
+        at submission, and a close of the same coins used to go through and leave the base
+        balance negative — a sell no venue executes. Checked by the same calculation an open
+        uses (`_outflow_for`, `get_free_asset_funds`), so what unfilled orders claim counts here
+        too. Called by BOTH executors in `close_position`, after a close already in flight was
+        joined. Margin settles P&L and moves no coins, so it is not checked.
+
+        Args:
+            position: The position the close would reduce
+            lots: The requested size, or None for a full close
+
+        Returns:
+            A DENIED OrderResult naming what the close needs and what is free, or None when
+            the close may proceed
+        """
+        if not self._spot_mode:
+            return None
+        close_lots = position.lots if lots is None else min(lots, position.lots)
+        shortfall = self._close_shortfall(position, close_lots, price=None)
+        if shortfall is None:
+            return None
+        self.logger.warning(
+            f'Close of {position.position_id} refused at submission: {shortfall}')
+        return self._refusal_for_close(
+            order_id=f'close_{position.position_id}',
+            position=position,
+            lots=lots,
+            status=OrderStatus.DENIED,
+            reason=RejectionReason.INSUFFICIENT_FUNDS,
+            message=f'Close of {position.position_id} refused: {shortfall}',
+        )
+
+    def _close_shortfall(
+        self,
+        position: Position,
+        close_lots: float,
+        price: Optional[float],
+        exclude_order_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        What a spot close would spend beyond what is free, said in one sentence.
+
+        Args:
+            position: The position being closed
+            close_lots: The lots the close sells or buys back
+            price: The price a buy-back pays, or None to take the current ask
+            exclude_order_id: The order being filled, left out of the claims
+
+        Returns:
+            The sentence when the close cannot be funded, None when it can or cannot be
+            priced yet
+        """
+        closing = (OrderDirection.SHORT if position.direction == OrderDirection.LONG
+                   else OrderDirection.LONG)
+        currency, required = self._outflow_for(
+            symbol=position.symbol, direction=closing, lots=close_lots,
+            order_type=OrderType.MARKET, price=price)
+        if currency is None:
+            return None
+        funds = self.get_free_asset_funds(currency, exclude_order_id=exclude_order_id)
+        if required <= funds.available + _CLOSE_LOT_EPSILON:
+            return None
+        verb = 'sells' if closing == OrderDirection.SHORT else 'buys back with'
+        return (f'closing it {verb} {required:.8f} {currency}, '
+                f'available: {funds.available:.8f} {currency} '
+                f'(balance {funds.balance:.8f}, committed by unfilled orders '
+                f'{funds.committed:.8f})')
 
     # ============================================
     # Ending records — what ended, how, and when
@@ -1924,7 +2006,8 @@ class AbstractTradeExecutor(ABC):
         Called by subclasses when their execution mechanism confirms a close:
         - TradeSimulator: after latency delay completes (fill_price=None → use tick)
         - LiveTradeExecutor: after broker confirms close (fill_price=broker's price)
-        - TradeSimulator._close_at_level: a synthetic close with fill_price=SL/TP level
+        - TradeSimulator._close_on_breach: a synthetic close in the breaching tick — a stop at
+          the tick (fill_price=None), a target at its level
 
         This is the SHARED fill logic — identical for simulation and live.
 
@@ -2065,6 +2148,23 @@ class AbstractTradeExecutor(ABC):
 
         # Capture executed_lots before portfolio call (position may be deleted on full close)
         executed_lots = close_lots if is_partial else position.lots
+
+        # #639 — at spot the close spends what the account holds, checked as an open's fill is:
+        # the simulation plays the venue and refuses a close it cannot fund, a live session
+        # books the close the venue executed and reports that the book disagrees
+        if self._spot_mode:
+            shortfall = self._close_shortfall(
+                position, executed_lots, price=close_price,
+                exclude_order_id=pending_order.pending_order_id)
+            if shortfall is not None and self._shortfall_refuses_fill(pending_order, shortfall):
+                rejection = self._book_order_result(self._rejection_for_pending(
+                    pending_order,
+                    reason=RejectionReason.INSUFFICIENT_FUNDS,
+                    message=f'Close of {position_id} refused: {shortfall}',
+                ), pending_order)
+                self._notify_outcome(pending_order.direction, rejection, pending_order)
+                self.logger.warning(f'Close of {position_id} rejected at fill: {shortfall}')
+                return None
 
         # Pre-close total — captured before the portfolio reduces position.lots
         # in place, so the partial-close event (#348) reports remaining correctly.
@@ -2655,6 +2755,45 @@ class AbstractTradeExecutor(ABC):
             The orders booked unaccounted
         """
         return []
+
+    def begin_session_end(self) -> None:
+        """
+        Mark the moment the session-end event goes out, so the orders the strategy sends from it
+        can be told from those already on their way (#642).
+
+        Called by the decision-event dispatcher before it delivers the event, in both pipelines.
+        """
+        self._sent_after_session_end = set()
+
+    def was_sent_after_session_end(self, order_id: str) -> bool:
+        """
+        Whether an order was sent once the session-end event had gone out (#642).
+
+        Args:
+            order_id: The order's id — for a close, the position's
+
+        Returns:
+            True for an order the strategy sent from its session-end hooks
+        """
+        return self._sent_after_session_end is not None and order_id in self._sent_after_session_end
+
+    def hold_new_orders(self) -> None:
+        """
+        Keep every order sent from now on from the venue: the session is over (#642).
+
+        Default: nothing. The simulation's withdrawal step finds such an order in its latency
+        queue; a live session holds it back in its request processor.
+        """
+        return None
+
+    def settle_session_end_orders(self) -> None:
+        """
+        Settle the orders the strategy sent from on_session_end, as a live stop's second wait
+        does (#642).
+
+        Default: nothing — the live pipeline's wait does it.
+        """
+        return None
 
     def withdraw_unsent_orders(self) -> List[str]:
         """

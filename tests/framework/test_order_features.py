@@ -741,24 +741,42 @@ class TestALiveExecutorHoldsNoLevel:
 
 
 class TestASimulationEnforcesTheLevelsPositionsCarry:
+    """
+    A breached stop fills at the market the breaching tick offers, a target at its level (#629).
 
-    def _simulator(self) -> TradeSimulator:
+    A stop is a stop order: the price that reaches it is the price there is, so on a gap the
+    position closes at the gap's price, never at a level the market skipped. A target is a limit
+    and fills no better than its level. Both are measured against the level they fired at.
+    """
+
+    def _simulator(self, spot_mode: bool) -> TradeSimulator:
         return TradeSimulator(
             broker_config=BrokerConfig(
                 BrokerType.KRAKEN_SPOT, MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL)),
             initial_balance=10000.0, account_currency='USD',
             logger=GlobalLogger('OrderFeatures'), seeds={'inbound_latency_seed': 42},
-            inbound_latency_min_ms=0, inbound_latency_max_ms=0)
+            inbound_latency_min_ms=0, inbound_latency_max_ms=0, spot_mode=spot_mode,
+            # A short at spot sells coins it has to hold
+            initial_balances={'USD': 10000.0, 'BTC': 0.02} if spot_mode else None)
 
     def _tick(self, bid: float, ask: float) -> TickData:
         return TickData(timestamp=_T0, symbol='BTCUSD', bid=bid, ask=ask, volume=1.0)
 
-    @pytest.mark.parametrize('direction, breach, level, reason', [
-        (OrderDirection.LONG, (48900.0, 48901.0), {'stop_loss': 49000.0}, CloseReason.SL_TRIGGERED),
-        (OrderDirection.LONG, (51100.0, 51101.0), {'take_profit': 51000.0}, CloseReason.TP_TRIGGERED),
-    ])
-    def test_it_fills_at_the_level_itself(self, direction, breach, level, reason):
-        sim = self._simulator()
+    def _breach(self, spot_mode: bool, direction: OrderDirection, level: Dict[str, float],
+                breach: tuple) -> Any:
+        """
+        Open one position carrying a level at 50,000, then feed the tick that breaches it.
+
+        Args:
+            spot_mode: The account model
+            direction: The position's direction
+            level: The level the order carries, by its keyword
+            breach: The breaching tick's bid and ask
+
+        Returns:
+            The simulator and the one trade it booked
+        """
+        sim = self._simulator(spot_mode)
         sim.on_tick(self._tick(50000.0, 50001.0))
         sim.open_order(OpenOrderRequest(symbol='BTCUSD', order_type=OrderType.MARKET,
                                         direction=direction, lots=0.01, **level))
@@ -768,10 +786,55 @@ class TestASimulationEnforcesTheLevelsPositionsCarry:
         sim.on_tick(self._tick(*breach))
 
         trade, = sim.portfolio.get_trade_history()
-        assert trade.close_reason == reason
-        assert trade.exit_price == pytest.approx(next(iter(level.values())))
-        assert trade.exit_level == pytest.approx(next(iter(level.values())))
+        return sim, trade
+
+    @pytest.mark.parametrize('spot_mode', [False, True], ids=['margin', 'spot'])
+    @pytest.mark.parametrize('direction, breach, stop, market', [
+        (OrderDirection.LONG, (48900.0, 48901.0), 49000.0, 48900.0),
+        (OrderDirection.SHORT, (51100.0, 51101.0), 51000.0, 51101.0),
+    ], ids=['long', 'short'])
+    def test_a_stop_the_price_gaps_through_fills_at_the_market(
+            self, spot_mode, direction, breach, stop, market):
+        sim, trade = self._breach(spot_mode, direction, {'stop_loss': stop}, breach)
+
+        assert trade.close_reason == CloseReason.SL_TRIGGERED
+        assert trade.exit_price == pytest.approx(market)
+        assert trade.exit_level == pytest.approx(stop)
         assert sim.get_execution_stats().sl_tp_triggered == 1
+
+    @pytest.mark.parametrize('spot_mode', [False, True], ids=['margin', 'spot'])
+    def test_a_stop_the_price_touches_fills_at_its_level(self, spot_mode):
+        _, trade = self._breach(
+            spot_mode, OrderDirection.LONG, {'stop_loss': 49000.0}, (49000.0, 49001.0))
+
+        assert trade.exit_price == pytest.approx(49000.0)
+
+    @pytest.mark.parametrize('spot_mode', [False, True], ids=['margin', 'spot'])
+    @pytest.mark.parametrize('direction, breach, target', [
+        (OrderDirection.LONG, (51100.0, 51101.0), 51000.0),
+        (OrderDirection.SHORT, (48900.0, 48901.0), 49000.0),
+    ], ids=['long', 'short'])
+    def test_a_target_the_price_gaps_through_fills_at_its_level(
+            self, spot_mode, direction, breach, target):
+        sim, trade = self._breach(spot_mode, direction, {'take_profit': target}, breach)
+
+        assert trade.close_reason == CloseReason.TP_TRIGGERED
+        assert trade.exit_price == pytest.approx(target)
+        assert trade.exit_level == pytest.approx(target)
+        assert sim.get_execution_stats().sl_tp_triggered == 1
+
+    @pytest.mark.parametrize('spot_mode', [False, True], ids=['margin', 'spot'])
+    def test_a_gapped_stop_books_the_price_it_records(self, spot_mode):
+        """The record's net P&L and the account's move both come from the exit price."""
+        sim, trade = self._breach(
+            spot_mode, OrderDirection.LONG, {'stop_loss': 49000.0}, (48000.0, 48001.0))
+
+        # 0.01 BTC bought at the ask of 50,001 and sold at the gap's bid of 48,000
+        assert trade.gross_pnl == pytest.approx((48000.0 - 50001.0) * 0.01)
+        # The P&L belongs to the price the record names: at margin it used to come from the
+        # last mark while the record named the level
+        assert trade.gross_pnl == pytest.approx((trade.exit_price - trade.entry_price) * 0.01)
+        assert trade.net_pnl == pytest.approx(trade.gross_pnl - trade.total_fees)
 
 
 class TestAStoredBookWithALevelIsRefused:

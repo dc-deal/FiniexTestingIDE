@@ -28,6 +28,9 @@ Strategy in one paragraph:
   backtest. No venue holds them — which is what makes the logic run on a venue whose
   API takes no stop for a position — so a position is unprotected while this process
   is not running.
+- With `close_at_session_end` it closes what it holds on its way out, from the session-end
+  event, and hears how each close ended (#642) — a backtest at its data end, a session through
+  its stop's second wait, which runs on a requested stop.
 
 Multi-position note: the backtest engine runs ONE symbol per scenario today
 (portfolio multi-symbol is #369 / V1.5), so multi-position here means several
@@ -36,7 +39,7 @@ trailing stop / partial close.
 """
 
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.own_exit_levels import OwnExitLevels
@@ -46,6 +49,11 @@ from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartVerdict,
 )
 from python.framework.types.component_metadata_types import ComponentMetadata
+from python.framework.types.decision_event_types import (
+    DecisionEventType,
+    SessionEndEvent,
+    SessionEndOrderOutcomeEvent,
+)
 from python.framework.types.decision_logic_types import (
     AwarenessLevel,
     Decision,
@@ -119,6 +127,7 @@ class TrendChannelReference(AbstractDecisionLogic):
         self.lot_size = self.params.get('lot_size')
         self.min_entry_capital = self.params.get('min_entry_capital')
         self.write_strategy_files = self.params.get('write_strategy_files')
+        self.close_at_session_end = self.params.get('close_at_session_end')
 
         # ============================================
         # Per-tick worker read (stashed for the execution pass)
@@ -217,6 +226,12 @@ class TrendChannelReference(AbstractDecisionLogic):
                 description='Keep the last submitted setup in the run as the strategy file '
                             'strategy_files/last_setup.json'
             ),
+            'close_at_session_end': InputParamDef(
+                param_type=bool, default=False,
+                description='Close every open position from the session-end event, so the run '
+                            'ends flat — a backtest at its data end, a session on a requested '
+                            'stop (#642)'
+            ),
         }
 
     @classmethod
@@ -274,10 +289,50 @@ class TrendChannelReference(AbstractDecisionLogic):
     def get_metadata(cls) -> ComponentMetadata:
         """Didactic CORE reference logic — teaching example, no profitability claim."""
         return ComponentMetadata(
-            version='1.6.0',
+            version='1.7.0',
             doc_link='docs/user_guides/trend_channel_reference_guide.md',
             recommended_markets=('forex',),
         )
+
+    @classmethod
+    def get_subscribed_events(cls) -> Set[DecisionEventType]:
+        """
+        The session's end and how the orders sent on the way out ended.
+
+        Returns:
+            The two event types the session-end close needs
+        """
+        return {DecisionEventType.SESSION_END, DecisionEventType.SESSION_END_ORDER_OUTCOME}
+
+    def on_session_end(self, event: SessionEndEvent) -> None:
+        """
+        Close what is held, when configured to end flat (#642).
+
+        Both pipelines settle such a close — a backtest at its last quote, a session through the
+        stop's second wait — and report how it ended to on_session_end_order_outcome.
+
+        Args:
+            event: Session-end detail (reason, severity)
+        """
+        if not self.close_at_session_end:
+            return
+        for position in self.trading_api.get_open_positions():
+            result = self.trading_api.close_position(position.position_id)
+            if result.is_refused:
+                self.logger.warning(
+                    f'Session-end close of {position.position_id} refused: '
+                    f'{result.rejection_message}')
+
+    def on_session_end_order_outcome(self, event: SessionEndOrderOutcomeEvent) -> None:
+        """
+        Say how a close sent on the way out ended.
+
+        Args:
+            event: The order, how it ended, and its booked row
+        """
+        self.emit_event(
+            f'Session-end order {event.order_id}: {event.status.value}',
+            AwarenessLevel.NOTICE, 'session_end_order')
 
     def on_market_data_stale(self, status: MarketDataStatus) -> None:
         """

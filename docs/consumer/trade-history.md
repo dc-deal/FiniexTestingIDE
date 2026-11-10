@@ -110,7 +110,8 @@ submission, signed so that **a value above zero means worse than that price**.
 **A stop-loss or take-profit exit is measured against the level that fired instead** — its
 `exit_slippage` and its `exit_slippage_pct`, the percent a share of the level
 (`exit_slippage_measured_against: "protective_level"`, otherwise `"submission_mid"`), and
-`exit_level` names it. A backtest fills a level the position carries AT the level, so it reads 0; a
+`exit_level` names it. A backtest fills a stop-loss in the tick that breaches it, at that tick's
+market, so it reads what a gap cost and 0 on a touch, and a take-profit at its level, so it reads 0; a
 level the strategy keeps itself is a close it sends once the market has reached the level, so it
 fills at the next price and reads what that cost, as a live session does. That level is on no
 position, so `stop_loss` and `take_profit` are null and `exit_level` is the only place it is read.

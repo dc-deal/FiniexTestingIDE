@@ -830,6 +830,7 @@ NEXT drain, so a hook that reacts by placing an order cannot extend the pass it 
 | `test_drain_empty_buffer_is_noop` | Draining nothing does nothing |
 | `test_the_session_end_names_the_request_that_ended_it` | `emit_session_end()` — the one call both loops end through — carries the request's reason and severity |
 | `test_a_session_nobody_ended_ran_out_of_input` | Without a request the event says `tick source exhausted`, NORMAL |
+| `TestTheOrdersSentAtTheSessionEnd` (#642) | After the session-end event an order the logic sent from its session-end hooks arrives as its session-end outcome — not as `ORDER_FILLED` — once `emit_session_end_orders()` delivers it; the ending of an order sent before the event is not delivered; a close that ended without a fill names its position |
 
 ---
 

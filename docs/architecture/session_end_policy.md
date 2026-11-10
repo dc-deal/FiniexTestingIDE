@@ -245,9 +245,10 @@ wait for it would only run out, and the cleanup books it unaccounted with an ERR
 **And once more after the session-end event.** A strategy may close on its way out, from
 `on_session_end`. Such a close is waited for the same way, so its fill is booked before the cleanup,
 and both waits keep to one bound: the second goes on from the time the first spent, and does not
-run at all once the first ran out, because the worker stopped with it. The logic does not hear what
-this second wait settles: the session-end event stays the last thing it is told. An open and its
-close carry the same id, so the stop tells its orders apart by id and action.
+run at all once the first ran out, because the worker stopped with it. The logic hears what this
+second wait settled, and how the bound ended what it did not, in `on_session_end_order_outcome`, once
+the wait is over (#642); a backtest settles such an order at its last quote the same way. An open and
+its close carry the same id, so the stop tells its orders apart by id and action.
 
 ### One wait pass
 

@@ -471,6 +471,12 @@ def execute_tick_loop(
         # exhaustion or session-end request). Delivered before reporting.
         if decision_event_dispatcher is not None:
             decision_event_dispatcher.emit_session_end()
+            # #642 — an order the strategy sent from the session-end event is settled, as a live
+            # stop's second wait settles it, and the strategy hears how each ended; one sent
+            # after that is withdrawn, as live withdraws it
+            trade_simulator.settle_session_end_orders()
+            decision_event_dispatcher.emit_session_end_orders()
+            trade_simulator.withdraw_unsent_orders()
 
         if has_clipping:
             scenario_logger.info(

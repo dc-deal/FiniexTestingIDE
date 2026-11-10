@@ -37,6 +37,7 @@ from python.framework.types.decision_event_types import (
     PartialCloseEvent,
     PositionClosedEvent,
     SessionEndEvent,
+    SessionEndOrderOutcomeEvent,
 )
 from python.framework.types.decision_logic_types import (
     AwarenessLevel,
@@ -697,8 +698,22 @@ class AbstractDecisionLogic(ABC):
         """
         React to the session ending. No-op unless overridden.
 
+        An order sent from here — a close on the way out — is settled in both pipelines, and
+        how it ended is reported to on_session_end_order_outcome() (#642).
+
         Args:
             event: Session-end detail (reason, severity)
+        """
+        pass
+
+    def on_session_end_order_outcome(self, event: SessionEndOrderOutcomeEvent) -> None:
+        """
+        Hear how an order sent from on_session_end ended. No-op unless overridden.
+
+        The session is over: an order sent from this hook is withdrawn, never sent.
+
+        Args:
+            event: The order, how it ended, and its booked row
         """
         pass
 

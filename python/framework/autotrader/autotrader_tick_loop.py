@@ -716,10 +716,14 @@ class AutotraderTickLoop:
         if self._decision_event_dispatcher is not None:
             self._decision_event_dispatcher.emit_session_end()
             # An order the logic sent from the session-end event is waited for as well, so
-            # its fill is booked before the cleanup. The logic does not hear what this wait
-            # settles: the session-end event stays the last thing it is told.
+            # its fill is booked before the cleanup, and the logic hears how it ended (#642)
             if not self._order_wait_ran_out:
                 self._wait_for_orders(ticks_processed, after_session_end=True)
+            # The session is over: what the logic sends from the outcome hook is held back and
+            # withdrawn, never sent — the simulation's settle, emit and withdraw, in a session
+            self._executor.hold_new_orders()
+            self._decision_event_dispatcher.emit_session_end_orders()
+            self._executor.withdraw_unsent_orders()
 
         # Final display snapshot — ensures the last rendered frame reflects
         # the terminal pipeline state regardless of display refresh timing.

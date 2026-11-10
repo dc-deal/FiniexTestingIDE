@@ -93,9 +93,10 @@ schema with their values.
 **A fill's slippage is measured against a price set before the fill could move it.** A market order
 against the mid when it was sent, so every part of a split fill is measured against the same
 price; a limit against its limit, which a fill can only meet or beat; a stop against its trigger. A
-stop-loss or take-profit close against the level that fired: a backtest fills such a close at its
-level and reads 0, a live session reads how far past the level the venue filled it — the difference
-a comparison of the two runs is after. The [execution statistics](/api/v1/docs/execution-stats)
+stop-loss or take-profit close against the level that fired: a backtest fills a take-profit at its
+level and reads 0, and a stop-loss at the market of the tick that breaches it, so it reads the gap it
+fell through; a live session reads how far past the level the venue filled it — the difference a
+comparison of the two runs is after. The [execution statistics](/api/v1/docs/execution-stats)
 summarise it per reference.
 
 ## What is null, and the one field that never is

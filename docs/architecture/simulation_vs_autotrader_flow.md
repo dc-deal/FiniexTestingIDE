@@ -46,6 +46,13 @@ execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_con
         │
         └── 6. process_live_export(...)              # Dashboard updates (time-based)
 
+    # Session end (#348, #642) — only when the logic subscribes to decision events
+    decision_event_dispatcher.emit_session_end()         # on_session_end; the executor
+                                                         #   records what is sent from here on
+    trade_simulator.settle_session_end_orders()          # its orders, at the last quote
+    decision_event_dispatcher.emit_session_end_orders()  # on_session_end_order_outcome
+    trade_simulator.withdraw_unsent_orders()             # what that hook sent, never sent
+
     # Post-loop cleanup
     trade_simulator.finish_remaining_orders()
     trade_simulator.check_clean_shutdown()

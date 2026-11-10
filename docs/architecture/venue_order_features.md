@@ -50,19 +50,60 @@ It keeps its levels itself, checks them on every tick and closes through `close_
 - **The same holds while the feed is silent.** An own exit needs a price, so an outage of the feed
   stops it too. Only a logic's own heartbeat ladder can close then, by elapsed time.
 - **An own exit fills at the next price after the level,** in a backtest as in a session. A level a
-  position carries in a backtest fills AT the level. The first is what a venue without held levels can
-  deliver, so it is what a backtest of such a strategy should show.
+  position carries in a backtest fills in the tick that breaches it: a stop at that tick's market, a
+  target at its level. The first is what a venue without held levels can deliver, so it is what a
+  backtest of such a strategy should show.
 - **A stop order a logic rests itself is an entry, not a protection.** At spot, a SELL stop that fills
   books as a new SHORT position beside the LONG it was meant to protect, with nothing linking the two.
+  The coins it sold are gone from the LONG, so closing that LONG afterwards is denied with
+  `insufficient_funds`, as a SELL of coins the account does not hold is (#639); and while the stop
+  rests, it claims the coins, so a close of the LONG is denied until the stop is cancelled.
 - **A moved stop exists only in the logic's memory,** and it survives a restart through the algo state
   persistence, as of its last save. Without a saved state it is derived again from the entry price.
 
 ## The simulation's own level check
 
 A level a position carries is enforced by the simulation alone (`TradeSimulator`), against every tick:
-a synthetic close AT the level, in the tick and deterministic. It serves a backtest on a venue that
+a synthetic close in the tick that breaches the level, deterministic. A stop fills at that tick's
+market — its bid for a long, its ask for a short — which on a gap is the gap's price and on a touch
+the level: a stop is filled by the price that reaches it, never by a price the market skipped, as
+nautilus_trader, backtrader and MetaTrader 5 fill one (#629). A target fills at its level, because
+the better price a gap would give a limit is the optimistic one. It serves a backtest on a venue that
 holds levels, and one that declares the exception. A session has no such check, because it holds no
 level.
+
+### A stop the price gaps through, step by step
+
+A long of 0.01 BTC, bought at the ask of 50,001, carries a stop at 49,000. Every tick the simulation
+checks the closing side of the book against the level — closing a long sells, so the bid:
+
+```
+tick n     bid 50,000 / ask 50,001    on_tick → _check_sl_tp_triggers
+                                      is_stop_reached(sell, 49,000, bid, ask)  → bid ≤ 49,000?  no
+
+tick n+1   bid 48,900 / ask 48,901    the market jumps over the stop
+                                      is_stop_reached(...)                     → yes
+                                      _close_on_breach(position, fill_price=None)
+                                        → _fill_close_order: exit at the tick's bid, 48,900
+                                        → exit_level 49,000, the level that fired
+```
+
+| Case | Breaching tick | Exit | Slippage against the level |
+|---|---|---|---|
+| a stop the price gaps through | bid 48,900 | 48,900, the market | 100 |
+| a stop the price touches | bid 49,000 | 49,000 | 0 |
+| a target at 51,000 the price gaps through | bid 51,100 | 51,000, the level | 0 |
+
+Filled at its level, the stop above would book a gross P&L of −10.01 where any venue books about
+−11.01: on every gap the backtest would be better than a session by the whole gap.
+
+The close books the price it records in both account models: at spot the balances move by the exit
+price, at margin the position is re-marked at the exit price before its P&L reaches the balance, and
+a partial close values its portion at its exit price too, never at the last mark.
+
+At spot the close also needs the coins. Where they are gone — a separate SELL sold them — the close
+is refused at the fill, booked rejected once with `insufficient_funds`, and the level is not tried
+again, as a venue cancels a stop it cannot fund; the position stays in the book (#639).
 
 ## Coming back: a stored book with a level
 

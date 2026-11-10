@@ -24,6 +24,7 @@ from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.trading_env.broker_config import BrokerConfig
+from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
 from python.framework.types.aggregation_types import Reduction
 from python.framework.types.api.report_types import (
@@ -33,7 +34,12 @@ from python.framework.types.api.report_types import (
     RunResultRow,
     RunSummary,
 )
-from python.framework.types.decision_event_types import DecisionEvent, OrderCancelledEvent
+from python.framework.types.decision_event_types import (
+    DecisionEvent,
+    DecisionEventType,
+    OrderCancelledEvent,
+    SessionEndSeverity,
+)
 from python.framework.types.live_types.live_execution_types import (
     BrokerOrderStatus,
     BrokerResponse,
@@ -237,6 +243,169 @@ class TestEveryEndingHasARowInTheSimulation:
             (OrderType.MARKET, OrderStatus.EXPIRED, OrderEndReason.SCENARIO_END),
         ], 'an order still on its way used to end without any row'
         assert sim.get_execution_stats().orders_expired == 2
+
+
+class _ActsOnTheWayOut:
+    """A logic that sends orders from its session-end event and records what it hears after."""
+
+    def __init__(self, act, then=None) -> None:
+        self.heard: List[str] = []
+        self._act = act
+        self._then = then
+
+    @classmethod
+    def get_subscribed_events(cls):
+        return set(DecisionEventType)
+
+    def on_order_filled(self, event) -> None:
+        self.heard.append(f'filled:{event.order_id}')
+
+    def on_order_rejected(self, event) -> None:
+        self.heard.append(f'rejected:{event.order_id}')
+
+    def on_order_unaccounted(self, event) -> None:
+        self.heard.append(f'unaccounted:{event.order_id}')
+
+    def on_order_cancelled(self, event) -> None:
+        self.heard.append(f'cancelled:{event.order_id}')
+
+    def on_partial_close(self, event) -> None:
+        self.heard.append('partial_close')
+
+    def on_position_closed(self, event) -> None:
+        self.heard.append(f'closed:{event.position_id}')
+
+    def on_session_end(self, event) -> None:
+        self.heard.append('session_end')
+        self._act()
+
+    def on_session_end_order_outcome(self, event) -> None:
+        self.heard.append(f'outcome:{event.order_id}:{event.status.value}')
+        if self._then is not None:
+            then, self._then = self._then, None
+            then()
+
+
+def _end_the_session(sim: TradeSimulator, logic: _ActsOnTheWayOut) -> None:
+    """
+    The simulation's end, in the order its tick loop runs it once the data is over.
+
+    Args:
+        sim: The simulator
+        logic: What hears the decision events
+    """
+    dispatcher = DecisionEventDispatcher(logic, sim, GlobalLogger('SessionEndOrders'))
+    dispatcher.emit_session_end()
+    sim.settle_session_end_orders()
+    dispatcher.emit_session_end_orders()
+    sim.withdraw_unsent_orders()
+    sim.finish_remaining_orders()
+
+
+class TestAnOrderSentAtTheSessionEndInTheSimulation:
+    """
+    An order the strategy sends from on_session_end ends as it ends live (#642).
+
+    Live, the stop waits once more and books its fill; in a backtest no tick followed, so it
+    expired and a strategy closing on its way out ended flat live and open in its backtest. The
+    simulation now settles it at the last quote and tells the strategy how it ended.
+    """
+
+    @ACCOUNT_MODELS
+    def test_a_close_sent_from_the_event_ends_flat_and_is_heard(self, spot_mode):
+        sim = _simulator(spot_mode)
+        sim.open_order(_market())
+        _tick(sim, msc=1001)
+        position_id, = [p.position_id for p in sim.get_open_positions()]
+        logic = _ActsOnTheWayOut(lambda: sim.close_position(position_id))
+
+        _end_the_session(sim, logic)
+
+        assert sim.get_open_positions() == []
+        trade, = sim.get_trade_history()
+        assert trade.exit_price == pytest.approx(_BID)
+        assert logic.heard[-2:] == ['session_end', f'outcome:{position_id}:executed']
+
+    @ACCOUNT_MODELS
+    def test_a_market_order_sent_from_the_event_fills_at_the_last_quote(self, spot_mode):
+        sim = _simulator(spot_mode)
+        logic = _ActsOnTheWayOut(lambda: sim.open_order(_market()))
+
+        _end_the_session(sim, logic)
+
+        position, = sim.get_open_positions()
+        assert position.entry_price == pytest.approx(_ASK)
+        assert logic.heard[-1] == f'outcome:{position.position_id}:executed'
+
+    def test_a_resting_order_sent_from_the_event_expires_and_is_heard(self):
+        sim = _simulator(spot_mode=False)
+        sent: List[str] = []
+        logic = _ActsOnTheWayOut(lambda: sent.append(sim.open_order(_limit()).order_id))
+
+        _end_the_session(sim, logic)
+
+        ended = _ended(sim.get_order_history())
+        assert [(r.order_id, r.status) for r in ended] == [(sent[0], OrderStatus.EXPIRED)]
+        assert logic.heard[-1] == f'outcome:{sent[0]}:expired'
+
+    def test_a_cancel_sent_from_the_event_is_applied(self):
+        """A cancel waited for a tick that never came, and its order expired instead."""
+        sim = _simulator(spot_mode=False)
+        resting = sim.open_order(_limit()).order_id
+        _tick(sim, msc=1001)                                  # the limit arrives and rests
+        logic = _ActsOnTheWayOut(lambda: sim.cancel_limit_order(resting))
+
+        _end_the_session(sim, logic)
+
+        ended, = _ended(sim.get_order_history())
+        assert (ended.order_id, ended.status, ended.initiator, ended.end_reason) == (
+            resting, OrderStatus.CANCELLED, OrderInitiator.STRATEGY,
+            OrderEndReason.CANCEL_REQUESTED)
+
+    def test_an_order_sent_from_the_outcome_hook_is_withdrawn(self):
+        sim = _simulator(spot_mode=False)
+        sent: List[str] = []
+        logic = _ActsOnTheWayOut(
+            lambda: sim.open_order(_market()),
+            then=lambda: sent.append(sim.open_order(_market()).order_id))
+
+        _end_the_session(sim, logic)
+
+        withdrawn, = [r for r in sim.get_order_history() if r.order_id == sent[0]
+                      and r.status is not OrderStatus.PENDING]
+        assert (withdrawn.status, withdrawn.initiator, withdrawn.end_reason) == (
+            OrderStatus.CANCELLED, OrderInitiator.FRAMEWORK, OrderEndReason.SESSION_END)
+        assert len(sim.get_open_positions()) == 1
+        assert not any(sent[0] in heard for heard in logic.heard), 'the session was over'
+
+    def test_an_order_already_on_its_way_still_expires_with_the_data(self):
+        """Only what the strategy sends from the event is settled; the data ends the rest."""
+        sim = _simulator(spot_mode=False, latency_ms=500)
+        travelling = sim.open_order(_market()).order_id
+        logic = _ActsOnTheWayOut(lambda: None)
+
+        _end_the_session(sim, logic)
+
+        ended, = _ended(sim.get_order_history())
+        assert (ended.order_id, ended.status, ended.end_reason) == (
+            travelling, OrderStatus.EXPIRED, OrderEndReason.SCENARIO_END)
+        assert logic.heard == ['session_end']
+
+    def test_after_an_emergency_end_nothing_is_settled(self):
+        """A live stop does not wait through an EMERGENCY end, so neither does the simulation."""
+        sim = _simulator(spot_mode=False)
+        sim.open_order(_market())
+        _tick(sim, msc=1001)
+        position_id, = [p.position_id for p in sim.get_open_positions()]
+        sim.request_session_end('operator pressed Ctrl+C twice', SessionEndSeverity.EMERGENCY)
+        logic = _ActsOnTheWayOut(lambda: sim.close_position(position_id))
+
+        _end_the_session(sim, logic)
+
+        assert [p.position_id for p in sim.get_open_positions()] == [position_id]
+        withdrawn = [r for r in sim.get_order_history()
+                     if r.end_reason is OrderEndReason.SESSION_END]
+        assert [r.status for r in withdrawn] == [OrderStatus.CANCELLED]
 
 
 class TestAProtectiveExitInTheSimulation:

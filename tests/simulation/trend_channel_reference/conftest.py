@@ -31,6 +31,8 @@ from tests.shared.fixture_helpers import (
 _FIXTURE_DIR = Path(__file__).resolve().parents[2] / 'fixtures' / 'scenario_sets' / 'trend_channel_reference'
 LIMIT_FIXTURE = str(_FIXTURE_DIR / 'trend_channel_reference_limit_fixture.json')
 STOP_FIXTURE = str(_FIXTURE_DIR / 'trend_channel_reference_stop_fixture.json')
+SESSION_END_CLOSE_FIXTURE = str(
+    _FIXTURE_DIR / 'trend_channel_reference_session_end_close_fixture.json')
 
 
 # =============================================================================
@@ -47,6 +49,12 @@ def limit_batch() -> BatchExecutionSummary:
 def stop_batch() -> BatchExecutionSummary:
     """Execute the stop_breakout fixture once per session."""
     return run_scenario(STOP_FIXTURE)
+
+
+@pytest.fixture(scope='session')
+def session_end_close_batch() -> BatchExecutionSummary:
+    """Execute the fixture whose data ends while positions are open, closing them (#642)."""
+    return run_scenario(SESSION_END_CLOSE_FIXTURE)
 
 
 # =============================================================================

@@ -903,6 +903,11 @@ machine's own clock. See [Data Import Pipeline](data_pipeline/data_import_pipeli
 the activity list) is the terminal session an activity was started from, where an installation
 names an environment variable that carries one.
 
+**session-end order outcome** (`on_session_end_order_outcome`, `SessionEndOrderOutcomeEvent`) — How an
+order a strategy sent from `on_session_end` ended: `executed`, `rejected`, `undelivered`,
+`unaccounted`, `cancelled` (withdrawn) or `expired`, told once after the session-end event, in a
+backtest as in a session (#642). Not the *run outcome*, which grades how the whole run ended.
+
 **shared fill** (`shared_by`) — An execution that several trade rows of one unit carry: a partial
 close copies the position's entry fills onto every record it produces. `shared_by` counts them
 per unit, because two scenarios on one symbol mint the same synthetic ids.
@@ -926,7 +931,8 @@ statistics' `fill_slippage`): `submission_mid`, the mid when a market order was 
 stop-limit; `protective_level`, the stop-loss or take-profit level that closed the position. A
 trade's `entry_slippage` and `exit_slippage` (and their `_pct`) measure its entry and exit price
 against the submission mid, except a protective exit, which is measured against its level — where a
-backtest reads 0, because it fills there. See [Order history](consumer/order-history.md).
+backtest's take-profit reads 0, because it fills there, and its stop-loss the gap it fell through. See
+[Order history](consumer/order-history.md).
 
 **snapshot** — Several meanings, each qualified. A *snapshot member* is an *entry member*'s shape:
 a file that says what is true now and is replaced whole, never appended to — a run's header, a
