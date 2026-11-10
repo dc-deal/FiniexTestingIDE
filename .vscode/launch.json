@@ -1359,6 +1359,25 @@
             }
         },
         {
+            "name": "🔀 Divergence Report: compare (prompt)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/divergence_report_cli.py",
+            "args": [
+                "compare",
+                "--deployment",
+                "${input:deploymentId}",
+                "--decision-timeframe",
+                "D1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 9
+            }
+        },
+        {
             "name": "🖥️ Activities: Check Free Memory (prompt)",
             "type": "debugpy",
             "request": "launch",
@@ -1372,7 +1391,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 9
+                "order": 10
             }
         },
         {
@@ -1387,7 +1406,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 10
+                "order": 11
             }
         },
         {
@@ -1404,7 +1423,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 11
+                "order": 12
             }
         },
         {
@@ -1422,7 +1441,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 12
+                "order": 13
             }
         },
         {
@@ -1440,7 +1459,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 13
+                "order": 14
             }
         },
         // ====================================================

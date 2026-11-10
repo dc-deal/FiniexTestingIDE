@@ -994,3 +994,271 @@ class SegmentMeasures(BaseModel):
     equity: EquityTracking = EquityTracking()
     attribution: List[DayAttribution] = []
     unreadable: List[str] = []
+
+
+class DivergenceReading(StrEnum):
+    """
+    Which rules a comparison is read by.
+
+    RUN: the thirty-day run — every binding measure judged, over at least the floor of compared days
+    REHEARSAL: the rehearsal before it, by the verdict rules' rehearsal section — no floor of days,
+        and measure 2 described, never judged: a dry run's fills are simulated on both sides
+    """
+    RUN = 'run'
+    REHEARSAL = 'rehearsal'
+
+
+class DivergenceMeasure(StrEnum):
+    """
+    The measures a verdict is given for.
+
+    DECISIONS: measure 1, each compared day's decision
+    FILL_COMPLETENESS: measure 2a, the lots each order filled
+    EXECUTION_PRICE: measure 2b, each order's fill against its submission mid
+    FEE_RATE: measure 2c, the venue's fee rate against the frozen taker rate
+    SIZE: measure 2d, the order's size against the account's value
+    ATTRIBUTION: the day attribution's residual — the report's own validity
+    CURVE_TRACKING: measure 3, the two account values over time — reported, never binding in this run
+    """
+    DECISIONS = 'decisions'
+    FILL_COMPLETENESS = 'fill_completeness'
+    EXECUTION_PRICE = 'execution_price'
+    FEE_RATE = 'fee_rate'
+    SIZE = 'size'
+    ATTRIBUTION = 'attribution'
+    CURVE_TRACKING = 'curve_tracking'
+
+
+class MeasureState(StrEnum):
+    """
+    How a measure ends.
+
+    PASSED: within its bound over enough compared days
+    FAILED: beyond its bound — every deviating item is named
+    NOT_CHECKED: it could not be judged — the cause is named; never a pass
+    REPORTED: its figures are shown and judged by nobody, in this reading
+    """
+    PASSED = 'passed'
+    FAILED = 'failed'
+    NOT_CHECKED = 'not_checked'
+    REPORTED = 'reported'
+
+
+class Zone(StrEnum):
+    """
+    The zone of a per-order measure (2b, 2c, 2d).
+
+    GREEN: every compared order within its bound
+    YELLOW: one or two orders outside it — passes once each is traced to its cause, every one named
+    RED: more than two outside it
+    """
+    GREEN = 'green'
+    YELLOW = 'yellow'
+    RED = 'red'
+
+
+class DeviatingItem(BaseModel):
+    """
+    One item a measure found beyond its bound, or one it explained.
+
+    Args:
+        trading_day: The day it belongs to
+        at: When it happened; None where the item is the day itself
+        detail: What deviated, with its figures
+        explained: Whether it is an explained deviation — a named flip of measure 1
+    """
+    trading_day: date
+    at: Optional[datetime] = None
+    detail: str = ''
+    explained: bool = False
+
+
+class MeasureChances(BaseModel):
+    """
+    How many chances a measure had to see a divergence — thirty days hold few.
+
+    Args:
+        compared_days: The days compared
+        days_with_an_order: Of them, the days on which either side submitted an order
+        orders: The orders compared, both sides paired
+        fills: The fills on either side
+    """
+    compared_days: int = 0
+    days_with_an_order: int = 0
+    orders: int = 0
+    fills: int = 0
+
+
+class MeasureVerdict(BaseModel):
+    """
+    One measure's verdict over a segment.
+
+    Args:
+        measure: The measure
+        state: How it ended
+        reason: Why, in a sentence
+        bound: The bound it was held to, in words
+        zone: For 2b, 2c and 2d, the zone; None for the others
+        compared: How many items it compared (N) — days for measure 1, orders for measure 2
+        deviating: How many of them deviate (k), the explained ones included
+        share: k ÷ N; None where nothing was compared
+        items: Every deviating item, with its time
+        longest_deviating_run: The longest run of consecutive compared days with a deviating item
+        chances: How many chances it had
+    """
+    measure: DivergenceMeasure
+    state: MeasureState
+    reason: str = ''
+    bound: str = ''
+    zone: Optional[Zone] = None
+    compared: int = 0
+    deviating: int = 0
+    share: Optional[float] = None
+    items: List[DeviatingItem] = []
+    longest_deviating_run: int = 0
+    chances: MeasureChances = MeasureChances()
+
+
+class CrossSection(BaseModel):
+    """
+    One weighted deviation over the binding categories — a display beside the verdict, never the
+    verdict itself.
+
+    Args:
+        weights: The weight of each category, as applied
+        weighted_deviation: Σ weight × share; None where a category had nothing to compare
+        agreement: 1 − the weighted deviation; None as above
+        not_checked: The categories with nothing to compare
+    """
+    weights: Dict[str, float] = {}
+    weighted_deviation: Optional[float] = None
+    agreement: Optional[float] = None
+    not_checked: List[DivergenceMeasure] = []
+
+
+class SegmentVerdict(BaseModel):
+    """
+    A segment's verdict.
+
+    Args:
+        state: Passed only where every binding measure passed; failed where one failed; not checked
+            otherwise
+        reason: Why, in a sentence
+        reading: The rules it was read by
+        compared_days: The days compared
+        excluded_days: The days excluded, each named in the live side's classification
+        day_floor: The fewest compared days a measure may pass over; None in a reading without one
+        longest_excluded_run: The longest run of consecutive excluded days
+        measures: Each measure's verdict
+        cross_section: The weighted deviation over the binding categories
+        notes: What a reader must know to read it — the session's first frame, the bounds' sources
+    """
+    state: MeasureState
+    reason: str = ''
+    reading: DivergenceReading
+    compared_days: int = 0
+    excluded_days: int = 0
+    day_floor: Optional[int] = None
+    longest_excluded_run: int = 0
+    measures: List[MeasureVerdict] = []
+    cross_section: CrossSection = CrossSection()
+    notes: List[str] = []
+
+
+class GateFindingRow(BaseModel):
+    """
+    One finding of the gate, as the report keeps it.
+
+    Args:
+        check: The check that found it
+        severity: Whether it refuses the comparison or only advises
+        message: What it found
+    """
+    check: str
+    severity: str
+    message: str
+
+
+class GateReport(BaseModel):
+    """
+    Whether a segment's backtest may be compared with its sessions at all.
+
+    Args:
+        comparable: True where no finding refuses the comparison
+        findings: Every finding
+        release: The sessions' release whose permitted changes were applied; '' where unknown
+        session_commit: The sessions' framework commit
+        backtest_commit: The backtest's
+        declared_files: The files of the code path that differ, each permitted by a declaration
+    """
+    comparable: bool
+    findings: List[GateFindingRow] = []
+    release: str = ''
+    session_commit: str = ''
+    backtest_commit: str = ''
+    declared_files: List[str] = []
+
+
+class SegmentReport(BaseModel):
+    """
+    One segment of the comparison.
+
+    Args:
+        segment: The live side's segment, its window and its days
+        scenario_set_name: The generated scenario set its backtest ran
+        backtest_run_id: The backtest's run; None where none ran
+        not_compared_because: Why the segment was not compared; '' where it was
+        gate: The gate's answer; None where no backtest ran
+        measures: The measures; None where the segment was not compared
+        verdict: The verdict; None as above
+        venue_unread: What of the venue's record could not be read, with the reason
+    """
+    segment: LiveSegment
+    scenario_set_name: str = ''
+    backtest_run_id: Optional[str] = None
+    not_compared_because: str = ''
+    gate: Optional[GateReport] = None
+    measures: Optional[SegmentMeasures] = None
+    verdict: Optional[SegmentVerdict] = None
+    venue_unread: List[str] = []
+
+
+class DivergenceReport(BaseModel):
+    """
+    A live deployment held against backtests of its windows (#512).
+
+    Args:
+        report_id: The comparison's id, its directory's name
+        created_at: When the report was made, on the wall clock
+        deployment_id: The deployment compared
+        symbol: Its symbol
+        decision_timeframe: The timeframe whose bar's close is a day's decision, as the comparison
+            declared it
+        reading: The rules it is read by
+        until_requested: The boundary asked for; None for the last one sealed
+        records_root: The copy of the session records read; '' where the configured stores were read
+        report_commit: The framework commit the report was made with
+        report_dirty: Whether that tree held uncommitted changes
+        weights: The cross-section's weights applied
+        bounds: The bounds applied, by name
+        live: The live side
+        segments: Each segment's comparison
+        venue_ledger_unread: Why the venue's ledger could not be read; '' where it was
+        unreadable: What else could not be read, with the reason
+    """
+    report_id: str
+    created_at: datetime
+    deployment_id: str
+    symbol: str = ''
+    decision_timeframe: str
+    reading: DivergenceReading
+    until_requested: Optional[datetime] = None
+    records_root: str = ''
+    report_commit: str = ''
+    report_dirty: bool = False
+    weights: Dict[str, float] = {}
+    bounds: Dict[str, float] = {}
+    live: LiveSide
+    segments: List[SegmentReport] = []
+    venue_ledger_unread: str = ''
+    unreadable: List[str] = []

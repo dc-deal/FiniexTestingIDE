@@ -31,6 +31,7 @@ from datetime import date, datetime
 from typing import Mapping, Optional, Sequence, Tuple
 
 from python.framework.reporting.builders.divergence.equity_divergence_builder import (
+    opening_frame,
     valued_frame_before,
 )
 from python.framework.reporting.builders.divergence.order_divergence_builder import (
@@ -113,10 +114,10 @@ def decompose_day(opening: datetime, closing: datetime, frames: Sequence[StateFr
     Returns:
         (the parts, '') — or (None, why the day cannot be taken apart)
     """
-    start = valued_frame_before(frames, opening)
+    start = opening_frame(frames, opening, closing)
     end = valued_frame_before(frames, closing)
     if start is None or end is None or end.frame_time <= start.frame_time:
-        return None, 'no valued frame before the opening and a later one before the closing'
+        return None, 'no valued frame at the opening and a later one before the closing'
     if start.last_price is None or end.last_price is None:
         return None, "a frame at the day's ends carries no mid"
     if start.balances is None or end.balances is None:

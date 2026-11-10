@@ -55,8 +55,8 @@ and a backtest the gate lets through, and change one thing each.
 |------|-------------|
 | `TestEveryBlockIsDeclared` | every block of a rendered profile, and every field of its execution block, is declared once — where it goes in the backtest, or why it has no counterpart — and says why |
 | `TestTheScenarioSet` | the built set names the session's warmup run and broker document and the window; the strategy is the rendered one without the projected type keys; the heartbeat cadence, the frame cadence and the order guard are carried; every field of the execution model and of the simulator model is written, so no workspace override reaches one; a regular comparison declares no purpose; another history depth and a document without blocks are refused |
-| `TestTheLoaderReadsTheRecordedWarmup` | a scenario naming `warmup_from_run` carries that run's record; a record of another symbol is refused |
-| `TestTheFrozenBrokerDocument` | a scenario naming `broker_config_document` trades with the frozen document; an unknown document is refused at load; a document no configuration can be built from is that scenario's error; one broker from a document and from another source in one set is refused |
+| `TestTheLoaderReadsTheRecordedWarmup` | a scenario naming `warmup_from_run` carries that run's record; a record of another symbol is refused; a copy of the records is read through the reader and the store the loader was given |
+| `TestTheFrozenBrokerDocument` | a scenario naming `broker_config_document` trades with the frozen document; an unknown document is refused at load; a document is read from the store it is given; a document no configuration can be built from is that scenario's error; one broker from a document and from another source in one set is refused |
 
 ### `test_inputs_of_record_events.py`
 
@@ -198,7 +198,7 @@ One day's orders on both sides, built from the record's own types, with one thin
 | Test | Description |
 |------|-------------|
 | `TestTheSlots` | only slots both sides valued inside a compared day, the largest gap and the gap at the end; an unvalued frame is no slot |
-| `TestTheDays` | each side changes in percent of its opening value; an excluded day is not measured; a side without a frame before the opening has no change; the days' differences read as a series |
+| `TestTheDays` | each side changes in percent of its opening value; an excluded day is not measured; a day without a frame before its opening opens from its first valued frame — a segment's first day opens at the first tick; a side without a valued frame in the day has no change; the days' differences read as a series |
 | tests at module level | the valued frame before an instant skips unvalued ones and never takes the instant itself |
 
 ### `test_day_attribution.py`
@@ -264,3 +264,33 @@ classes; the Kraken readers themselves are held in the venue history suite.
 | `TestTheAccountsMovements` | the bot's own trade moves nothing, a deposit, a conversion, a trade of another order and a trade without an order each count; another currency and a zero movement count nothing; the bot's orders are every handle its events carry |
 | `TestTheLedgerDecidesTheWindow` | a movement ends the window at the last boundary before it; a ledger without movements overrides a position change the frames show; a movement before the window counts nothing; the live side carries the movements |
 | `TestTheVenueSide` | each run is answered and a failed one is named; a venue without a trade list or a ledger reader says so; a ledger that gave up is never an empty one; the bars' trades |
+
+### `test_divergence_verdict.py`
+
+Measures built from the report's own types, one bound crossed at a time.
+
+| Test | Description |
+|------|-------------|
+| `TestMeasure1` | agreeing days pass; two explained flips pass and are named, a third fails; an unexplained flip fails; a capture counts as explained only once the venue confirms it; a day without a frame is never a pass |
+| `TestTheZonesOfMeasure2` | green, yellow (named with its delays, passes) and red (fails); a fee the venue did not charge is not checked; fill completeness has no zone; size beyond its bound; no order leaves the measure not checked and the cross-section out |
+| `TestTheSegment` | every measure within its bound passes and the cross-section agrees; below the floor of days a pass is not one; the rehearsal has no floor and describes measure 2; a residual beyond its bound is a defect, not a pass; excluded days and their longest run; the chances beside every measure |
+| `TestTheExitCode` | 0 every segment passed; 2 a segment not compared; 3 a segment failed or not checked |
+
+### `test_session_records.py`
+
+| Test | Description |
+|------|-------------|
+| `TestACopy` | every run directory the copied index names is moved into the copy; one missing from the copy is refused; a copy holding two run indexes is refused |
+| `test_without_a_copy_the_configured_stores_are_read` | no copy reads this machine's stores |
+
+### `test_divergence_report_command.py`
+
+The steps of the command that join the building blocks.
+
+| Test | Description |
+|------|-------------|
+| `TestTheArchiveCoversTheWindow` | a window past the archive waits for the import; one inside it may be backtested; a window without a start and a symbol the archive lacks are named |
+| `test_the_backtest_is_found_by_its_sets_name` | the newest run of the comparison's scenario set; none where no run carries the name |
+| `test_a_capture_difference_is_confirmed_by_the_trades_the_archive_lacks` | the venue's trades in the decision bar against the archive's ids |
+| `test_a_segment_not_compared_is_printed_with_why_and_kept` | the text names the cause; the record holds the report as JSON and as text, read back equal |
+

@@ -335,6 +335,12 @@ every family lives in the `discovery_caches` store — and never something the I
 itself: a run, a certificate or a carry-over is not a discovery, because deleting it loses what
 happened. See [Discovery System](discovery_system.md).
 
+**divergence report** — A live deployment held against backtests of exactly its windows, each built
+from what its sessions recorded (#512): a gate that refuses an incomparable backtest, the measures —
+each day's decision, each order, the account values — and a verdict by bounds fixed before the run.
+Each measure ends *passed*, *failed* or *not checked*; "passed" reads "no divergence beyond the
+bounds over the compared days", never "parity proven". Kept under `runs/divergence/<report_id>/`.
+
 **dry run** — An AutoTrader session on a live adapter whose `dry_run` resolves true: real ticks,
 every order validated by the venue and never placed, fills simulated locally. A mock session is not
 called a dry run, although the `dry_run` flag reads true for it too. To be renamed *paper* (#304).
@@ -716,6 +722,11 @@ reports it, numbered by the venue with ids rising per pair — not every id beco
 or an execution row. A live session records the public trade ids around each outage of its tick
 stream, never on a tick. See [AutoTrader Data Intake](autotrader/autotrader_data_intake.md).
 
+**reading** (`reading` of a divergence report) — The rules a comparison is read by: `run`, the
+thirty-day run, every binding measure judged over at least 25 compared days; `rehearsal`, the run
+before it, with no floor of days and measure 2 described rather than judged. Not the reading of a
+file.
+
 **real-money session** — A live-adapter session with `dry_run` false: its orders are placed at the
 venue and move the account.
 
@@ -1054,3 +1065,8 @@ instance name (`rsi_fast`) to its type string (`CORE/rsi`), and the instance's p
 its decisions. Off by default in a backtest, because the tracker sits on the hot path. Untracked,
 those counters are null in every report — the logic still decided on every tick, nobody counted
 it — while the logic's name and the processed ticks are known either way.
+
+**zone** (of a per-order measure in a divergence report) — Where measures 2b, 2c and 2d end:
+*green*, every compared order within its bound; *yellow*, one or two outside it, each named with
+its delays and passing once traced to its cause; *red*, more than two, failing. Measure 1 and 2a
+have no zone.

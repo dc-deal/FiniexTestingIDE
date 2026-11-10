@@ -867,6 +867,31 @@ runs started from the file.
 It is its own command, not part of the listing, because the loader creates directories and
 logs. Parameter names are not checked here: that happens at the start of a batch.
 
+### 🔀 Divergence Report — a live deployment against backtests of its windows
+
+| | |
+|---|---|
+| **VS Code** | `🔀 Divergence Report: compare (prompt)` |
+| **CLI** | `python python/cli/divergence_report_cli.py compare --deployment <id> --decision-timeframe D1` |
+| **Purpose** | Hold a live deployment against backtests of exactly its windows, built from what its sessions recorded, and judge the divergence by the rules fixed before the run (#512) |
+
+The live side is read from the deployment's records — this machine's stores, or `--records` a copy of
+the bot host's data home. Each segment's window is backtested from the session's own warmup and
+frozen broker configuration; the gate refuses a backtest that does not run the session's code; the
+gaps, the measures and the venue's own record follow; the verdict ends each measure passed, failed
+or not checked. The report is printed and kept under `runs/divergence/<report_id>/`.
+
+| Option | Meaning |
+|---|---|
+| `--until <boundary>` | The trading-day boundary the comparison ends at; the last sealed one when omitted. The archive must reach past it — otherwise the segment waits for the import |
+| `--records <dir>` | A copy of the bot host's data home to read the sessions from |
+| `--reading rehearsal` | Read as the rehearsal: no floor of compared days, measure 2 described |
+| `--declared-stop <instant>,<changed\|unchanged>[,<note>]` | A stop the operator declares; repeatable |
+| `--ledger-credentials <name>` | The key that may read the venue's ledger, as configured (`venues/kraken_ledger_credentials.json`) |
+
+Exit codes: `0` every segment compared and passed · `2` a segment not compared (the archive, the
+backtest or the gate refused) · `3` a compared segment failed or was not checked.
+
 ---
 
 ## G) Technical Tools (Advanced)
@@ -1026,6 +1051,7 @@ logged the moment it finishes.
 | **Start backtest** | `🔬 Run eurusd_3_windows_reference` | `strategy_runner_cli.py run <config>.json` |
 | **Profile Run (single)** | — | `strategy_runner_cli.py run <config>.json --generator-profile <profile>.json` |
 | **Profile Run (directory)** | `🔬 Generator-Profile Run: volatility_split/ folder` | `strategy_runner_cli.py run <config>.json --generator-profile <dir>` |
+| **Live against backtest** | `🔀 Divergence Report: compare (prompt)` | `divergence_report_cli.py compare --deployment <id> --decision-timeframe D1 [--records <copy>]` |
 
 ---
 

@@ -12,6 +12,7 @@ from python.framework.bars.warmup_record_reader import read_warmup_record
 from python.framework.config_directory.config_directory_discovery import is_user_owned
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.store.broker_config_freeze import read_frozen_broker_config
+from python.framework.store.entry_members.run_entry_reader import RunEntryReader
 from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.config_directory_types import ConfigKind
 from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
@@ -114,7 +115,8 @@ def _declared_features_beyond_venue(config: Dict[str, Any], config_path: Path) -
     return [OrderFeature(name) for name in declared]
 
 
-def _recorded_warmup(scenario_data: Dict[str, Any]) -> Optional[WarmupHistoryRecord]:
+def _recorded_warmup(scenario_data: Dict[str, Any],
+                     reader: Optional[RunEntryReader] = None) -> Optional[WarmupHistoryRecord]:
     """
     Read the warmup history a scenario names with `warmup_from_run` (#512).
 
@@ -123,6 +125,8 @@ def _recorded_warmup(scenario_data: Dict[str, Any]) -> Optional[WarmupHistoryRec
 
     Args:
         scenario_data: The scenario's raw JSON
+        reader: The run reader the session's records are read through — a copy of them; the
+            configured one when omitted
 
     Returns:
         The record, or None when the scenario names no run
@@ -130,7 +134,7 @@ def _recorded_warmup(scenario_data: Dict[str, Any]) -> Optional[WarmupHistoryRec
     run_id = scenario_data.get('warmup_from_run', '')
     if not run_id:
         return None
-    record = read_warmup_record(run_id)
+    record = read_warmup_record(run_id, reader)
     if record.symbol != scenario_data.get('symbol'):
         raise ValueError(
             f"Scenario '{scenario_data.get('scenario_name', '')}': warmup_from_run {run_id} "
@@ -146,10 +150,19 @@ class ScenarioConfigLoader:
     Uses deep copy to prevent config mutation across scenarios
     """
 
-    def __init__(self):
+    def __init__(self, records_reader: Optional[RunEntryReader] = None,
+                 records_run_configs: Optional[RunConfigStore] = None):
         """
         Initialize loader with paths from AppConfigManager.
+
+        Args:
+            records_reader: Where a scenario's `warmup_from_run` is read — a copy of the session's
+                records; the configured run index when omitted
+            records_run_configs: Where its `broker_config_document` is read; the configured
+                run-config store when omitted
         """
+        self._records_reader = records_reader
+        self._records_run_configs = records_run_configs
         app_config = AppConfigManager()
         self.config_path = Path(app_config.get_scenario_sets_path())
         create_directory(self.config_path, holds='the scenario sets')
@@ -362,9 +375,10 @@ class ScenarioConfigLoader:
                 # and the broker's file (#512); empty for every other scenario
                 warmup_from_run=scenario_data.get('warmup_from_run', ''),
                 broker_config_document=scenario_data.get('broker_config_document', ''),
-                warmup_record=_recorded_warmup(scenario_data),
+                warmup_record=_recorded_warmup(scenario_data, self._records_reader),
                 broker_config_document_content=(
-                    read_frozen_broker_config(scenario_data['broker_config_document'])
+                    read_frozen_broker_config(scenario_data['broker_config_document'],
+                                              self._records_run_configs)
                     if scenario_data.get('broker_config_document') else None),
             )
             scenarios.append(scenario)

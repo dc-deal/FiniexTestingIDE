@@ -150,7 +150,8 @@ tests/
 │   │                      gate — code path, strategy, configuration, broker document, window — that refuses a pair; the
 │   │                      measures — each day's decision, each order, the account values, the day attribution — on
 │   │                      real backtests too; the window's gaps and what they leave out; what the venue's own record
-│   │                      confirms and refutes — its trades, the account's movements in its ledger (#512)
+│   │                      confirms and refutes — its trades, the account's movements in its ledger; the verdict by
+│   │                      the rules, and the command that joins it all (#512)
 │   ├── venue_history/     unit — what a venue itself records, read from Kraken: the public trade list and an account's
 │   │                      ledger at the venue, against recorded answers; the seam that hands readers out (#512, #127)
 │   ├── composite/         unit — which accounts may add up: the composite definition and its floor, the key projected from

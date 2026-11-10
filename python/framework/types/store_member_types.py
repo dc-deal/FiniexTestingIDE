@@ -146,6 +146,14 @@ class SweepEntryMemberId(StrEnum):
     RANKING = 'ranking'
 
 
+class DivergenceEntryMemberId(StrEnum):
+    """Every file a divergence comparison's directory holds (#512)."""
+    SCENARIO_SET = 'scenario_set'
+    LIVE_INDEX = 'live_index'
+    REPORT = 'report'
+    REPORT_TEXT = 'report_text'
+
+
 @dataclass(frozen=True)
 class EntryMemberWrite:
     """
@@ -187,7 +195,7 @@ class EntryMember:
         recorded_stream_kind: The kind of stream a unit's timeline and window serve it as (#580),
             or None when they do not serve it
     """
-    member_id: Union[RunEntryMemberId, SweepEntryMemberId]
+    member_id: Union[RunEntryMemberId, SweepEntryMemberId, DivergenceEntryMemberId]
     path_pattern: str
     shape: EntryMemberShape
     purpose: str

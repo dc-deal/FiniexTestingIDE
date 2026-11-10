@@ -78,8 +78,14 @@ class TestTheDays:
                                 _frames({0: 1010.0}), {}, {})
         assert tracking.days == [] and tracking.daily.day_count == 0
 
-    def test_a_side_without_a_frame_before_the_opening_has_no_change(self):
+    def test_a_day_without_a_frame_before_its_opening_opens_from_its_first_one(self):
+        # A segment's first day opens at the first tick, before which no frame is valued
         live = _frames({0: 1010.0})[1:]
+        day, = track_equity([_day(0)], live, _frames({0: 1000.0}), {}, {}).days
+        assert day.live_opening_equity == 1010.0 and day.live_change_pct == 0.0
+
+    def test_a_side_without_a_valued_frame_in_the_day_has_no_change(self):
+        live = [_frame(_START + timedelta(minutes=1), None)]
         day, = track_equity([_day(0)], live, _frames({0: 1000.0}), {}, {}).days
         assert day.live_opening_equity is None and day.difference_pct is None
 

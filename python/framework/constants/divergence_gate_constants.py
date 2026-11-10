@@ -132,7 +132,10 @@ ALLOWED_CHANGES_BY_RELEASE = {
             'syntax_digest': '057d0685e3160ab6867a1c65da3236d31c223bb60e4792040ab8be7ae9b80f63'},
         'python/framework/types/store_member_types.py': {
             'categories': ('recording_only',),
-            'syntax_digest': '0457b74746169365ffe4ce6e42669941111016c8d883008d3242a20675939125'},
+            'syntax_digest': '61ae0d301e12f6ebe3966de60644e1878a077e0a9c9918f6f6cb7f82b0ba21b6'},
+        'python/framework/types/store_types.py': {
+            'categories': ('recording_only',),
+            'syntax_digest': '0395c1e2ade00aea7ce0f55b9b850098c3f79886118038062570b4d77ba479ce'},
         'python/framework/types/trading_env_types/decision_api_method_types.py': {
             'categories': ('algo_view',),
             'syntax_digest': '443f483d7fd55c6f78c5d480a1de828982758e745c258d9c24c522a8b3e7c7cb'},

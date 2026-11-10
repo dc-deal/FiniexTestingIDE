@@ -109,9 +109,9 @@ def day_equity_difference(day: TradingDayClassification, live_frames: Sequence[S
     Returns:
         Both sides' values at the opening and the closing, and their changes
     """
-    live_open = _equity_before(live_frames, day.opening)
+    live_open = _equity_of(opening_frame(live_frames, day.opening, day.closing))
     live_close = _equity_before(live_frames, day.closing)
-    backtest_open = _equity_before(backtest_frames, day.opening)
+    backtest_open = _equity_of(opening_frame(backtest_frames, day.opening, day.closing))
     backtest_close = _equity_before(backtest_frames, day.closing)
     live_change = _change_pct(live_open, live_close)
     backtest_change = _change_pct(backtest_open, backtest_close)
@@ -172,6 +172,28 @@ def valued_frame_before(frames: Sequence[StateFrame], instant: datetime) -> Opti
     return None
 
 
+def opening_frame(frames: Sequence[StateFrame], opening: datetime,
+                  closing: datetime) -> Optional[StateFrame]:
+    """
+    The frame a day's account value opens from: the last valued frame before its opening, or —
+    on a segment's first day, which opens at the first tick and has no valued frame before it — the
+    first valued frame inside the day. A fill before that frame is already in its holdings.
+
+    Args:
+        frames: Frames in time order
+        opening: The day's opening
+        closing: The day's closing
+
+    Returns:
+        The frame; None where the day holds no valued frame either
+    """
+    before = valued_frame_before(frames, opening)
+    if before is not None:
+        return before
+    return next((frame for frame in frames
+                 if opening <= frame.frame_time < closing and frame.equity is not None), None)
+
+
 def _equity_before(frames: Sequence[StateFrame], instant: datetime) -> Optional[float]:
     """
     The account value at the last valued frame before an instant.
@@ -184,6 +206,19 @@ def _equity_before(frames: Sequence[StateFrame], instant: datetime) -> Optional[
         The value; None where no valued frame lies before it
     """
     frame = valued_frame_before(frames, instant)
+    return frame.equity if frame is not None else None
+
+
+def _equity_of(frame: Optional[StateFrame]) -> Optional[float]:
+    """
+    A frame's account value.
+
+    Args:
+        frame: The frame, or None
+
+    Returns:
+        Its equity; None for no frame
+    """
     return frame.equity if frame is not None else None
 
 

@@ -8,7 +8,9 @@ block of a rendered profile is declared once — where it goes, or why it has no
 """
 
 import json
+import shutil
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -30,6 +32,8 @@ from python.framework.store.broker_config_freeze import (
     freeze_broker_config,
     read_frozen_broker_config,
 )
+from python.framework.store.entry_members.run_entry_reader import RunEntryReader
+from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.config_types.backtesting_config_types import (
     DefaultScenarioExecutionConfig,
     TradeSimulatorDefaults,
@@ -180,7 +184,7 @@ class TestTheLoaderReadsTheRecordedWarmup:
         monkeypatch.setattr('python.scenario.scenario_config_loader.read_warmup_record',
                             lambda run_id, reader=None: self._record(recorded_symbol))
         monkeypatch.setattr('python.scenario.scenario_config_loader.read_frozen_broker_config',
-                            lambda document_id: {'frozen': document_id})
+                            lambda document_id, store=None: {'frozen': document_id})
         depth = AppConfigManager().get_bar_max_history()
         path = RecordedScenarioBuilder.write(
             RecordedScenarioBuilder.build(_inputs(_rendered_profile(depth))), tmp_path)
@@ -196,6 +200,27 @@ class TestTheLoaderReadsTheRecordedWarmup:
     def test_a_record_of_another_symbol_is_refused(self, tmp_path, monkeypatch):
         with pytest.raises(ValueError, match='recorded BTCUSD'):
             self._load(tmp_path, monkeypatch, 'BTCUSD')
+
+    def test_a_copy_of_the_records_is_read_through_what_the_loader_was_given(self, tmp_path,
+                                                                                 monkeypatch):
+        seen = {}
+
+        def warmup(run_id, reader=None):
+            seen['reader'] = reader
+            return self._record('ETHUSD')
+
+        def broker(document_id, store=None):
+            seen['store'] = store
+            return {'frozen': document_id}
+        monkeypatch.setattr('python.scenario.scenario_config_loader.read_warmup_record', warmup)
+        monkeypatch.setattr('python.scenario.scenario_config_loader.read_frozen_broker_config',
+                            broker)
+        depth = AppConfigManager().get_bar_max_history()
+        path = RecordedScenarioBuilder.write(
+            RecordedScenarioBuilder.build(_inputs(_rendered_profile(depth))), tmp_path)
+        reader, store = RunEntryReader(tmp_path / 'copy_index.parquet'), RunConfigStore(tmp_path)
+        ScenarioConfigLoader(reader, store).load_config(str(path))
+        assert seen == {'reader': reader, 'store': store}
 
 
 class TestTheFrozenBrokerDocument:
@@ -234,6 +259,16 @@ class TestTheFrozenBrokerDocument:
     def test_an_unknown_document_is_refused_at_load(self):
         with pytest.raises(FileNotFoundError, match='not in the run-config store'):
             read_frozen_broker_config('f' * 64)
+
+    def test_a_document_is_read_from_the_store_it_is_given(self, tmp_path):
+        document = self._frozen_id()
+        configured = Path(AppConfigManager().get_run_configs_path())
+        copy = tmp_path / 'copy_run_configs'
+        shutil.copytree(configured, copy)
+        assert read_frozen_broker_config(document, RunConfigStore(copy)) == \
+            read_frozen_broker_config(document)
+        with pytest.raises(FileNotFoundError, match='not in the run-config store'):
+            read_frozen_broker_config(document, RunConfigStore(tmp_path / 'empty_store'))
 
     def test_a_document_that_cannot_be_built_is_the_scenario_s_error(self):
         scenario = self._scenario('segment_1', 'f' * 64, {'symbols': {}})
