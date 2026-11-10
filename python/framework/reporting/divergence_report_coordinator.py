@@ -170,7 +170,7 @@ class DivergenceReportCoordinator:
                 document_id, records.run_configs))
         capture = collector.collect_sessions(self._deployment_id)
         day_records = collector.collect_days(capture)
-        venue = self._venue(capture.broker_type)
+        venue = self._venue(capture.broker_type, self._adapters_of(capture, records))
         venue_changes, ledger_unread = self._venue_changes(venue, capture, day_records)
         segments, named = derive_segments(capture, self._until, self._declared_stops,
                                           venue_changes=venue_changes)
@@ -197,20 +197,54 @@ class DivergenceReportCoordinator:
         write_report(report, text, report_dir)
         return report, text, report_dir
 
-    def _venue(self, broker_type: str) -> VenueSideCollector:
+    def _venue(self, broker_type: str, adapters: Set[str]) -> VenueSideCollector:
         """
-        The venue's own record, through the seam's readers and the broker's connection numbers.
+        The venue's own record, through the seam's readers and the broker's connection numbers —
+        only where the sessions traded at the venue. A session on the mock adapter replayed
+        recorded data against a simulated venue: the real venue's ledger and trades are another
+        account's, and read as this one's they would end the window at movements the bot never made.
 
         Args:
             broker_type: The deployment's broker
+            adapters: The adapters the deployment's sessions ran on
 
         Returns:
             The venue side's collector
         """
+        if adapters != {'live'}:
+            return VenueSideCollector(
+                broker_type, None, None,
+                not_read_because=f'the sessions ran on the {", ".join(sorted(adapters)) or "unknown"}'
+                                 f' adapter, so no venue holds their record')
         policy = MarketConfigManager().get_broker_entry(broker_type).broker_transport.connection
         return VenueSideCollector(
             broker_type, public_trade_reader(broker_type, policy, self._logger),
             venue_ledger_reader(broker_type, self._ledger_credentials, policy, self._logger))
+
+    @staticmethod
+    def _adapters_of(capture: LiveDeploymentCapture, records: SessionRecords) -> Set[str]:
+        """
+        The adapters a deployment's sessions ran on, from their rendered profiles.
+
+        Args:
+            capture: The deployment's sessions
+            records: Where their records are read
+
+        Returns:
+            The adapter types; empty where no session's rendered profile could be read
+        """
+        adapters: Set[str] = set()
+        for session in capture.sessions:
+            if not session.rendered_config_id:
+                continue
+            try:
+                rendered = records.run_configs.read_frozen(session.rendered_config_id,
+                                                           RunConfigKind.AUTOTRADER_RENDERED)
+            except (OSError, ValueError, KeyError):
+                continue
+            adapters.add(str((rendered.get('blocks') or {}).get('adapter_type') or ''))
+        adapters.discard('')
+        return adapters
 
     def _venue_changes(self, venue: VenueSideCollector, capture: LiveDeploymentCapture,
                        day_records: Mapping[Tuple[str, date], LiveDayRecords]

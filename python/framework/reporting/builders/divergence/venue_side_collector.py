@@ -41,13 +41,18 @@ class VenueSideCollector:
         broker_type: The venue's broker type, for the words a missing reader is named with
         trade_reader: The venue's public trade list; None where the venue has none we read
         venue_ledger_reader: The account's ledger at its venue; None where it has no reader
+        not_read_because: Why no reader is given at all, where the sessions had no venue to ask;
+            '' where a missing reader is the venue's own gap
     """
 
     def __init__(self, broker_type: str, trade_reader: Optional[AbstractPublicTradeReader],
-                 venue_ledger_reader: Optional[AbstractVenueLedgerReader]):
-        self._broker_type = broker_type
+                 venue_ledger_reader: Optional[AbstractVenueLedgerReader],
+                 not_read_because: str = ''):
         self._trade_reader = trade_reader
         self._venue_ledger_reader = venue_ledger_reader
+        self._no_trade_list = not_read_because or (
+            f'{broker_type}: no trade list of the venue is read')
+        self._no_ledger = not_read_because or f"{broker_type}: the account's ledger has no reader"
 
     def answer_runs(self, symbol: str, runs: Sequence[DivergenceGap]) -> VenueRunAnswers:
         """
@@ -62,8 +67,7 @@ class VenueSideCollector:
         """
         if self._trade_reader is None:
             return VenueRunAnswers(unreadable=[
-                f'{self._broker_type}: no trade list of the venue is read — the runs of missing '
-                f'trade ids stay unconfirmed'])
+                f'{self._no_trade_list} — the runs of missing trade ids stay unconfirmed'])
         answers = VenueRunAnswers()
         for run in runs:
             try:
@@ -90,8 +94,7 @@ class VenueSideCollector:
         """
         if self._trade_reader is None:
             return VenueBarTrades(unreadable=[
-                f'{self._broker_type}: no trade list of the venue is read — the capture '
-                f'differences stay unconfirmed'])
+                f'{self._no_trade_list} — the capture differences stay unconfirmed'])
         found = VenueBarTrades()
         for opening, close in bars:
             try:
@@ -112,8 +115,8 @@ class VenueSideCollector:
             The entries; or why they were not read — the state frames then judge a restart
         """
         if self._venue_ledger_reader is None:
-            return VenueLedgerRead(unreadable=f"{self._broker_type}: the account's ledger has "
-                                              f'no reader — the state frames judge a restart')
+            return VenueLedgerRead(
+                unreadable=f'{self._no_ledger} — the state frames judge a restart')
         try:
             return VenueLedgerRead(entries=self._venue_ledger_reader.read_ledger(start, end))
         except ConnectionGaveUpError as error:
