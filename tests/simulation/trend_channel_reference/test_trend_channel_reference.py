@@ -26,6 +26,12 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
     TradeRecord,
 )
 from python.framework.types.trading_env_types.order_types import OrderDirection
+from tests.shared.fixture_helpers import (
+    extract_open_positions,
+    extract_process_result,
+    extract_tick_loop_results,
+    extract_trade_history,
+)
 
 # The fixed entry size both fixtures use (a partial portion is strictly smaller).
 LOT_SIZE = 0.1
@@ -142,3 +148,26 @@ class TestTheStrategyKeepsItsLastSetup:
 
     def test_the_limit_run_with_it_off_kept_none(self, limit_batch, limit_trades):
         assert _last_setups('trend_channel_reference_limit_fixture') == []
+
+
+class TestItEndsFlatWhenAsked:
+    """
+    With `close_at_session_end` the logic closes what it holds from the session-end event (#642).
+
+    The fixture's data ends at 14:00 while two positions are open. The backtest settles the closes
+    the logic sends from the event at the last quote, as a session's stop settles them, so the run
+    ends flat — through the real tick loop, not a mirror of its order.
+    """
+
+    def test_the_backtest_ends_flat(self, session_end_close_batch):
+        tick_loop = extract_tick_loop_results(
+            extract_process_result(session_end_close_batch, scenario_index=0))
+        assert extract_open_positions(tick_loop) == []
+
+    def test_the_positions_open_at_the_data_end_close_there(self, session_end_close_batch):
+        trades = extract_trade_history(extract_tick_loop_results(
+            extract_process_result(session_end_close_batch, scenario_index=0)))
+        last_exit = max(trade.exit_time for trade in trades)
+        at_the_end = [trade for trade in trades if trade.exit_time == last_exit]
+        assert len(at_the_end) == 2
+        assert {trade.close_reason for trade in at_the_end} == {CloseReason.MANUAL}

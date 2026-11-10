@@ -3247,6 +3247,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         if in_flight is not None and in_flight.order_action == PendingOrderAction.CLOSE:
             return self._joined_close_result(position, in_flight, lots, close_reason)
 
+        # #639 — at spot a close sells or buys like any order, and is funded like one
+        refusal = self.refuse_unfunded_close(position, lots)
+        if refusal is not None:
+            return self._book_order_result(refusal)
+
         # Send close to broker — close = reverse direction order
         close_direction = (
             OrderDirection.SHORT if position.direction == OrderDirection.LONG
@@ -3943,6 +3948,15 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self._request_processor.drain_inbox()
         self.withdraw_unsent_orders()
 
+    def hold_new_orders(self) -> None:
+        """
+        Keep every order sent from now on from the venue: the session is over (#642).
+
+        What the strategy sends from on_session_end_order_outcome is held by the request processor
+        and withdrawn by withdraw_unsent_orders, never sent.
+        """
+        self._request_processor.hold_new_submits()
+
     def withdraw_unsent_orders(self) -> List[str]:
         """
         Book each order whose submit a stopped worker never sent as cancelled at the session end.
@@ -3950,7 +3964,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Such an order never left this process, so the venue cannot hold it, and unaccounted would
         say it may. It ends cancelled, by the framework, at the session end, and the strategy
         hears it as a cancel. A hook may still send an order once the worker has stopped; it is
-        withdrawn the same way. Nothing happens while the worker runs.
+        withdrawn the same way, and so is one sent once the session was over, which the processor
+        held back (#642). Otherwise nothing happens while the worker runs.
 
         Returns:
             The ids of the orders withdrawn
@@ -3973,8 +3988,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             self._emit_order_cancelled(pending, cancelled)
             self.logger.warning(
                 f'⚠️ Session end: {what} ({pending.pending_order_id}) never left this process — '
-                f'the request worker had stopped before sending it. It is recorded as cancelled; '
-                f'the venue never received it.')
+                f'the session was over or the request worker had stopped before sending it. It is '
+                f'recorded as cancelled; the venue never received it.')
             withdrawn.append(pending.pending_order_id)
         return withdrawn
 

@@ -551,11 +551,13 @@ class PortfolioManager:
             # same prices the refresh uses puts the fee into the money and into the record as
             # one number. Only when there IS an exit fee: a spread broker passes None and
             # takes the untouched path.
-            if exit_fee:
-                self._remark_position(position)
-            # Booked from the last mark, never from exit_price: a close that fills away from it —
-            # the simulation's stop at its level, a fill MT5 reports — records one price and
-            # books another (measured 2026-10-25, #209)
+            # Re-marked against the exit price, as the spot branch does: that folds the fee in and
+            # books the price the record names. Booked from the last mark instead, a close that
+            # filled away from it — a fill the venue reports, a target at its level — recorded one
+            # price and booked another (measured 2026-10-25, #209, #629). A close at the mark
+            # re-marks to the same figure.
+            position.update_current_price(
+                exit_price, exit_price, exit_tick_value, position.digits)
             realized_pnl = position.unrealized_pnl
             self.balance += realized_pnl
 
@@ -642,8 +644,11 @@ class PortfolioManager:
         close_ratio = close_lots / position.lots
         remaining_ratio = 1.0 - close_ratio
 
-        # --- P&L for closed portion (proportional) ---
-        closed_gross_pnl = position.gross_pnl * close_ratio
+        # --- P&L for closed portion (proportional), valued at the price it filled at (#629).
+        # The last mark is the price before the close: a fill away from it — a venue's slippage —
+        # was recorded at the fill and booked at the mark. The open remainder keeps its mark.
+        closed_gross_pnl = position.valuation_at(
+            exit_price, exit_price, exit_tick_value, position.digits).gross_pnl * close_ratio
         closed_fees = position.get_total_fees() * close_ratio
 
         # Add exit fee if provided

@@ -60,7 +60,7 @@ Each order life in a live session against the mock venue.
 | `TestACloseWhosePositionIsGone` | a close whose position something else took before the answer came still names the position's side and size on its steps, in both account models — both travel on the close from its registration |
 | `TestTheStreamItself` | `seq` strictly increasing across orders; an answer for an order that is gone names how it ended |
 | `TestTheSessionsPendingCounters` | the pending-order counters derived from a session's events — one accepted, one rejected, one never confirmed — add up, and only the answers carry a duration |
-| `TestEachFillIsFoundAndMeasured` | #631: a booked row names its own fill event and a market fill is measured against the mid when the order was sent, in both account models; a stop-loss exit is measured against its level and reads how far below it the mock venue sold — where the simulation reads 0 |
+| `TestEachFillIsFoundAndMeasured` | #631: a booked row names its own fill event and a market fill is measured against the mid when the order was sent, in both account models; a stop-loss exit is measured against its level and reads how far below it the mock venue sold — in the simulation too, which sells at the bid of the tick that breached it (#629) |
 
 ### `test_live_crossed_answers.py`
 

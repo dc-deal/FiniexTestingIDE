@@ -14,7 +14,7 @@ Key Simulation Features:
 - Fill processing: Inherited from AbstractTradeExecutor (shared with live)
 """
 from bisect import bisect_right
-from typing import Dict, FrozenSet, List, Optional, Tuple, Union
+from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.stress_test.stress_test_rejection import StressTestRejection
@@ -22,6 +22,7 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
 from python.framework.trading_env.simulation.order_latency_simulator import OrderLatencySimulator
+from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
@@ -64,6 +65,9 @@ from python.framework.utils.trading_math.price_trigger import (
     is_stop_reached,
 )
 
+
+# An instant later than any scheduled operation: the session end applies them all (#642)
+_EVERY_SCHEDULED_OPERATION = 2 ** 62
 
 class TradeSimulator(AbstractTradeExecutor):
     """
@@ -163,6 +167,11 @@ class TradeSimulator(AbstractTradeExecutor):
         self._pending_position_modifications: Dict[str, ModificationRequest] = {}
         self._modify_cancel_delay_msc: int = 1  # cosmetic single-msc delay default
 
+        # Positions whose breached level the simulated venue refused to fill — a stop it could
+        # not fund (#639). The level is not tried again: a venue cancels such an order once,
+        # where firing it on every tick added a rejected row and a protective close per tick
+        self._refused_levels: Set[str] = set()
+
         # The stretches whose ticks carry a modelled quote (#602), split for a binary search
         self._modelled_run_starts: List[int] = [first for first, _ in modelled_quote_runs]
         self._modelled_run_ends: List[int] = [last for _, last in modelled_quote_runs]
@@ -209,7 +218,7 @@ class TradeSimulator(AbstractTradeExecutor):
             tick: Current tick data with bid/ask prices
         """
         for position in self.get_open_positions():
-            if position.symbol != tick.symbol:
+            if position.symbol != tick.symbol or position.position_id in self._refused_levels:
                 continue
             # The levels are the closing order's: closing a long sells, closing a short buys
             closing = (OrderDirection.SHORT if position.direction == OrderDirection.LONG
@@ -221,7 +230,9 @@ class TradeSimulator(AbstractTradeExecutor):
                     f'{position.direction.value} @ SL={position.stop_loss:.5f} '
                     f'(bid={tick.bid:.5f}, ask={tick.ask:.5f})'
                 )
-                self._close_at_level(position, position.stop_loss, CloseReason.SL_TRIGGERED)
+                # A stop fills at the market the breaching tick offers, never at a level the
+                # price skipped (#629)
+                self._close_on_breach(position, None, CloseReason.SL_TRIGGERED)
             elif (position.take_profit is not None
                     and is_limit_reached(closing, position.take_profit, tick.bid, tick.ask)):
                 self.logger.info(
@@ -229,11 +240,19 @@ class TradeSimulator(AbstractTradeExecutor):
                     f'{position.direction.value} @ TP={position.take_profit:.5f} '
                     f'(bid={tick.bid:.5f}, ask={tick.ask:.5f})'
                 )
-                self._close_at_level(position, position.take_profit, CloseReason.TP_TRIGGERED)
+                # A target is a limit: it fills at its level, the better price a gap would
+                # give it being the optimistic one
+                self._close_on_breach(position, position.take_profit, CloseReason.TP_TRIGGERED)
 
-    def _close_at_level(self, position: Position, level: float, close_reason: CloseReason) -> None:
+    def _close_on_breach(self, position: Position, fill_price: Optional[float],
+                         close_reason: CloseReason) -> None:
         """
-        Fill a synthetic close AT the breached level, in the tick and deterministically.
+        Fill a synthetic close in the tick that breached a level, deterministically.
+
+        A stop fills at the market the breaching tick offers — its bid for a long, its ask for a
+        short — which is the worse of the level and the market: on a gap the gap's price, on a
+        touch within a tick of the level (#629). A target fills at its level. Both are measured
+        against the level they fired at.
 
         A close the strategy already has in the latency queue goes first: filling the level
         under it made the position vanish beneath it, and the close then arrived to find
@@ -241,7 +260,7 @@ class TradeSimulator(AbstractTradeExecutor):
 
         Args:
             position: The position whose level was breached
-            level: The level, which is the fill price
+            fill_price: The price to fill at — None for the tick's market, a target's level
             close_reason: SL_TRIGGERED or TP_TRIGGERED, recorded on the trade
         """
         if self.is_pending_close(position.position_id):
@@ -260,7 +279,12 @@ class TradeSimulator(AbstractTradeExecutor):
         # Counted as submitted, or a backtest whose exits are stops reported more orders
         # executed than submitted
         self._record_submission(synthetic)
-        self._fill_close_order(synthetic, fill_price=level, close_reason=close_reason)
+        if self._fill_close_order(
+                synthetic, fill_price=fill_price, close_reason=close_reason) is None:
+            # Refused at the fill — the account cannot fund it (#639). Booked once as rejected;
+            # the level is not tried again, as a venue cancels a stop it cannot fund
+            self._refused_levels.add(position.position_id)
+            return
         self._execution_counts.count_protective_close()
 
     def _process_pending_orders(self) -> None:
@@ -690,6 +714,11 @@ class TradeSimulator(AbstractTradeExecutor):
         in_flight = self.latency_simulator.get_order(position_id)
         if in_flight is not None and in_flight.order_action == PendingOrderAction.CLOSE:
             return self._joined_close_result(position, in_flight, lots, close_reason)
+
+        # #639 — at spot a close sells or buys like any order, and is funded like one
+        refusal = self.refuse_unfunded_close(position, lots)
+        if refusal is not None:
+            return self._book_order_result(refusal)
 
         # Submit close order to latency simulator
         order_id = self.latency_simulator.submit_close_order(
@@ -1286,7 +1315,7 @@ class TradeSimulator(AbstractTradeExecutor):
             return tick.collected_msc
         return tick.time_msc
 
-    def _resolve_pending_operations(self) -> None:
+    def _resolve_pending_operations(self, up_to_msc: Optional[int] = None) -> None:
         """
         Phase 0 of _process_pending_orders — apply scheduled modify/cancel
         operations whose apply_at_msc has been reached.
@@ -1297,8 +1326,12 @@ class TradeSimulator(AbstractTradeExecutor):
         — a cancelled order will not be filled on the same tick.
 
         Position modifications resolve via `portfolio.modify_position`.
+
+        Args:
+            up_to_msc: Apply what is due up to this instant instead of the current one — the
+                session end applies every scheduled operation, because no tick follows (#642)
         """
-        current_msc = self._get_current_msc()
+        current_msc = self._get_current_msc() if up_to_msc is None else up_to_msc
 
         # Order-level: limit + stop modify/cancel
         for active_list, list_name in (
@@ -1440,6 +1473,72 @@ class TradeSimulator(AbstractTradeExecutor):
     # ============================================
     # Cleanup
     # ============================================
+
+    def settle_session_end_orders(self) -> None:
+        """
+        Settle the orders the strategy sent from on_session_end, as a live stop's second wait
+        settles them (#642).
+
+        A market order — an open or a close — fills at the last quote, with the account model's
+        costs: it is the only quote left, so the fill misses the latency a live fill pays. A
+        resting order expires, as the end of the data leaves nothing to trigger it, and is
+        reported like every other ending. A cancel or an amend the strategy asked for is applied
+        now, as a live stop's second wait applies it, where it used to wait for a tick that never
+        came. An order already on its way before the event is the data's to end: it expires in
+        `finish_remaining_orders`, as before. After an EMERGENCY end nothing is settled, as a live
+        stop does not wait then either: such an order is withdrawn, never sent.
+        """
+        if self._sent_after_session_end is None:
+            return
+        if (self.is_session_end_requested()
+                and self.get_session_end_severity() is SessionEndSeverity.EMERGENCY):
+            return
+        self._resolve_pending_operations(up_to_msc=_EVERY_SCHEDULED_OPERATION)
+        sent = [pending for pending in self.latency_simulator.get_pending_orders()
+                if self.was_sent_after_session_end(pending.pending_order_id)]
+        for pending in sent:
+            self.latency_simulator.remove_order(pending.pending_order_id)
+            if (pending.order_action == PendingOrderAction.CLOSE
+                    or pending.order_type not in RESTING_ORDER_TYPES):
+                self._fill_resolved_orders([pending])
+                continue
+            expired = self._book_order_result(self._ending_for_pending(
+                pending, OrderStatus.EXPIRED,
+                initiator=OrderInitiator.FRAMEWORK,
+                end_reason=OrderEndReason.SCENARIO_END), pending)
+            self._emit_order_cancelled(pending, expired)
+        if sent:
+            self.logger.info(
+                f'🛑 Session end: {len(sent)} order(s) sent at the session end settled at the '
+                f'last quote')
+
+    def withdraw_unsent_orders(self) -> List[str]:
+        """
+        Book each order sent after the session-end orders were settled as cancelled at the session
+        end, as a live session withdraws an order sent once its worker has stopped (#642).
+
+        Such an order comes from on_session_end_order_outcome, or from on_session_end after an
+        EMERGENCY end; the session is over, so it is never sent. Whatever the settling step took is
+        no longer in the latency queue.
+
+        Returns:
+            The ids of the orders withdrawn
+        """
+        withdrawn = []
+        for pending in self.latency_simulator.get_pending_orders():
+            if not self.was_sent_after_session_end(pending.pending_order_id):
+                continue
+            self.latency_simulator.remove_order(pending.pending_order_id)
+            cancelled = self._book_order_result(self._ending_for_pending(
+                pending, OrderStatus.CANCELLED,
+                initiator=OrderInitiator.FRAMEWORK,
+                end_reason=OrderEndReason.SESSION_END), pending)
+            self._emit_order_cancelled(pending, cancelled)
+            self.logger.warning(
+                f'⚠️ Session end: {pending.pending_order_id} was sent after the session ended — '
+                f'recorded as cancelled, never sent.')
+            withdrawn.append(pending.pending_order_id)
+        return withdrawn
 
     def finish_remaining_orders(self, cancel_orders: bool = True) -> None:
         """

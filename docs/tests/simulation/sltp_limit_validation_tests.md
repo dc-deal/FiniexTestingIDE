@@ -129,7 +129,7 @@ LONG position opened against downtrend. SL should trigger.
 | `test_trade_count` | Exactly 1 trade closed |
 | `test_close_reason_is_sl` | close_reason = SL_TRIGGERED |
 | `test_direction_is_long` | direction = LONG |
-| `test_exit_price_equals_sl` | exit_price == stop_loss (deterministic fill) |
+| `test_exit_price_is_the_breaching_ticks_market` | exit_price never better than stop_loss: the breaching tick's market (#629) |
 | `test_sl_level_matches_config` | stop_loss == config value |
 | `test_sl_tp_triggered_count` | ExecutionStats.sl_tp_triggered == 1 |
 | `test_negative_pnl` | gross_pnl < 0 (loss confirmed) |
@@ -154,7 +154,7 @@ SHORT position opened against uptrend. SL should trigger.
 | `test_trade_count` | Exactly 1 trade closed |
 | `test_close_reason_is_sl` | close_reason = SL_TRIGGERED |
 | `test_direction_is_short` | direction = SHORT |
-| `test_exit_price_equals_sl` | exit_price == stop_loss (deterministic fill) |
+| `test_exit_price_is_the_breaching_ticks_market` | exit_price never better than stop_loss: the breaching tick's market (#629) |
 | `test_sl_level_matches_config` | stop_loss == config value |
 | `test_sl_tp_triggered_count` | ExecutionStats.sl_tp_triggered == 1 |
 | `test_negative_pnl` | gross_pnl < 0 (loss confirmed) |
@@ -199,7 +199,7 @@ LONG limit fills, then SL triggers during continued downtrend.
 |------|-----------|
 | `test_trade_count` | Exactly 1 trade |
 | `test_close_reason_is_sl` | close_reason = SL_TRIGGERED |
-| `test_exit_price_equals_sl` | exit_price == config SL level |
+| `test_exit_price_is_the_breaching_ticks_market` | exit_price never above the config SL level; exit_level is that level (#629) |
 | `test_entry_price_equals_limit` | entry_price == config limit price |
 | `test_sl_tp_triggered_count` | ExecutionStats.sl_tp_triggered == 1 |
 
@@ -367,7 +367,7 @@ Total ticks processed: ~85k (vs ~18.6k ticks in the old multi-day windows). Suit
 - **LONG TP**: triggers when `bid >= take_profit`
 - **SHORT SL**: triggers when `ask >= stop_loss`
 - **SHORT TP**: triggers when `ask <= take_profit`
-- **Fill price**: SL/TP level itself (deterministic, bypasses latency pipeline)
+- **Fill price**: a stop at the breaching tick's market — its bid for a long, its ask for a short, never better than the level — and a target at its level (deterministic, in the tick, bypasses the latency pipeline; #629)
 - **CloseReason**: `SL_TRIGGERED` or `TP_TRIGGERED` propagated to TradeRecord
 
 ### Modify Sequence

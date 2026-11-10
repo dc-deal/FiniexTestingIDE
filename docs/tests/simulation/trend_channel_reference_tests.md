@@ -18,6 +18,7 @@ The robustness *aggregation* (distribution / IS-OOS / WFE) is covered separately
 |---|---|---|---|
 | `trend_channel_reference_limit_fixture.json` | `limit_pullback` | EURUSD 2026-01-05 → 01-09 | resting LIMIT entries |
 | `trend_channel_reference_stop_fixture.json` | `stop_breakout` | EURUSD 2026-01-12 → 01-16 | resting STOP entries |
+| `trend_channel_reference_session_end_close_fixture.json` | `limit_pullback` with `close_at_session_end` | EURUSD 2026-01-05 → 01-09 14:00, while two positions are open | the session-end close (#642) |
 
 Both windows produce stop and target exits, partial closes, and concurrent positions
 (deterministic with the seeded sim latency). Their trailed positions ran on into their targets, so
@@ -30,6 +31,7 @@ the trail is driven tick by tick in its own file instead (`test_trend_channel_ow
 | Fixture | Scope | Description |
 |---|---|---|
 | `limit_batch` / `stop_batch` | session | One `run_scenario()` per entry-mode fixture |
+| `session_end_close_batch` | session | One `run_scenario()` of the session-end close fixture |
 | `limit_process_result` / `stop_process_result` | session | First scenario's `ProcessResult` |
 | `limit_trades` / `stop_trades` | session | `List[TradeRecord]` per mode |
 | `all_trades` | session | Combined trade history across both modes |
@@ -82,6 +84,16 @@ The STOP fixture runs with `write_strategy_files` on, the LIMIT fixture with it 
 |---|---|
 | `test_the_stop_run_kept_its_last_setup` | the run holds `strategy_files/<scenario>/last_setup.json` with the mode, both bands, the gate and the entry geometry of the last submitted setup |
 | `test_the_limit_run_with_it_off_kept_none` | with the parameter off, no strategy file is written |
+
+### TestItEndsFlatWhenAsked
+
+With `close_at_session_end` the logic closes what it holds from the session-end event (#642), and the
+backtest settles those closes at its last quote — through the real tick loop.
+
+| Test | Description |
+|---|---|
+| `test_the_backtest_ends_flat` | no position is open when the run ends |
+| `test_the_positions_open_at_the_data_end_close_there` | the two positions open at 14:00 close at the run's last instant, as manual closes |
 
 ---
 

@@ -45,6 +45,7 @@ No guessing: each event delivers one typed payload to one hook.
 | `PARTIAL_CLOSE` | `PartialCloseEvent` — position_id, direction, closed_lots, remaining_lots, fill_price, result | `on_partial_close` |
 | `POSITION_CLOSED` | `PositionClosedEvent` — position_id, direction, close_reason, fill_price, lots | `on_position_closed` |
 | `SESSION_END` | `SessionEndEvent` — reason, severity | `on_session_end` |
+| `SESSION_END_ORDER_OUTCOME` | `SessionEndOrderOutcomeEvent` — order_id, position_id, status, result: how an order the logic sent from `on_session_end` ended — `executed`, `rejected`, `undelivered`, `unaccounted`, `cancelled` (withdrawn) or `expired`. Delivered once, after the session-end event; an order sent from this hook is withdrawn, never sent (#642) | `on_session_end_order_outcome` |
 
 Every payload also carries `tick_time` — the canonical clock: sim time in backtests; in an
 AutoTrader session the tick time, advanced by the wall clock between ticks.
@@ -148,6 +149,7 @@ subscribes to an event the current executor can't emit simply never receives it
 | `PARTIAL_CLOSE` | ✓ | ✓ |
 | `POSITION_CLOSED` | ✓ | ✓ |
 | `SESSION_END` | ✓ (ticks exhausted / request) | ✓ (request / Ctrl+C / safety) |
+| `SESSION_END_ORDER_OUTCOME` | ✓ (settled at the last quote, except after an `EMERGENCY` end) | ✓ (settled by the stop's second wait) |
 | `PARTIAL_FILL` (broker multi-execution) | — (order-book topic #143) | from #342 |
 | `RECONCILE_ALERT` | — (AutoTrader only) | from #151 Phase 2 |
 
@@ -160,11 +162,29 @@ final stats, clean exit); `EMERGENCY` exits immediately. Works in both pipelines
 in backtesting it ends the scenario early; in an AutoTrader session it shuts the AutoTrader down. A
 `SESSION_END` event is delivered before teardown.
 
-An order a logic sends from `on_session_end` ends differently in the two pipelines today. An
-AutoTrader session waits for it once more and books its fill, without telling the logic, because the
-session-end event stays the last one it hears. A backtest has no tick left and expires it. So a logic
-closes before it requests the end, the way the field study's `stop_waits_for_close` phase does,
-until #642 gives both pipelines one outcome and a hook that reports it.
+An order a logic sends from `on_session_end` — a close on its way out — ends the same way in both
+pipelines (#642). An AutoTrader session waits for it once more and books its fill; a backtest, which
+has no tick left, settles it at the last quote, with the account model's costs, so its fill misses
+only the latency a live fill pays. A resting order sent then expires, as nothing is left to trigger
+it. The logic hears how each such order ended in `on_session_end_order_outcome`, once, after the
+session-end event — every ending, not only a fill, because a close that did not go through is what
+it most needs to know. The session is over by then: an order sent from that hook is withdrawn,
+never sent — a session holds its submit back from the venue, a backtest takes it out of the latency
+queue, and both book it cancelled by the framework at the session end. Only the orders the logic
+sent from its session-end hooks are reported: the ending of an order sent before the event — a
+resting order the cleanup cancels, one a live venue fills meanwhile — is not delivered, as it never
+was after the session-end event. A cancel or an amend the logic asks for from `on_session_end` is
+applied in the backtest too, where it used to wait for a tick that never came.
+
+Two edges, both the same in either pipeline where they can be. After an `EMERGENCY` end nothing is
+settled: a live stop does not wait then, so the backtest does not either, and the order is
+withdrawn. An order already on its way before the session-end event is the data's to end in a
+backtest — it expires as it always did — and the first wait's in a session. A live session whose
+input simply ran out does not wait at all — in practice a replayed mock session — so such a close is
+read at its cleanup instead and not reported; a backtest settles at its data end, which stands for
+the normal stop of the window it replays. A resting order sent from `on_session_end` expires in a
+backtest and is reported; in a session it is the session-end policy's, and not reported.
+`CORE/trend_channel_reference` shows the hook with `close_at_session_end`.
 
 ## Wiring & Drain Points
 

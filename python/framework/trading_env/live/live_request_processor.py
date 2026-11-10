@@ -145,6 +145,10 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         # A worker whose stop timed out, still inside a call: the adapter's lock is held until
         # that call returns, so a synchronous call meanwhile waits behind it
         self._lingering_worker: Optional[threading.Thread] = None
+        # Once the session is over (#642): a submit is kept here instead of the outbox, so no
+        # worker sends it, and take_unsent_submits hands it back to be withdrawn
+        self._holding_submits: bool = False
+        self._held_submits: List[SubmitJob] = []
 
         # Executor hooks invoked from drain_inbox() on the main thread.
         # Registered by LiveTradeExecutor in its __init__ via
@@ -881,12 +885,16 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         reads and cancels by itself. Only for a stopped worker: a running one would lose what it
         was about to send.
 
+        A submit held back once the session was over (#642) is handed back too, whether the worker
+        still runs or not: it never reached the outbox.
+
         Returns:
-            The submits among them, oldest first; empty while the worker still runs
+            The submits among them, oldest first; while the worker still runs, the held ones only
         """
+        held, self._held_submits = self._held_submits, []
         if self._worker_running:
-            return []
-        submits: List[SubmitJob] = []
+            return held
+        submits: List[SubmitJob] = held
         while True:
             try:
                 job = self._http_outbox.get_nowait()
@@ -1601,7 +1609,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             order_type=order_type,
             **kwargs,
         )
-        self._http_outbox.put(SubmitJob(
+        self._send_or_hold(SubmitJob(
             order_id=order_id,
             action=PendingOrderAction.OPEN,
             order_type=order_type,
@@ -1641,7 +1649,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             order_type=OrderType.MARKET,
             **kwargs,
         )
-        self._http_outbox.put(SubmitJob(
+        self._send_or_hold(SubmitJob(
             order_id=position_id,
             action=PendingOrderAction.CLOSE,
             order_type=OrderType.MARKET,
@@ -1649,6 +1657,27 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             adapter=adapter,
             direction=close_direction,
         ))
+
+    def _send_or_hold(self, job: SubmitJob) -> None:
+        """
+        Hand a submit to the worker, or keep it back once the session is over (#642).
+
+        Args:
+            job: The submit
+        """
+        if self._holding_submits:
+            self._held_submits.append(job)
+            return
+        self._http_outbox.put(job)
+
+    def hold_new_submits(self) -> None:
+        """
+        Keep every submit from now on away from the worker, so none reaches the venue (#642).
+
+        Set once the session is over and its last decision event is being delivered: an order a
+        strategy sends from that hook is never sent, and take_unsent_submits hands it back.
+        """
+        self._holding_submits = True
 
     # ============================================
     # Async Modify / Cancel / Position-Modify Orchestrators (#318)

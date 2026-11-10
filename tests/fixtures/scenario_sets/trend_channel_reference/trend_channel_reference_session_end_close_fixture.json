@@ -1,0 +1,60 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "trend_channel_reference_session_end_close_fixture",
+  "run_purpose": "fixture",
+  "created": "2026-06-26T00:00:00.000000",
+  "description": "Test fixture — CORE/trend_channel_reference in limit_pullback mode (mt5 EURUSD) with close_at_session_end: the limit fixture's window, ending at 14:00 while two positions are open, so the logic closes them from the session-end event (#642) and the backtest ends flat.",
+  "global": {
+    "strategy_config": {
+      "decision_logic_type": "CORE/trend_channel_reference",
+      "worker_instances": {
+        "h1_trend": "CORE/ma_trend",
+        "m15_channel": "CORE/bollinger"
+      },
+      "workers": {
+        "h1_trend": {
+          "periods": {
+            "H1": 50
+          },
+          "ma_type": "ema",
+          "neutral_band": 0.05,
+          "compute_basis": "bar_close"
+        },
+        "m15_channel": {
+          "periods": {
+            "M15": 20
+          },
+          "deviation": 2.0
+        }
+      },
+      "decision_logic_config": {
+        "entry_mode": "limit_pullback",
+        "entry_band_pos": 0.2,
+        "sl_mult": 1.0,
+        "tp_mult": 2.0,
+        "trail_mult": 1.5,
+        "partial_rr": 1.0,
+        "partial_fraction": 0.5,
+        "max_positions": 2,
+        "lot_size": 0.1,
+        "min_entry_capital": 1000,
+        "close_at_session_end": true
+      }
+    },
+    "trade_simulator_config": {
+      "balances": {
+        "USD": 10000
+      }
+    }
+  },
+  "scenarios": [
+    {
+      "scenario_name": "EURUSD_session_end_close_w1",
+      "symbol": "EURUSD",
+      "data_broker_type": "mt5",
+      "start_date": "2026-01-05T01:00:00+00:00",
+      "end_date": "2026-01-09T14:00:00+00:00",
+      "enabled": true
+    }
+  ]
+}
