@@ -1,0 +1,27 @@
+{
+  "run_id": "20261110_143806_f2168086",
+  "units": [
+    {
+      "name": "partial_close_lifecycle",
+      "symbol": "USDJPY",
+      "total_submitted": 6,
+      "total_accepted": 6,
+      "total_rejected": 0,
+      "total_never_confirmed": 0,
+      "total_expired": 0,
+      "avg_in_flight_ms": 1.5247281656532625,
+      "min_in_flight_ms": 1.0848249985428993,
+      "max_in_flight_ms": 2.0732259981741663,
+      "in_flight_count": 6,
+      "never_confirmed_orders": [],
+      "active_limit_orders": [],
+      "active_stop_orders": [],
+      "active_limit_count": 0,
+      "active_stop_count": 0,
+      "active_order_count": 0
+    }
+  ],
+  "key": [
+    "name"
+  ]
+}

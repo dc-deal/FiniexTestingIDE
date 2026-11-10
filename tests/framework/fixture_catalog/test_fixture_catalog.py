@@ -224,9 +224,12 @@ class TestASessionSequenceRunsEveryDeclaredSession:
             seen.append((profile, '--new-deployment' in arguments, kill_when is not None))
             return 'not run'
 
+        # Its own workspace: the default one is shared by every process on the machine, and
+        # emptying it here deleted a real production's profiles while it ran (2026-11-10)
         production = FixtureProducer(session_runner=runner,
                                      store=FixtureProductionStore(tmp_path / 'record.jsonl'),
-                                     progress=lambda line: None).produce(entry)
+                                     progress=lambda line: None,
+                                     workspace_root=tmp_path / 'workspaces').produce(entry)
 
         assert len(seen) == len(entry.sessions)
         for (profile, new_deployment, killed), session in zip(seen, entry.sessions):

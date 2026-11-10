@@ -124,15 +124,20 @@ The samples are a store of their own, a committed record beside the certificates
 survive every pruning.
 
 **A sample does not go stale by age, only by intent.** It stays the reference as long as the code
-it guards should compute the same numbers. When a change is meant to move a number or a served
-shape, the entry is produced and frozen again and the review reads the diff — the samples are what
-makes such a change visible field by field. A sample is removed only with the aggregates it guards.
+it guards — the aggregation, from a run's sections to its totals and views — should compute the
+same numbers from the same inputs. When a change is meant to move such a number or the shape of a
+frozen section, the suite fails on it and names the field; the entry is then produced and frozen
+again, and the review reads the diff — the samples are what makes such a change visible field by
+field. A change that leaves the aggregation alone — in the simulation, a fill, a strategy — leaves
+the samples valid, even where a new production would record other figures: their inputs were
+frozen with them, and freezing again would rewrite every id, instant and measured timing for
+nothing the suite checks. A sample is removed only with the aggregates it guards.
 
 **The same runs serve the viewer.** The entries a golden sample freezes are fixtures a consumer
 pins too: FiniexViewer captures their answers from this API to test its own side against. A change
-that moves a served number on purpose therefore produces the entry once, and that one production
-feeds both — the sample frozen again for this repository's review, and the answers the viewer
-captures again to bring its contract tests along.
+that moves a served number on purpose therefore produces the entry again, so the viewer can capture
+the new answers; the sample is frozen from that production only where the suite asks for it, and
+otherwise keeps naming the production it was frozen from.
 
 ## The production record
 
