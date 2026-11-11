@@ -1,9 +1,12 @@
 """
 FiniexTestingIDE - Order Math (#557)
 
-Order statistics formulas — one definition each, for every model and fold that serves them: the
-aggregated portfolio folds its execution rate with it, and the run summary derives its own.
+Order formulas — one definition each, for every model, fold and message that uses them: the
+aggregated portfolio folds its execution rate with it, the run summary derives its own, and a
+refused order says how much of it the free funds covered.
 """
+
+from typing import Optional
 
 
 def execution_rate_pct(executed: int, submitted: int, adopted: int) -> float:
@@ -23,3 +26,23 @@ def execution_rate_pct(executed: int, submitted: int, adopted: int) -> float:
     """
     handled = submitted + adopted
     return (executed / handled * 100.0) if handled > 0 else 0.0
+
+
+def covered_share_pct(available: float, required: float) -> Optional[float]:
+    """
+    The share of what an order needs that the account could have spent on it.
+
+    A shortfall of a hair and one of nearly everything read alike as two figures; the share tells
+    them apart. Available below zero — claims of unfilled orders above the balance — covers
+    nothing.
+
+    Args:
+        available: What the account may spend
+        required: What the order needs
+
+    Returns:
+        Available over required, in percent, never below 0.0; None when the order needs nothing
+    """
+    if required <= 0:
+        return None
+    return max(available, 0.0) / required * 100.0

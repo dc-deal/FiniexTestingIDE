@@ -12,6 +12,7 @@ the submission-time refusal, which is RETURNED rather than announced — `_notif
 called only from the asynchronous resolution paths, so no outcome event fires for it.
 """
 
+import re
 from datetime import datetime, timezone
 from typing import List, Tuple
 
@@ -33,6 +34,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
     RejectionReason,
 )
+from python.framework.utils.trading_math.order_math import covered_share_pct
 
 # The tick the harness feeds: a BUY pays 50001.0, a SELL receives 49999.0.
 _BID = 49999.0
@@ -179,6 +181,23 @@ class TestTheSubmissionRefusal:
         # one cannot read the same.
         assert 'committed' in second.rejection_message
         assert 'balance' in second.rejection_message
+
+    def test_the_refusal_says_how_much_of_the_order_the_free_funds_cover(self):
+        """
+        The share beside the two figures: a shortfall of a hair and one of nearly everything
+        no longer read alike. It is derived from the figures the sentence itself names.
+        """
+        _, executor = _spot_executor(usd=1000.0)
+        executor.open_order(_limit(OrderDirection.LONG, 0.012, _RESTING_BUY_PRICE))
+
+        second = executor.open_order(_market(OrderDirection.LONG, 0.01))
+
+        figures = re.search(r'requires ([\d.]+) USD, available: ([-\d.]+) USD — covers ([\d.]+) % of it',
+                            second.rejection_message)
+        assert figures is not None, second.rejection_message
+        required, available, share = (float(value) for value in figures.groups())
+        assert 0.0 < share < 100.0
+        assert share == pytest.approx(available / required * 100.0, abs=0.05)
 
     def test_the_same_order_passes_when_nothing_is_committed(self):
         """The regression guard: without an unfilled order, the balance is the balance."""
@@ -475,6 +494,8 @@ class TestASpotCloseIsCheckedLikeASell:
         assert result.status == OrderStatus.DENIED
         assert result.rejection_reason == RejectionReason.INSUFFICIENT_FUNDS
         assert 'BTC' in result.rejection_message
+        # Nothing is free, so nothing of the close would have been covered
+        assert 'covers 0.0 % of it' in result.rejection_message
         assert sim.portfolio.get_asset_balance('BTC') == pytest.approx(0.0)
         assert long_id in [p.position_id for p in sim.get_open_positions()]
 
@@ -629,3 +650,21 @@ class TestWhatTheEndReleased:
         assert [row.status for row in sim.get_order_history()][-1] == OrderStatus.EXPIRED
         assert sim.get_active_orders(), 'kept for the snapshot'
         assert sim.get_committed_funds('USD') == 0.0
+
+
+class TestTheCoveredShare:
+    """
+    The share a refusal names: what the account could spend over what the order needs.
+
+    Held to its edges here, where the formula is: the sentences above only ever show the
+    ordinary case.
+    """
+
+    def test_a_shortfall_of_a_hair_covers_nearly_all_of_it(self):
+        assert covered_share_pct(0.0098, 0.01) == pytest.approx(98.0)
+
+    def test_claims_above_the_balance_cover_nothing(self):
+        assert covered_share_pct(-120.0, 500.0) == 0.0
+
+    def test_an_order_that_needs_nothing_has_no_share(self):
+        assert covered_share_pct(10.0, 0.0) is None
