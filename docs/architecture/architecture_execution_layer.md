@@ -148,7 +148,8 @@ Error handling is **not a feature of the live execution stack only**. It belongs
 2. Latency delay elapses → _fill_open_order() called
 3. Funds check, per account model: margin compares against free margin (INSUFFICIENT_MARGIN);
    spot compares against the asset the order spends, net of what this bot's own unfilled
-   orders already claim (INSUFFICIENT_FUNDS, #489)
+   orders already claim (INSUFFICIENT_FUNDS, #489). Every such refusal names both figures and
+   the share of the order the free amount would have covered (`— covers 98.0 % of it`)
 4. Rejection stored in _order_history, order never reaches portfolio
 ```
 

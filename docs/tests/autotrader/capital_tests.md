@@ -48,6 +48,7 @@ never called.
 | `test_the_excluded_order_does_not_reserve_itself` | `exclude_order_id` — the order being filled is still in its own collection while the fill runs |
 | `test_margin_mode_reserves_nothing` | Margin's quantity is free margin, and its claim is #209's (the rule differs: a CLOSE releases margin) |
 | `test_the_second_order_is_refused_while_the_first_still_rests` | The case the feature exists for, with `balance` and `committed` named separately in the message |
+| `test_the_refusal_says_how_much_of_the_order_the_free_funds_cover` | The message carries the share of the order what is free would have covered (`— covers 82.0 % of it`), derived from the two figures it names — a shortfall of a hair and one of nearly everything no longer read alike |
 | `test_the_same_order_passes_when_nothing_is_committed` | Regression guard: unchanged behaviour without unfilled orders |
 | `test_a_sell_is_refused_against_committed_base` | The base side of the same rule |
 | `test_the_refusal_is_returned_and_announces_nothing` | No outcome event fires — the algo learns from the `OrderResult` it already holds |
@@ -79,7 +80,7 @@ base balance at −0.01, while a SELL of the same coins was denied.
 
 | Test | What it verifies |
 |---|---|
-| `test_the_simulation_denies_the_close` | DENIED with `insufficient_funds` at submission; the base stays at zero and the LONG stays in the book |
+| `test_the_simulation_denies_the_close` | DENIED with `insufficient_funds` at submission, the message saying the free base covers 0.0 % of the close; the base stays at zero and the LONG stays in the book |
 | `test_the_live_executor_denies_it_too` | The same denial in a live session over the mock venue |
 | `test_a_close_the_account_can_fund_goes_through` | The regression guard: a LONG whose coins are held closes as before |
 | `test_closing_a_short_needs_the_quote_it_buys_back_with` | Closing a spot SHORT buys back with the quote, and a resting BUY's claim on it is counted |
@@ -87,6 +88,18 @@ base balance at −0.01, while a SELL of the same coins was denied.
 | `test_live_books_a_close_the_venue_executed` | The same in a live session: the venue sold the coins, so the book follows it |
 | `test_a_stop_the_account_cannot_fund_fires_once` | A breached stop whose close the simulated venue refuses is booked rejected once and not tried again; it counts no protective close |
 | `test_margin_is_not_checked` | A margin close moves no coins and is not checked |
+
+#### `TestTheCoveredShare` — the share a refusal names
+
+`covered_share_pct` (`trading_math/order_math.py`) is the one formula behind every funds and
+margin refusal's `— covers 98.0 % of it`; its edges are held here, where the sentences above only
+show the ordinary case.
+
+| Test | What it verifies |
+|---|---|
+| `test_a_shortfall_of_a_hair_covers_nearly_all_of_it` | 0.0098 of 0.01 is 98 % |
+| `test_claims_above_the_balance_cover_nothing` | A negative available (unfilled orders claim more than the balance) covers 0 %, never a negative share |
+| `test_an_order_that_needs_nothing_has_no_share` | Nothing required is no share at all (None), and the refusal then names none |
 
 #### `TestWhatTheEndReleased` — an order the end booked gives its funds back
 

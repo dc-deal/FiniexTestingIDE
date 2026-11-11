@@ -37,7 +37,7 @@ End-to-end tests that run full backtesting scenarios through the DecisionTrading
 
 | Class | Scenario Config | What it validates |
 |-------|-----------------|-------------------|
-| `TestRejectionCooldown` | `order_guard_cooldown_test.json` | Margin rejection arms cooldown, subsequent order blocked as REJECTION_COOLDOWN, stats counted |
+| `TestRejectionCooldown` | `order_guard_cooldown_test.json` | Margin rejection arms cooldown, subsequent order blocked as REJECTION_COOLDOWN, stats counted; each margin rejection names the share of its requirement the free margin covered |
 
 ---
 

@@ -127,6 +127,7 @@ from python.framework.types.trading_env_types.trading_env_stats_types import (
     ExecutionStats,
     FreeAssetFunds,
 )
+from python.framework.utils.trading_math.order_math import covered_share_pct
 from python.framework.utils.trading_math.price_trigger import mid_price
 from python.framework.validators.order_feature_validator import undeclared_feature_sentence
 
@@ -1203,9 +1204,25 @@ class AbstractTradeExecutor(ABC):
             return None
         verb = 'sells' if closing == OrderDirection.SHORT else 'buys back with'
         return (f'closing it {verb} {required:.8f} {currency}, '
-                f'available: {funds.available:.8f} {currency} '
+                f'available: {funds.available:.8f} {currency}'
+                f'{self._covered_share(funds.available, required)} '
                 f'(balance {funds.balance:.8f}, committed by unfilled orders '
                 f'{funds.committed:.8f})')
+
+    @staticmethod
+    def _covered_share(available: float, required: float) -> str:
+        """
+        How much of a refused order what is free would have covered, for the refusal's sentence.
+
+        Args:
+            available: What the account may spend
+            required: What the order needs
+
+        Returns:
+            ' — covers 98.0 % of it', or an empty string when the order needs nothing
+        """
+        share = covered_share_pct(available, required)
+        return '' if share is None else f' — covers {share:.1f} % of it'
 
     # ============================================
     # Ending records — what ended, how, and when
@@ -1678,13 +1695,15 @@ class AbstractTradeExecutor(ABC):
             reason=RejectionReason.INSUFFICIENT_FUNDS,
             message=(
                 f'{side} requires {required:.6f} {currency}, '
-                f'available: {available:.6f} {currency} '
+                f'available: {available:.6f} {currency}'
+                f'{self._covered_share(available, required)} '
                 f'(balance {balance:.6f}, committed by unfilled orders {committed:.6f})'
             )
         ))
         self.logger.warning(
             f'Order {order_id} rejected at submission: {side} requires '
-            f'{required:.6f} {currency}, available {available:.6f} '
+            f'{required:.6f} {currency}, available {available:.6f}'
+            f'{self._covered_share(available, required)} '
             f'(balance {balance:.6f}, committed {committed:.6f})'
         )
         return rejection
@@ -1842,12 +1861,15 @@ class AbstractTradeExecutor(ABC):
                 rejection = self._book_order_result(self._rejection_for_pending(
                     pending_order,
                     reason=RejectionReason.INSUFFICIENT_MARGIN,
-                    message=f'Required margin {margin_required:.2f} exceeds free margin {free_margin:.2f}'
+                    message=(f'Required margin {margin_required:.2f} exceeds free margin '
+                             f'{free_margin:.2f}'
+                             f'{self._covered_share(free_margin, margin_required)}')
                 ), pending_order)
                 self._notify_outcome(pending_order.direction, rejection, pending_order)
                 self.logger.warning(
                     f'Order {pending_order.pending_order_id} rejected: '
                     f'margin {margin_required:.2f} > free {free_margin:.2f}'
+                    f'{self._covered_share(free_margin, margin_required)}'
                 )
                 return
         else:
@@ -1871,7 +1893,8 @@ class AbstractTradeExecutor(ABC):
                         reason=RejectionReason.INSUFFICIENT_FUNDS,
                         message=(
                             f'BUY requires {required:.6f} {symbol_spec.quote_currency}, '
-                            f'available: {available:.6f} {symbol_spec.quote_currency} '
+                            f'available: {available:.6f} {symbol_spec.quote_currency}'
+                            f'{self._covered_share(available, required)} '
                             f'(balance {balance:.6f}, committed by unfilled orders '
                             f'{committed:.6f})'
                         )
@@ -1880,7 +1903,8 @@ class AbstractTradeExecutor(ABC):
                     self.logger.warning(
                         f'Order {pending_order.pending_order_id} rejected: '
                         f'BUY requires {required:.6f} {symbol_spec.quote_currency}, '
-                        f'available: {available:.6f} {symbol_spec.quote_currency} '
+                        f'available: {available:.6f} {symbol_spec.quote_currency}'
+                        f'{self._covered_share(available, required)} '
                         f'(balance {balance:.6f}, committed {committed:.6f})'
                     )
                     return
@@ -1899,7 +1923,8 @@ class AbstractTradeExecutor(ABC):
                         reason=RejectionReason.INSUFFICIENT_FUNDS,
                         message=(
                             f'SELL requires {pending_order.lots:.6f} {symbol_spec.base_currency}, '
-                            f'available: {available:.6f} {symbol_spec.base_currency} '
+                            f'available: {available:.6f} {symbol_spec.base_currency}'
+                            f'{self._covered_share(available, pending_order.lots)} '
                             f'(balance {balance:.6f}, committed by unfilled orders '
                             f'{committed:.6f})'
                         )
@@ -1908,7 +1933,8 @@ class AbstractTradeExecutor(ABC):
                     self.logger.warning(
                         f'Order {pending_order.pending_order_id} rejected: '
                         f'SELL requires {pending_order.lots:.6f} {symbol_spec.base_currency}, '
-                        f'available: {available:.6f} {symbol_spec.base_currency} '
+                        f'available: {available:.6f} {symbol_spec.base_currency}'
+                        f'{self._covered_share(available, pending_order.lots)} '
                         f'(balance {balance:.6f}, committed {committed:.6f})'
                     )
                     return
