@@ -55,7 +55,7 @@ and a backtest the gate lets through, and change one thing each.
 | Test | Description |
 |------|-------------|
 | `TestEveryBlockIsDeclared` | every block of a rendered profile, and every field of its execution block, is declared once — where it goes in the backtest, or why it has no counterpart — and says why |
-| `TestTheScenarioSet` | the built set names the session's warmup run and broker document and the window; the strategy is the rendered one without the projected type keys; the heartbeat cadence, the frame cadence and the order guard are carried; every field of the execution model and of the simulator model is written, so no workspace override reaches one; a regular comparison declares no purpose; another history depth and a document without blocks are refused |
+| `TestTheScenarioSet` | the built set names the session's warmup run and broker document and the window; the strategy is the rendered one without the projected type keys; the heartbeat cadence, the frame cadence and the order guard are carried; every field of the execution model and of the simulator model is written, so no workspace override reaches one; the second backtest's set writes the measured span as the simulator's order latency; a regular comparison declares no purpose; another history depth and a document without blocks are refused |
 | `TestTheLoaderReadsTheRecordedWarmup` | a scenario naming `warmup_from_run` carries that run's record; a record of another symbol is refused; a copy of the records is read through the reader and the store the loader was given |
 | `TestTheFrozenBrokerDocument` | a scenario naming `broker_config_document` trades with the frozen document; an unknown document is refused at load; a document is read from the store it is given; a document no configuration can be built from is that scenario's error; one broker from a document and from another source in one set is refused; a static seed's document, which names no broker type, is frozen again by the backtest under its own id |
 
@@ -192,6 +192,7 @@ One day's orders on both sides, built from the record's own types, with one thin
 |------|-------------|
 | `TestAnOrderOnBothSides` | the same order shows nothing; a worse live fill is a positive execution difference, for a buy and for a sell; the live fee rate against the taker rate, and a fee the venue did not report is not checked; a partial fill counts its executed lots, several fills are priced by their lot-weighted mean; a refusal is named with its cause; the size against the two account values; the delay from the decision mid apart |
 | `TestWhatIsLeftOver` | an order on one side only is listed, and the fills are counted per side; an order whose record names no side measures no price |
+| `TestTheMeasuredLatency` | the span of every live order that filled, from submission to fill, in whole milliseconds, with how many measured it; no live fill measures nothing |
 | `TestTheDecisionFrame` | found by the order it names, else the order frame written when the order was submitted; no frame of the pass gives none |
 | tests at module level | a close sells what a long held and buys back what a short held; the taker rate comes from the frozen document, in percent |
 
@@ -323,5 +324,5 @@ deployment as the command runs it. About 50 seconds.
 |------|-------------|
 | `TestTheRecord` | the record keeps the generated set, the warmup and the report; the kept warmup is the session's own, byte for byte; the printed text is kept |
 | `TestTheLiveSide` | one segment of one session, its window opening at the first tick on the replayed day; a session on the mock adapter is asked of no venue |
-| `TestTheGateAndTheVerdict` | the gate sees the session and both froze one broker document, so its only possible refusal is uncommitted code; on a committed tree the chain reaches the verdict and the backtest of the session's own window passes, decisions and attribution included |
+| `TestTheGateAndTheVerdict` | the gate sees the session and both froze one broker document, so its only possible refusal is uncommitted code; on a committed tree the chain reaches the verdict and the backtest of the session's own window passes, decisions and attribution included, and beside it a second backtest at the latency the session's two fills measured, with measure 2b against it |
 

@@ -18,3 +18,6 @@ DIVERGENCE_WARMUP_RECORD_FILE = 'warmup_segment_{segment}.json'
 # A comparison's scenario sets are named after it, so its backtest runs are found by that name;
 # each set's file carries the same name
 DIVERGENCE_SCENARIO_SET_NAME = 'divergence_{report_id}_segment_{segment}'
+# The set of a segment's second backtest, at the latency its live orders measured — beside the
+# verdict, never in it
+DIVERGENCE_LATENCY_SCENARIO_SET_NAME = 'divergence_{report_id}_segment_{segment}_measured_latency'

@@ -62,9 +62,11 @@ class TestTheRecord:
     def test_it_keeps_the_set_the_warmup_and_the_report(self, compared):
         report, _, report_dir, _ = compared
         segment, = report.segments
-        assert sorted(path.name for path in report_dir.iterdir()) == sorted([
-            'report.json', 'report.txt', f'{segment.scenario_set_name}.json',
-            'warmup_segment_1.json'])
+        kept = {'report.json', 'report.txt', f'{segment.scenario_set_name}.json',
+                'warmup_segment_1.json'}
+        if segment.measured_latency is not None and segment.measured_latency.scenario_set_name:
+            kept.add(f'{segment.measured_latency.scenario_set_name}.json')
+        assert {path.name for path in report_dir.iterdir()} == kept
 
     def test_the_kept_warmup_is_the_session_s_own(self, compared):
         _, _, report_dir, session_dir = compared
@@ -115,3 +117,17 @@ class TestTheGateAndTheVerdict:
         verdicts = {measure.measure: measure.state for measure in segment.verdict.measures}
         assert verdicts[DivergenceMeasure.DECISIONS] is MeasureState.PASSED
         assert verdicts[DivergenceMeasure.ATTRIBUTION] is MeasureState.PASSED
+
+    def test_beside_the_verdict_a_backtest_at_the_measured_latency(self, compared):
+        """The session's two fills measured a latency, so a second backtest ran at it and measure
+        2b stands against it — beside the verdict, never in it. Only a compared segment has one."""
+        report, _, report_dir, _ = compared
+        segment, = report.segments
+        if segment.not_compared_because:
+            assert segment.measured_latency is None
+            return
+        latency = segment.measured_latency
+        assert latency.orders_measured == 2 and latency.latency_min_ms is not None
+        assert latency.backtest_run_id and not latency.not_run_because
+        assert latency.execution_price.measure is DivergenceMeasure.EXECUTION_PRICE
+        assert (report_dir / f'{latency.scenario_set_name}.json').exists()

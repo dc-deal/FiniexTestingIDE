@@ -16,7 +16,7 @@ gate refuses is named with why and not measured — never measured in part.
 import shutil
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 import pandas as pd
 
@@ -24,6 +24,7 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.constants.divergence_report_constants import (
+    DIVERGENCE_LATENCY_SCENARIO_SET_NAME,
     DIVERGENCE_LIVE_INDEX_FILE,
     DIVERGENCE_SCENARIO_SET_NAME,
     DIVERGENCE_WARMUP_RECORD_FILE,
@@ -60,6 +61,7 @@ from python.framework.reporting.builders.divergence.live_segment_builder import 
 )
 from python.framework.reporting.builders.divergence.live_side_collector import LiveSideCollector
 from python.framework.reporting.builders.divergence.order_divergence_builder import (
+    measured_latency_of,
     taker_rate_pct_of,
 )
 from python.framework.reporting.builders.divergence.segment_measures_builder import (
@@ -89,17 +91,21 @@ from python.framework.store.broker_config_freeze import read_frozen_broker_confi
 from python.framework.types.api.divergence_report_types import (
     DecisionComparison,
     DeclaredStop,
+    DivergenceMeasure,
     DivergenceReading,
     DivergenceReport,
     ExplainedFlipKind,
     GateFindingRow,
     GateReport,
     LiveSegment,
+    MeasuredLatencyBacktest,
     SegmentMeasures,
     SegmentReport,
     VenueAccountChange,
 )
 from python.framework.types.divergence_capture_types import (
+    BacktestRunCapture,
+    BacktestScenarioRecords,
     DerivedSegment,
     LiveDayRecords,
     LiveDeploymentCapture,
@@ -342,18 +348,71 @@ class DivergenceReportCoordinator:
         timeframes = sorted({tf for frame in scenario_records.frames.frames
                              for tf in frame.closed_bars} | {self._decision_timeframe})
         stamps = backtest_collector.collect_render_stamps(capture.broker_type, symbol, timeframes)
+        taker_rate = taker_rate_pct_of(broker_document)
         measures = measure_segment(
             segment, capture, day_records, live_frames, backtest, scenario_records,
-            taker_rate_pct_of(broker_document), self._decision_timeframe, gaps, stamps)
+            taker_rate, self._decision_timeframe, gaps, stamps)
         measures, venue_unread = self.confirm_captures(measures, venue, tick_index,
                                                         capture.broker_type, symbol)
         lot_step = derived.sessions[0].lot_step
+        measured_latency = self._at_measured_latency(
+            derived, records, report_dir, measures,
+            lambda run, scenario_records_k: measure_segment(
+                segment, capture, day_records, live_frames, run, scenario_records_k, taker_rate,
+                self._decision_timeframe, gaps, stamps),
+            lot_step)
         return named.model_copy(update={
             'measures': measures, 'verdict': judge_segment(measures, self._reading, lot_step),
-            'venue_unread': answers.unreadable + venue_unread})
+            'measured_latency': measured_latency,
+            # The runs the venue could not answer are already among the gap list's unread lines
+            'venue_unread': venue_unread})
+
+    def _at_measured_latency(self, derived: DerivedSegment, records: SessionRecords,
+                             report_dir: Path, measures: SegmentMeasures,
+                             measure: Callable[[BacktestRunCapture, BacktestScenarioRecords],
+                                               SegmentMeasures],
+                             lot_step: Optional[float]) -> MeasuredLatencyBacktest:
+        """
+        The segment's second backtest, at the latency its live orders measured instead of the
+        release's model, and measure 2b against it — beside the verdict, never in it.
+
+        Args:
+            derived: The segment
+            records: Where the sessions' records are read
+            report_dir: Where the generated set is kept
+            measures: The segment's measures against its first backtest — its live orders
+            measure: Measures the segment against another backtest run of its window
+            lot_step: The symbol's lot increment
+
+        Returns:
+            The second backtest and its measure 2b; not run, with why, where no live order filled
+        """
+        latency, orders_measured = measured_latency_of(measures.orders)
+        if latency is None:
+            return MeasuredLatencyBacktest(
+                not_run_because='no live order filled on a compared day, so no latency was measured')
+        set_name = DIVERGENCE_LATENCY_SCENARIO_SET_NAME.format(report_id=report_dir.name,
+                                                               segment=derived.index)
+        named = MeasuredLatencyBacktest(latency_min_ms=latency[0], latency_max_ms=latency[1],
+                                        orders_measured=orders_measured,
+                                        scenario_set_name=set_name)
+        run_id, refusal = self._backtest(derived, set_name, records, report_dir, latency)
+        if refusal:
+            return named.model_copy(update={'not_run_because': refusal})
+        from_store = configured_records()
+        collector = BacktestSideCollector(
+            ledger=from_store.ledger, reader=from_store.reader, run_configs=from_store.run_configs)
+        run = collector.collect_run(run_id)
+        scenario_name = run.scenarios[0].name if run.scenarios else ''
+        latency_measures = measure(run, collector.collect_scenario_records(run_id, scenario_name))
+        execution = next((verdict for verdict in judge_segment(
+            latency_measures, self._reading, lot_step).measures
+            if verdict.measure is DivergenceMeasure.EXECUTION_PRICE), None)
+        return named.model_copy(update={'backtest_run_id': run_id, 'execution_price': execution})
 
     def _backtest(self, derived: DerivedSegment, set_name: str, records: SessionRecords,
-                  report_dir: Path) -> Tuple[str, str]:
+                  report_dir: Path,
+                  latency_ms: Optional[Tuple[int, int]] = None) -> Tuple[str, str]:
         """
         The segment's backtest, built from what its sessions recorded and run like any backtest.
 
@@ -362,6 +421,8 @@ class DivergenceReportCoordinator:
             set_name: The generated scenario set's name
             records: Where the sessions' records are read
             report_dir: Where the generated set is kept
+            latency_ms: The order latency to draw from instead of the release's model, (least,
+                most) in milliseconds; None for the release's model
 
         Returns:
             (the backtest's run id; why it did not run, '' where it ran)
@@ -374,7 +435,8 @@ class DivergenceReportCoordinator:
             rendered_profile=rendered, warmup_from_run=window.warmup_from_run,
             broker_config_document=window.broker_config_id, start=window.start, end=window.end,
             balances=window.balances or {}, run_purpose=self._run_purpose)
-        path = RecordedScenarioBuilder.write(RecordedScenarioBuilder.build(inputs), report_dir)
+        path = RecordedScenarioBuilder.write(RecordedScenarioBuilder.build(inputs, latency_ms),
+                                             report_dir)
         loaded = ScenarioConfigLoader(records.reader, records.run_configs).load_config(str(path))
         summary = initialize_batch_and_run(loaded, AppConfigManager())
         if summary is None:

@@ -14,8 +14,14 @@ import pytest
 from python.framework.reporting.builders.divergence.order_divergence_builder import (
     decision_frame_of,
     measure_day_orders,
+    measured_latency_of,
     order_side_of,
     taker_rate_pct_of,
+)
+from python.framework.types.api.divergence_report_types import (
+    DayOrderDivergence,
+    OrderDivergence,
+    OrderOutcome,
 )
 from python.framework.types.api.report_types import OrderEventRow
 from python.framework.types.api.state_frame_types import StateFrame, StateFrameCause
@@ -172,6 +178,28 @@ class TestWhatIsLeftOver:
                              order_id='order_1', submitted_seq=1, event_time=_DECIDED.isoformat())
         order, = _day([bare, _filled(2, 1, 3000.0)], [_submitted(1), _filled(2, 1, 3000.0)]).orders
         assert order.live.order_side is None and order.execution_difference is None
+
+
+def _outcome(seq: int, latency_ms: Optional[float], lots: float = 0.05) -> OrderOutcome:
+    filled_at = _DECIDED + timedelta(milliseconds=latency_ms) if latency_ms is not None else None
+    return OrderOutcome(run_id='s1', seq=seq, submitted_at=_DECIDED, filled_lots=lots,
+                        fill_price=3000.0 if lots else None, filled_at=filled_at)
+
+
+class TestTheMeasuredLatency:
+
+    def test_the_span_of_every_live_order_that_filled(self):
+        day = DayOrderDivergence(
+            trading_day=_DAY, closing=_CLOSING,
+            orders=[OrderDivergence(live=_outcome(1, 812.4), backtest=_outcome(1, 40.0),
+                                    lots_difference=0.0)],
+            live_one_sided=[_outcome(2, 2903.6), _outcome(3, None, lots=0.0)])
+        assert measured_latency_of([day]) == ((812, 2904), 2)
+
+    def test_no_live_fill_measures_nothing(self):
+        day = DayOrderDivergence(trading_day=_DAY, closing=_CLOSING,
+                                 backtest_one_sided=[_outcome(1, 40.0)])
+        assert measured_latency_of([day]) == (None, 0)
 
 
 class TestTheDecisionFrame:

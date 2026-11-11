@@ -9,6 +9,7 @@ it reads the records it is handed and decides nothing — whether a figure lies 
 the verdict's question.
 """
 
+import math
 from bisect import bisect_left
 from datetime import date, datetime
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -56,6 +57,29 @@ def taker_rate_pct_of(broker_document: Mapping[str, Any]) -> Optional[float]:
         return None
     rate = fee_structure.get('taker_fee')
     return float(rate) if isinstance(rate, (int, float)) else None
+
+
+def measured_latency_of(days: Sequence[DayOrderDivergence]
+                        ) -> Tuple[Optional[Tuple[int, int]], int]:
+    """
+    The latency the live orders of the compared days measured — from submission to their last
+    fill, on the session's clock — as the span the simulator's order latency is drawn from.
+
+    Args:
+        days: The compared days' orders, those in a gap already left out
+
+    Returns:
+        ((the least, the most) in whole milliseconds, how many orders measured it); (None, 0)
+        where no live order filled
+    """
+    measured = [(order.filled_at - order.submitted_at).total_seconds() * 1000.0
+                for day in days
+                for order in [pair.live for pair in day.orders] + list(day.live_one_sided)
+                if order.filled_lots and order.submitted_at is not None
+                and order.filled_at is not None]
+    if not measured:
+        return None, 0
+    return (max(0, math.floor(min(measured))), max(0, math.ceil(max(measured)))), len(measured)
 
 
 def measure_day_orders(trading_day: date, closing: datetime,

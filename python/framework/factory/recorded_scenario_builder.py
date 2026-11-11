@@ -17,7 +17,7 @@ it can silently go missing from the comparison.
 import json
 from dataclasses import fields
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.autotrader.run_record.rendered_profile_builder import NOT_A_BLOCK
@@ -110,17 +110,25 @@ class RecordedScenarioBuilder:
                          if field.name not in NOT_A_BLOCK)
 
     @staticmethod
-    def build(inputs: RecordedScenarioInputs) -> Dict[str, Any]:
+    def build(inputs: RecordedScenarioInputs,
+              latency_ms: Optional[Tuple[int, int]] = None) -> Dict[str, Any]:
         """
         The scenario set of one segment's backtest.
 
         Args:
             inputs: The segment's recorded inputs
+            latency_ms: The order latency the simulator draws from, (least, most) in
+                milliseconds — the live orders' measured one, for the backtest beside the verdict;
+                None for the release's own model
 
         Returns:
             The scenario set document, JSON-serialisable
         """
         blocks, strategy, execution = RecordedScenarioBuilder._checked_profile(inputs)
+        simulator = TradeSimulatorDefaults(balances=dict(inputs.balances))
+        if latency_ms is not None:
+            simulator = simulator.model_copy(update={'inbound_latency_min_ms': latency_ms[0],
+                                                     'inbound_latency_max_ms': latency_ms[1]})
         return RecordedScenarioBuilder._document(
             inputs, blocks, strategy,
             description='A backtest of a session segment, built from what the session recorded '
@@ -139,8 +147,7 @@ class RecordedScenarioBuilder:
             # The release's own simulator in full, every field written: a workspace override
             # of the backtesting defaults must not reach the comparison. The account currency
             # stays derived from the symbol's quote currency, as the session derived it
-            trade_simulator_config=TradeSimulatorDefaults(
-                balances=dict(inputs.balances)).model_dump(mode='json'),
+            trade_simulator_config=simulator.model_dump(mode='json'),
             inputs_of_record={'warmup_from_run': inputs.warmup_from_run,
                               'broker_config_document': inputs.broker_config_document})
 

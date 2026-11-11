@@ -148,6 +148,13 @@ class TestTheScenarioSet:
         assert document['global']['execution_config']['state_frames'] == {
             'enabled': True, 'cadence_timeframe': 'M5'}
 
+    def test_the_backtest_beside_the_verdict_draws_from_the_measured_latency(self):
+        depth = AppConfigManager().get_bar_max_history()
+        document = RecordedScenarioBuilder.build(_inputs(_rendered_profile(depth)), (812, 2904))
+        simulator = document['global']['trade_simulator_config']
+        assert (simulator['inbound_latency_min_ms'], simulator['inbound_latency_max_ms']) == (
+            812, 2904)
+
     def test_the_simulator_is_the_release_s_model_written_out(self, document):
         simulator = document['global']['trade_simulator_config']
         assert set(simulator) == set(TradeSimulatorDefaults.model_fields)

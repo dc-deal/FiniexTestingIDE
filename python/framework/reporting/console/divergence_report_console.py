@@ -13,6 +13,7 @@ from python.framework.types.api.divergence_report_types import (
     AaStandRun,
     AaWindowResult,
     DayExclusionReason,
+    MeasuredLatencyBacktest,
     DivergenceReport,
     MeasureVerdict,
     SegmentReport,
@@ -214,6 +215,7 @@ def _segment(report: SegmentReport) -> List[str]:
         f'{cross.weighted_deviation * 100:.1f} %)' if cross.agreement is not None
         else 'not checked — nothing to compare in '
         + ', '.join(m.value for m in cross.not_checked)))
+    lines.extend(_measured_latency(report.measured_latency))
     table = measures.decision_table
     lines.append('  Decisions, live × backtest: ' + (', '.join(
         f'{cell.live_action.value} × {cell.backtest_action.value} {cell.days}'
@@ -234,6 +236,29 @@ def _segment(report: SegmentReport) -> List[str]:
     for note in verdict.notes:
         lines.append(f'  Note: {note}')
     return lines
+
+
+def _measured_latency(run: Optional[MeasuredLatencyBacktest]) -> List[str]:
+    """
+    The second backtest's line, at the live orders' measured latency — beside the verdict.
+
+    Args:
+        run: The second backtest; None where the segment was not compared
+
+    Returns:
+        Its line, or none
+    """
+    if run is None:
+        return []
+    latency = (f' {run.latency_min_ms}–{run.latency_max_ms} ms from {run.orders_measured} '
+               f'order(s)' if run.latency_min_ms is not None else '')
+    if run.not_run_because:
+        return [f'  Beside the verdict — no backtest at the measured latency{latency}: '
+                f'{run.not_run_because}']
+    measure = run.execution_price
+    return [f'  Beside the verdict — the backtest at the measured latency{latency}, run '
+            f'{run.backtest_run_id}:',
+            _measure_row(measure) if measure is not None else '    execution_price not judged']
 
 
 def _measure_row(measure: MeasureVerdict) -> str:

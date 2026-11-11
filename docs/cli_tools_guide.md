@@ -882,7 +882,9 @@ The live side is read from the deployment's records — this machine's stores, o
 the bot host's data home. Each segment's window is backtested from the session's own warmup and
 frozen broker configuration; the gate refuses a backtest that does not run the session's code; the
 gaps, the measures and the venue's own record follow; the verdict ends each measure passed, failed
-or not checked. The report is printed and kept under `runs/divergence/<report_id>/`.
+or not checked. Where live orders filled, a second backtest at their measured latency shows measure
+2b beside the verdict, never in it. The report is printed and kept under
+`runs/divergence/<report_id>/`.
 
 | Option | Meaning |
 |---|---|

@@ -1199,6 +1199,30 @@ class GateReport(BaseModel):
     declared_files: List[str] = []
 
 
+class MeasuredLatencyBacktest(BaseModel):
+    """
+    A segment's second backtest, at the latency its live orders measured instead of the release's
+    model — beside the verdict, never in it. It shows how much of measure 2b the delay explains.
+
+    Args:
+        latency_min_ms: The least submission-to-fill time a live order measured; None where none
+        latency_max_ms: The most; None where none
+        orders_measured: How many live orders measured it
+        scenario_set_name: The second backtest's scenario set; '' where it did not run
+        backtest_run_id: Its run; '' where it did not run
+        execution_price: Measure 2b against it, judged as the verdict judges it; None where it did
+            not run
+        not_run_because: Why it did not run; '' where it ran
+    """
+    latency_min_ms: Optional[int] = None
+    latency_max_ms: Optional[int] = None
+    orders_measured: int = 0
+    scenario_set_name: str = ''
+    backtest_run_id: str = ''
+    execution_price: Optional[MeasureVerdict] = None
+    not_run_because: str = ''
+
+
 class SegmentReport(BaseModel):
     """
     One segment of the comparison.
@@ -1213,6 +1237,8 @@ class SegmentReport(BaseModel):
         gate: The gate's answer; None where no backtest ran
         measures: The measures; None where the segment was not compared
         verdict: The verdict; None as above
+        measured_latency: The second backtest at the live orders' measured latency, beside the
+            verdict; None where the segment was not compared
         venue_unread: What of the venue's record could not be read, with the reason
     """
     segment: LiveSegment
@@ -1223,6 +1249,7 @@ class SegmentReport(BaseModel):
     gate: Optional[GateReport] = None
     measures: Optional[SegmentMeasures] = None
     verdict: Optional[SegmentVerdict] = None
+    measured_latency: Optional[MeasuredLatencyBacktest] = None
     venue_unread: List[str] = []
 
 

@@ -173,6 +173,21 @@ same way, without the floor of compared days and with the per-order measures des
 judged, because a dry run simulates its fills on both sides. The words — *reading*, *zone*,
 *divergence report*, *A/A* — are defined in the [Glossary](../glossary.md).
 
+**Beside the verdict, a second backtest at the measured latency.** The backtest draws each order's
+latency from the release's model, a few dozen milliseconds, while a live order takes as long as
+the venue and the next tick take, often seconds. So wherever live orders filled, each segment is
+backtested a second time with the latency drawn from the span the live orders measured, from
+submission to fill, and measure 2b is shown against it:
+
+```
+  Beside the verdict — the backtest at the measured latency 640–3180 ms from 41 order(s), run …:
+  execution_price    reported     green   0 of 41      0.0 %    0  41 order(s) within the bound
+```
+
+It never enters the verdict. A 2b that is yellow or red against the release's model and green
+against the measured latency says the delay explains the difference, not the simulator's pricing.
+Without a live fill it does not run, and says so.
+
 The exit code says the same in one number. For `compare`: 0 every segment passed, 2 a segment was
 not compared, 3 a compared segment failed or was not checked. For `aa`: 0 identical, 3 a window
 differs, 2 refused or not checked.

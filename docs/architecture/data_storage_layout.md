@@ -81,7 +81,8 @@ its combinations rank are read from the ledger.
 One directory per comparison of a live deployment with backtests of its windows (#512), under
 `runs/divergence/<report_id>/`, the id minted like a run's. It holds, per segment, the scenario set
 it generated and the warmup history the segment's backtest started from — copied from the session,
-whose own record lies on another machine. Beside them: the run index it read a copy's sessions
+whose own record lies on another machine — and, where live orders filled, the set of the second
+backtest at their measured latency. Beside them: the run index it read a copy's sessions
 through, only where the sessions were read from a copy of another machine's data home, and its
 report, as `report.json` and as the `report.txt` the command printed. Its backtests are runs of row
 1: found by the scenario set's name, named in the report, never copied into it. An A/A — one
