@@ -22,6 +22,7 @@ connection policy for reaching a peer, which is
 | `rag_credentials*.json` | **outbound** — a sibling project | they do | we cannot read their data | a third party reads as us |
 | `collector_credentials*.json` | **outbound** — a sibling project | they do | we cannot read their archive | a third party reads as us |
 | `kraken_credentials.json` | **outbound** — a trading venue | the venue | no live trading | **a third party can move money** |
+| `kraken_ledger_credentials.json` | **outbound** — a trading venue, read only | the venue, with no right but to query the ledger and the closed orders and trades | the divergence report cannot read the account's movements | a third party reads the account's history; it cannot trade or withdraw |
 
 Every file exists twice: a **tracked** copy under `configs/credentials/` whose secrets are empty
 or switched off, and a **real** one under `user_configs/credentials/`, which is gitignored in
@@ -109,6 +110,9 @@ configs/credentials/
   inbound/   consumer_tokens.json, accounts.json       who may call us, and for whom
   peers/     rag_*, collector_*                        sibling projects, read-only
   venues/    kraken_credentials.json                   real money
+             kraken_ledger_credentials.json            read only: the account's ledger, its closed
+                                                       orders and trades — a key of its own, so it
+                                                       never shares a running bot's nonce
   services/  telegram_*, liveness_<bot_id>.json        outside services we call: the operator
                                                        alert channel and the liveness monitor,
                                                        one ping URL per bot

@@ -15,14 +15,16 @@ lever is calling it less. Two consequences, neither optional:
   - the full read is CACHED per process (below)
 """
 
+import io
 import os
 import shutil
 import subprocess
+import tarfile
 import tempfile
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from python.framework.types.git_info_types import GitInfo, RepoCommitHistory, RepoStatus
 
@@ -47,6 +49,10 @@ _PINNED_CONFIG = (
 # named `configs/*` or `:(icase)configs` widened a path list back onto the credential files the
 # patch had excluded. Literal pathspecs turn that off for every call.
 _LITERAL_PATHSPECS = '--literal-pathspecs'
+
+# How long reading a whole directory of a commit may take — about 7 s for the release's Python tree
+# on this mount, so a loaded machine still has room
+_ARCHIVE_TIMEOUT_S = 120
 
 # Environment variables that are dropped before every call, for the same reason the settings are
 # pinned: `GIT_DIFF_OPTS` and `GIT_EXTERNAL_DIFF` override the rendering (measured: zero context, a
@@ -250,8 +256,46 @@ def changed_paths_since(commit: str) -> Optional[List[str]]:
     return [line for line in output.splitlines() if line]
 
 
+def read_tree_at_commit(root: str, commit: str, directory: str,
+                        suffix: str = '') -> Optional[Dict[str, str]]:
+    """
+    The files of a directory as a commit holds them, without a checkout.
+
+    Read as one `git archive` stream: on this mount an object costs about 40 ms to read one by one,
+    so a release's Python tree of some 740 files took over 30 s that way and takes about 7 s as an
+    archive (measured 2026-11-09).
+
+    Args:
+        root: The repository's top-level directory
+        commit: The commit, or a tag naming one
+        directory: The directory, relative to the repository's top level
+        suffix: Keep only files whose name ends in it; '' keeps every file
+
+    Returns:
+        Repository-relative path → its text; None when git is unavailable or the commit is not in
+        the repository's history
+    """
+    try:
+        archived = _git(root, ['archive', '--format=tar', commit, '--', directory], text=False,
+                        timeout_s=_ARCHIVE_TIMEOUT_S)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    if archived.returncode != 0:
+        return None
+    sources: Dict[str, str] = {}
+    with tarfile.open(fileobj=io.BytesIO(archived.stdout), mode='r:') as archive:
+        for member in archive.getmembers():
+            if not member.isfile() or not member.name.endswith(suffix):
+                continue
+            content = archive.extractfile(member)
+            if content is not None:
+                sources[member.name] = content.read().decode('utf-8', 'replace')
+    return sources
+
+
 def _git(root: str, args: List[str], text: bool = True,
-         env: Optional[dict] = None) -> subprocess.CompletedProcess:
+         env: Optional[dict] = None,
+         timeout_s: int = 30) -> subprocess.CompletedProcess:
     """
     Run one git command inside a given repository, with the pinned configuration.
 
@@ -261,6 +305,7 @@ def _git(root: str, args: List[str], text: bool = True,
         text: Decode stdout as text; False keeps the raw bytes a binary patch needs
         env: Variables handed to git on purpose — a temporary index is handed over this way;
             the inherited variables in `_DROPPED_GIT_ENV` are dropped
+        timeout_s: How long the command may take; a whole tree read as an archive needs longer
 
     Returns:
         The completed process; the caller decides what a non-zero exit means
@@ -269,7 +314,7 @@ def _git(root: str, args: List[str], text: bool = True,
                  if key not in _DROPPED_GIT_ENV and not key.startswith(_DROPPED_GIT_ENV_PREFIXES)}
     clean_env.update(env or {})
     return subprocess.run(['git', '-C', root, _LITERAL_PATHSPECS, *_PINNED_CONFIG, *args],
-                          capture_output=True, text=text, timeout=30, env=clean_env)
+                          capture_output=True, text=text, timeout=timeout_s, env=clean_env)
 
 
 def _checked(root: str, args: List[str]) -> str:

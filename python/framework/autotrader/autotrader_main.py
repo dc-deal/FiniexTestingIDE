@@ -67,10 +67,7 @@ from python.framework.autotrader.run_record.session_records import (
     record_restored_algo_state,
     stream_diagnostics_rows,
 )
-from python.framework.autotrader.run_record.state_frame_recorder import (
-    StateFrameRecorder,
-    open_state_frame_stream,
-)
+from python.framework.autotrader.run_record.state_frame_stream_opener import open_state_frame_stream
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.shutdown_status_holder import ShutdownStatusHolder
 from python.framework.autotrader.startup.autotrader_data_preparer import prepare_mock_session_data
@@ -96,6 +93,7 @@ from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.persistence.algo_state_store import AlgoStateStore
+from python.framework.process.state_frame_recorder import StateFrameRecorder
 from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
@@ -811,8 +809,11 @@ class AutotraderMain:
             ticks_clipped = 0
         except Exception as e:
             self._report_abort(e)
-            ticks_processed = 0
-            ticks_clipped = 0
+            # What the loop counted before it fell: the counts live on the loop, so the exception
+            # that ended it does not take them along (#636). A loop that was never built counted
+            # nothing, and a refusal above happens before it is.
+            ticks_processed, ticks_clipped = (
+                self._tick_loop.get_tick_counts() if self._tick_loop is not None else (0, 0))
 
         # #235: the loop is over — from here a pass that no longer comes is the shutdown, not a
         # stall, and the liveness watch must not report one
@@ -866,8 +867,13 @@ class AutotraderMain:
             # Runtime error inside the tick loop — NOT a startup failure.
             self._global_logger.error(f'❌ AutoTrader runtime error in tick loop: {error}')
             self._print_runtime_error(str(error))
+            # How far it got: the abort is the session's one message, so it carries the count
+            # the closing message would have (#636)
+            ticks_processed = (self._tick_loop.get_tick_counts()[0]
+                               if self._tick_loop is not None else 0)
             self._alert_abort(OperatorAlertKind.RUNTIME_ERROR,
-                              'RUNTIME ERROR — session aborted', str(error))
+                              'RUNTIME ERROR — session aborted',
+                              f'{error}\nTicks: {ticks_processed:,}')
         else:
             # #598: a passing cause — the venue did not answer within its budget — leaves with
             # exit 75, which a supervisor restarts after its pause; anything else stays down

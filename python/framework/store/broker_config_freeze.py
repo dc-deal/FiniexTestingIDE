@@ -6,7 +6,9 @@ path for both pipelines, so a session and a backtest of its window name their co
 same way.
 """
 
+import json
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -50,3 +52,32 @@ def freeze_broker_config(broker_config: BrokerConfig, logger: AbstractLogger) ->
     logger.info(
         f'🏦 Broker configuration frozen as broker_config {entry.config_id[:12]} '
         f'(config_hash {broker_config.config_hash or "—"})')
+
+
+def read_frozen_broker_config(document_id: str,
+                              store: Optional[RunConfigStore] = None) -> Dict[str, Any]:
+    """
+    The broker configuration a run froze at its start, read back by its id (#512) — what a backtest
+    of a session's window trades with instead of the broker's file or cache of today.
+
+    Args:
+        document_id: The frozen document's id, the run's `broker_config_id`
+        store: The run-config store to read it from — a copy of the session's records; the
+            configured one when omitted
+
+    Returns:
+        The document as it was frozen
+    """
+    store = store or RunConfigStore(Path(AppConfigManager().get_run_configs_path()))
+    entry = store.get_index().by_id(document_id)
+    path = store.frozen_path_of(document_id)
+    if entry is None or path is None or not path.exists():
+        raise FileNotFoundError(
+            f'broker_config_document {document_id} is not in the run-config store — it is frozen on '
+            f'the machine the run ran on and travels back with its records.')
+    if entry.kind is not RunConfigKind.BROKER_CONFIG:
+        raise ValueError(
+            f'broker_config_document {document_id} is a {entry.kind.value} document, not a broker '
+            f'configuration.')
+    with open(path, 'r', encoding='utf-8') as handle:
+        return json.load(handle)

@@ -867,6 +867,63 @@ runs started from the file.
 It is its own command, not part of the listing, because the loader creates directories and
 logs. Parameter names are not checked here: that happens at the start of a batch.
 
+### 🔀 Divergence Report — a live deployment against backtests of its windows
+
+| | |
+|---|---|
+| **VS Code** | `🔀 Divergence Report: compare (prompt)` |
+| **CLI** | `python python/cli/divergence_report_cli.py compare --deployment <id> --decision-timeframe D1` |
+| **Purpose** | Hold a live deployment against backtests of exactly its windows, built from what its sessions recorded, and judge the divergence by the rules fixed before the run (#512) |
+
+Step by step, from copying the live system's records to reading the verdict:
+[Comparing a Live Bot With Its Backtest](user_guides/divergence_report_guide.md).
+
+The live side is read from the deployment's records — this machine's stores, or `--records` a copy of
+the bot host's data home. Each segment's window is backtested from the session's own warmup and
+frozen broker configuration; the gate refuses a backtest that does not run the session's code; the
+gaps, the measures and the venue's own record follow; the verdict ends each measure passed, failed
+or not checked. Where live orders filled, a second backtest at their measured latency shows measure
+2b beside the verdict, never in it. The report is printed and kept under
+`runs/divergence/<report_id>/`.
+
+| Option | Meaning |
+|---|---|
+| `--until <boundary>` | The trading-day boundary the comparison ends at; the last sealed one when omitted. The archive must reach past it — otherwise the segment waits for the import |
+| `--records <dir>` | A copy of the bot host's data home to read the sessions from |
+| `--reading rehearsal` | Read as the rehearsal: no floor of compared days, measure 2 described |
+| `--declared-stop <instant>,<changed\|unchanged>[,<note>]` | A stop the operator declares; repeatable |
+| `--ledger-credentials <name>` | The key that may read the venue's ledger, as configured (`venues/kraken_ledger_credentials.json`) |
+
+Exit codes: `0` every segment compared and passed · `2` a segment not compared (the archive, the
+backtest or the gate refused) · `3` a compared segment failed or was not checked.
+
+**`aa` — the instrument checked first.** The verdict's backtests run on the current tree, not on the
+release the sessions ran. `aa` proves the two compute the same: it backtests each window twice with
+the same inputs — once from a checkout of the sessions' release, once from this tree with its state
+frames on — and compares the order events and the trades value by value. Both read only what both
+releases understand: the sessions' strategy and account, the archive's warmup, the broker file.
+
+```
+python python/cli/divergence_report_cli.py aa --deployment <id> \
+    --release-tree <checkout of the sessions' release> --window 2026-08-15,2026-11-06
+```
+
+| Option | Meaning |
+|---|---|
+| `--release-tree <dir>` | A checkout of the commit the sessions ran, e.g. `git worktree add --detach <dir> v1.5.0` |
+| `--window <start>,<end>` | A window to backtest; repeatable. Without one, the deployment's own windows — choose one where the strategy trades, or there is nothing to compare |
+| `--until <boundary>` | Where the deployment's own windows end |
+| `--records <dir>` | A copy of the bot host's data home to read the sessions from |
+
+Both backtests run as processes of their own trees against one data home, so `FINIEX_DATA_HOME`
+must name one, and it must hold no `python/` directory: on the release's import path, code there
+would mix into the release's own. A window is IDENTICAL only where the release's run reports the
+sessions' commit, this tree's run a commit with no uncommitted changes, both the same broker
+document, and no bar file was rendered between the two runs; otherwise it is not checked, with why.
+Kept beside the comparisons as `aa_report.json` and `aa_report.txt`.
+
+Exit codes: `0` every window identical · `2` refused, or a window not checked · `3` a window differs.
+
 ---
 
 ## G) Technical Tools (Advanced)
@@ -1026,6 +1083,8 @@ logged the moment it finishes.
 | **Start backtest** | `🔬 Run eurusd_3_windows_reference` | `strategy_runner_cli.py run <config>.json` |
 | **Profile Run (single)** | — | `strategy_runner_cli.py run <config>.json --generator-profile <profile>.json` |
 | **Profile Run (directory)** | `🔬 Generator-Profile Run: volatility_split/ folder` | `strategy_runner_cli.py run <config>.json --generator-profile <dir>` |
+| **Live against backtest** | `🔀 Divergence Report: compare (prompt)` | `divergence_report_cli.py compare --deployment <id> --decision-timeframe D1 [--records <copy>]` |
+| **Release against this tree** | `🔀 Divergence Report: aa (prompt)` | `divergence_report_cli.py aa --deployment <id> --release-tree <dir> --window <start>,<end>` |
 
 ---
 

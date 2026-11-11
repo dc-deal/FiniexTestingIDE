@@ -224,6 +224,57 @@ def test_the_figureless_error_row_writes_no_figure(tmp_ledger, make_provenance):
     assert tmp_ledger.read_rows()[0].account_max_drawdown is None
 
 
+def _is_numeric(annotation) -> bool:
+    """
+    Whether a row field is typed as a number, bare or as `X | None`.
+
+    Args:
+        annotation: The field's annotation
+
+    Returns:
+        True when int or float is among its types
+    """
+    return any(arg in (int, float) for arg in (get_args(annotation) or (annotation,)))
+
+
+def test_a_run_that_measured_nothing_reads_back_no_figure_at_all(tmp_ledger, make_provenance):
+    """
+    What the writer left empty stays empty on the way back (#646). Some figures default to a
+    number, and a P&L of 0.0 on a failed start reads like a session that traded and broke even.
+    Held over every numeric figure column, so a new one typed as a bare number cannot read back as
+    its default on this row.
+    """
+    tmp_ledger.append(RunSummary(run_id=_RUN_ID, currencies=[]), make_provenance(run_id='r1'))
+
+    row = tmp_ledger.read_rows()[0]
+    figures = [column for column in LEDGER_COLUMNS
+               if COLUMN_REDUCTION[column].figure_kind() is not FigureKind.DESCRIPTION
+               and _is_numeric(RunResultRow.model_fields[column].annotation)]
+    assert figures, 'no numeric figure column found'
+    held = {column: getattr(row, column) for column in figures if getattr(row, column) is not None}
+    assert not held, f'a run that measured nothing reads figures back: {held}'
+
+
+def test_an_older_error_row_reads_its_stored_zeros_as_nothing(tmp_path, tmp_ledger):
+    """
+    The writer before the figureless error row stored a literal zero in every figure column. A
+    run that measured nothing reads back without a figure either way (#646).
+    """
+    old = pd.DataFrame([{
+        'param_hash': 'old', 'run_id': 'old', 'run_timestamp': '2026-01-01T00:00:00+00:00',
+        'scenario_set_name': 's__old', 'status': 'error', 'error': 'boom', 'currency': '',
+        'net_pnl': 0.0, 'win_rate': 0.0, 'total_fees': 0.0, 'total_trades': 0,
+        'account_max_drawdown': 0.0, 'final_equity': 0.0}])
+    (tmp_path / 'run_results').mkdir(parents=True, exist_ok=True)
+    old.to_parquet(tmp_path / 'run_results' / 's__old_old.parquet', index=False)
+
+    row = tmp_ledger.read_rows()[0]
+    assert row.status == 'error'
+    for field in ('net_pnl', 'win_rate', 'total_fees', 'total_trades', 'account_max_drawdown',
+                  'final_equity'):
+        assert getattr(row, field) is None, f'{field} reads {getattr(row, field)!r}'
+
+
 def test_read_handles_schema_evolution(tmp_path, tmp_ledger, make_run_summary, make_provenance):
     """Fragments written before a column existed (no 'status') still read — never collapse the
     whole read to a stripped common schema (the bug that hid error rows). Old → defaults 'ok'."""

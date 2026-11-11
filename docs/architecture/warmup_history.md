@@ -43,6 +43,7 @@ opening instant a second time. Start 2026-08-05 13:02:30, three D1 bars:
 | backtest | the archive, by the batch (`SharedDataPreparator.prepare_bars`) | the scenario's first tick |
 | mock session | the same package a backtest of its window gets | the first tick it replays |
 | live-adapter session | the venue (`KrakenOhlcBarFetcher`), read at boot | the instant of the read — then the first tick, at the seam |
+| backtest of a session's window | the session's own record (`warmup_from_run`, source `record`) | the session's first tick — refused when the backtest's first tick opens a later period |
 
 The archive paths select for the **first tick**, not the configured start. Nothing reads the
 history before that tick, and no tick lies between the start and it, so every bar complete then
@@ -50,8 +51,8 @@ was built from ticks before the start. A scenario starting at 12:59:50 whose fir
 at 13:00:22 therefore warms up on the 12:00 bar — exactly what a live session starting then sees.
 
 [`WarmupHistory`](../../python/framework/bars/warmup_history.py) owns the history in both
-pipelines, from its source to the first tick: built from the package or from the venue, judged,
-injected, and closed at the seam.
+pipelines, from its source to the first tick: built from the package, from the venue or from a
+record, judged, injected, and closed at the seam.
 
 ## The seam at the first tick
 
@@ -147,7 +148,12 @@ session's window against exactly that history. One object per file:
 `read_at` is the boot read, `selected_for` the instant the recorded bars are complete at — the
 first tick once the seam has closed. Each bar is `[opening instant, open, high, low, close, volume,
 tick count]`. A backtest does not write this file: its history is the archive's, and the same
-selection over the same archive reproduces it. The archive does change — every import renders the
+selection over the same archive reproduces it. A backtest of the session's window reads the file
+back instead — the loader with `read_warmup_record`, before any process starts, the process with
+`WarmupHistory.from_record` — so it starts from the bars the session
+started from, venue bars included; where the collector missed the session's first trades and the
+backtest's first tick opens a later period, the record cannot supply the bars in between and the
+run is refused at that tick. The archive does change — every import renders the
 bar files again — so the parity report (#512) will record which render of the bar files its
 backtest read; the bar index's `rendered_at` shows a new render, and only a data hash per file
 (#583) will show whether the values changed.

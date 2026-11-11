@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 48
+API_CONTRACT_VERSION = 50
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,8 +36,13 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'health: host_id, the identity of the installation answering, the same value as origin_host on the '
-    'rows; null where the server cannot read it',
-    "health: host_name, a name for people to read from the installation's configuration; null where none "
-    'is set',
+    'deployments: a session that failed before it measured anything serves no figure — net_pnl, '
+    'max_drawdown and max_drawdown_pct null where they read 0.0 — and no currency, null where it '
+    'read the empty string; it stands with the sessions that have booked nothing yet, in the row '
+    'whose currency is null',
+    'deployments/{deployment_id}: every session carries booking_state — booked, failed (it failed '
+    'before it measured anything) or not_booked_yet; the sessions without booked figures follow the '
+    'booked ones as one series, oldest first and numbered from 1, with no gap and no change mark',
+    'sweeps/{sweep_id}: net_pnl, win_rate, total_fees, total_trades, winning_trades, losing_trades '
+    'and r_trade_count are nullable in the schema; a ranked combination never carries null there',
 ]

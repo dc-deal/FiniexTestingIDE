@@ -292,6 +292,14 @@ class TestADocumentWithoutAFileIsFrozenByContent:
         with pytest.raises(ValueError, match='registered from its file'):
             store.register_document(self._DOC, RunConfigKind.AUTOTRADER_PROFILE)
 
+    def test_a_document_reads_back_by_its_id_and_kind(self, store):
+        rendered = store.register_document(self._DOC, RunConfigKind.AUTOTRADER_RENDERED)
+        assert store.read_frozen(rendered.config_id, RunConfigKind.AUTOTRADER_RENDERED) == self._DOC
+        with pytest.raises(ValueError, match='not a broker_config one'):
+            store.read_frozen(rendered.config_id, RunConfigKind.BROKER_CONFIG)
+        with pytest.raises(FileNotFoundError, match='holds no document'):
+            store.read_frozen('0' * 16, RunConfigKind.AUTOTRADER_RENDERED)
+
     def test_a_rebuild_finds_the_documents_by_their_directory(self, store):
         rendered = store.register_document(self._DOC, RunConfigKind.AUTOTRADER_RENDERED)
         broker = store.register_document({'symbols': {}}, RunConfigKind.BROKER_CONFIG)

@@ -46,6 +46,7 @@ def _session(tick_loop_started: bool, executor=None) -> AutotraderMain:
     """A session reduced to what the abort report reads and sets; by default it sent nothing."""
     session = AutotraderMain.__new__(AutotraderMain)
     session._tick_loop_started = tick_loop_started
+    session._tick_loop = None
     session._executor = executor or SimpleNamespace(
         get_execution_stats=lambda: SimpleNamespace(orders_submitted=0))
     session._session_logger = RecordingLogger()

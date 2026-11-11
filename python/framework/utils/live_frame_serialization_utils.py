@@ -3,8 +3,9 @@ FiniexTestingIDE - Live Frame Serialization
 Thin PRESENT-stage encoder turning a live-telemetry frame into a JSON-safe dict.
 
 The frames stay @dataclass runtime domain types (§6); JSON is a render concern.
-This encoder is applied only where a JSON surface consumes the frame — the future
-viewer push transport (#379/#380). No transport is implemented here.
+This encoder is applied only where a JSON surface consumes the frame, and none does
+today: a viewer following a running session reads the run's record (#380). No
+transport is implemented here.
 """
 
 from dataclasses import asdict

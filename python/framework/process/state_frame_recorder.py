@@ -1,17 +1,29 @@
 """
-FiniexTestingIDE - State Frame Recorder (#579 part A)
+FiniexTestingIDE - State Frame Recorder (#579)
 
-Writes what an AutoTrader session holds and decides at one moment into its `io/state_frames.jsonl`,
-whether or not a display runs: on a cadence of the canonical clock, when a bar of a timeframe the
-workers read closes, when the decision sends an order, and once at the session's end — at most one
-frame per pass of the loop. A backtest over the same period can be run again at any time; the live
-session cannot, so its side of the comparison (#512) has to be recorded while it happens.
+Writes what a run holds and decides at one moment into its state-frame stream, whether or not a
+display runs: on a cadence of the canonical clock, when a bar of a timeframe the workers read closes,
+when the decision sends an order, and once at the end — at most one frame per pass of the loop. One
+recorder for both pipelines: an AutoTrader session records its side of the comparison while it
+happens, because it cannot be run again; a backtest records the same frame on the same slots, so the
+divergence report (#512) can lay a session's decisions beside its backtest's (#579 part B item 3).
 
 The cadence is a timeframe, and its slots are that timeframe's periods on the canonical clock — the
 grid the bars open their periods on — so a live session and a backtest of the same period fill the
 same slots. A frame written for an event fills a slot that is due in the same pass. A clock that
 steps back (a replayed session's heartbeat reads the wall clock) re-anchors the grid instead of
-writing.
+writing; a backtest's heartbeat runs on simulated time and never steps back.
+
+The recorder takes nothing from one pipeline: the symbol, the run's executor, workers and bars, and
+two plain readings a session alone has — the reconciler's verdict and the circuit breaker's state.
+A backtest has neither, so its frames say "not checked" and "not blocked".
+
+A backtest's frame must change nothing the backtest computes — a backtest with frames on is proved
+equal to one without, event by event. A session's frame re-marks the open positions before it reads
+them, and valuing a spot account re-marks a position whose excursion the price extends; both write
+into the positions a decision reads next. So a backtest's frame re-marks nothing: it reads the
+positions as they stand, and values the account only on a tick pass, after the tick's own valuation
+has marked what that price can mark. A heartbeat frame in a backtest carries no equity.
 
 The process's memory (#611) is on every frame of a live session, whose frames come once per cadence
 interval of the wall clock and at its events. A replay compresses hours into seconds, and reading
@@ -20,10 +32,11 @@ process; 93 % of a replay's recording cost before the throttle), so a replay rea
 per cadence interval of the monotonic clock, and at its first frame and its last — a frame without
 a reading carries none. A live session is not paced that way: two of its cadence frames lie a
 little more or a little less than one interval apart, and the pacing dropped the reading from a
-third of them (measured 2026-10-21 in a dry run on the live feed: 21 of 32 frames).
+third of them (measured 2026-10-21 in a dry run on the live feed: 21 of 32 frames). A backtest
+reads no memory at all: its frames describe the simulated account, not the process running it.
 
 A frame that cannot be built is said once and skipped, and the recording goes on; a stream that can
-no longer be written stops, by the appender's rule. Neither ever ends the session.
+no longer be written stops, by the appender's rule. Neither ever ends the run.
 """
 
 import math
@@ -32,27 +45,20 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable, Dict, FrozenSet, Mapping, Optional
 
-from python.configuration.app_config_manager import AppConfigManager
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.builders.pending_orders_report_builder import active_order_rows
 from python.framework.reporting.builders.portfolio_report_builder import open_position_rows
 from python.framework.reporting.io.run_stream_appender import RunStreamAppender
-from python.framework.reporting.store.run_index import RunIndex
-from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
-from python.framework.trading_env.live.reconciler import Reconciler
 from python.framework.types.api.state_frame_types import (
     ProcessMemoryRow,
     StateFrame,
     StateFrameCause,
 )
-from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
-from python.framework.types.autotrader_types.autotrader_display_types import SafetyState
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_logic_types import Decision
 from python.framework.types.process_table_types import OwnProcessMemory
-from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.utils.bar_period import open_time_of, period_start
 from python.framework.utils.process_memory_reader import read_own_memory
@@ -109,17 +115,22 @@ class StateFrameRecorder:
     Args:
         appender: The stream the frames go to
         cadence_timeframe: The cadence — one frame per period of this timeframe
-        config: The resolved profile — its symbol
+        symbol: The run's trading symbol
         executor: The session's executor — the clock, the account, the positions, the orders
         worker_orchestrator: The workers' latest results and the signal workers
         bar_controller: The bar history a closed bar's opening is read from
         trading_model: SPOT or MARGIN — whether the frame lists every balance
-        reconciler: The reconciler, or None when none is wired — then nothing was checked
-        replayed: Whether the ticks are a replay; its heartbeats read the wall clock, so the cadence
-            follows the tick passes alone, and the memory is read at most once per interval
-        logger: The session's channel, where a frame that cannot be built is said
+        replayed: Whether the ticks are a replayed session's; its heartbeats read the wall clock, so
+            the cadence follows the tick passes alone, and the memory is read at most once per
+            interval. A backtest's heartbeats run on simulated time: False
+        logger: The run's channel, where a frame that cannot be built is said
+        reconcile_state: Reads the latest reconciliation's verdict, or None when the run has no
+            reconciler — a backtest — and nothing was checked
         wall_clock: Reads the instant a frame is written
-        memory_reader: Reads what the session's own process holds
+        memory_reader: Reads what the run's own process holds; None reads nothing — a backtest
+        refresh_positions: Whether a frame re-marks the open positions and values the account on
+            every pass — a session. False reads the positions as they stand and values the account
+            on a tick pass only, so the frame changes nothing the run computes — a backtest
         monotonic_clock: Paces a replay's memory reading
     """
 
@@ -127,33 +138,35 @@ class StateFrameRecorder:
         self,
         appender: RunStreamAppender,
         cadence_timeframe: str,
-        config: AutoTraderConfig,
+        symbol: str,
         executor: AbstractTradeExecutor,
         worker_orchestrator: WorkerOrchestrator,
         bar_controller: BarRenderingController,
         trading_model: TradingModel,
-        reconciler: Optional[Reconciler],
         replayed: bool,
         logger: AbstractLogger,
+        reconcile_state: Optional[Callable[[], Optional[bool]]] = None,
         wall_clock: Callable[[], datetime] = _utc_now,
-        memory_reader: Callable[[], OwnProcessMemory] = read_own_memory,
+        memory_reader: Optional[Callable[[], OwnProcessMemory]] = read_own_memory,
         monotonic_clock: Callable[[], float] = time.monotonic,
+        refresh_positions: bool = True,
     ):
         self._appender = appender
         self._cadence_timeframe = cadence_timeframe
         # One period of the cadence, in seconds — what paces a replay's memory reading
         self._cadence_s = TimeframeConfig.get_minutes(cadence_timeframe) * 60.0
-        self._symbol = config.symbol
+        self._symbol = symbol
         self._executor = executor
         self._worker_orchestrator = worker_orchestrator
         self._bar_controller = bar_controller
         self._spot = trading_model == TradingModel.SPOT
-        self._reconciler = reconciler
+        self._reconcile_state = reconcile_state
         self._replayed = replayed
         self._logger = logger
         self._wall_clock = wall_clock
         self._memory_reader = memory_reader
         self._monotonic_clock = monotonic_clock
+        self._refresh_positions = refresh_positions
         # When the process's memory was last read, on the monotonic clock
         self._memory_read_at: Optional[float] = None
         # The last slot a frame filled, and the canonical time of the last frame — the anchor a
@@ -167,21 +180,23 @@ class StateFrameRecorder:
         self,
         ticks_processed: int,
         decision: Optional[Decision],
-        safety: SafetyState,
         on_tick: bool,
         closed_timeframes: FrozenSet[str] = frozenset(),
         order: Optional[OrderResult] = None,
+        safety_blocked: bool = False,
+        safety_drawdown_pct: Optional[float] = None,
     ) -> None:
         """
         Write a frame when this pass is due one — at the end of every pass, tick or heartbeat.
 
         Args:
-            ticks_processed: The session's tick counter
+            ticks_processed: The run's tick counter
             decision: The decision of this pass, or the last one on a heartbeat; None before any
-            safety: The circuit breaker's state after this pass
             on_tick: True on a tick pass, False on a heartbeat
             closed_timeframes: The timeframes whose bar closed in this pass
             order: What the decision sent in this pass, if it sent anything
+            safety_blocked: Whether the circuit breaker blocks after this pass; a backtest has none
+            safety_drawdown_pct: The breaker's drawdown reading, or None when the run has no breaker
         """
         frame_time = self._executor.get_current_time_if_set()
         if frame_time is None:
@@ -204,8 +219,9 @@ class StateFrameRecorder:
         else:
             return
         self._write(
-            cause, frame_time, slot if slot_due else None, ticks_processed, decision, safety,
-            closed_timeframes, order)
+            cause, frame_time, slot if slot_due else None, ticks_processed, decision,
+            safety_blocked, safety_drawdown_pct, closed_timeframes, order,
+            valued=self._refresh_positions or on_tick)
         if slot_due:
             # Taken by this attempt whether or not it reached the stream: a frame that cannot be
             # built is tried again at the next slot, never on every pass of this one
@@ -216,7 +232,8 @@ class StateFrameRecorder:
         self,
         ticks_processed: int,
         decision: Optional[Decision],
-        safety: SafetyState,
+        safety_blocked: bool = False,
+        safety_drawdown_pct: Optional[float] = None,
     ) -> None:
         """
         Write the session's last frame — at the state its report describes — and close the stream.
@@ -225,16 +242,17 @@ class StateFrameRecorder:
         results are collected: the same moment and the same price the report's valuation reads.
 
         Args:
-            ticks_processed: The session's tick counter
+            ticks_processed: The run's tick counter
             decision: The last decision, or None when no pass ran one
-            safety: The circuit breaker's last state
+            safety_blocked: Whether the circuit breaker blocks at the end; a backtest has none
+            safety_drawdown_pct: The breaker's last drawdown reading, or None without a breaker
         """
         frame_time = self._executor.get_current_time_if_set()
         if frame_time is not None:
             # The last reading is always taken: it closes the series a leak is a slope across
             self._memory_read_at = None
             self._write(StateFrameCause.SHUTDOWN, frame_time, None, ticks_processed, decision,
-                        safety, frozenset(), None)
+                        safety_blocked, safety_drawdown_pct, frozenset(), None, valued=True)
         if self._build_failures:
             self._logger.warning(
                 f'📼 {self._build_failures} state frame(s) could not be built this session and are '
@@ -276,9 +294,11 @@ class StateFrameRecorder:
         slot: Optional[datetime],
         ticks_processed: int,
         decision: Optional[Decision],
-        safety: SafetyState,
+        safety_blocked: bool,
+        safety_drawdown_pct: Optional[float],
         closed_timeframes: FrozenSet[str],
         order: Optional[OrderResult],
+        valued: bool,
     ) -> bool:
         """
         Build one frame and append it; a frame that cannot be built is said once and skipped.
@@ -289,16 +309,18 @@ class StateFrameRecorder:
             slot: The cadence slot it fills, or None
             ticks_processed: The session's tick counter
             decision: The decision it records, or None
-            safety: The circuit breaker's state
+            safety_blocked: Whether the circuit breaker blocks
+            safety_drawdown_pct: The breaker's drawdown reading, or None
             closed_timeframes: The timeframes whose bar closed in this pass
             order: The order the decision sent, if any
+            valued: Whether the frame values the account
 
         Returns:
             True when the frame reached the stream
         """
         try:
-            frame = self._build(cause, frame_time, slot, ticks_processed, decision, safety,
-                                closed_timeframes, order)
+            frame = self._build(cause, frame_time, slot, ticks_processed, decision, safety_blocked,
+                                safety_drawdown_pct, closed_timeframes, order, valued)
         except Exception as e:  # noqa: BLE001 — a recording defect never ends the session
             self._build_failures += 1
             if self._build_failures == 1:
@@ -319,9 +341,11 @@ class StateFrameRecorder:
         slot: Optional[datetime],
         ticks_processed: int,
         decision: Optional[Decision],
-        safety: SafetyState,
+        safety_blocked: bool,
+        safety_drawdown_pct: Optional[float],
         closed_timeframes: FrozenSet[str],
         order: Optional[OrderResult],
+        valued: bool,
     ) -> StateFrame:
         """
         The frame of this moment, from the session's own objects.
@@ -332,16 +356,19 @@ class StateFrameRecorder:
             slot: The cadence slot it fills, or None
             ticks_processed: The session's tick counter
             decision: The decision it records, or None
-            safety: The circuit breaker's state
+            safety_blocked: Whether the circuit breaker blocks
+            safety_drawdown_pct: The breaker's drawdown reading, or None
             closed_timeframes: The timeframes whose bar closed in this pass
             order: The order the decision sent, if any
+            valued: Whether the frame values the account; None in its place otherwise
 
         Returns:
             The frame
         """
         portfolio = self._executor.portfolio
-        # Marks the open positions, as the report's own collection does before it reads them
-        portfolio.ensure_positions_updated()
+        if self._refresh_positions:
+            # Marks the open positions, as the report's own collection does before it reads them
+            portfolio.ensure_positions_updated()
         last_price: Optional[float] = None
         try:
             last_price = mid_price(*self._executor.get_current_price(self._symbol))
@@ -361,13 +388,13 @@ class StateFrameRecorder:
             last_price=last_price,
             balance=portfolio.balance,
             balances=dict(portfolio.get_balances()) if self._spot else None,
-            equity=portfolio.get_account_value(),
+            equity=portfolio.get_account_value() if valued else None,
             unrealized_pnl=sum(position.unrealized_pnl for position in positions),
             open_positions=open_position_rows(positions, last_price or 0.0),
             active_orders=active_order_rows(
                 list(orders.active_limit_orders) + list(orders.active_stop_orders)),
-            safety_blocked=safety.blocked,
-            safety_drawdown_pct=safety.drawdown_pct,
+            safety_blocked=safety_blocked,
+            safety_drawdown_pct=safety_drawdown_pct,
             market_stale=self._executor.get_market_data_status().is_stale,
             feed_stale=self._feed_stale(),
             reconcile_clean=self._reconcile_clean(),
@@ -384,11 +411,13 @@ class StateFrameRecorder:
         """
         The process's memory — on every frame of a live session; in a replay when a cadence
         interval of the monotonic clock has passed since the last reading, and at the first frame
-        and the last.
+        and the last; never in a backtest, which has no reader.
 
         Returns:
             The reading, or None when this frame takes none
         """
+        if self._memory_reader is None:
+            return None
         now = self._monotonic_clock()
         if (self._replayed and self._memory_read_at is not None
                 and now - self._memory_read_at < self._cadence_s):
@@ -430,9 +459,9 @@ class StateFrameRecorder:
             The verdict, or None for not checked: no reconciler, no cycle yet, or a latest cycle
             that could not reach the venue
         """
-        if self._reconciler is None:
+        if self._reconcile_state is None:
             return None
-        return self._reconciler.get_last_verdict()
+        return self._reconcile_state()
 
     def _closed_bars(self, closed_timeframes: FrozenSet[str]) -> Dict[str, datetime]:
         """
@@ -451,54 +480,3 @@ class StateFrameRecorder:
                 closed[timeframe] = open_time_of(history[-1])
         return closed
 
-
-def open_state_frame_stream(
-    config: AutoTraderConfig,
-    run_writer: RunEntryWriter,
-    run_id: str,
-    executor: AbstractTradeExecutor,
-    worker_orchestrator: WorkerOrchestrator,
-    bar_controller: BarRenderingController,
-    trading_model: TradingModel,
-    reconciler: Optional[Reconciler],
-    logger: AbstractLogger,
-) -> Optional[StateFrameRecorder]:
-    """
-    Open the session's state-frame stream, when the profile records one.
-
-    The run index learns of the stream in the same step, so the run list names it while the session
-    runs — the check-in reads it from there (#611), long before any report exists.
-
-    Args:
-        config: The resolved profile — its `state_frames` block, its unit and its tick source
-        run_writer: The session's run writer, whose stream sealer the stream joins (#476)
-        run_id: The run the stream belongs to
-        executor: The session's executor
-        worker_orchestrator: The session's workers
-        bar_controller: The session's bars
-        trading_model: SPOT or MARGIN
-        reconciler: The reconciler, or None when none is wired
-        logger: The session's channel
-
-    Returns:
-        The recorder, or None when the recording is switched off
-    """
-    settings = config.state_frames
-    if not settings.enabled:
-        logger.info('📼 State frames: not recorded — switched off in the profile')
-        return None
-    appender = run_writer.open_stream(
-        RunEntryMemberId.STATE_FRAMES, run_id, logger,
-        stops='The session\'s state is no longer recorded',
-        header_fields={'unit_name': config.get_unit_name(),
-                       'cadence_timeframe': settings.cadence_timeframe,
-                       'cadence_s': TimeframeConfig.get_minutes(settings.cadence_timeframe) * 60.0})
-    logger.info(
-        f'📼 State frames: one per {settings.cadence_timeframe} period of the canonical clock, at '
-        f'a closed bar and at an order → {appender.get_path()}')
-    RunIndex(AppConfigManager().get_file_logging_config_object().run_index) \
-        .record_streams(run_id, run_writer.get_run_dir())
-    return StateFrameRecorder(
-        appender, settings.cadence_timeframe, config, executor, worker_orchestrator,
-        bar_controller, trading_model, reconciler,
-        replayed=config.tick_source.type == 'mock', logger=logger)

@@ -1728,10 +1728,14 @@ class RunResultRow(BaseModel):
     max_consecutive_losses: int | None = None
     currency: str = ''
     # KPIs (the rankable objective fields)
-    net_pnl: float = 0.0
+    # A figure here with a number for its default reads None on the row of a run that measured
+    # nothing — an error row without a currency, whose figures the ledger reader keeps empty
+    # (#646; `COLUMN_NULL_MEANING` names each). The default stays for a fragment written before
+    # the column existed.
+    net_pnl: float | None = 0.0
     expectancy: float | None = None     # None = not measured (no R-defined trade)
     profit_factor: float | None = None  # None = undefined (no losing trade)
-    win_rate: float = 0.0
+    win_rate: float | None = 0.0
     # None where no drawdown was measured — a session whose every sealed day came before its
     # account's first valuation — never a zero, for the reason the block below gives
     account_max_drawdown: float | None = None
@@ -1746,18 +1750,18 @@ class RunResultRow(BaseModel):
     unrealized_pnl: float | None = None
     final_equity: float | None = None
     open_position_count: int | None = None
-    total_fees: float = 0.0
+    total_fees: float | None = 0.0
     # None, never 0.0: 499 fragments on disk predate these two columns, and a fabricated zero
     # would assert "this run won nothing and lost nothing" where the truth is "nobody wrote it
     # down". Same convention as `logic_version` and `signal_fresh_ratio` above.
     gross_profit: float | None = None
     gross_loss: float | None = None
-    total_trades: int = 0
-    winning_trades: int = 0
-    losing_trades: int = 0
+    total_trades: int | None = 0
+    winning_trades: int | None = 0
+    losing_trades: int | None = 0
     avg_win_r: float | None = None
     avg_loss_r: float | None = None
-    r_trade_count: int = 0
+    r_trade_count: int | None = 0
     # In LEDGER_COLUMNS since #389 and missing here for the same reason as the block above —
     # declared on disk, dropped on the way in.
     r_win_count: int | None = None
@@ -1800,6 +1804,19 @@ class RunResultRow(BaseModel):
         if self.deployment_id:
             return 'continuous'
         return 'single_run'
+
+    def measured_nothing(self) -> bool:
+        """
+        Whether this is the row of a run that measured nothing (#646).
+
+        A run that errored after it produced figures keeps them, under its currency; only the row
+        of a run that failed before it measured anything — status 'error' and no currency —
+        holds no figure at all.
+
+        Returns:
+            True for an error row without a currency
+        """
+        return self.status == 'error' and not self.currency
 
 
 class SweepSummary(BaseModel):
@@ -1898,15 +1915,35 @@ class DeploymentCodeChange(BaseModel):
     subject: Optional[str] = None
 
 
+class SessionBookingState(StrEnum):
+    """
+    Whether a deployment session's figures exist, and if not, why — the reason its `net_pnl` and
+    `currency` can be None.
+
+    BOOKED: its ledger rows carry figures
+    FAILED: it failed before it measured anything — its ledger row is an error row without a
+        currency (#646)
+    NOT_BOOKED_YET: no ledger row names it yet — it runs before its first seal, or ended before
+        reaching it (#645)
+    """
+    BOOKED = 'booked'
+    FAILED = 'failed'
+    NOT_BOOKED_YET = 'not_booked_yet'
+
+
 class DeploymentSessionRow(BaseModel):
     """
     One session of a deployment, as the history reads it (#497).
 
     Args:
-        index: Position in the deployment, 1-based
+        index: Position in its series, 1-based — the sessions of one account currency, or the
+            sessions without booked figures, which follow them oldest first
         run_id: The session's own run identity
         started: Its start, parsed from the run timestamp
-        net_pnl: Realised P&L of that session
+        net_pnl: Realised P&L of that session — None on a session without booked figures, and
+            `booking_state` says why: it failed before it measured anything (#646), or the run
+            index registered it at its start and no ledger row names it yet, because it runs
+            before its first seal or ended before reaching it (#645)
         max_drawdown: The CUMULATIVE account drawdown as of that session — a live row carries
             the running figure against the inherited peak, never that session's own. None where
             the session's rows carry none
@@ -1922,8 +1959,12 @@ class DeploymentSessionRow(BaseModel):
             profile is CALLED and an operator improves that; `deployment_id` is minted per
             deployment. A reader asking *is this the same bot as the row above* has no other
             column to ask, and it is what the carry-over state is filed under. Empty on a
-            profile that declares none
-        currency: The row's account currency
+            profile that declares none, and on a session that has booked nothing yet: the run
+            index does not carry it, only a ledger row does
+        currency: The row's account currency — None on a session without booked figures: a
+            currency is known only from a ledger row that measured something
+        booking_state: Whether the session's figures exist, and if not, why — `booked`, `failed`
+            (it failed before it measured anything) or `not_booked_yet`
         ended: When the row of its close was written, i.e. when it stopped — None while the
             ledger holds no such row: the session is still running or died before its close,
             and its sealed trading days are rows already (#476); also None on a row written
@@ -1931,7 +1972,8 @@ class DeploymentSessionRow(BaseModel):
         ran_hours: How long it ran, None when its end is unknown. Derived from the two
             stamps rather than stored: the row is written as the session closes, so this is
             the session's length plus the seconds its reports took
-        gap_hours: Hours the bot was NOT running before this session, None for the first
+        gap_hours: Hours the bot was NOT running before this session, None for the first of a
+            series and on a session without booked figures, which marks no change either
         gap_between_starts: True when the gap could only be measured from one START to the
             next, because the predecessor's row predates `recorded_at_utc`. That figure
             contains the predecessor's whole runtime and overstates the downtime, so it is
@@ -1950,10 +1992,11 @@ class DeploymentSessionRow(BaseModel):
     index: int
     run_id: str
     started: Optional[datetime]
-    net_pnl: float
+    net_pnl: Optional[float]
     max_drawdown: Optional[float]
     max_drawdown_pct: Optional[float]
-    currency: str
+    currency: Optional[str]
+    booking_state: SessionBookingState
     bot: str = ''
     bot_id: str = ''
     ended: Optional[datetime] = None
@@ -2050,7 +2093,8 @@ class DeploymentSummary(BaseModel):
         sessions: How many sessions it holds
         first_started: When the deployment began
         last_started: When its most recent session began
-        net_pnl: Realised P&L summed over its sessions — this one DOES add up
+        net_pnl: Realised P&L summed over its sessions — this one DOES add up. None on the row of
+            the sessions without booked figures (see `currency`)
         max_drawdown: The deepest decline, which is the LARGEST of the rows and never a sum:
             a live row carries the running figure against the inherited peak. None where no
             session carries one
@@ -2059,7 +2103,12 @@ class DeploymentSummary(BaseModel):
         bot: The AutoTrader profile that ran it
         bot_id: Its DECLARED identity — see `DeploymentSessionRow.bot_id`. Two deployments
             sharing one `bot_id` are one bot restarted with `--new-deployment`
-        currency: The account currency the figures are in
+        currency: The account currency the figures are in. None on the row that holds the
+            deployment's sessions without booked figures: those that failed before they measured
+            anything (#646), and those the run index registered at their start that no ledger row
+            names yet — a currency is known only from a ledger row that measured something. Such
+            a row carries no figure at all; a session not booked yet moves to its currency's row
+            at its first seal (#645)
         longest_gap_hours: The longest stretch the bot was not running
         changed: True when the sessions did not all run alike: the configuration moved, the code
             moved, or both
@@ -2074,10 +2123,10 @@ class DeploymentSummary(BaseModel):
     sessions: int
     first_started: Optional[datetime]
     last_started: Optional[datetime]
-    net_pnl: float
+    net_pnl: Optional[float]
     max_drawdown: Optional[float]
     max_drawdown_pct: Optional[float]
-    currency: str
+    currency: Optional[str]
     bot: str = ''
     bot_id: str = ''
     longest_gap_hours: Optional[float] = None
@@ -2089,11 +2138,15 @@ class DeploymentSummary(BaseModel):
 
 class DeploymentListResponse(BaseModel):
     """
-    Every recorded deployment, newest first (#539).
+    Every deployment, newest first (#539) — from its first session's start, not from its first
+    sealed day (#645): the run index says which sessions a deployment holds, the ledger what they
+    booked.
 
     One entry per (deployment x account currency), because a P&L column added up over two
     currencies is not a number — the same split the summary rows carry. Which is exactly why
-    `key` names BOTH: a consumer keying on `deployment_id` alone folds two rows into one.
+    `key` names BOTH: a consumer keying on `deployment_id` alone folds two rows into one. The
+    sessions without booked figures — failed before they measured anything, or not booked yet —
+    have no currency, so they stand in one more entry whose `currency` is None.
     """
     key: list[str] = list(DEPLOYMENT_KEY)
     deployments: list[DeploymentSummary]
@@ -2104,12 +2157,13 @@ class DeploymentDetailResponse(BaseModel):
     """
     One deployment's sessions, oldest first — a life reads forwards.
 
-    `unfinished` is the count of this deployment's runs that never reached their close. The
-    sessions are built from the LEDGER, which holds a session's sealed trading days while it
-    runs and the row of its close only at the end (#476): such a run is in the list without an
-    `ended` when it sealed a day, and absent from it when it died before its first seal. So the
-    two overlap and are never added — and without the count a short list would be a number
-    the reader has no reason to doubt.
+    `unfinished` is the count of this deployment's runs that never reached their close. Which
+    sessions the deployment holds is the run index's answer, and what they booked the LEDGER's,
+    which holds a session's sealed trading days while it runs and the row of its close only at
+    the end (#476): such a run is in the list without an `ended` when it sealed a day, and with no
+    currency and no figures when it sealed none yet (#645). So every run the count names is in
+    the list, and the two are never added — without the count, a session that died would read
+    like one still running.
 
     There is deliberately NO reconciliation line here, and there cannot be one: over many runs
     no single run summary exists to sum against, so the second, independent derivation that
@@ -2168,8 +2222,9 @@ class DeploymentBookingPeriodsResponse(BaseModel):
     out: a missing check read as a passed one is the more expensive mistake.
 
     `sessions_without_periods` is what keeps a short list honest. A session whose ledger row
-    predates the booking journal books nothing, so it contributes no bar — and without the
-    count an incomplete history is indistinguishable from a quiet one.
+    predates the booking journal books nothing, and neither has a session that has not sealed
+    its first trading day yet (#645) — both contribute no bar, and without the count an
+    incomplete history is indistinguishable from a quiet one.
     """
     key: list[str] = list(BOOKING_PERIOD_KEY)
     deployment_id: str

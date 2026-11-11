@@ -209,6 +209,27 @@ class RunConfigStore:
             return None
         return self._frozen_path(config_id, entry.kind)
 
+    def read_frozen(self, config_id: str, kind: RunConfigKind) -> Dict[str, Any]:
+        """
+        One frozen document read back by its id, where it is of the kind asked for.
+
+        Args:
+            config_id: The content id
+            kind: What the document must be
+
+        Returns:
+            The document as it was frozen
+        """
+        entry = self._index.by_id(config_id)
+        path = self.frozen_path_of(config_id)
+        if entry is None or path is None or not path.exists():
+            raise FileNotFoundError(f'The run-config store holds no document {config_id}.')
+        if entry.kind is not kind:
+            raise ValueError(f'The document {config_id} is a {entry.kind.value} document, not a '
+                             f'{kind.value} one.')
+        with open(path, 'r', encoding='utf-8') as handle:
+            return json.load(handle)
+
     def note_run(self, config_id: str) -> None:
         """
         Record that a run used this configuration.

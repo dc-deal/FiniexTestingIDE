@@ -9,6 +9,7 @@
 | [Quickstart Guide](user_guides/quickstart_guide.md) | Create your first strategy (Worker + Decision Logic + Config) |
 | [CLI Tools Guide](cli_tools_guide.md) | All CLI commands with examples and workflow overview |
 | [Worker Naming](user_guides/worker_naming_doc.md) | Worker reference system, path-based loading, requirements contract |
+| [Algo Masks](user_guides/algo_masks.md) | What an algo receives instead of an engine object — the read-only masks, their fields and where each value comes from (#653) |
 | [Algo State Persistence](user_guides/algo_state_persistence_guide.md) | Restart-safe algo memory — snapshot/restore hooks, staleness, JSON contract |
 | [Reading the Results Ledger](user_guides/results_ledger_guide.md) | What one ledger row is, which of its numbers add up, and what changes between one account and several |
 | [Robustness Validation](user_guides/robustness_validation_guide.md) | Multi-window + In-Sample/Out-of-Sample overfit guard — roles, WFE, distribution, trust gate (#367) |
@@ -45,6 +46,7 @@
 | [Outage Handling](user_guides/outage_handling_guide.md) | Connection/feed outages — mandatory staleness hooks, escalation ladder, OrderGuard floor, outage drills (#434/#436) |
 | [Deployment & Ledger](user_guides/deployment_ledger_guide.md) | Reading a bot across its restarts — the mandatory `deployment` declaration, the history command, gaps and parameter changes (#497) |
 | [Changing a Live Bot](user_guides/changing_a_live_bot_guide.md) | One invented week of real money: what each change of a running bot's configuration does to its trades, its record and its series (#626) |
+| [Comparing a Live Bot With Its Backtest](user_guides/divergence_report_guide.md) | The recommended setup of a live and a backtest system on one version, copying the live records, proving the comparing tree with an A/A, running the comparison and reading its verdict (#512) |
 | [Adapter Development Guide](user_guides/adapter/adapter_development_guide.md) | How to implement a new broker adapter (Tier 1/2/3, config files, credentials, test suite) |
 | [Kraken Adapter Setup](user_guides/adapter/setup_kraken_adapter.md) | API keys, broker settings, dry run, first run |
 
@@ -77,11 +79,11 @@
 | [Reporting Pipeline](architecture/reporting_pipeline.md) | One result model for console/file/API across sim + AutoTrader — capture → derive (postprocessor) → present; trade-history / order-history / portfolio slices, section taxonomy, ReportStore, /reports endpoints (#391) |
 | [Parameter Optimization System](architecture/parameter_optimization_system.md) | Grid sweep over strategy params + run-results ledger (parquet) + objective ranking + one-factor sensitivity; sweep spec, dotted-path overrides, pluggable generator seam (#390) |
 | [Swap / Overnight-Funding Cost Model](trading_realism/swap_cost_model.md) | Overnight swap accrual — signed debit/credit, triple-swap (T+2), DST-aware rollover, MarketClock awareness, per-trade reporting (#365) |
-| [Live Telemetry Stream](architecture/live_telemetry_architecture.md) | The throttled live feed behind the console dashboards (LiveCoreSnapshot + frames), both pipelines, JSON groundwork for the viewer push (#400) — distinct from the report pipeline |
+| [Live Telemetry Stream](architecture/live_telemetry_architecture.md) | The throttled live feed behind the console dashboards (LiveCoreSnapshot + frames), both pipelines, frames serializable as JSON (#400) — distinct from the report pipeline |
 | [Warnings & Errors Tiers](architecture/warnings_errors_tiers.md) | Tier taxonomy (errors / Tier-1 major → validators / Tier-2 log) + the "no decisions in reports" principle; pre-run vs post-run validators, sim/AutoTrader channels (#395) |
 | [Release Certificates](architecture/release_certificates.md) | The release-gate certificates, their shared CertificateIdentity, the version/dirty-tree guards and the observed-not-re-read rule |
 | [Mock Adapter Guide](architecture/mock_adapter_guide.md) | MockBrokerAdapter for deterministic pipeline testing |
-| [Order Guard](architecture/order_guard_architecture.md) | Pre-validation guard (SHORT+SPOT, rejection cooldown, async callback) |
+| [Order Guard](architecture/order_guard_architecture.md) | Pre-trade guard (the rules that deny an order before the executor, rejection cooldown, async callback) |
 | [Performance Tracking Layers](architecture/performance_tracking_layers.md) | Two-layer model (per-component + tick-loop profiler), defaults, graceful degradation, why no context-manager wrappers in the tick loop |
 | [What a Venue Holds](architecture/venue_order_features.md) | An adapter offers what its venue's API offers: what a run refuses, what a logic does instead (own exits) and what that costs |
 | [Safety Circuit Breaker](architecture/safety_circuit_breaker_architecture.md) | Account-level protection (account-value floor, drawdown and daily limits, the risk baseline that survives a restart, the hard flatten, and the end-of-session record — AutoTrader only) |
@@ -239,6 +241,9 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Algo Clock Convention](tests/framework/algo_clock_tests.md) | Wall-clock ban lint (decision logic/workers, CI plane) |
 | [Algo Clock Validator](tests/framework/algo_clock_validator_tests.md) | Wall-clock ban, runtime startup validator — AST scan of loaded algos (CORE + user) + batch pre-flight |
 | [Discovery Cache Validity](tests/framework/discovery_validity_tests.md) | The config-fingerprint comparison across all three cache families, and the single-open metadata reader behind it |
+| [Cache Transparency Tests](tests/framework/cache_transparency_tests.md) | Nothing an algo sees depends on the portfolio's lazy marking — the observer probe with the cache on and off, a session read at its tick, the read-only algo mask (#653) |
+| [Divergence Report Tests](tests/framework/divergence_report_tests.md) | A live session against a backtest of exactly its window — the backtest built from the session's record: the rendered profile with every block declared, the frozen broker document, the recorded warmup; the live side's segments, windows and trading days, each compared or excluded with every cause; the gate that refuses a backtest which does not compute what the session computed; the measures of each day's decision, each order, the account values and each day's change; the window's gaps; what the venue's own record confirms; the verdict and the command (#512) |
+| [Venue History Tests](tests/framework/venue_history_tests.md) | What a venue itself records, read from Kraken: the public trade list and an account's ledger at the venue, against recorded answers; the seam that hands readers out by broker type (#512, #127) |
 | [Composite Key Tests](tests/framework/composite_tests.md) | Which accounts may add up to one result — the composite definition and its floor, the key projected from the rendered configuration, what joins and what splits, the excluded member, the changed values, every value of every shipped document classified (#615) |
 | [Rendered Configuration Tests](tests/framework/rendered_config_tests.md) | What a run records it ran with, held to what it actually ran with — every shipped scenario set's document against its subprocess configuration, the portable strategy key, the header naming it, a sweep combination's own, never fatal, one strategy section in both pipelines |
 | [Run Entry Census Tests](tests/framework/run_entry_census_tests.md) | Real runs held to what the run store declares a run directory may hold — both directions, the stream versions, the run index row (#621) |

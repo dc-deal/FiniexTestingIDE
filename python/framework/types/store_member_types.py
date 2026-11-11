@@ -126,6 +126,7 @@ class RunEntryMemberId(StrEnum):
     TRADE_HISTORY_CSV = 'trade_history_csv'
     ORDER_EVENTS = ORDER_EVENTS_STREAM
     STATE_FRAMES = STATE_FRAMES_STREAM
+    SCENARIO_STATE_FRAMES = 'scenario_state_frames'
     TICK_STREAM_EVENTS = TICK_STREAM_EVENTS_STREAM
     TRADES = TRADES_STREAM
     DIAGNOSTICS_ROWS = DIAGNOSTICS_ROWS_STREAM
@@ -143,6 +144,18 @@ class SweepEntryMemberId(StrEnum):
     """Every file a sweep directory holds beside its combinations' run directories."""
     MOUNT_BUILD_LOG = 'mount_build_log'
     RANKING = 'ranking'
+
+
+class DivergenceEntryMemberId(StrEnum):
+    """Every file a divergence comparison's or an A/A's directory holds (#512)."""
+    SCENARIO_SET = 'scenario_set'
+    WARMUP_RECORD = 'warmup_record'
+    LIVE_INDEX = 'live_index'
+    REPORT = 'report'
+    REPORT_TEXT = 'report_text'
+    AA_SCENARIO_SET = 'aa_scenario_set'
+    AA_REPORT = 'aa_report'
+    AA_REPORT_TEXT = 'aa_report_text'
 
 
 @dataclass(frozen=True)
@@ -186,7 +199,7 @@ class EntryMember:
         recorded_stream_kind: The kind of stream a unit's timeline and window serve it as (#580),
             or None when they do not serve it
     """
-    member_id: Union[RunEntryMemberId, SweepEntryMemberId]
+    member_id: Union[RunEntryMemberId, SweepEntryMemberId, DivergenceEntryMemberId]
     path_pattern: str
     shape: EntryMemberShape
     purpose: str

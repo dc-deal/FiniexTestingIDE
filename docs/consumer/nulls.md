@@ -1,16 +1,17 @@
 # Why a field is null, and what to render instead
 
-A null in this API has three different causes, and they look identical in the response. Render
-them the same way and you will show "0" where the honest answer is "we never measured this", or
-show a gap where the figure genuinely does not exist. The three:
+A null in this API has different causes, and they look identical in the response. Render them
+the same way and you will show "0" where the honest answer is "we never measured this", or show
+a gap where the figure genuinely does not exist. The causes:
 
 | Cause | What it means | Can it change? |
 |---|---|---|
 | **Not applicable** | the figure has no meaning in this shape | no — it is correct here |
 | **Not measured** | something that counts it was switched off | yes — a setting |
 | **Not recorded** | the run predates the field | no — it is history |
+| **Not produced** | the run failed before it measured anything | no — it is what happened |
 
-The rule underneath all three: **a value that does not exist is null, never `0` and never the
+The rule underneath all of them: **a value that does not exist is null, never `0` and never the
 empty string.** A zero read as a value and an empty string read as a name are the two mistakes
 that cannot be undone further down, because by then they look like data.
 
@@ -61,7 +62,7 @@ wrong reading: `compute_ratio_pct` is null when no tick was processed at all, an
 is null when the worker never computed. The second one previously read `0`, which says "it
 computed on every tick" — the exact opposite of what happened.
 
-This cause is the only one of the three a caller can do something about: it is a setting on the
+This cause is the only one a caller can do something about: it is a setting on the
 run, so a future run can carry the figure.
 
 ## Not recorded: the run is older than the field
@@ -93,6 +94,14 @@ such a value as a measurement, find out when the run was recorded: from contract
 null, and the test is its `start_time` against the dates in
 [the contract log](/api/v1/docs/contract-log). Each section's document names its own cases.
 
+## Not produced: the run failed before it measured anything
+
+A run that fails before it measures anything — a session refused at its start, a backtest whose
+data could not be read — is still recorded, so that a failure is never silently absent. Its
+figures are null, never `0`: a P&L of zero would read like a session that traded and broke even.
+On [deployments](/api/v1/docs/deployments) such a session says so in `booking_state: failed`; a
+sweep's ranking leaves the run out.
+
 ## Null versus the empty list
 
 They are not the same answer, and the run index is where the difference matters most.
@@ -122,4 +131,5 @@ Some fields are deliberately three-valued and must not be collapsed:
 Show absence as absence. A dash, an em-dash, a greyed cell — anything that is visibly not a
 number. Where the cause matters to your reader, the field beside it usually says which cause it
 was: `worker_decision_tracked` for a counter, `reporting` plus `artifacts` for a run,
+`booking_state` for a deployment's session,
 `parent_id` for a parent kind, `unit_count` for a figure that folded several accounts.

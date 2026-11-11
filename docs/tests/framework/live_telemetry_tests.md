@@ -3,8 +3,8 @@
 `tests/framework/live_telemetry/test_live_frame_serialization.py` — the live-telemetry frame
 serializer (`python/framework/utils/live_frame_serialization_utils.py`, `frame_to_json`). The
 encoder turns a live-telemetry frame (the throttled per-run feed behind the live console
-dashboards) into a JSON-safe dict so the same model can later feed a viewer push transport
-(#379/#380). All frames are built from real framework types so a structural drift fails the test.
+dashboards) into a JSON-safe dict. All frames are built from real framework types so a structural
+drift fails the test.
 
 | Test | Description |
 |------|-------------|

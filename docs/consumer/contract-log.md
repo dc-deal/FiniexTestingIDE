@@ -33,6 +33,48 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 50 — 2026-11-04 (#646)
+
+A run that failed before it measured anything no longer reads like a session that traded and broke
+even.
+
+- [Deployments](/api/v1/docs/deployments), a changed meaning: such a session serves **no figure** —
+  `net_pnl`, `max_drawdown` and `max_drawdown_pct` null where they read `0.0` — and no currency, null
+  where it read the empty string. It stands with the sessions that have booked nothing yet, in the
+  list row whose `currency` is null.
+- Deployments, the detail: every session carries **`booking_state`** — `booked`, `failed` (it failed
+  before it measured anything) or `not_booked_yet`. The sessions without booked figures follow the
+  booked ones as one series, oldest first and numbered from 1, and mark no gap and no change.
+- [Sweeps](/api/v1/docs/sweeps): `net_pnl`, `win_rate`, `total_fees`, `total_trades`,
+  `winning_trades`, `losing_trades` and `r_trade_count` of a combination are nullable in the schema.
+  A ranked combination never carries null there: a run that failed is left out of the ranking, as
+  before.
+
+Nothing removed or renamed; one field added — `booking_state`.
+
+## Version 49 — 2026-11-02 (#645)
+
+A deployment is listed from its first session's start, not from its first sealed trading day. Until
+now a new deployment stood in no list for up to a day while its session ran.
+
+- [Deployments](/api/v1/docs/deployments), a changed meaning: which sessions a deployment holds now
+  comes from the runs that name it, and what they booked from the ledger as before. A session that
+  has booked no trading day yet, because it runs before its first seal or ended before it, stands in
+  the list and in the detail **without figures**.
+- Deployments, the list: such sessions have no account currency yet, so they form a row of their own
+  with **`currency: null`**, after the deployment's other rows. A deployment whose earlier sessions
+  booked days shows that row beside its booked ones. Its session moves into its currency's row at its
+  first seal. The key stays `["deployment_id", "currency"]`.
+- Deployments, the list row and the session row: **`net_pnl` and `currency` are nullable**, null on
+  such a session and never a zero. Drawdowns were nullable before.
+- `/deployments/{deployment_id}`: answers 200 for such a deployment instead of `404`. Every run
+  `unfinished` counts is now in `sessions`, either without an `ended` or without figures.
+- [Booking periods](/api/v1/docs/booking-periods), `/deployments/{deployment_id}/booking-periods`:
+  answers 200 with an empty list for such a deployment. `sessions_without_periods` also counts its
+  sessions that have not sealed a day yet.
+- [Errors](/api/v1/docs/errors): `deployment_not_found` now means that no session in the run index
+  and no ledger row names the identity.
+
 ## Version 48 — 2026-11-01
 
 A consumer can tell which installation answers, now that this API exists on more than one system.
@@ -92,71 +134,14 @@ one are gone.
   `unranked`, and a sweep that recorded no objective ranks by `net_pnl`. The sweep list carries
   `features_beyond_venue`. It is not on the run list: the run header holds it.
 
-## Version 45 — 2026-10-30 (#625)
-
-A venue's API decides which levels a run can use, and a level a strategy keeps itself is named on
-the trade.
-
-- [Trade history](/api/v1/docs/trade-history): every row carries `exit_level`, the level a stop-loss
-  or take-profit exit fired at. A strategy that keeps its own stop leaves `stop_loss` and
-  `take_profit` null, so this is where that level is read. Null for every other exit, and on a row
-  recorded before this contract.
-- **A change of meaning in a backtest:** such an own exit fills at the next price after the level,
-  as a close the strategy sends does, so its `exit_slippage` is no longer 0. A level the position
-  carries still fills at the level.
-- [Run header](/api/v1/docs/run-header): `features_beyond_venue`,
-  the order features a backtest was allowed beyond what its venue's API holds, as its scenario set
-  declared. Empty for every other run, a session always; null on a run recorded before this contract.
-  Ledger rows carry the same, comma-joined, and empty for every other row.
-- [Order history](/api/v1/docs/order-history): `rejection_reason` gains
-  `order_feature_not_declared`, an order that carries a level its strategy did not declare.
-- [Validation checks](/api/v1/validation-checks): `order_feature_refused`,
-  `order_feature_undeclared`, `feature_beyond_venue_unneeded` and `features_beyond_venue`.
-
-## Version 44 — 2026-10-27 (#631)
-
-What every live session knows about its venue is recorded for every session now, and every fill says
-how far it landed from the price it is measured against.
-
-- `GET /api/v1/reports/runs/{run_id}/venue-api-performance`, new: how the venue's REST API answered a
-  live session, one row per endpoint (`key: ["venue_endpoint"]`) — `calls`, `avg_ms`, `min_ms`,
-  `max_ms`, `slow_calls` and `failed_calls` — with the session's `slow_calls` and `failed_calls` and
-  the `slow_call_threshold_ms` a call was judged against. AutoTrader only, written when the session ran
-  its monitor; `venue_endpoint` is the label the session's adapter gives the call. Its document is
-  [venue API performance](/api/v1/docs/venue-api-performance).
-- [Venue account](/api/v1/docs/venue-account): every row carries `reconciliation` — `enabled`, and
-  over the whole session `cycles_compared`, `cycles_skipped` and `divergences_seen`, summed over the
-  cycles, so a divergence that stood for three cycles counts three. The counts are null when the
-  reconciliation was switched off. A session that reconciled without writing a broker-truth line has
-  a row now too.
-- [Broker](/api/v1/docs/broker): every row carries `fee_report` — where the venue reports a fill's
-  fee, as its adapter declares — and `venue_fee_expected`, whether the run's fills carry the venue's
-  own fee: false in a backtest and in a dry run.
-- [Order history](/api/v1/docs/order-history): every row carries `order_event_seq`, its key into the
-  order-event stream, and a fill's slippage — `slippage_measured_against` (`submission_mid` for a
-  market order, `limit_price`, `trigger_price` for a stop or a stop-limit, `protective_level` for a
-  stop-loss or take-profit close), `slippage_reference_price`, `slippage` in price units with a cost
-  positive, and `slippage_pct`.
-- [Execution statistics](/api/v1/docs/execution-stats): `fill_slippage` — per unit and reference kind
-  `fills`, `fills_measured`, `adverse_pct_mean` and `adverse_pct_max` — and `fill_slippage_totals`
-  over every unit's fills, re-derived over the fills themselves; `keys` names the row key of each of
-  the three lists.
-- [Trade history](/api/v1/docs/trade-history), a changed meaning: `exit_slippage` and
-  `exit_slippage_pct` of a stop-loss or take-profit exit are measured against the level that fired —
-  the percent a share of the level — no longer against the submission mid: a backtest fills such an
-  exit at its level, and the mid of the tick that crossed it made the overshoot read as slippage.
-  `exit_slippage_measured_against` says which reference a row used.
-- The run list: `venue_api_performance.json` joins `artifacts`.
-
-Nothing removed or renamed; one meaning changed — `exit_slippage` and `exit_slippage_pct` of a
-protective exit.
-
-## Versions 43 and earlier
+## Versions 45 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 45** — 2026-10-30 (#625): A venue's API decides which levels a run can use — `exit_level` on every [trade history](/api/v1/docs/trade-history) row, `features_beyond_venue` on the [run header](/api/v1/docs/run-header), `order_feature_not_declared` as a `rejection_reason`, four new validation checks, and an exit a strategy keeps itself fills in a backtest at the next price after its level.
+- **Version 44** — 2026-10-27 (#631): What every live session knows about its venue is recorded — `GET /api/v1/reports/runs/{run_id}/venue-api-performance` (new), `reconciliation` on the [venue account](/api/v1/docs/venue-account), `fee_report` and `venue_fee_expected` on [broker](/api/v1/docs/broker), a fill's slippage on [order history](/api/v1/docs/order-history) and in `fill_slippage` on [execution statistics](/api/v1/docs/execution-stats), and a protective exit's `exit_slippage` measured against the level that fired.
 - **Version 43** — 2026-10-27 (#580): A unit's recorded streams can be read over time: a timeline to draw the axis from, and a window to read them a page at a time — a finished run's and a running session's alike. Its document is [recorded streams](/api/v1/docs/recorded-streams).
 - **Version 42** — 2026-10-27 (#476): A booking period counts the orders it handled, so a run's order counts can be read from its periods again — on a [sweep](/api/v1/docs/sweeps) combination, a changed meaning: every `orders_*` field and `sl_tp_triggered` is the sum of its periods' own counts, null before.
 - **Version 41** — 2026-10-26 (#626): What a carry-over may carry across a change: a rehearsal's readings never reach real money, and a start that continues an open position under a changed configuration says so.

@@ -6,11 +6,13 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from python.framework.types.config_types.autotrader_defaults_config_types import StateFramesDefaults
 from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.config_types.performance_tracking_config_types import (
     PerformanceTrackingConfig,
 )
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
+from python.framework.types.config_types.verification_config_types import VerificationConfig
 
 
 class DefaultScenarioExecutionConfig(BaseModel):
@@ -23,6 +25,11 @@ class DefaultScenarioExecutionConfig(BaseModel):
     strict_parameter_validation: bool = True
     tick_processing_budget_ms: float = 0.0
     heartbeat_interval_ms: int = 1000  # sim ghost-pass cadence (#360); 0 = disabled
+    # The scenario's state frames (#579 part B item 3) — off unless the scenario asks; a backtest
+    # of a session's window turns them on with the session's cadence (#512)
+    state_frames: StateFramesDefaults = StateFramesDefaults(enabled=False)
+    # Switches that change no result by design; turned off only to compare (#653)
+    verification: VerificationConfig = VerificationConfig()
 
 
 class BacktestingExecutionConfig(StrictConfigModel):

@@ -378,7 +378,8 @@ class AggressiveTrend(AbstractDecisionLogic):
         if decision.action == DecisionLogicAction.FLAT:
             return None
 
-        # Check existing positions (one position only)
+        # Check existing positions (one position only) — each an AlgoPosition, read-only,
+        # its price and P&L current when read (docs/user_guides/algo_masks.md)
         open_positions = self.trading_api.get_open_positions()
 
         new_side = OrderSide.BUY if decision.action == DecisionLogicAction.BUY else OrderSide.SELL

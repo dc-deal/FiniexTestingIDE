@@ -24,6 +24,11 @@ run fit together; the linked documents explain the rest.
 
 ---
 
+**A/A** (`divergence_report_cli.py aa`) — One window backtested twice with the same inputs, on the
+release a deployment's sessions ran and on the current tree, and the two compared event by event
+(#512). Replay is deterministic, so they must be identical; a difference means the instrument
+changed, not the market. See [CLI Tools Guide](cli_tools_guide.md).
+
 **accept composite change** (`--accept-composite-change <key>`, served as
 `origin.accept_composite_change`) — A start told it may continue what the venue still holds — this
 bot's position, its resting orders — under a configuration that defines another *composite* than
@@ -86,6 +91,12 @@ disturbance episode, [Outage Handling](user_guides/outage_handling_guide.md).
 framework (CORE) or written by a user. A user's algos are kept in `user_algos/`. See
 [User Algo Workspace](user_guides/user_modules_and_hot_reload_mechanics.md).
 
+**algo mask** (`AlgoPosition`, …) — What an algo receives in place of an engine object: a
+read-only view that shows a declared set of fields and computes what moves with the market when it
+is read. The decision trading API hands out masks, never the engine's own objects, so a field the
+engine gains reaches no algo until a mask declares it (#653). Not a pandas boolean mask. See
+[Algo Masks](user_guides/algo_masks.md).
+
 **archive** (tick archive) — The imported tick data a backtest and a mock session replay. The one
 part of the application that stays backward compatible: data from every collector format ever
 accepted is still read. See [Data Import](data_pipeline/data_import_pipeline.md).
@@ -110,6 +121,12 @@ basis*, *signal basis*, *time basis*, *trade window basis* — each below.
 numbered from 1; the ledger holds one row per booking period, in its account's currency. Every
 trading day of the market calendar has one, a day without a tick included (`tick_count` 0). In code
 `BookingPeriod` and `period_no`. See [Accounting Periods](architecture/accounting_periods.md).
+
+**booking state** (`booking_state`) — Whether a deployment's session has booked figures, and if
+not, why: `booked`; `failed`, the run failed before it measured anything, so its ledger row holds
+no figure; `not_booked_yet`, its first booking period has not closed. Not the state of a booking
+period. In code `SessionBookingState`. See the served document on deployments
+(`docs/consumer/deployments.md`).
 
 **broker** (`broker_type`) — Our configuration entry for one venue and product in
 `market_config.json` (`kraken_spot`, `mt5`). Not the same as the venue. The broker whose ticks a
@@ -322,6 +339,12 @@ spread estimate: regenerable at any time and cached against its source. Not a st
 every family lives in the `discovery_caches` store — and never something the IDE records about
 itself: a run, a certificate or a carry-over is not a discovery, because deleting it loses what
 happened. See [Discovery System](discovery_system.md).
+
+**divergence report** — A live deployment held against backtests of exactly its windows, each built
+from what its sessions recorded (#512): a gate that refuses an incomparable backtest, the measures —
+each day's decision, each order, the account values — and a verdict by bounds fixed before the run.
+Each measure ends *passed*, *failed* or *not checked*; "passed" reads "no divergence beyond the
+bounds over the compared days", never "parity proven". Kept under `runs/divergence/<report_id>/`.
 
 **dry run** — An AutoTrader session on a live adapter whose `dry_run` resolves true: real ticks,
 every order validated by the venue and never placed, fills simulated locally. A mock session is not
@@ -704,6 +727,11 @@ reports it, numbered by the venue with ids rising per pair — not every id beco
 or an execution row. A live session records the public trade ids around each outage of its tick
 stream, never on a tick. See [AutoTrader Data Intake](autotrader/autotrader_data_intake.md).
 
+**reading** (`reading` of a divergence report) — The rules a comparison is read by: `run`, the
+thirty-day run, every binding measure judged over at least 25 compared days; `rehearsal`, the run
+before it, with no floor of days and measure 2 described rather than judged. Not the reading of a
+file.
+
 **real-money session** — A live-adapter session with `dry_run` false: its orders are placed at the
 venue and move the account.
 
@@ -998,6 +1026,16 @@ session's threshold, and how many failed. *Venue*, because the IDE serves an API
 this says nothing about. Only a session that watched its venue's API has it. See
 [Venue API performance](consumer/venue-api-performance.md).
 
+**venue ledger** — The account's ledger as its venue keeps it: every movement of a balance the
+venue booked — each leg of a trade, a deposit, a withdrawal, a conversion, a reward — with the
+order behind each trade. The divergence report reads it to find what moved the account that is
+no order of the bot. Not the results ledger our runs write, and not the session's own books.
+
+**venue trade** — One trade a venue published for a symbol on its public trade list: two parties
+met at a price, numbered by the venue. Not a *trade* of ours, which is one close of a position.
+Read to tell a trade our collector missed from a number the venue allocated and never
+published.
+
 **wall clock** — The machine's clock. It stamps when WE did or saw something (`ts_init`, a run's
 `start_time`) and measures durations — on its monotonic form, because the wall clock itself can
 step backwards. Never the time a decision reads — that is the *canonical clock*. Where the one
@@ -1032,3 +1070,8 @@ instance name (`rsi_fast`) to its type string (`CORE/rsi`), and the instance's p
 its decisions. Off by default in a backtest, because the tracker sits on the hot path. Untracked,
 those counters are null in every report — the logic still decided on every tick, nobody counted
 it — while the logic's name and the processed ticks are known either way.
+
+**zone** (of a per-order measure in a divergence report) — Where measures 2b, 2c and 2d end:
+*green*, every compared order within its bound; *yellow*, one or two outside it, each named with
+its delays and passing once traced to its cause; *red*, more than two, failing. Measure 1 and 2a
+have no zone.
