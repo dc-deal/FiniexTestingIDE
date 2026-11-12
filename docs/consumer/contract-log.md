@@ -33,6 +33,20 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 54 — 2026-11-12 (#497)
+
+A backtest's drawdown curve now begins in the replayed time.
+
+- [Portfolio](/api/v1/docs/portfolio), a changed meaning: **`drawdown_started_at`** is the instant
+  the equity curve began on the run's own clock — the replayed time in a backtest, the market's time
+  in a session. Until now it was the wall clock when the unit began measuring, so a backtest of last
+  September said its curve began on the day the backtest ran, and two runs of one scenario differed
+  in it. It is **empty** when a session ended before its first pass.
+
+**A run recorded before this contract** keeps the wall-clock instant it was written with.
+
+A field changed its meaning; nothing added, removed or renamed.
+
 ## Version 53 — 2026-11-09 (#557)
 
 A position a session restored at boot has no tick of the closing session to start from.
@@ -119,35 +133,13 @@ even.
 
 Nothing removed or renamed; one field added — `booking_state`.
 
-## Version 49 — 2026-11-02 (#645)
-
-A deployment is listed from its first session's start, not from its first sealed trading day. Until
-now a new deployment stood in no list for up to a day while its session ran.
-
-- [Deployments](/api/v1/docs/deployments), a changed meaning: which sessions a deployment holds now
-  comes from the runs that name it, and what they booked from the ledger as before. A session that
-  has booked no trading day yet, because it runs before its first seal or ended before it, stands in
-  the list and in the detail **without figures**.
-- Deployments, the list: such sessions have no account currency yet, so they form a row of their own
-  with **`currency: null`**, after the deployment's other rows. A deployment whose earlier sessions
-  booked days shows that row beside its booked ones. Its session moves into its currency's row at its
-  first seal. The key stays `["deployment_id", "currency"]`.
-- Deployments, the list row and the session row: **`net_pnl` and `currency` are nullable**, null on
-  such a session and never a zero. Drawdowns were nullable before.
-- `/deployments/{deployment_id}`: answers 200 for such a deployment instead of `404`. Every run
-  `unfinished` counts is now in `sessions`, either without an `ended` or without figures.
-- [Booking periods](/api/v1/docs/booking-periods), `/deployments/{deployment_id}/booking-periods`:
-  answers 200 with an empty list for such a deployment. `sessions_without_periods` also counts its
-  sessions that have not sealed a day yet.
-- [Errors](/api/v1/docs/errors): `deployment_not_found` now means that no session in the run index
-  and no ledger row names the identity.
-
-## Versions 48 and earlier
+## Versions 49 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 49** — 2026-11-02 (#645): A deployment is listed from its first session's start — sessions without a sealed day stand in the list and the detail without figures, in a row of their own with `currency: null`; `net_pnl` and `currency` nullable; `/deployments/{deployment_id}` and its booking periods answer 200 for such a deployment, and `deployment_not_found` means no run and no ledger row names it.
 - **Version 48** — 2026-11-01: The installation answering names itself on `/health` — `host_id`, the key, the same value as `origin_host` on activities and runs, and `host_name`, for people to read and no key.
 - **Version 47** — 2026-10-30 (#559): A deployment notices when its sessions ran different code — `changed` also true when only the code moved, `configuration_changed` beside it, `code_changes` on the session rows, `code_summary` on the list rows and the detail, `commit_subject` and `recent_commits` on the run header's repositories, `code_stand` on a sweep's combinations.
 - **Version 46** — 2026-10-30 (#625): A session holds no stop or target for a position any more — `protective_level_enforcement` and `take_profit_enforcement` removed from the open-position rows, `protection_released` and `close_withheld` no longer produced, `409 artifact_unreadable` for a stored artifact that no longer matches its model, `expectancy` null where no trade has an R, and a sweep ranked by `expectancy` counts such runs in `unranked`.

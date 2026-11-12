@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 53
+API_CONTRACT_VERSION = 54
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,7 +36,8 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'trade-history: entry_tick_index is null on a trade whose position a session restored at boot '
-    '— it opened in another session, whose ticks this one does not count — and duration_ticks '
-    'with it; nothing added, removed or renamed',
+    "portfolio: drawdown_started_at is the instant the equity curve began on the run's own clock "
+    "— the replayed time in a backtest, the market's time in a session — no longer the wall clock "
+    'when the unit began measuring; empty when a session ended before its first pass; nothing '
+    'added, removed or renamed',
 ]

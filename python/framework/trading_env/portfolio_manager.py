@@ -1585,9 +1585,17 @@ class PortfolioManager:
         if not self._drawdown_established:
             self._drawdown_established = True
             if not self._drawdown_started_at:
-                # Wall-clock, and legitimately so (§9): it records when WE began measuring,
-                # an observation of our own act that nothing decides on.
-                self._drawdown_started_at = datetime.now(timezone.utc).isoformat()
+                # When the curve began, on the canonical clock: replay time in a backtest, the
+                # event time in a session — one time axis with the run's other records, so two
+                # runs of one backtest agree. It was the wall clock until 2026-11-12, which put a
+                # replay's curve start on the day the backtest ran. A run whose clock was never
+                # set (a session that ends before its first pass) has no instant to name, and the
+                # start stays unrecorded; a portfolio built without a clock still raises.
+                try:
+                    self._drawdown_started_at = self._clock_now().isoformat()
+                except ClockNotInjectedError:
+                    if self._clock_fn is None:
+                        raise
         if equity > self._max_equity:
             self._max_equity = equity
         drawdown = self._max_equity - equity
