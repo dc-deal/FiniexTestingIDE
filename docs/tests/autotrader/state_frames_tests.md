@@ -20,7 +20,7 @@ values the account on a tick pass only, a session's does both on every pass.
 
 | File | Group | Checks |
 |---|---|---|
-| `test_state_frame_recorder.py` | `TestTheCadence` | slots on a grid of the canonical clock, each filled once · a coarser cadence (M5) fills the periods the bars open on · a clock that steps back begins the grid again without a frame · a replay's heartbeat (which reads the wall clock) does not drive the cadence, a live heartbeat does on a quiet feed |
+| `test_state_frame_recorder.py` | `TestTheCadence` | slots on a grid of the canonical clock, each filled once · a coarser cadence (M5) fills the periods the bars open on · a replay's heartbeat does not drive the cadence, a live heartbeat does on a quiet feed |
 | | `TestTheCadenceSetting` | the cadence is a timeframe, one minute by default · a name that is no timeframe is refused, naming the ones there are |
 | | `TestTheEvents` | an order is a frame of its own, naming the order, even inside a filled slot · a closed bar names the bar by its opening · an event fills a due slot, so one pass writes at most one frame |
 | | `TestWhatAFrameHolds` | every output as a plain value, a value not defined yet (NaN) as null · the account valued at the mid · before a tick the account is unvalued, never guessed · a health nobody checked is null, one that was checked is said · a reconciler with no verdict yet — before its first cycle, after one that could not reach the venue — checked nothing |

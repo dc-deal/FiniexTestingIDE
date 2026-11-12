@@ -148,6 +148,7 @@ recovered", both staleness contracts in ONE fast session driven by the
 |------|-------------------|
 | `test_session_completes_normally` | Normal shutdown, 3000 ticks, empty error pot despite the outage |
 | `test_stale_episode_reaches_the_pot_with_span` | Exactly one flip warning + one recovery line with the from–to span (the v0 stale protocol) |
+| `test_the_pause_keeps_the_session_on_the_replay_s_day` | The freeze is a pause in real time inside a replay of 2026-04-27 (#616): the session seals exactly one booking period, its end, and it opens and closes on the replay's day — before the replay's own time, an idle pass read the wall clock and the session sealed a period for every day up to the day it ran |
 | `test_decision_hook_fired_once` | `on_market_data_stale` edge-dispatched exactly once per episode |
 | `test_guard_blocked_the_stale_entry` | The probe's deliberate ghost-pass entry was refused by the guard (`STALE_MARKET_DATA` floor) and counted as a denial — nothing was sent |
 | `test_signal_side_fired_too` | `on_signal_stale` fired once (aged archive) — both contracts in one session |

@@ -174,9 +174,10 @@ archive. How often a worker computes — on every tick or once per closed bar �
 
 **canonical clock** — The one clock a decision logic, a worker and the execution layer read:
 `get_current_time()`. In a backtest it is the time of the replayed tick. In an AutoTrader session a
-tick sets it to the tick's own time and an idle heartbeat to the machine's UTC clock, so timeouts
-keep tracking real elapsed time: in a live-adapter session the two are one clock, in a mock session
-it moves between replay time and the present. See *wall clock*, and
+tick sets it to the tick's own time and an idle heartbeat to the tick source's time for a pass without
+a tick, so timeouts keep tracking real elapsed time: a live feed answers the machine's UTC clock, a
+mock replay its last tick plus the real time since, so a mock session stays in replay time. See
+*wall clock*, and
 [Live Execution](architecture/live_execution_architecture.md#canonical-clock--idle-cadence-360).
 
 **carry-over** — What one session hands the next session of the same bot: the algo's memory, and

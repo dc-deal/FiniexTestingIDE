@@ -4,7 +4,7 @@ Interface for all tick data sources (mock, WebSocket, REST).
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from python.framework.types.autotrader_types.autotrader_display_types import QuoteFeedStats
@@ -57,6 +57,19 @@ class AbstractTickSource(ABC):
         Returns:
             True if all ticks have been emitted (mock: end of parquet data)
         """
+
+    def get_idle_pass_time(self) -> datetime:
+        """
+        The canonical clock for a pass that carries no tick (#616).
+
+        A live feed has no time of its own between two ticks, so its idle pass reads the wall
+        clock: phase and order timeouts then track the time that really passes. A replay
+        overrides this with its own time.
+
+        Returns:
+            Timezone-aware UTC datetime
+        """
+        return datetime.now(timezone.utc)
 
     # === Display Stats (GIL-safe reads for display thread) ===
 

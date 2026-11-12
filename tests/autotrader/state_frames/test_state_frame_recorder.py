@@ -127,16 +127,6 @@ class TestTheCadence:
         assert [f['cadence_slot'] for f in _frames(path)] == [
             '2026-11-03T10:00:00Z', '2026-11-03T10:05:00Z', '2026-11-03T10:10:00Z']
 
-    def test_a_clock_that_steps_back_begins_the_grid_again_without_a_frame(self, tmp_path):
-        session, path = _Session(), tmp_path / 'frames.jsonl'
-        recorder = session.recorder(path)
-        _pass(recorder)
-        session.now = _T0 - timedelta(days=200)           # a replay's tick after a wall-clock heartbeat
-        _pass(recorder)
-        session.now = _T0 - timedelta(days=200) + timedelta(seconds=10)
-        _pass(recorder)
-        assert len(_frames(path)) == 1
-
     def test_a_replays_heartbeat_does_not_drive_the_cadence(self, tmp_path):
         session, path = _Session(), tmp_path / 'frames.jsonl'
         recorder = session.recorder(path, replayed=True)
