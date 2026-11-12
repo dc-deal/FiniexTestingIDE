@@ -13,7 +13,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import pytest
 
@@ -34,6 +34,10 @@ from python.framework.fixture_catalog.fixture_production_store import (
 )
 from python.framework.reporting.store.report_store import ReportStore
 from python.framework.reporting.store.run_index import RunIndex
+from python.framework.types.api.recorded_stream_types import (
+    RecordedStreamExtent,
+    UnitRecordedStreams,
+)
 from python.framework.types.api.recording_state_types import RecordingState
 from python.framework.types.api.report_types import (
     DeploymentSummary,
@@ -57,6 +61,7 @@ from python.framework.types.fixture_catalog_types import (
     FixtureProduction,
 )
 from python.framework.types.run_purpose_types import RunPurpose
+from python.framework.types.run_stream_types import RecordedStreamKind
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 
 _ROOT = Path(__file__).resolve().parents[3]
@@ -124,6 +129,27 @@ def _state_frame_evidence(recording: Optional[RecordingState], outcome: bool = T
     return FixtureEvidence(
         runs=[RunInfo(run_id='r1', group='autotrader', name='my_profile')],
         latest_state_frames={'r1': LatestStateFramesResponse(served_at=now, units=[unit])})
+
+
+def _timeline_evidence(series_bars: Dict[str, int]) -> FixtureEvidence:
+    """
+    One run's unit timeline as the timeline route would answer it.
+
+    Args:
+        series_bars: Worker instance → how many bars its indicator series holds
+
+    Returns:
+        The evidence for that one run
+    """
+    streams = [RecordedStreamExtent(stream_kind=RecordedStreamKind.INDICATOR_SERIES,
+                                    stream_name=worker, record_time_field='bar_time',
+                                    record_count=count)
+               for worker, count in series_bars.items()]
+    return FixtureEvidence(
+        runs=[RunInfo(run_id='r1', group='autotrader', name='my_profile')],
+        recorded_streams={'r1': UnitRecordedStreams(
+            run_id='r1', unit_name='my_profile', served_at=datetime(2026, 11, 1, tzinfo=timezone.utc),
+            streams=streams)})
 
 
 def _production(entry_id: str, produced_at: str, verified: bool) -> FixtureProduction:
@@ -347,6 +373,19 @@ class TestAPropertyReadsWhatIsServed:
         check = _check('state_frames_session', 'position_in_last_frame')
         assert check(_state_frame_evidence(RecordingState.ENDED, position=True))
         assert not check(_state_frame_evidence(RecordingState.ENDED))
+
+    def test_every_drawing_worker_has_a_series_with_bars(self):
+        check = _check('indicator_series_session', 'every_series_recorded')
+        workers = ('rsi_fast', 'bollinger_main', 'obv_volume', 'macd_main', 'tide_wave',
+                   'trend_ema')
+        assert check(_timeline_evidence({worker: 3 for worker in workers}))
+        assert not check(_timeline_evidence({worker: 3 for worker in workers[1:]})), (
+            'a drawing worker without a series')
+        assert not check(_timeline_evidence({**{worker: 3 for worker in workers}, 'macd_main': 0})), (
+            'a series without a bar')
+        assert not check(FixtureEvidence(
+            runs=[RunInfo(run_id='r1', group='autotrader', name='my_profile')])), (
+            'no timeline served, nothing recorded')
 
     def test_an_order_sent(self):
         check = _check('state_frames_session', 'an_order')

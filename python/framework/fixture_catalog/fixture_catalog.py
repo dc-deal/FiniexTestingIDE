@@ -6,7 +6,8 @@ an entry's runs and checks them; the newest production that carried every proper
 CURRENT fixture, derived from the production record and never written into a run.
 
 The properties are the ones the consumers assert. FiniexViewer replays its tests from the
-report-coverage run, the demo deployment and the state-frame session; #557 freezes its golden
+report-coverage run, the demo deployment, the state-frame session and the indicator-series session,
+and draws its indicator panes from the last; #557 freezes its golden
 samples from the backtest, the mock sessions, the deployment, the sweep and the signal-and-feed
 backtest — both pipelines, both account models.
 """
@@ -29,10 +30,17 @@ from python.framework.types.fixture_catalog_types import (
     FixtureSession,
 )
 from python.framework.types.run_kind_types import OrdersTo
+from python.framework.types.run_stream_types import RecordedStreamKind
 from python.framework.types.run_outcome_types import RunOutcome
 
 _FINIEX_VIEWER = 'FiniexViewer'
 _GOLDEN_SAMPLES = '#557 golden samples'
+
+# The worker instances of the indicator-series session's profile that draw — one of each kind of
+# CORE drawing worker (#379). The viewer draws its indicator panes from them, so a worker that stops
+# drawing, or leaves the profile, fails the production by name.
+_DRAWING_WORKERS = ('rsi_fast', 'bollinger_main', 'obv_volume', 'macd_main', 'tide_wave',
+                    'trend_ema')
 
 
 # ============================================
@@ -325,6 +333,30 @@ def _position_in_the_last_frame(evidence: FixtureEvidence) -> bool:
                for answer in evidence.latest_state_frames.values() for unit in answer.units)
 
 
+def _every_drawing_worker_recorded(evidence: FixtureEvidence) -> bool:
+    """
+    Every run's timeline lists an indicator series for each drawing worker of the profile, and each
+    holds at least one bar.
+
+    Args:
+        evidence: What the production made, as the API serves it
+
+    Returns:
+        Whether the production carries this property
+    """
+    if not evidence.runs:
+        return False
+    for run in evidence.runs:
+        timeline = evidence.recorded_streams.get(run.run_id)
+        if timeline is None:
+            return False
+        bars = {stream.stream_name: stream.record_count for stream in timeline.streams
+                if stream.stream_kind == RecordedStreamKind.INDICATOR_SERIES}
+        if not all(bars.get(worker, 0) > 0 for worker in _DRAWING_WORKERS):
+            return False
+    return True
+
+
 # ============================================
 # Checks over a production's deployments
 # ============================================
@@ -605,6 +637,25 @@ FIXTURE_CATALOG: Tuple[FixtureEntry, ...] = (
             FixtureProperty('an_order', 'It sends an order', _an_order),
             FixtureProperty('position_in_last_frame', 'A position is still open in its last '
                             'frame', _position_in_the_last_frame),
+            FixtureProperty('simulated', 'No order goes to a venue', _orders_simulated),
+        ),
+    ),
+    FixtureEntry(
+        entry_id='indicator_series_session',
+        title='One AutoTrader mock session in which every kind of CORE drawing worker records its '
+              'indicator series beside the state frames',
+        producer=FixtureProducerKind.PROFILE,
+        source='configs/autotrader_profiles/mock/indicator_series_session.json',
+        consumers=(_FINIEX_VIEWER,),
+        properties=(
+            FixtureProperty('reported', 'The session reaches its report', _reported),
+            FixtureProperty('every_series_recorded', 'Its timeline lists an indicator series '
+                            'with bars for each drawing worker of its profile — RSI, Bollinger, '
+                            'OBV, MACD, the tide-and-wave worker and the moving-average trend',
+                            _every_drawing_worker_recorded),
+            FixtureProperty('state_frames_ended', 'Its latest state frame is the one written at '
+                            'its end, with how it ended and its first frame beside it',
+                            _state_frames_to_the_end),
             FixtureProperty('simulated', 'No order goes to a venue', _orders_simulated),
         ),
     ),
