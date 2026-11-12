@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock
 
+from python.framework.autotrader import autotrader_tick_loop as tick_loop_module
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
@@ -285,6 +286,10 @@ def autotrader_loop(ticks: List[TickData], spot_mode: bool,
     # What an idle heartbeat asks a live source: a stream that never dropped
     tick_source.get_reconnect_count.return_value = 0
     tick_source.get_injected_outage_label.return_value = None
+    # A live source's time for a pass without a tick is the wall clock (#616), read where a test
+    # fakes it: the tick loop's module
+    tick_source.get_idle_pass_time.side_effect = (
+        lambda: tick_loop_module.datetime.now(timezone.utc))
 
     loop = AutotraderTickLoop(
         config=AutoTraderConfig(

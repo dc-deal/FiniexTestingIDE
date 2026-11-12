@@ -169,10 +169,9 @@ class StateFrameRecorder:
         self._refresh_positions = refresh_positions
         # When the process's memory was last read, on the monotonic clock
         self._memory_read_at: Optional[float] = None
-        # The last slot a frame filled, and the canonical time of the last frame — the anchor a
-        # clock that steps back is measured against
+        # The last slot a frame filled. The canonical clock only moves forward, so a slot never
+        # comes round twice
         self._last_slot: Optional[datetime] = None
-        self._last_frame_time: Optional[datetime] = None
         self._frames_written = 0
         self._build_failures = 0
 
@@ -201,12 +200,6 @@ class StateFrameRecorder:
         frame_time = self._executor.get_current_time_if_set()
         if frame_time is None:
             return
-        if self._last_frame_time is not None and frame_time < self._last_frame_time:
-            # A replayed session's heartbeat read the wall clock, the next tick steps back to
-            # the replay: begin the grid again from here rather than fill a slot twice
-            self._last_slot = self._slot_of(frame_time)
-            self._last_frame_time = frame_time
-            return
         slot = self._slot_of(frame_time)
         slot_due = (on_tick or not self._replayed) and (
             self._last_slot is None or slot > self._last_slot)
@@ -226,7 +219,6 @@ class StateFrameRecorder:
             # Taken by this attempt whether or not it reached the stream: a frame that cannot be
             # built is tried again at the next slot, never on every pass of this one
             self._last_slot = slot
-        self._last_frame_time = frame_time
 
     def write_shutdown(
         self,

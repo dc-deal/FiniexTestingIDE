@@ -429,7 +429,7 @@ class AutotraderTickLoop:
             # the session-end event's stamp, the disturbance episodes the shutdown collects.
             # Set it the way an idle pass does, so a stop during the start ends cleanly.
             if self._executor.get_current_time_if_set() is None:
-                self._executor.set_current_time(datetime.now(timezone.utc))
+                self._executor.set_current_time(self._idle_pass_time())
 
         while self._running:
             # #235: one stamp per pass, tick or heartbeat — a pass that hangs stamps no more,
@@ -444,10 +444,11 @@ class AutotraderTickLoop:
                     self._logger.info(
                         '📭 Tick source exhausted — ending session')
                     break
-                # #360: timer event. Inject the wall-clock so the canonical clock
-                # advances during idle (phase/op timeouts track real elapsed time),
-                # then run the side-effect-free cadence — no tick state mutation.
-                self._executor.set_current_time(datetime.now(timezone.utc))
+                # #360: timer event. The canonical clock advances during idle (phase/op
+                # timeouts track real elapsed time) — live by the wall clock, a replay by its
+                # own time, which the tick source answers (#616) — then run the side-effect-free
+                # cadence — no tick state mutation.
+                self._executor.set_current_time(self._idle_pass_time())
                 self._pass_day_boundary_off_tick()
                 # #320 + #360: drain async responses + check timeouts + re-poll
                 # active orders (the fill/cancel-confirm query now fires during idle).
@@ -799,9 +800,10 @@ class AutotraderTickLoop:
         settings = self._config.shutdown
         stop_budget = self._open_stop_budget()
         still_to_come_s = settings.bounded_waits_s()
-        # Never the wall clock here, unlike the idle pass: a replayed session's clock stands on its
-        # last tick, and an idle pass's reading would seal one booking period per day up to today.
-        # The last event plus the time elapsed is the same thing in a live session, near enough.
+        # Never the wall clock here: a replayed session's clock stands on its last tick, and a
+        # wall-clock reading would seal one booking period per day up to today. The last event
+        # plus the time elapsed is the same thing in a live session, near enough — and what a
+        # replay's idle pass reckons too (#616).
         last_event = self._executor.get_current_time()
         run_began = time.monotonic()
         spent_before_s = self._order_wait_spent_s
@@ -854,6 +856,18 @@ class AutotraderTickLoop:
         if hear:
             self._drain_decision_events()
         self._persist_carry_over_if_needed(ticks_processed)
+
+    def _idle_pass_time(self) -> datetime:
+        """
+        The canonical clock for a pass with no tick: the tick source's own time (#616).
+
+        Returns:
+            The source's answer — the wall clock live, the replay's time in a mock — or the wall
+            clock when the loop runs without a source
+        """
+        if self._tick_source is None:
+            return datetime.now(timezone.utc)
+        return self._tick_source.get_idle_pass_time()
 
     def _pass_day_boundary_off_tick(self) -> None:
         """

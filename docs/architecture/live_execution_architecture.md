@@ -173,7 +173,7 @@ The shared `PendingOrder` dataclass has optional fields for each mode. Live sets
 
 - `submitted_at: datetime` — UTC timestamp when order was sent to broker
 - `broker_ref: str` — Broker's order reference (MT5 ticket, Kraken order ID)
-- `order_timeout_deadline_monotonic: float` — When to consider the order timed out: a `time.monotonic()` reading plus `order_timeout_seconds`. A timeout is a duration, so it reads neither the wall clock nor the canonical clock, which a mock session splits between replay time and the present
+- `order_timeout_deadline_monotonic: float` — When to consider the order timed out: a `time.monotonic()` reading plus `order_timeout_seconds`. A timeout is a duration, so it reads neither the wall clock nor the canonical clock, which a mock session runs in replay time
 
 Simulation fields (`placed_at_msc`, `broker_fill_msc`) remain None on the live execution stack.
 
@@ -438,12 +438,17 @@ unattended case it guards. Unattended running is a conscious `"auto"`.
 ## Canonical Clock & Idle Cadence (#360)
 
 `get_current_time()` is **loop-injected**, not derived from the last tick. `on_tick` sets the clock
-from the tick timestamp; on an idle heartbeat the loop injects the wall-clock via
-`set_current_time()`. The clock therefore advances continuously — it never freezes to the last tick
-and then jumps by the full gap — so phase/op timeouts track real elapsed time. This is the single
-place wall-clock is read in an AutoTrader session; decision logic and workers only ever call
-`get_current_time()`, the one canonical clock. In simulation the injected time is the simulated tick
-time, keeping backtests reproducible.
+from the tick timestamp; on an idle heartbeat the loop asks the tick source for the time of a pass
+without a tick (`get_idle_pass_time()`) and injects it via `set_current_time()`. A live feed has no
+time of its own between two ticks and answers the wall clock. A replay answers its own time: the last
+tick it put on the queue plus the real time since (#616). So a pause in a replay — the outage drill, a
+throttled replay — moves the clock by the pause, and the session's records stay on the replay's day
+instead of jumping to the day the session ran. The clock therefore advances continuously — it never
+freezes to the last tick and then jumps by the full gap — so phase/op timeouts track real elapsed
+time. The clock only moves forward: a pause longer than the replay's own gap to its next tick leaves
+it ahead of that tick until the replay catches up. This is the single place wall-clock is read in an
+AutoTrader session; decision logic and workers only ever call `get_current_time()`, the one canonical
+clock. In simulation the injected time is the simulated tick time, keeping backtests reproducible.
 
 The idle heartbeat (fired when no tick arrives within `heartbeat_interval_ms`, default 500 ms
 for the AutoTrader; 1000 ms is the simulation ghost-pass default)
