@@ -10,7 +10,12 @@ from datetime import datetime, timezone
 from typing import List
 
 from python.framework.loop.event_sequencer import EventSequencer
-from python.framework.loop.tick_slicer import slice_ticks, tick_event_msc, tick_receipt_msc
+from python.framework.loop.tick_slicer import (
+    slice_of_tick,
+    slice_ticks,
+    tick_event_msc,
+    tick_receipt_msc,
+)
 from python.framework.types.loop_types.event_kind_types import EventOrdering
 from python.framework.types.loop_types.loop_event_types import DataSliceEvent
 from python.framework.types.market_types.market_data_types import TickData
@@ -131,3 +136,24 @@ class TestATicksTwoStamps:
             symbol='BTCUSD', bid=1.0, ask=1.0)
 
         assert tick_receipt_msc(tick) == 1777275488773
+
+
+class TestOneTickAsASlice:
+    """A drive that hands the loop core one tick at a time (#458) makes a slice of each."""
+
+    def test_a_tick_becomes_a_slice_of_its_own_with_both_stamps(self):
+        tick = _tick(5_000, collected_msc=5_040)
+
+        event = slice_of_tick(tick, EventSequencer())
+
+        assert event.ticks == (tick,)
+        assert (event.ts_event, event.ts_init, event.seq) == (5_000, 5_040, 0)
+
+    def test_ticks_sharing_a_stamp_stay_apart(self):
+        """Unlike `slice_ticks`: one slice per tick, so a pass per tick computes as before."""
+        sequencer = EventSequencer()
+
+        events = [slice_of_tick(tick, sequencer) for tick in (_tick(1_000), _tick(1_000))]
+
+        assert [len(event.ticks) for event in events] == [1, 1]
+        assert [event.seq for event in events] == [0, 1]

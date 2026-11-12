@@ -55,6 +55,7 @@
 |----------|-------------|
 | [Execution Layer](architecture/architecture_execution_layer.md) | Core Sim/Live hybrid architecture, shared portfolio logic |
 | [Simulation vs Live Flow](architecture/simulation_vs_autotrader_flow.md) | Side-by-side tick flow comparison |
+| [Loop Core](architecture/loop_core_architecture.md) | The event model and its one timeline, and the dispatcher that owns the order of every backtest pass; the AutoTrader's follow (#457, #458) |
 | [Live Execution](architecture/live_execution_architecture.md) | LiveTradeExecutor, broker polling, LiveRequestProcessor |
 | [Pending Order Lifecycle](architecture/pending_order_architecture.md) | 3-world model (latency, limit, stop), trigger logic |
 | [Order-Event Stream](architecture/order_event_stream.md) | One record per order transition in both pipelines — the vocabulary and who writes it, where each step is recorded, the stream on disk and in the run index, determinism (#362) |
@@ -222,6 +223,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Order Endings Tests](tests/framework/order_endings_tests.md) | One status per way an order ends, in both pipelines — who refused it, who cancelled it, what the end of a run leaves — and the counts declared from them |
 | [Order Events Tests](tests/framework/order_events_tests.md) | Every order transition as one event in both pipelines — the declared vocabulary held to the source, each order life step by step, the stream file, the run index and the route |
 | [Loop Event Tests](tests/framework/loop_events_tests.md) | The loop core's event vocabulary and its one timeline (#457): two stamps per event, the earliest stamp first, one instant per stamp, the ticks of an instant as one data slice |
+| [Loop Pass Order Tests](tests/framework/loop_pass_order_tests.md) | What each tick loop calls in each kind of pass, and in which order — pinned before the passes move behind one dispatcher (#458) |
 | [Field Study Recorder Tests](tests/framework/field_study_recorder_tests.md) | The field study's capture as a copy of the order-event stream, and the certificate that reads it — offline, no order placed |
 | [Security Study Certificate Tests](tests/framework/security_cert_certificate_tests.md) | The certificate that judges the security study's stages together, and the catalog of how each rule is proven — offline |
 | [Trading Day Anchor Tests](tests/framework/trading_day_anchor_tests.md) | Where a market flips its trading day, and which day an instant belongs to — DST-aware, one answer for the log rotation, the daily-loss baseline and the record seal |

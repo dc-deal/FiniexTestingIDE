@@ -20,7 +20,7 @@ from python.framework.autotrader.startup.autotrader_warmup_preparator import (
 )
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
-from python.framework.process.tick_pipeline_core import render_bars_for_tick
+from python.framework.loop.blocks.bar_render_block import render_bars_for_tick
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from tests.framework.warmup_history.warmup_history_builders import (

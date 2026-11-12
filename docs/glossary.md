@@ -566,6 +566,12 @@ loop's idle pass when no tick arrives. See [Unattended Operation](autotrader/una
 **log warning count** (`log_warning_count`) — The WARNING records in a run's log pot, Tier 2 —
 ignorable by design. Not the *warning count*. See [Warnings & Errors](architecture/warnings_errors_tiers.md).
 
+**loop core** — The part of both pipelines that decides what happens in which order: the event
+model and its one timeline, and the dispatcher that owns the order of a pass. The tick loops are
+its drives: the backtest walks its ticks and hands each pass over; the AutoTrader still orders its
+own passes from the shared blocks until its passes move too. Not the *tick loop*: that is a
+runner's drive. See [The Loop Core](architecture/loop_core_architecture.md).
+
 **lost request** (`lost_request` on an order event) — Which request's answer an `unresolved` or
 `resolved` event is about: `submit`, `cancel`, `modify`, or `status_read` — the read with which an
 order that waited too long for its fill is asked about. See [Order

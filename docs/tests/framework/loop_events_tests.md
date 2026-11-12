@@ -36,7 +36,6 @@ it.
 | `test_the_kinds_and_the_event_classes_match_both_ways` | Each `EventKind` is carried by exactly one event class, and each class names a kind |
 | `test_an_event_says_its_kind` | `event.kind` answers from the class |
 | `test_every_ordering_picks_one_of_the_two` · `test_a_backtest_goes_by_the_source_stamp_and_a_live_session_by_its_receipt` | Every `EventOrdering` declares its stamp, and the two declare the right one |
-| `test_an_event_cannot_be_changed` | Stamps and `seq` are final once an event is made |
 | `test_a_slice_without_a_tick_is_refused` | An instant without data carries no data slice |
 | `test_the_declaration_order_is_the_phase_order` | The seven phases of an instant, in the order #457 fixes them |
 | `test_prices_are_applied_before_any_resolution` | Market data before broker resolutions before the algo pass |
@@ -68,6 +67,7 @@ it.
 | `test_a_receipt_slice_takes_the_latest_source_stamp_of_its_ticks` | A slice's stamp not ordering the run is the latest of its ticks', whatever order they came in |
 | `test_the_source_stamp_is_the_venue_stamp_not_the_timestamp` · `test_a_tick_without_a_venue_stamp_takes_its_timestamp_to_the_millisecond` | A tick's source stamp is its venue stamp, otherwise its timestamp converted exactly |
 | `test_the_receipt_stamp_is_the_collection_stamp` · `test_a_tick_recorded_without_its_arrival_was_received_when_it_happened` · `test_a_tick_with_neither_stamp_takes_its_timestamp_for_both` | A tick's receipt stamp is its collection stamp; without one, its source stamp stands in |
+| `test_a_tick_becomes_a_slice_of_its_own_with_both_stamps` · `test_ticks_sharing_a_stamp_stay_apart` | `slice_of_tick`, for a drive that hands the loop core one tick at a time (#458): one slice per tick with both stamps and the next number, even where ticks share a stamp |
 
 ### `test_latency_due_peek.py`
 

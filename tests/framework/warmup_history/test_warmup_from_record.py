@@ -19,7 +19,7 @@ import pytest
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.bars.warmup_history import WarmupHistory
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
-from python.framework.process.tick_pipeline_core import render_bars_for_tick
+from python.framework.loop.blocks.bar_render_block import render_bars_for_tick
 from python.framework.types.market_types.warmup_history_types import (
     WarmupHistoryRecord,
     WarmupSource,

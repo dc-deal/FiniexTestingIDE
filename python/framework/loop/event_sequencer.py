@@ -12,7 +12,7 @@ class EventSequencer:
     The timeline orders by stamp, then by this number, so two events sharing a stamp leave in the
     order they were submitted — a fill sent first resolves first, as a FIX sequence number would
     have it. It is handed out when an event is made rather than when it is queued, so an event is
-    complete and immutable from the moment it exists.
+    complete from the moment it exists.
     """
 
     def __init__(self) -> None:

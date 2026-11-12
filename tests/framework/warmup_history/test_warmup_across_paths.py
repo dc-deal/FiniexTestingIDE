@@ -25,7 +25,7 @@ from python.framework.autotrader.startup.autotrader_warmup_preparator import (
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.bars.warmup_history import WarmupHistory
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
-from python.framework.process.tick_pipeline_core import render_bars_for_tick
+from python.framework.loop.blocks.bar_render_block import render_bars_for_tick
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.utils.bar_period import is_complete_at, open_time_of, period_end, period_start
 from tests.framework.warmup_history.warmup_history_builders import (
