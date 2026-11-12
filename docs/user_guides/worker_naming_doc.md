@@ -255,9 +255,10 @@ optionally, bounds the depth to the last `count` completed bars:
 bars = self.effective_bars(timeframe, bar_history, current_bars, count=period + 1)
 ```
 
-**Pass `count` = the exact depth your `compute()` reads.** `bar_history` is a rolling
-`deque(maxlen=bar_max_history)` (1000 by default) shared across all workers, so without `count`
-every compute materializes the whole history just to use its last `period` bars. With `count`
+**Pass `count` = the exact depth your `compute()` reads.** `bar_history` holds, per timeframe, a
+tuple of the last `bar_max_history` closed bars (1000 by default), frozen and shared across all
+workers ([Algo Masks](algo_masks.md)), so without `count` every compute on a `LIVE` basis copies
+the whole history to append the forming bar, just to use its last `period` bars. With `count`
 the per-compute cost is **O(count)** instead of **O(bar_max_history)** — and stays constant if the
 operator raises `bar_max_history`. The result is bit-identical for a worker that only reads its
 tail (an SMA / Bollinger band over the last `period` bars); it is **not** correct to bound a worker

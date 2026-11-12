@@ -20,6 +20,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from python.framework.bars.bar_rendering_controller import BarRenderingController
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import Bar, TickData
 from python.framework.types.worker_types import ComputeBasis, WorkerResult
@@ -146,6 +147,9 @@ class _StubDecisionLogic:
     def compute_tick(self, tick, worker_results: Dict[str, WorkerResult]) -> Decision:
         return Decision(action=DecisionLogicAction.FLAT, outputs={})
 
+    def get_algo_tick(self, tick: TickData) -> AlgoTick:
+        return AlgoTick(tick)
+
 
 def _orchestrator(worker: BollingerWorker) -> WorkerOrchestrator:
     """Build a process_tick-ready orchestrator without the heavy constructor."""
@@ -153,6 +157,7 @@ def _orchestrator(worker: BollingerWorker) -> WorkerOrchestrator:
     orch.is_initialized = True
     orch.workers = {worker.name: worker}
     orch._worker_results = {}
+    orch._algo_bars = {}
     orch._signal_workers = {}
     orch._signal_stale_state = {}
     orch.logger = MagicMock()

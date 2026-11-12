@@ -45,6 +45,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.decision_logic.own_exit_levels import OwnExitLevels
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
@@ -60,7 +61,6 @@ from python.framework.types.decision_logic_types import (
     Decision,
     DecisionLogicAction,
 )
-from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
@@ -510,7 +510,7 @@ class TrendChannelReference(AbstractDecisionLogic):
 
     def compute_tick(
         self,
-        tick: TickData,
+        tick: AlgoTick,
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         """
@@ -591,7 +591,7 @@ class TrendChannelReference(AbstractDecisionLogic):
     def _execute_decision_impl(
         self,
         decision: Decision,
-        tick: TickData
+        tick: AlgoTick
     ) -> Optional[AlgoOrderResult]:
         """
         Manage open positions + resting entries, then place a new entry if armed.
@@ -687,7 +687,7 @@ class TrendChannelReference(AbstractDecisionLogic):
     def _try_open_entry(
         self,
         decision: Decision,
-        tick: TickData
+        tick: AlgoTick
     ) -> Optional[AlgoOrderResult]:
         """
         Place a resting LIMIT/STOP entry if capacity and entry capital allow.
@@ -779,7 +779,7 @@ class TrendChannelReference(AbstractDecisionLogic):
     # Open-position management — partial close + trailing
     # ============================================
 
-    def _manage_open_positions(self, tick: TickData) -> None:
+    def _manage_open_positions(self, tick: AlgoTick) -> None:
         """
         Run the partial-close rung and the always-on trailing stop per position.
 
@@ -800,7 +800,7 @@ class TrendChannelReference(AbstractDecisionLogic):
             self._maybe_partial_close(pos, tick)
             self._maybe_trail(pos, tick)
 
-    def _maybe_partial_close(self, pos, tick: TickData) -> None:
+    def _maybe_partial_close(self, pos, tick: AlgoTick) -> None:
         """
         Close `partial_fraction` of the original lots once the R rung is reached.
 
@@ -843,7 +843,7 @@ class TrendChannelReference(AbstractDecisionLogic):
             AwarenessLevel.NOTICE, 'partial_close',
         )
 
-    def _maybe_trail(self, pos, tick: TickData) -> None:
+    def _maybe_trail(self, pos, tick: AlgoTick) -> None:
         """
         Ratchet the stop loss toward price in the profit direction (never backward).
 
@@ -875,7 +875,7 @@ class TrendChannelReference(AbstractDecisionLogic):
             if stop is None or new_sl < stop - epsilon:
                 self._exits.move_stop(pid, pos.direction, new_sl)
 
-    def _mark_price(self, pos, tick: TickData) -> float:
+    def _mark_price(self, pos, tick: AlgoTick) -> float:
         """
         The price this position would be closed at right now, read from THIS tick.
 
@@ -899,7 +899,7 @@ class TrendChannelReference(AbstractDecisionLogic):
                    else OrderDirection.LONG)
         return taken_price(closing, tick.bid, tick.ask)
 
-    def _current_r(self, pos, tick: TickData) -> float:
+    def _current_r(self, pos, tick: AlgoTick) -> float:
         """
         Current R-multiple of an open position (favourable move / initial risk).
 
@@ -924,7 +924,7 @@ class TrendChannelReference(AbstractDecisionLogic):
     # Resting-entry management — fill / cancel / re-price
     # ============================================
 
-    def _manage_resting_entries(self, tick: TickData) -> None:
+    def _manage_resting_entries(self, tick: AlgoTick) -> None:
         """
         Promote filled entries, drop ended ones, cancel on gate-flip, re-price on band drift.
 
@@ -1061,7 +1061,7 @@ class TrendChannelReference(AbstractDecisionLogic):
         self,
         side: OrderSide,
         decision: Decision,
-        tick: TickData,
+        tick: AlgoTick,
     ) -> None:
         """
         Append one row to the setup-funnel diagnostics CSV per submitted entry.
@@ -1087,7 +1087,7 @@ class TrendChannelReference(AbstractDecisionLogic):
             'band_width': round(decision.outputs['band_width'], 5),
         })
 
-    def _keep_last_setup(self, side: OrderSide, decision: Decision, tick: TickData) -> None:
+    def _keep_last_setup(self, side: OrderSide, decision: Decision, tick: AlgoTick) -> None:
         """
         Keep the last submitted setup as a file of the strategy's own, replaced on every entry —
         a write at a decision moment, never per tick.
@@ -1114,7 +1114,7 @@ class TrendChannelReference(AbstractDecisionLogic):
     # Helpers
     # ============================================
 
-    def _flat(self, tick: TickData, reason: str) -> Decision:
+    def _flat(self, tick: AlgoTick, reason: str) -> Decision:
         """
         Build a FLAT decision with the standard output payload.
 

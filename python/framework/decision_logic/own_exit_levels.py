@@ -18,8 +18,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.trading_env.algo_masks.algo_position import AlgoPosition
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
-from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.types.trading_env_types.own_exit_types import OwnExit, PositionExitLevels
@@ -184,7 +184,7 @@ class OwnExitLevels:
     def enforce(
         self,
         trading_api: DecisionTradingApi,
-        tick: Optional[TickData],
+        tick: Optional[AlgoTick],
     ) -> List[AlgoOrderResult]:
         """
         Close every position of the tick's symbol whose stop or target the tick reached.

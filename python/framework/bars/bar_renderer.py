@@ -11,11 +11,11 @@ PERFORMANCE OPTIMIZED:
 
 from collections import defaultdict, deque
 from datetime import datetime
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Dict, Optional, Sequence, Set, Tuple
 
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryDefectError
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.types.market_types.market_data_types import Bar, TickData
+from python.framework.types.market_types.market_data_types import Bar, FormingBar, TickData
 from python.framework.utils.bar_period import (
     is_complete_at,
     open_time_of,
@@ -49,7 +49,7 @@ class BarRenderer:
         # Cache for bar start times: (timestamp_minute_key, timeframe) -> bar_start_time
         self._bar_start_cache: Dict[Tuple[str, str], datetime] = {}
 
-        self.current_bars: Dict[str, Dict[str, Bar]] = defaultdict(
+        self.current_bars: Dict[str, Dict[str, FormingBar]] = defaultdict(
             dict
         )  # {timeframe: {symbol: bar}}
 
@@ -116,7 +116,7 @@ class BarRenderer:
 
     def update_current_bars(
         self, tick_data: TickData, required_timeframes: Set[str]
-    ) -> Tuple[Dict[str, Bar], Dict[str, bool]]:
+    ) -> Tuple[Dict[str, FormingBar], Dict[str, bool]]:
         """
         Update bars for all timeframes with new tick.
 
@@ -127,7 +127,7 @@ class BarRenderer:
 
         Returns:
             Tuple of:
-            - Dict[timeframe, Bar]: Updated current bars
+            - Dict[timeframe, FormingBar]: Updated current bars
             - Dict[timeframe, bool]: Which bars were closed this tick
         """
         symbol = tick_data.symbol
@@ -163,7 +163,7 @@ class BarRenderer:
 
             # Create new bar if needed
             if current_bar is None or bar_was_closed:
-                current_bar = Bar(
+                current_bar = FormingBar(
                     symbol=symbol,
                     timeframe=timeframe,
                     timestamp=bar_start_time.isoformat(),
@@ -220,9 +220,9 @@ class BarRenderer:
             f'newest bar ({newest.timestamp}) was not complete when the session began.'
         )
 
-    def _archive_completed_bar(self, symbol: str, timeframe: str, bar: Bar):
+    def _archive_completed_bar(self, symbol: str, timeframe: str, bar: FormingBar):
         """
-        Archive completed bar to history.
+        Archive completed bar to history, as a frozen Bar — every worker reads the history.
 
         PERFORMANCE: No manual limit check needed!
         deque(maxlen) automatically discards oldest when full (O(1)).
@@ -236,28 +236,30 @@ class BarRenderer:
         )
 
         history = self.completed_bars[timeframe][symbol]
-        history.append(bar)  # ✅ Auto-trims if len > maxlen
+        history.append(bar.to_bar())  # ✅ Auto-trims if len > maxlen
 
         self.logger.verbose(f'   History size AFTER append: {len(history)}')
 
     def get_bar_history(
         self, symbol: str, timeframe: str
-    ) -> List[Bar]:
+    ) -> Tuple[Bar, ...]:
         """
         Get historical bars.
 
+        A tuple, because every worker reads the same history: none can change it for the others.
+
         PERFORMANCE NOTE:
-        This converts the internal deque to a list. To optimize performance,
+        This converts the internal deque to a tuple. To optimize performance,
         the BarRenderingController caches the result and only calls this
         when a bar closes, reducing calls from 2000+ to ~10-20 per test.
 
         Returns:
-            List[Bar]: Historical bars
+            Tuple[Bar, ...]: Historical bars
         """
         history = self.completed_bars[timeframe][symbol]
-        return list(history)
+        return tuple(history)
 
-    def get_current_bar(self, symbol: str, timeframe: str) -> Optional[Bar]:
+    def get_current_bar(self, symbol: str, timeframe: str) -> Optional[FormingBar]:
         """Get current bar for symbol/timeframe"""
         return self.current_bars[timeframe].get(symbol)
 

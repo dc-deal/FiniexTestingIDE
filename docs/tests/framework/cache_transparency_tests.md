@@ -24,10 +24,12 @@ API hands out, on every pass, and the record must not depend on the cache.
 | A public method of the decision API is neither declared nor observed | A new read reaches algos unchecked |
 | A read says it hands out a mask, a frozen value or a plain value and its return type is something else | An engine object reaches the algo through a read nobody looked at |
 | A mask can be written to, or hands out an engine object | An algo changes engine state past the order guard and, live, the venue |
+| A worker can change the tick or a bar another worker reads | One worker's write changes what the next one computes on, in an order nobody chose |
 | A mask's documented fields differ from the mask | The page an algo author reads describes another contract |
 
-Not here: the cost of the lazy marking — that is the cost probe
-`python/experiments/cost_probes/probe_portfolio_cache_cost.py`.
+Not here: the cost of the lazy marking and of the masks — those are the cost probes
+`python/experiments/cost_probes/probe_portfolio_cache_cost.py` and
+`python/experiments/cost_probes/probe_algo_tick_bar_cost.py`.
 
 ## The tests
 
@@ -80,8 +82,21 @@ The mask against a real portfolio, at spot and at margin.
 | `TestTheResultMask` | the mask shows the outcome and a refusal; a close that joined another says so; the engine's bookkeeping — metadata, submission, order-event sequence — is not shown; an assignment raises and changes nothing; a decision event carries the mask |
 | `TestFrozenValues` | the order capabilities and the market data status refuse every assignment |
 
+### `test_algo_market_data.py`
+
+What a worker and the decision receive of the market (#654): the tick and the forming bars as masks,
+the history as tuples of frozen bars. The orchestrator is driven by a real bar rendering controller.
+
+| Test | Description |
+|---|---|
+| `TestTheTickMask` | the mask shows the market fields and not the engine's own (receipt time, clipping); an assignment raises and changes nothing; a logic makes one mask per tick |
+| `TestTheBars` | a closed bar refuses every assignment; a forming bar has a closed bar's fields; the history holds a frozen copy of each closed bar, which the renderer's old bar no longer reaches; the history cannot be appended to; warmup bars enter complete while the handed-in ones stay as they were; the forming bar's mask reads the bar as it moves and refuses assignments |
+| `TestCopies` | a tick mask is its own copy; a forming bar mask copies as the bar as it stands, a frozen bar; any other mask refuses a copy or a pickle with a reason |
+| `TestWhatTheWorkersReceive` | the workers and the decision receive the same tick mask; the forming bar arrives as one mask until its period closes; no worker can change the forming bars another receives, and the history is a tuple of frozen bars |
+
 ### `test_algo_mask_docs.py`
 
 | Test | Description |
 |------|-------------|
+| `TestEveryMaskIsListed` | every mask class in the masks' directory is in the documented list |
 | `TestEveryMaskIsDocumented` | each mask's table in `docs/user_guides/algo_masks.md` lists exactly its fields, each once |

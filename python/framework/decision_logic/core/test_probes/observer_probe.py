@@ -38,6 +38,7 @@ from python.framework.trading_env.algo_masks.abstract_algo_mask import AbstractA
 from python.framework.trading_env.algo_masks.algo_order import AlgoOrder
 from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.trading_env.algo_masks.algo_position import AlgoPosition
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
@@ -51,7 +52,6 @@ from python.framework.types.decision_event_types import (
     PositionClosedEvent,
 )
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
-from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
@@ -230,7 +230,7 @@ class ObserverProbe(AbstractDecisionLogic):
 
     def compute_tick(
         self,
-        tick: TickData,
+        tick: AlgoTick,
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         """
@@ -244,7 +244,7 @@ class ObserverProbe(AbstractDecisionLogic):
             Decision carrying the step index
         """
         self._tick_passes += 1
-        self._observe('tick', quote=(tick.bid, tick.ask))
+        self._observe('tick', quote=(tick.bid, tick.ask), tick=tick)
         return self._decision_for(self._due_step('tick'))
 
     def compute_heartbeat(
@@ -269,7 +269,7 @@ class ObserverProbe(AbstractDecisionLogic):
     def _execute_decision_impl(
         self,
         decision: Decision,
-        tick: Optional[TickData]
+        tick: Optional[AlgoTick]
     ) -> Optional[AlgoOrderResult]:
         """
         Execute the plan step the decision names.
@@ -316,7 +316,7 @@ class ObserverProbe(AbstractDecisionLogic):
         return result
 
     def _rest_limit(self, step: Dict[str, Any], step_index: int,
-                    tick: Optional[TickData]) -> Optional[AlgoOrderResult]:
+                    tick: Optional[AlgoTick]) -> Optional[AlgoOrderResult]:
         """
         Place a limit far enough from the market that it rests.
 
@@ -418,7 +418,8 @@ class ObserverProbe(AbstractDecisionLogic):
     # ============================================
 
     def _observe(self, kind: str, event: Any = None,
-                 quote: Optional[Tuple[float, float]] = None) -> None:
+                 quote: Optional[Tuple[float, float]] = None,
+                 tick: Optional[AlgoTick] = None) -> None:
         """
         Record everything the decision can see now — the kept positions first, before any API call.
 
@@ -426,11 +427,14 @@ class ObserverProbe(AbstractDecisionLogic):
             kind: The pass or hook observed in
             event: The hook's event, if any
             quote: The tick's bid and ask on a tick pass — what a current position is marked at
+            tick: The tick on a tick pass, every field of its mask recorded
         """
         self._pass_number += 1
         record: Dict[str, Any] = {'pass': self._pass_number, 'kind': kind}
         if quote is not None:
             record['quote'] = {'bid': quote[0], 'ask': quote[1]}
+        if tick is not None:
+            record['tick'] = _plain(tick)
         if event is not None:
             record['event'] = {item.name: _plain(getattr(event, item.name)) for item in fields(event)}
         record['kept'] = {position_id: _position_view(position)

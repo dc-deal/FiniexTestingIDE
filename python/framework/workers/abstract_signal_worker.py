@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 
 from python.framework.exceptions.signal_data_errors import SignalProviderNotInjectedError
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
-from python.framework.types.market_types.market_data_types import TickData
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef
 from python.framework.types.signal_data_types import (
@@ -275,7 +275,7 @@ class AbstractSignalWorker(AbstractWorker):
             return SignalEpisodeEdge.OPENED
         return SignalEpisodeEdge.CLOSED if not observed else SignalEpisodeEdge.CHANGED
 
-    def should_refresh(self, tick: TickData) -> bool:
+    def should_refresh(self, tick: AlgoTick) -> bool:
         """
         Whether the worker should recompute its result this tick.
 
@@ -316,7 +316,7 @@ class AbstractSignalWorker(AbstractWorker):
         self._last_resolution = self._classify(resolved, stale)
         return stale != self._last_served_stale
 
-    def compute_signal(self, tick: TickData) -> WorkerResult:
+    def compute_signal(self, tick: AlgoTick) -> WorkerResult:
         """
         Resolve the point-in-time signal for this tick and map it to a WorkerResult.
 

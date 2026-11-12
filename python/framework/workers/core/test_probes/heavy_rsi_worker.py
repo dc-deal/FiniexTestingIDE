@@ -4,11 +4,13 @@ Workers with artificial CPU load for testing parallel performance
 """
 
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 
-from python.framework.types.market_types.market_data_types import Bar, TickData
+from python.framework.trading_env.algo_masks.algo_bar import AlgoBar
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
+from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
 from python.framework.utils.trading_math.indicators.rsi import rsi
@@ -81,14 +83,14 @@ class HeavyRsiWorker(AbstractIndicatorWorker):
         """LIVE — intra-bar, recompute per tick (#420). BAR_CLOSE is a per-instance opt-in."""
         return ComputeBasis.LIVE
 
-    def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
+    def should_recompute(self, tick: AlgoTick, bar_updated: bool) -> bool:
         return bar_updated
 
     def compute(
         self,
-        tick: TickData,
-        bar_history: Dict[str, List[Bar]],
-        current_bars: Dict[str, Bar],
+        tick: AlgoTick,
+        bar_history: Mapping[str, Tuple[Bar, ...]],
+        current_bars: Mapping[str, AlgoBar],
     ) -> WorkerResult:
         """
         RSI computation with artificial CPU load.
@@ -105,7 +107,7 @@ class HeavyRsiWorker(AbstractIndicatorWorker):
         # === NORMAL RSI CALCULATION ===
         bars = bar_history.get(timeframe, [])
         current_bar = current_bars.get(timeframe)  # Default: None (not [])
-        if current_bar:  # Check if Bar exists (not Dict!)
+        if current_bar:  # Check if a forming bar exists (its AlgoBar mask)
             bars = list(bars) + [current_bar]
 
         # The window stays at the period deliberately, unlike CORE/rsi: this worker is a

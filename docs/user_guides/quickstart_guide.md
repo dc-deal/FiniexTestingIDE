@@ -68,11 +68,12 @@ class RsiWorker(AbstractIndicatorWorker):
     
     def compute(
         self,
-        tick: TickData,
-        bar_history: Dict[str, List[Bar]],
-        current_bars: Dict[str, Bar],
+        tick: AlgoTick,
+        bar_history: Mapping[str, Tuple[Bar, ...]],
+        current_bars: Mapping[str, AlgoBar],
     ) -> WorkerResult:
-        """Called every tick - compute RSI value"""
+        """Called every tick - compute RSI value. The tick and the forming bars arrive as
+        read-only masks, the history as tuples of frozen bars (docs/user_guides/algo_masks.md)"""
         
         timeframe = list(self.periods.keys())[0]  # e.g., "M5"
         period = self.periods[timeframe]           # e.g., 14
@@ -325,7 +326,7 @@ class AggressiveTrend(AbstractDecisionLogic):
 
     def compute_tick(
         self,
-        tick: TickData,
+        tick: AlgoTick,
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         """Generate trading decision from worker results"""
@@ -371,7 +372,7 @@ class AggressiveTrend(AbstractDecisionLogic):
     def _execute_decision_impl(
         self,
         decision: Decision,
-        tick: TickData
+        tick: AlgoTick
     ) -> Optional[AlgoOrderResult]:
         """Execute the trading decision — send_order's result is a read-only AlgoOrderResult
         (docs/user_guides/algo_masks.md)"""

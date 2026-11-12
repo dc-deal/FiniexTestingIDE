@@ -5,12 +5,12 @@ Handles optimized logging for WorkerOrchestrator with intelligent bar history ca
 
 import json
 from dataclasses import asdict
-from typing import Any, Dict, List
+from typing import Any, Dict, Mapping, Tuple
 
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.decision_logic_types import Decision
 from python.framework.types.log_level import LogLevel
-from python.framework.types.market_types.market_data_types import Bar, TickData
+from python.framework.types.market_types.market_data_types import Bar, FormingBar, TickData
 from python.framework.types.worker_types import WorkerResult
 
 
@@ -34,16 +34,16 @@ class CoordinatorTickLogger:
         self.logger = logger
         self.should_log = self.logger.should_log_level(LogLevel.VERBOSE)
 
-        # Cache for bar history (timeframe -> list of bars)
+        # Cache for bar history (timeframe -> tuple of frozen bars)
         # Used to detect changes and avoid redundant logging
-        self._last_logged_bar_history: Dict[str, List[Bar]] = {}
+        self._last_logged_bar_history: Dict[str, Tuple[Bar, ...]] = {}
 
     def log_tick_data(
         self,
         tick: TickData,
         worker_results: Dict[str, WorkerResult],
-        current_bars: Dict[str, Bar],
-        bar_history: Dict[str, List[Bar]],
+        current_bars: Dict[str, FormingBar],
+        bar_history: Mapping[str, Tuple[Bar, ...]],
         decision: Decision
     ) -> None:
         """
@@ -99,7 +99,7 @@ class CoordinatorTickLogger:
         self,
         tick: TickData,
         worker_results: Dict[str, WorkerResult],
-        current_bars: Dict[str, Bar],
+        current_bars: Dict[str, FormingBar],
         decision: Decision
     ) -> Dict[str, Any]:
         """
@@ -129,7 +129,7 @@ class CoordinatorTickLogger:
 
     def _has_bar_history_changed(
         self,
-        bar_history: Dict[str, List[Bar]]
+        bar_history: Mapping[str, Tuple[Bar, ...]]
     ) -> bool:
         """
         Detect if bar history changed since last log.
@@ -159,7 +159,7 @@ class CoordinatorTickLogger:
 
         # Check each timeframe for changes
         for timeframe, current_bars in bar_history.items():
-            cached_bars = self._last_logged_bar_history.get(timeframe, [])
+            cached_bars = self._last_logged_bar_history.get(timeframe, ())
 
             # Different number of bars? (new bar completed)
             if len(current_bars) != len(cached_bars):
@@ -177,16 +177,13 @@ class CoordinatorTickLogger:
         # No changes detected - cache is still valid
         return False
 
-    def _update_cache(self, bar_history: Dict[str, List[Bar]]) -> None:
+    def _update_cache(self, bar_history: Mapping[str, Tuple[Bar, ...]]) -> None:
         """
         Update the bar history cache after logging.
 
-        Creates a deep copy to avoid reference issues.
+        The histories are tuples of frozen bars, so keeping them needs no copy.
 
         Args:
             bar_history: Bar history to cache
         """
-        self._last_logged_bar_history = {
-            timeframe: bars.copy()
-            for timeframe, bars in bar_history.items()
-        }
+        self._last_logged_bar_history = dict(bar_history)

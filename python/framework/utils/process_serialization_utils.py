@@ -185,7 +185,7 @@ def deserialize_bars_batch(symbol: str, bars_tuple: Tuple[Any, ...]) -> Tuple[Ba
         bars_tuple: Tuple of bar dicts (immutable, CoW-friendly)
 
     Returns:
-        List of Bar objects for BarRenderer
+        The bars, frozen, for the warmup history
     """
     result = []
     for bar_dict in bars_tuple:
@@ -231,7 +231,7 @@ def serialize_current_bars(current_bars: Dict[str, Any]) -> Dict[str, Dict]:
     Serialize current bars for JSON export.
 
     Args:
-        current_bars: Dict[timeframe, Bar] from bar_rendering_controller
+        current_bars: Dict[timeframe, FormingBar] from bar_rendering_controller
 
     Returns:
         JSON-serializable dict
