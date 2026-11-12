@@ -9,6 +9,7 @@ session with only the Telegram alerts on hears about a stall too; and nothing on
 ends it.
 """
 
+import re
 import threading
 import time
 from typing import Tuple
@@ -81,6 +82,21 @@ class TestThePingFollowsTheLoop:
         assert monitor.requests == [FAIL_URL]    # the fail URL once, no ordinary ping
         assert alerts == [(OperatorAlertKind.TICK_LOOP_STALLED, OperatorAlertLevel.CRITICAL)]
         assert logger.levels().count('error') == 1
+
+    def test_the_stall_and_the_recovery_say_when_they_were_noticed(self):
+        # The session log stamps a line with the run's clock, which stands still while the whole
+        # process is frozen; the text therefore carries the wall-clock instant of noticing
+        monitor, clock = Monitor(), Clock()
+        pinger, progress, logger, _ = _pinger(monitor, clock)
+        progress.stamp()
+        clock.now += 200.0
+        pinger.beat()
+        progress.stamp()
+        pinger.beat()
+
+        noticed = re.compile(r'noticed \d{2}:\d{2}:\d{2} UTC')
+        assert noticed.search(logger.text_at('error'))
+        assert noticed.search(logger.text_at('info'))
 
     def test_the_ping_resumes_with_the_loop(self):
         monitor, clock = Monitor(), Clock()
