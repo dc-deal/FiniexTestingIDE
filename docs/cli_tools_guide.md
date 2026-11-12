@@ -90,7 +90,7 @@ the run would do does not.
 ## A) Data Pipeline - Import
 
 Tick data is collected by the **TickCollector** (MQL5 Expert Advisor) and exported as JSON; signal
-data arrives as JSONL from the signal producer. One import takes both import inboxes, converts
+data arrives as JSONL from the signal producer. One import takes the import inbox, converts
 them to Parquet and renders the bars for every configured timeframe.
 
 > 📖 See `tick_collector_guide.md` for details on data collection.
@@ -100,8 +100,8 @@ them to Parquet and renders the bars for every configured timeframe.
 | | |
 |---|---|
 | **VS Code** | `📥 Import` · `📥 Import (Override)` |
-| **CLI** | `python python/cli/data_index_cli.py import [--override] [--only ticks\|signals] [--include-finished] [--no-display] [--no-fetch]` |
-| **Purpose** | Fetch the data collector's tick packages, import the tick and the signal import inbox, render bars, rebuild the discovery caches, acknowledge the packages taken |
+| **CLI** | `python python/cli/data_index_cli.py import [--override] [--only ticks\|signals] [--no-display] [--no-fetch]` |
+| **Purpose** | Fetch the data collector's tick packages, import the import inbox — tick exports and signal files, loose or in zips — render bars, rebuild the discovery caches, acknowledge the packages taken |
 
 Each broker's timestamps are converted to UTC through its server clock rule in `market_config.json`
 (see [Data Import Pipeline](data_pipeline/data_import_pipeline.md)); `--override` re-imports files that
@@ -109,8 +109,7 @@ already have a Parquet. Ticks come first, then the signals, then the discovery c
 
 **Flags:**
 - `--override` — replace an existing Parquet instead of skipping the file
-- `--only ticks` / `--only signals` — import only one of the two import inboxes
-- `--include-finished` — also re-read the finished signal archive
+- `--only ticks` / `--only signals` — import only one kind; the other kind's files stay in the inbox
 - `--no-display` — log line by line instead of showing the live screen
 - `--no-fetch` — fetch no package from the data collector first (see [Fetching the collector's
   packages](data_pipeline/data_import_pipeline.md#fetching-the-collectors-packages))

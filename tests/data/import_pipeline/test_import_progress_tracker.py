@@ -235,7 +235,7 @@ class TestPublish:
     def test_full_queue_keeps_the_newest_frame(self):
         frames: queue.Queue = queue.Queue(maxsize=2)
         tracker = _tracker(frame_queue=frames)
-        tracker.add_step(ImportStepId.SCAN, ImportSection.INBOXES, 'Scan import inboxes',
+        tracker.add_step(ImportStepId.SCAN, ImportSection.INBOXES, 'Scan the import inbox',
                          counter_unit='files')
         for done in range(5):
             tracker.advance(ImportStepId.SCAN, done, 4)
@@ -246,7 +246,7 @@ class TestPublish:
 
     def test_a_frame_shares_nothing_with_the_tracker(self):
         tracker = _tracker()
-        tracker.add_step(ImportStepId.SCAN, ImportSection.INBOXES, 'Scan import inboxes',
+        tracker.add_step(ImportStepId.SCAN, ImportSection.INBOXES, 'Scan the import inbox',
                          counter_unit='files')
         frame = tracker.snapshot()
         tracker.advance(ImportStepId.SCAN, 3, 3)

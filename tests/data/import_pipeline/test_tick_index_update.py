@@ -190,14 +190,12 @@ class TestAnUpdateEqualsAFullRebuild:
 def _paths(root: Path) -> ImportPaths:
     """An import tree under a temporary root."""
     return ImportPaths(
-        tick_source=root / 'raw',
+        inbox=root / 'raw',
         tick_target=root / 'processed',
-        tick_finished=root / 'finished',
-        tick_unpacking=root / 'unpacking',
-        tick_refused=root / 'refused',
-        signal_source=root / 'raw' / 'signals',
+        finished=root / 'finished',
+        unpacking=root / 'unpacking',
+        refused=root / 'refused',
         signal_target=root / 'processed' / 'signals',
-        signal_finished=root / 'finished' / 'signals',
         log_dir=root / 'logs' / 'imports',
         timings_file=root / 'runtime' / 'import_timings.json',
     )
@@ -205,7 +203,7 @@ def _paths(root: Path) -> ImportPaths:
 
 def _run_import(paths: ImportPaths, symbol: str) -> ImportCoordinator:
     """One import of one loose export, without the screen."""
-    write_json_fixture(paths.tick_source, f'{symbol}_20260115_100000_ticks.json',
+    write_json_fixture(paths.inbox, f'{symbol}_20260115_100000_ticks.json',
                        build_minimal_tick_json(symbol=symbol))
     coordinator = ImportCoordinator(paths=paths, override=False, show_display=False)
     coordinator.run()

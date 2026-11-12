@@ -1,5 +1,5 @@
 """
-FiniexTestingIDE - Tick Package Client
+FiniexTestingIDE - Package Client
 Reads the data collector's package service (#120): the list, a manifest, a zip, and sends the
 receipt for a package the import took.
 
@@ -19,11 +19,11 @@ from python.configuration.credentials_cascade import resolve_credentials_file
 from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.config_types.data_collector_config_types import ActivePackageSource
-from python.framework.types.import_types.tick_package_types import (
-    TickPackageListing,
-    TickPackageManifest,
-    TickPackageState,
-    TickReceiptOutcome,
+from python.framework.types.import_types.package_types import (
+    PackageListing,
+    PackageManifest,
+    PackageState,
+    PackageReceiptOutcome,
 )
 from python.framework.utils.connection_ladder import (
     ConnectionLadder,
@@ -42,7 +42,7 @@ _CHUNK_BYTES = 1 << 20
 _RECEIPT_NOTE_MAX = 500
 
 
-class TickPackageClient:
+class PackageClient:
     """
     The package service's routes, each answered or given up by the ladder.
     """
@@ -67,7 +67,7 @@ class TickPackageClient:
         self._wait = wait
         self._ladder = ConnectionLadder(name=LADDER_NAME, policy=source.connection, logger=vLog)
 
-    def list_packages(self) -> Optional[List[TickPackageListing]]:
+    def list_packages(self) -> Optional[List[PackageListing]]:
         """
         Every package the service lists, oldest first. An entry in a state this client does not
         know is left out, with a warning.
@@ -80,14 +80,14 @@ class TickPackageClient:
         if data is None:
             return None
         entries = data.get('packages', []) if isinstance(data, dict) else data
-        listings: List[TickPackageListing] = []
+        listings: List[PackageListing] = []
         for entry in entries:
             listing = _listing_of(entry)
             if listing is not None:
                 listings.append(listing)
         return listings
 
-    def read_manifest(self, package_id: str) -> Optional[Tuple[TickPackageManifest, Dict[str, Any]]]:
+    def read_manifest(self, package_id: str) -> Optional[Tuple[PackageManifest, Dict[str, Any]]]:
         """
         One package's manifest, parsed for the checks and as served.
 
@@ -120,7 +120,7 @@ class TickPackageClient:
                                self._ladder, self._wait) is True
 
     def send_receipt(self, package_id: str, zip_sha256: str,
-                     note: str) -> Tuple[TickReceiptOutcome, Optional[str]]:
+                     note: str) -> Tuple[PackageReceiptOutcome, Optional[str]]:
         """
         Acknowledge a package with the hash of the zip we hold. Sent once: an answer that is lost,
         or one that says nothing about whether it was recorded, is settled by reading the package
@@ -144,16 +144,16 @@ class TickPackageClient:
                          '— reading the package back')
             return self._settle_lost_receipt(package_id), None
         if response.status_code == 201:
-            return TickReceiptOutcome.ACKNOWLEDGED, None
+            return PackageReceiptOutcome.ACKNOWLEDGED, None
         if response.status_code == 200:
-            return TickReceiptOutcome.ALREADY_ACKNOWLEDGED, None
+            return PackageReceiptOutcome.ALREADY_ACKNOWLEDGED, None
         if response.status_code == 409:
-            return TickReceiptOutcome.HASH_MISMATCH, _short_text(response)
+            return PackageReceiptOutcome.HASH_MISMATCH, _short_text(response)
         if not is_terminal_status(response.status_code):
             return self._settle_lost_receipt(package_id), None
-        return TickReceiptOutcome.REFUSED, f'HTTP {response.status_code}: {_short_text(response)}'
+        return PackageReceiptOutcome.REFUSED, f'HTTP {response.status_code}: {_short_text(response)}'
 
-    def _settle_lost_receipt(self, package_id: str) -> TickReceiptOutcome:
+    def _settle_lost_receipt(self, package_id: str) -> PackageReceiptOutcome:
         """
         Read a package back after its receipt's answer was lost.
 
@@ -165,8 +165,8 @@ class TickPackageClient:
         """
         read = self.read_manifest(package_id)
         if read is not None and read[0].receipt_recorded:
-            return TickReceiptOutcome.ACKNOWLEDGED
-        return TickReceiptOutcome.UNRESOLVED
+            return PackageReceiptOutcome.ACKNOWLEDGED
+        return PackageReceiptOutcome.UNRESOLVED
 
     def _get_json(self, path: str, what: str) -> Any:
         """
@@ -249,7 +249,7 @@ def _token_from_cascade(credentials_file: str) -> str:
         return json.load(handle).get('api_token', '')
 
 
-def _listing_of(entry: Dict[str, Any]) -> Optional[TickPackageListing]:
+def _listing_of(entry: Dict[str, Any]) -> Optional[PackageListing]:
     """
     One list entry, parsed. The state falls back to the receipt time where a service does not
     send one.
@@ -262,17 +262,19 @@ def _listing_of(entry: Dict[str, Any]) -> Optional[TickPackageListing]:
     """
     raw_state = entry.get('state') or ('delivered' if entry.get('received_at') else 'ready')
     try:
-        state = TickPackageState(raw_state)
+        state = PackageState(raw_state)
     except ValueError:
         vLog.warning(f"📦 Package {entry.get('package_id')} is in the state '{raw_state}', "
                      'which this import does not know — left alone')
         return None
-    return TickPackageListing(
-        package_id=entry['package_id'], collector=entry.get('collector', ''),
+    # 'source' is the contract's key; the data collector still names it 'collector' until its
+    # next deploy adds 'source' beside it, and the fallback goes once that deploy is live
+    return PackageListing(
+        package_id=entry['package_id'], source=entry.get('source') or entry.get('collector', ''),
         size_bytes=int(entry['size_bytes']), sha256=entry['sha256'], state=state)
 
 
-def parse_manifest(data: Dict[str, Any]) -> TickPackageManifest:
+def parse_manifest(data: Dict[str, Any]) -> PackageManifest:
     """
     The fields of a served manifest the import checks.
 
@@ -284,12 +286,15 @@ def parse_manifest(data: Dict[str, Any]) -> TickPackageManifest:
     """
     manifest = data['manifest'] if isinstance(data.get('manifest'), dict) else data
     zip_block = manifest['zip']
-    return TickPackageManifest(
+    return PackageManifest(
         package_id=manifest['package_id'],
         zip_name=zip_block['name'],
         zip_sha256=zip_block['sha256'],
         zip_size_bytes=int(zip_block['size_bytes']),
         member_sha256={member['name']: member['sha256'] for member in manifest.get('members', [])},
+        member_size_bytes={member['name']: int(member['size_bytes'])
+                           for member in manifest.get('members', [])
+                           if member.get('size_bytes') is not None},
         held_for_next=[_name_of(item) for item in manifest.get('held_for_next', [])],
         excluded=[f"{_name_of(item)}: {item.get('reason', '')}" if isinstance(item, dict)
                   else str(item) for item in manifest.get('excluded', [])],

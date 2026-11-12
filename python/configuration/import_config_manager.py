@@ -97,7 +97,7 @@ class ImportConfigManager:
 
     def get_data_unpacking_path(self) -> str:
         """
-        Get the directory the files of a zip in the tick inbox are unpacked into.
+        Get the directory the files of a zip in the import inbox are unpacked into.
 
         Returns:
             Path string for the unpacking directory
@@ -156,22 +156,6 @@ class ImportConfigManager:
     # ============================================
     # Paths — Signal Data Source (#429)
 
-    def get_signal_data_raw_path(self) -> str:
-        """
-        Get source directory for raw signal JSONL archives.
-
-        Returns:
-            Path string for the raw signal directory
-        """
-        paths = self._config.get('signal_paths', {})
-        path = paths.get('data_raw')
-        if not path:
-            raise ValueError(
-                "Missing required path 'data_raw' in import_config.json. "
-                "Add to 'signal_paths' section: \"data_raw\": \"data/raw/signals\""
-            )
-        return resolve_in_data_home(path)
-
     def get_signal_import_output_path(self) -> str:
         """
         Get output directory for processed signal Parquet files + index.
@@ -185,22 +169,6 @@ class ImportConfigManager:
             raise ValueError(
                 "Missing required path 'import_output' in import_config.json. "
                 "Add to 'signal_paths' section: \"import_output\": \"data/processed/signals\""
-            )
-        return resolve_in_data_home(path)
-
-    def get_signal_data_finished_path(self) -> str:
-        """
-        Get archive directory for signal JSONL that has been imported.
-
-        Returns:
-            Path string for the finished signal directory
-        """
-        paths = self._config.get('signal_paths', {})
-        path = paths.get('data_finished')
-        if not path:
-            raise ValueError(
-                "Missing required path 'data_finished' in import_config.json. "
-                "Add to 'signal_paths' section: \"data_finished\": \"data/finished/signals\""
             )
         return resolve_in_data_home(path)
 

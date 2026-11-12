@@ -12,7 +12,7 @@ from typing import IO, Callable, Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 
-from python.data_management.importers.tick_zip_inbox import TICK_FILE_NAME
+from python.data_management.importers.import_zip_inbox import TICK_FILE_NAME
 from python.experiments.raw_archive_reimport.raw_archive_reimport_types import (
     ArchiveMember,
     BrokerSource,

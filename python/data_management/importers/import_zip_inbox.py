@@ -1,9 +1,11 @@
 """
-FiniexTestingIDE - Tick Zip Inbox
-A zip of tick exports in the import inbox (#120): read its members, unpack them for the
-importer, and move the zip unchanged out of the inbox once its members went through the import.
+FiniexTestingIDE - Import Zip Inbox
+A zip in the import inbox (#120): read its members, unpack them for their import, and move the
+zip unchanged out of the inbox once its members went through it. One zip holds one kind of raw
+file — tick exports, or the signal files of one pipeline — and its members go to that kind's
+import.
 
-A zip is only the packaging: its members go through the import exactly as loose exports do,
+A zip is only the packaging: its members go through the import exactly as loose files do,
 the duplicate check included, and their unpacked copies are removed afterwards. The zip is the
 raw source of truth they arrived in, so nothing in it is rewritten — it only moves: to the
 finished directory when anything in it was of use, to the refused directory when nothing was or
@@ -21,22 +23,26 @@ from typing import Dict, List, Optional, Set, Tuple
 # Registers the Deflate64 method with zipfile; two zips of the raw archive use it
 import zipfile_deflate64  # noqa: F401
 
-from python.data_management.importers.tick_inbox_conveyor import TickInboxConveyor
-from python.framework.exceptions.data_quality_errors import TickZipUnpackException
-from python.framework.types.import_types.tick_inbox_types import (
+from python.data_management.importers.import_inbox_conveyor import ImportInboxConveyor
+from python.framework.exceptions.data_quality_errors import InboxZipUnpackException
+from python.framework.types.import_types.import_inbox_types import (
     InboxDisposition,
+    InboxFileKind,
     InboxMove,
-    TickImportOutcome,
-    TickImportResult,
-    TickZipContent,
-    TickZipMember,
-    TickZipSettlement,
+    InboxImportOutcome,
+    InboxImportResult,
+    InboxZipContent,
+    InboxZipMember,
+    InboxZipSettlement,
 )
 from python.framework.utils.file_utils import create_directory
 
 # A tick export's own name: SYMBOL_YYYYMMDD_HHMMSS_ticks.json. The stamp is the collector's file
-# start on its own clock. A zip member has to carry it, flat — anything else refuses the zip.
+# start on its own clock.
 TICK_FILE_NAME = re.compile(r'^(?P<symbol>.+)_(?P<stamp>\d{8}_\d{6})_ticks\.json$')
+# A signal file: any name ending in .jsonl. A producer names its files after their day, so a name
+# is unique within one pipeline only; the pipeline is read from the envelopes inside
+SIGNAL_FILE_SUFFIX = '.jsonl'
 
 _COPY_CHUNK_BYTES = 1 << 20
 _BYTES_PER_GB = 1 << 30
@@ -45,24 +51,27 @@ _BYTES_PER_GB = 1 << 30
 MANIFEST_SUFFIX = '.manifest.json'
 
 
-class TickZipInbox:
+class ImportZipInbox:
     """
-    The zips of the tick import inbox.
+    The zips of the import inbox.
 
-    A zip is refused as a whole, before anything of it is written, when a member is not a tick
-    export lying flat in it, when a name occurs twice in it, or when a name is already taken by
-    a loose export or by another zip of the same import. Otherwise its members are unpacked
-    into a folder of their own below the unpacking directory and imported; the copy of a member
-    the archive took is removed, the copy of one it refused or failed on goes to the refused
-    directory with its reason — unless nothing in the zip was of use, when the zip itself goes
-    there and the copies are removed.
+    A zip is refused as a whole, before anything of it is written, when a member is neither a
+    tick export nor a signal file lying flat in it, when it mixes the two, when a name occurs
+    twice in it, or when a tick export's name is already taken by a loose export or by another
+    zip of the same import. A signal file's name is held unique within its zip only: two
+    pipelines name their files after the same days. Otherwise its members are unpacked into a
+    folder of their own below the unpacking directory and imported; the copy of a member the
+    archive took is removed, the copy of one it refused or failed on goes to the refused
+    directory with its reason — a signal file's into a folder named after its zip, so that two
+    pipelines' files of one day cannot meet there — unless nothing in the zip was of use, when
+    the zip itself goes there and the copies are removed.
     """
 
     def __init__(self, inbox_dir: Path, unpacking_dir: Path,
                  finished_dir: Optional[Path], refused_dir: Optional[Path]) -> None:
         """
         Args:
-            inbox_dir: The tick import inbox
+            inbox_dir: The import inbox
             unpacking_dir: Where members are unpacked, one folder per zip
             finished_dir: Where a zip goes once anything in it was of use, None when imported
                 files stay in the inbox
@@ -71,7 +80,7 @@ class TickZipInbox:
         """
         self._inbox_dir = inbox_dir
         self._unpacking_dir = unpacking_dir
-        self._conveyor = TickInboxConveyor(finished_dir=finished_dir, refused_dir=refused_dir)
+        self._conveyor = ImportInboxConveyor(finished_dir=finished_dir, refused_dir=refused_dir)
 
     def collect_zips(self) -> List[Path]:
         """
@@ -82,14 +91,14 @@ class TickZipInbox:
         """
         return sorted(self._inbox_dir.glob('*.zip'))
 
-    def read_content(self, zip_path: Path, taken_names: Set[str]) -> TickZipContent:
+    def read_content(self, zip_path: Path, taken_names: Set[str]) -> InboxZipContent:
         """
         Read a zip's members from its central directory, refusing the zip as a whole where
         its members cannot be imported as they stand.
 
         Args:
             zip_path: The zip
-            taken_names: Export names already claimed by a loose file or an earlier zip of
+            taken_names: Tick export names already claimed by a loose file or an earlier zip of
                 this import
 
         Returns:
@@ -99,39 +108,46 @@ class TickZipInbox:
             with zipfile.ZipFile(zip_path) as archive:
                 infos = archive.infolist()
         except zipfile.BadZipFile as error:
-            return TickZipContent(zip_path=zip_path,
+            return InboxZipContent(zip_path=zip_path,
                                   refusal=f'not a readable zip archive: {error}')
 
-        members: List[TickZipMember] = []
+        members: List[InboxZipMember] = []
         seen: Set[str] = set()
+        kinds: Set[InboxFileKind] = set()
         for info in infos:
             name = info.filename
             if '/' in name or '\\' in name:
-                return TickZipContent(
+                return InboxZipContent(
                     zip_path=zip_path,
                     refusal=f"its members must lie flat in it, '{name}' does not")
-            if not TICK_FILE_NAME.match(name):
-                return TickZipContent(
+            kind = file_kind(name)
+            if kind is None:
+                return InboxZipContent(
                     zip_path=zip_path,
-                    refusal=f"'{name}' is not a tick export (SYMBOL_YYYYMMDD_HHMMSS_ticks.json) — "
-                            'only tick zips are imported this way')
+                    refusal=f"'{name}' is neither a tick export (SYMBOL_YYYYMMDD_HHMMSS_ticks.json) "
+                            f'nor a signal file (*{SIGNAL_FILE_SUFFIX})')
             if name in seen:
-                return TickZipContent(zip_path=zip_path,
+                return InboxZipContent(zip_path=zip_path,
                                       refusal=f"'{name}' occurs twice in it")
-            if name in taken_names:
-                return TickZipContent(
+            if kind is InboxFileKind.TICK_EXPORT and name in taken_names:
+                return InboxZipContent(
                     zip_path=zip_path,
                     refusal=f"'{name}' also lies loose in the inbox or in another zip of "
                             'this import')
             seen.add(name)
-            members.append(TickZipMember(zip_path=zip_path, name=name,
+            kinds.add(kind)
+            members.append(InboxZipMember(zip_path=zip_path, name=name,
                                          size_bytes=info.file_size))
         if not members:
-            return TickZipContent(zip_path=zip_path, refusal='it holds no tick export')
-        return TickZipContent(zip_path=zip_path,
+            return InboxZipContent(zip_path=zip_path, refusal='it holds no file to import')
+        if len(kinds) > 1:
+            return InboxZipContent(
+                zip_path=zip_path,
+                refusal='it mixes tick exports and signal files — one zip holds one kind')
+        return InboxZipContent(zip_path=zip_path, kind=kinds.pop(),
                               members=sorted(members, key=lambda member: member.name))
 
-    def read_member_head(self, member: TickZipMember, byte_count: int) -> bytes:
+    def read_member_head(self, member: InboxZipMember, byte_count: int) -> bytes:
         """
         The first bytes of a member, unpacked — enough for the metadata block at its head.
 
@@ -177,11 +193,11 @@ class TickZipInbox:
             shutil.rmtree(folder)
         self._remove_empty_unpacking_dir()
 
-    def unpack_member(self, member: TickZipMember) -> Tuple[Path, str]:
+    def unpack_member(self, member: InboxZipMember) -> Tuple[Path, str]:
         """
         Unpack one member into its zip's unpacking folder, hashing it on the way. zipfile checks
         the member's CRC once the stream has ended, so a damaged member fails instead of arriving
-        short — as a TickZipUnpackException, like a member whose compression cannot be read. A
+        short — as a InboxZipUnpackException, like a member whose compression cannot be read. A
         file system that refuses the copy is not the zip's fault and stays an OSError.
 
         Args:
@@ -201,11 +217,11 @@ class TickZipInbox:
                         digest.update(chunk)
                         sink.write(chunk)
         except (zipfile.BadZipFile, NotImplementedError, ValueError) as error:
-            raise TickZipUnpackException(
+            raise InboxZipUnpackException(
                 f"'{member.name}' could not be unpacked: {error}") from error
         return target, digest.hexdigest()
 
-    def get_disk_shortage(self, content: TickZipContent) -> Optional[str]:
+    def get_disk_shortage(self, content: InboxZipContent) -> Optional[str]:
         """
         Whether a zip's members fit on the disk the unpacking directory lies on.
 
@@ -225,23 +241,27 @@ class TickZipInbox:
         return (f'its files need {needed / _BYTES_PER_GB:.1f} GB unpacked and the disk of '
                 f'{self._unpacking_dir} has {free / _BYTES_PER_GB:.1f} GB free')
 
-    def settle(self, zip_path: Path,
-               results: Dict[str, TickImportResult]) -> TickZipSettlement:
+    def settle(self, content: InboxZipContent,
+               results: Dict[str, InboxImportResult]) -> InboxZipSettlement:
         """
         Move a zip out of the inbox once its members went through the import. When anything in
         it was of use — a member written now or already in the archive — the zip goes to the
         finished directory, and the copy of each member refused or failed on goes to the refused
-        directory with its reason. When nothing was of use, the zip itself goes to the refused
-        directory with every member's reason, and the copies are removed: the zip holds them.
+        directory with its reason; a signal file's copy into a folder named after the zip. When
+        nothing was of use, the zip itself goes to the refused directory with every member's
+        reason, and the copies are removed: the zip holds them.
 
         Args:
-            zip_path: The zip
+            content: The zip's content
             results: Each member's result by name
 
         Returns:
             The settlement
         """
+        zip_path = content.zip_path
         folder = self.get_unpacking_folder(zip_path)
+        # A signal file is named after its day, which another pipeline's zip shares
+        apart = zip_path.stem if content.kind is InboxFileKind.SIGNAL_FILE else None
         if any(result.outcome.is_taken() for result in results.values()):
             member_moves: Dict[str, InboxMove] = {}
             for name, result in results.items():
@@ -250,11 +270,11 @@ class TickZipInbox:
                     continue
                 member_moves[name] = self._conveyor.to_refused(
                     copy, f'{result.reason or result.outcome.value} — unpacked from '
-                          f'{zip_path.name}, which holds the original')
+                          f'{zip_path.name}, which holds the original', subfolder=apart)
             self._remove_empty_unpacking_folder(zip_path)
             move = self._conveyor.to_finished(zip_path)
             self._conveyor.move_beside(manifest_companion(zip_path), move)
-            return TickZipSettlement(zip_path=zip_path, results=results, move=move,
+            return InboxZipSettlement(zip_path=zip_path, results=results, move=move,
                                      reason=move.detail, member_moves=member_moves)
 
         reason = _why_nothing_was_of_use(results)
@@ -264,10 +284,10 @@ class TickZipInbox:
                 (folder / name).unlink(missing_ok=True)
             self._remove_empty_unpacking_folder(zip_path)
         self._conveyor.move_beside(manifest_companion(zip_path), move)
-        return TickZipSettlement(zip_path=zip_path, results=results, move=move,
+        return InboxZipSettlement(zip_path=zip_path, results=results, move=move,
                                  reason=reason if move.detail is None else move.detail)
 
-    def refuse(self, content: TickZipContent) -> TickZipSettlement:
+    def refuse(self, content: InboxZipContent) -> InboxZipSettlement:
         """
         Move a zip refused as a whole to the refused directory, nothing of it written.
 
@@ -280,11 +300,11 @@ class TickZipInbox:
         self.clear_unpacking_folder(content.zip_path)
         move = self._conveyor.to_refused(content.zip_path, content.refusal)
         self._conveyor.move_beside(manifest_companion(content.zip_path), move)
-        return TickZipSettlement(
+        return InboxZipSettlement(
             zip_path=content.zip_path, results={}, move=move,
             reason=content.refusal if move.detail is None else move.detail)
 
-    def keep(self, zip_path: Path, reason: str) -> TickZipSettlement:
+    def keep(self, zip_path: Path, reason: str) -> InboxZipSettlement:
         """
         Leave a zip in the inbox for the next import: what stopped it lay outside the zip —
         a disk too small for its files, a file system that refused the unpacking.
@@ -297,7 +317,7 @@ class TickZipInbox:
             The settlement
         """
         self.clear_unpacking_folder(zip_path)
-        return TickZipSettlement(
+        return InboxZipSettlement(
             zip_path=zip_path, results={},
             move=InboxMove(disposition=InboxDisposition.KEPT_IN_INBOX, detail=reason),
             reason=reason)
@@ -330,6 +350,23 @@ class TickZipInbox:
             self._unpacking_dir.rmdir()
 
 
+def file_kind(name: str) -> Optional[InboxFileKind]:
+    """
+    Which import a raw file of the inbox goes to, told by its name.
+
+    Args:
+        name: The file's name
+
+    Returns:
+        Its kind, None for a name that is neither a tick export nor a signal file
+    """
+    if TICK_FILE_NAME.match(name):
+        return InboxFileKind.TICK_EXPORT
+    if name.endswith(SIGNAL_FILE_SUFFIX):
+        return InboxFileKind.SIGNAL_FILE
+    return None
+
+
 def manifest_companion(zip_path: Path) -> Path:
     """
     The manifest that lies beside a zip when the zip came as a package. It travels with the zip,
@@ -344,7 +381,7 @@ def manifest_companion(zip_path: Path) -> Path:
     return zip_path.with_name(f'{zip_path.stem}{MANIFEST_SUFFIX}')
 
 
-def _why_nothing_was_of_use(results: Dict[str, TickImportResult]) -> str:
+def _why_nothing_was_of_use(results: Dict[str, InboxImportResult]) -> str:
     """
     Why a zip goes to the refused directory: none of its members got into the archive.
 
@@ -354,7 +391,7 @@ def _why_nothing_was_of_use(results: Dict[str, TickImportResult]) -> str:
     Returns:
         The reason, with each member's own
     """
-    counts: Dict[TickImportOutcome, int] = {}
+    counts: Dict[InboxImportOutcome, int] = {}
     for result in results.values():
         counts[result.outcome] = counts.get(result.outcome, 0) + 1
     parts = [f'{count} {outcome.value}'

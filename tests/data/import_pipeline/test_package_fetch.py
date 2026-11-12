@@ -20,7 +20,11 @@ import pytest
 
 from python.configuration.data_collector_config_manager import DataCollectorConfigManager
 from python.data_management.importers.import_coordinator import ImportCoordinator
-from python.data_management.importers.tick_package_client import TickPackageClient
+from python.data_management.importers.package_client import (
+    PackageClient,
+    _listing_of,
+    parse_manifest,
+)
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.config_types.data_collector_config_types import (
     ActivePackageSource,
@@ -200,20 +204,18 @@ def service():
 def _paths(root: Path) -> ImportPaths:
     """An import tree under a temporary root."""
     return ImportPaths(
-        tick_source=root / 'raw',
+        inbox=root / 'raw',
         tick_target=root / 'processed',
-        tick_finished=root / 'finished',
-        tick_unpacking=root / 'unpacking',
-        tick_refused=root / 'refused',
-        signal_source=root / 'raw' / 'signals',
+        finished=root / 'finished',
+        unpacking=root / 'unpacking',
+        refused=root / 'refused',
         signal_target=root / 'processed' / 'signals',
-        signal_finished=root / 'finished' / 'signals',
         log_dir=root / 'logs' / 'imports',
         timings_file=root / 'runtime' / 'import_timings.json',
     )
 
 
-def _client(service: _PackageService, token: str = TOKEN) -> TickPackageClient:
+def _client(service: _PackageService, token: str = TOKEN) -> PackageClient:
     """A client of the stub that never waits between attempts, reading small chunks so a
     break-off in the middle of a zip leaves something to resume from."""
     source = ActivePackageSource(
@@ -221,11 +223,11 @@ def _client(service: _PackageService, token: str = TOKEN) -> TickPackageClient:
         connection=ConnectionPolicy(initial_delay_s=0.0, max_delay_s=0.0, jitter=False,
                                     attempt_budget=3, request_timeout_s=5.0,
                                     on_give_up=GiveUpAction.DEGRADE))
-    return TickPackageClient(source, read_token=lambda: token, wait=lambda delay: None,
+    return PackageClient(source, read_token=lambda: token, wait=lambda delay: None,
                              chunk_bytes=256)
 
 
-def _run(paths: ImportPaths, client: Optional[TickPackageClient]) -> ImportCoordinator:
+def _run(paths: ImportPaths, client: Optional[PackageClient]) -> ImportCoordinator:
     """One import over the tree with the given package client, without the screen."""
     coordinator = ImportCoordinator(paths=paths, show_display=False, package_client=client)
     coordinator.run()
@@ -272,9 +274,9 @@ class TestAPackageIsFetchedImportedAndAcknowledged:
 
         assert _outcome(coordinator) == ImportOutcome.COMPLETED
         assert len(_tick_files(paths)) == 2
-        assert (paths.tick_finished / 'kraken-0001-20261115.zip').read_bytes() == data
-        assert (paths.tick_finished / 'kraken-0001-20261115.manifest.json').exists()
-        assert [path.name for path in paths.tick_source.iterdir()] == []
+        assert (paths.finished / 'kraken-0001-20261115.zip').read_bytes() == data
+        assert (paths.finished / 'kraken-0001-20261115.manifest.json').exists()
+        assert [path.name for path in paths.inbox.iterdir()] == []
         receipt = service.packages['kraken-0001-20261115']['receipt']
         assert receipt['zip_sha256'] == _sha(data)
         assert '2 imported' in receipt['note']
@@ -319,7 +321,7 @@ class TestAPackageIsFetchedImportedAndAcknowledged:
         assert _outcome(coordinator) == ImportOutcome.COMPLETED
         assert len(_tick_files(paths)) == 3
         for package_id in packages:
-            assert (paths.tick_finished / f'{package_id}.zip').exists()
+            assert (paths.finished / f'{package_id}.zip').exists()
             assert service.packages[package_id]['receipt'] is not None
 
 
@@ -336,7 +338,7 @@ class TestWhatArrivesIsProven:
 
         assert _outcome(coordinator) == ImportOutcome.COMPLETED_WITH_ERRORS
         assert not _tick_files(paths)
-        assert not list(paths.tick_source.glob('*.zip*'))
+        assert not list(paths.inbox.glob('*.zip*'))
         assert package['receipt'] is None
         assert 'does not match' in _log(coordinator)
 
@@ -349,8 +351,8 @@ class TestWhatArrivesIsProven:
         coordinator = _run(paths, _client(service))
 
         assert _outcome(coordinator) == ImportOutcome.COMPLETED_WITH_ERRORS
-        assert (paths.tick_refused / 'kraken-0001-20261115.zip').exists()
-        assert (paths.tick_refused / 'kraken-0001-20261115.manifest.json').exists()
+        assert (paths.refused / 'kraken-0001-20261115.zip').exists()
+        assert (paths.refused / 'kraken-0001-20261115.manifest.json').exists()
         assert not _tick_files(paths)
         assert service.packages['kraken-0001-20261115']['receipt'] is None
 
@@ -362,7 +364,7 @@ class TestWhatArrivesIsProven:
         coordinator = _run(paths, _client(service))
 
         assert _status(coordinator, ImportStepId.TICKS_UNPACK) == ImportStepStatus.FAILED
-        assert (paths.tick_refused / 'kraken-0001-20261115.zip').exists()
+        assert (paths.refused / 'kraken-0001-20261115.zip').exists()
         assert not _tick_files(paths)
         assert service.packages['kraken-0001-20261115']['receipt'] is None
 
@@ -373,8 +375,8 @@ class TestWhatLiesHereAlready:
     def test_a_package_imported_before_is_only_acknowledged(self, tmp_path, service):
         paths = _paths(tmp_path)
         data = service.add('kraken-0001-20261115', _two_exports())
-        paths.tick_finished.mkdir(parents=True)
-        (paths.tick_finished / 'kraken-0001-20261115.zip').write_bytes(data)
+        paths.finished.mkdir(parents=True)
+        (paths.finished / 'kraken-0001-20261115.zip').write_bytes(data)
 
         _run(paths, _client(service))
 
@@ -386,8 +388,8 @@ class TestWhatLiesHereAlready:
     def test_a_package_refused_before_is_neither_fetched_nor_acknowledged(self, tmp_path, service):
         paths = _paths(tmp_path)
         data = service.add('kraken-0001-20261115', _two_exports())
-        paths.tick_refused.mkdir(parents=True)
-        (paths.tick_refused / 'kraken-0001-20261115.zip').write_bytes(data)
+        paths.refused.mkdir(parents=True)
+        (paths.refused / 'kraken-0001-20261115.zip').write_bytes(data)
 
         coordinator = _run(paths, _client(service))
 
@@ -428,7 +430,7 @@ class TestAServiceThatFails:
     def test_a_refused_token(self, tmp_path, service):
         paths = _paths(tmp_path)
         service.add('kraken-0001-20261115', _two_exports())
-        write_json_fixture(paths.tick_source, _export_name('CCCUSD', '2026.01.15 10:00:00'),
+        write_json_fixture(paths.inbox, _export_name('CCCUSD', '2026.01.15 10:00:00'),
                            build_minimal_tick_json(symbol='CCCUSD'))
 
         coordinator = _run(paths, _client(service, token='wrong'))
@@ -471,3 +473,33 @@ class TestTheConfiguration:
 
         assert source.base_url == 'https://collector.example.test'
         assert source.credentials_file == 'peers/collector_credentials.json'
+
+
+class TestTheContractsFields:
+    """The fields both package services serve under one name (the collector's answer of
+    2026-11-12): the source, and each member's size beside its name and hash."""
+
+    _ENTRY = {'package_id': 'crypto_sentiment-0001-20261115', 'size_bytes': 10,
+              'sha256': 'ab' * 32, 'state': 'ready'}
+
+    def test_the_source_is_read_from_source(self):
+        listing = _listing_of({**self._ENTRY, 'source': 'crypto_sentiment'})
+        assert listing.source == 'crypto_sentiment'
+
+    def test_the_collector_key_stands_in_until_its_deploy_adds_source(self):
+        listing = _listing_of({**self._ENTRY, 'collector': 'kraken'})
+        assert listing.source == 'kraken'
+
+    def test_source_wins_over_collector(self):
+        listing = _listing_of({**self._ENTRY, 'source': 'kraken', 'collector': 'old'})
+        assert listing.source == 'kraken'
+
+    def test_each_members_size_is_read_beside_its_hash(self):
+        manifest = parse_manifest({'manifest': {
+            'package_id': 'crypto_sentiment-0001-20261115',
+            'zip': {'name': 'crypto_sentiment-0001-20261115.zip', 'sha256': 'ab' * 32,
+                    'size_bytes': 10},
+            'members': [{'name': '2026-11-10.jsonl', 'sha256': 'cd' * 32, 'size_bytes': 42}]}})
+        assert manifest.member_size_bytes == {'2026-11-10.jsonl': 42}
+        assert manifest.member_sha256 == {'2026-11-10.jsonl': 'cd' * 32}
+

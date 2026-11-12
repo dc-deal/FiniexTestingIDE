@@ -20,10 +20,11 @@ this doc covers only how the *data* is imported, indexed, and resolved.
   orthogonal: one kind is read from many sources. Only `pipeline_id` is the identity shared by
   archive, index, coverage report and run report, so it is the leading id everywhere; the word
   "source" is reserved for it.
-- **Raw JSONL** arrives under `data/raw/signals/<pipeline_id>/`; the import writes **parquet + index**
-  under `data/processed/signals/<pipeline_id>/` and archives the consumed JSONL to
-  `data/finished/signals/<pipeline_id>/`. Paths are configured in
-  `configs/import_config.json → signal_paths`.
+- **Raw JSONL** lies flat in the one import inbox, `data/raw/`, beside the tick exports — loose, or in
+  a zip that holds one pipeline's files; the import writes **parquet + index** under
+  `data/processed/signals/<pipeline_id>/` (`configs/import_config.json → signal_paths`) and moves the
+  raw file on like every raw file, to `data/finished/` or `data/refused/`. The pipeline is read from
+  the envelopes, never from a folder.
 
 ## Import
 
@@ -31,8 +32,8 @@ The signals are imported by the same command as the ticks, right after them, on 
 ([Data Import Pipeline](data_import_pipeline.md#the-import-screen-its-log-and-its-estimate)):
 
 ```bash
-python python/cli/data_index_cli.py import [--override] [--include-finished]   # ticks, then signals
-python python/cli/data_index_cli.py import --only signals [--override] [--include-finished]
+python python/cli/data_index_cli.py import [--override]   # ticks, then signals
+python python/cli/data_index_cli.py import --only signals [--override]
 python python/cli/signal_index_cli.py status                # coverage per source / symbol
 python python/cli/signal_index_cli.py rebuild               # force index rebuild
 python python/cli/signal_index_cli.py inspect crypto_sentiment BTCUSD
@@ -56,51 +57,50 @@ Unlike `TickIndexManager`, the signal resolution returns one bucket **beyond** t
 needed — see *Resolution contract* below. Ticks are consumed as they arrive; a signal is resolved
 backwards from the tick, so the two contracts differ by design.
 
-### Raw is an inbox, finished is the archive
+### The inbox, and where a raw file goes
 
-A successfully imported JSONL moves to `data/finished/signals/`, keeping its directory structure —
-the same convention the tick import follows, switched by the shared
-`import_config.json → processing.move_processed_files`. The raw directory therefore holds only what
-still needs importing, and a re-run costs nothing instead of failing on every file that already has
-a parquet.
+A signal file leaves the inbox the way a tick export does (switched by the shared
+`import_config.json → processing.move_processed_files`): to `data/finished/` once the archive holds
+it — written now, or already there — and to `data/refused/` with its reason beside it when the
+import refused or failed on it ([Every import drains the import inbox](data_import_pipeline.md#every-import-drains-the-import-inbox)).
+The inbox therefore holds only what still needs importing, and a re-run costs nothing.
 
-The move preserves the path **relative to the directory the file was found in**, rather than
-rebuilding it from the resolved `pipeline_id`. A file sitting in a folder that does not match its
-own `pipeline_id` is an anomaly worth seeing; normalizing it during the move would repair it
-silently. A file whose import failed is not moved.
+- **The inbox is flat.** A JSONL in a folder of `data/raw/` is not read. The pipeline comes from the
+  envelopes, so a folder would only say again what the file says itself — or contradict it.
+- **A producer's package** is a zip of one pipeline's day files, lying flat in it and named after
+  their pipeline and day: `crypto_sentiment_2026-11-10.jsonl`. The import checks the name's
+  pipeline — everything before the last underscore — against the envelopes' and refuses a file
+  where the two differ; a file refused from a zip goes to `data/refused/<zip stem>/`. The zip
+  itself moves to `data/finished/` and is the archive of its files
+  ([Zip packages in the inbox](data_import_pipeline.md#zip-packages-in-the-inbox)).
+- **A day writes one parquet, whatever its file is called.** The producer's export names a file
+  after its day alone (`<pipeline_id>/2026-11-10.jsonl`); its parquet is named by the day either
+  way, so a day carried by hand and brought again by a package is already archived.
+- **By hand, each pipeline's export days come as a zip of their own.** A loose file's name is
+  unique across the inbox and `data/finished/`, and every pipeline's export names its files after
+  the same days: a second pipeline's `2026-11-10.jsonl` is imported, but stays in the inbox as an
+  error, because `data/finished/` holds a different file of that name. A single loose file is fine.
+- **Nothing at a destination is overwritten.** An identical file in `data/finished/` makes the inbox
+  copy redundant; a different one of that name keeps the file in the inbox, counted as an error.
+- **Nothing reads `data/finished/` back.** A day is projected again by putting its raw file back
+  into the inbox, by hand, with `--override` where its parquet exists — one source, one destination,
+  and a hand where something went wrong.
 
-A pipeline folder left empty by the move is removed, so an emptied inbox looks empty instead of
-occupied. Removal is by `rmdir`, which refuses a non-empty directory — a folder still holding
-anything (an unimported file, a failed import, a stray note) survives by construction. The inbox
-root itself is kept.
-
-**Two flags, two acts.** `--override` replaces an existing parquet instead of skipping it — the
-same meaning the tick importer's flag of that name has, and nothing more. `--include-finished`
-additionally reads the finished archive, which is how an already-imported day is re-projected after
-a read-time policy change. When the same relative path exists in both roots, the raw copy wins: a
-re-exported day supersedes its archived copy, and the move then replaces it.
-
-They were ONE flag until 2026-08-28, and that is worth remembering rather than just fixing: a plain
-`--override` re-projected 408 days when the operator expected the two files sitting in the inbox.
-Nothing broke — the importer only rewrites parquet — but one word carried two contracts across two
-CLIs used interchangeably, and the surprise was the flag, not the data.
+`--override` replaces an existing parquet instead of skipping it — the same meaning the tick
+importer's flag of that name has, and nothing more. It once also re-read the finished archive, and
+a plain `--override` re-projected 408 days when the operator expected the two files sitting in the
+inbox (2026-08-28): one word carried two contracts across two CLIs used interchangeably.
 
 An already-imported day without `--override` is a **warning and a skipped file**, not a run error —
 the tick importer grades its duplicates the same way, and re-running an import whose days are all
 archived is the normal case rather than a fault.
 
 > **The archive is not a by-product.** The parquet is a lean projection; an envelope's `sources`,
-> `metadata` and `errors` survive nowhere else. The archived JSONL is the audit source and must
-> stay readable — this is a move, never a delete.
+> `metadata` and `errors` survive nowhere else. The finished JSONL, or the zip it came in, is the
+> audit source and must stay readable — this is a move, never a delete.
 
-Once a batch is archived it is typically packed into `data/finished/Archives/signals-<YY-MM-DD>.zip`,
-the same convention the tick archives follow, and the loose folder is removed. The zip keeps the
-`signals/<pipeline_id>/<bucket>.jsonl` structure, so a day stays addressable inside it.
-
-Tooling that rewrites raw envelopes — `python/experiments/restore_signal_envelope_field.py` — works
-on plain files, so an archived day must be unpacked first, stamped, and re-imported with
-`--override --include-finished`. Read this as a cost, not an obstacle: it is the reason to stamp a day **before** it
-is packed, while it still sits in the inbox.
+Packing finished files into `data/finished/Archives/` stays a step by hand, as for the ticks; the
+import never reads or writes that folder.
 
 
 ### Producer endpoints — switching environments is one word
@@ -577,7 +577,7 @@ Full detail: [Discovery System](../discovery_system.md).
 
 The archived range **2026-07-16 → 2026-08-26** was re-exported by the producer to carry
 `breaking_episode_id` and `breaking_episode_start`, and re-imported here with the archive read in
-(`--override --include-finished`; one flag did both at the time). This
+(`--override`, which then also re-read the finished archive). This
 is the one **deliberate exception** to the rule that a closed archive day re-exports
 byte-identically. Only days before ~2026-08-24 changed; everything after already carried the
 fields.
@@ -963,8 +963,8 @@ not part of the heavy `sources` / `stage_timings` payload.
 > `scheduled` would silently fold restart and wake passes into the bar-close series, and no
 > reconstruction exists that does not use exactly the timing heuristic the field replaces.
 
-`data_origin` and `config_fingerprint` **were** backfilled into the historical real archives, by
-`python/experiments/restore_signal_envelope_field.py`. Both values were known for the whole stretch:
+`data_origin` and `config_fingerprint` **were** backfilled into the historical real archives, by a
+one-time migration. Both values were known for the whole stretch:
 the folders only ever held producer output, and the operator supplied the running config's hash. The
 one caveat — the archive's symbol set grew on 2026-07-24, so strictly two configs existed — does not
 change a *symbol's* comparability, because retrieval runs per symbol against a feed-driven corpus:

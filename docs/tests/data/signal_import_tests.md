@@ -15,25 +15,28 @@ fields.
 | Reader projection | one snapshot per envelope for the projected symbol; audit-only `sources` dropped from the runtime series |
 | v0 parity | `SignalDataProvider` over the raw JSONL vs. over the parquet resolve identically across the range, for a symbol present in every envelope AND one absent in `partial`/`error` envelopes (defensive HOLD) |
 | Import guards | mixed `pipeline_id` in one file → `SignalSchemaError` |
-| Finished archive | imported JSONL moves to `data/finished/signals/` with its structure intact; no `finished_dir` → the file stays; a re-run without `--override` finds nothing and reports no error; `--include-finished` reads the archive back while `--override` alone never does; an already-imported day is a warning and a skipped file, not a run error; a re-exported day supersedes its archived copy; a failed import is not moved |
+| Finished archive | a loose JSONL lies flat in the one inbox and moves flat to the finished directory, its parquet keyed by the pipeline in its envelopes; no `finished_dir` → the file stays; a re-run without `--override` finds nothing and reports no error; the finished directory is never read back, `--override` included; an already-imported day is a warning and leaves the inbox like a taken file; a different file of an archived name is never overwritten and stays in the inbox as an error; a refused file (mixed `pipeline_id`, or no envelope at all) goes to the refused directory with its reason; a JSONL in a folder of the inbox is not read |
+| Pipeline-and-day name | a package member named `<pipeline_id>_<YYYY-MM-DD>.jsonl` writes the parquet of its day; a name giving another pipeline than its envelopes is refused, the reason naming both; one day by either name is one parquet — the second import finds it already archived |
 
 ### Why the archive tests matter
 
-Three of them guard decisions that are easy to undo by accident.
+They guard decisions that are easy to undo by accident.
 
-**The two flags must stay two.** Reading the finished archive and replacing an existing
-parquet were ONE flag until 2026-08-28, which made `--override` mean something different
-here than it means in the tick importer — measured once for real: 408 days re-projected
-where two were expected. Both directions are pinned, because collapsing them again would
-pass a test that only checked the archive was reachable.
+**`--override` never reads the finished directory.** Reading the finished archive and
+replacing an existing parquet were ONE flag until 2026-08-28, which made `--override` mean
+something different here than it means in the tick importer — measured once for real: 408
+days re-projected where two were expected. Nothing reads the finished directory back any
+more, and the test pins that `--override` does not either.
 
 **An already-imported day is a warning.** The tick importer grades its duplicates that way,
 and re-running an import whose days are all archived is the normal case; an error there
 would put a healthy run into the error pot.
 
-**The move keeps the root's relative path** and is deliberately not rebuilt from the
-resolved `pipeline_id`: a file in a folder that disagrees with its own `pipeline_id` is an
-anomaly (it has happened), and normalizing it on the way out would hide it.
+**A name's pipeline must be its envelopes'.** A package member names its pipeline; where the
+name and the envelopes disagree, the file is refused rather than filed under either — the
+anomaly a folder disagreeing with its file's `pipeline_id` once was, and it has happened. And
+a day writes one parquet by either name, so a day carried by hand and brought again by a
+package is archived once, never read twice.
 
 ### test_signal_stream_validation.py (#141 Part 2a)
 

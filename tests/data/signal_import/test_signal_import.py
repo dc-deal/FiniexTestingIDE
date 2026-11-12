@@ -273,73 +273,56 @@ def test_mixed_pipeline_id_rejected(tmp_path):
 
 class TestFinishedArchive:
     """
-    An imported JSONL moves to the finished archive, so the raw directory holds only
-    what still needs importing. The raw JSONL is the audit source (sources / metadata /
-    errors survive nowhere else), so this is a move, never a delete.
+    A loose JSONL lies flat in the one import inbox and leaves it as a tick export does: to the
+    finished directory once the archive holds it, to the refused directory with its reason when
+    not. The raw JSONL is the audit source (sources / metadata / errors survive nowhere else),
+    so this is a move, never a delete — and nothing at a destination is ever overwritten.
     """
 
     def _tree(self, tmp_path, name: str = 'day.jsonl', source: str = 'sentiment_a'):
-        """A raw tree holding one valid one-envelope JSONL under a source folder."""
-        raw = tmp_path / 'raw' / source
+        """A flat inbox holding one valid one-envelope JSONL of one pipeline."""
+        raw = tmp_path / 'raw'
         raw.mkdir(parents=True)
         line = {'collected_msc': BASE_MSC, 'schema_version': '1.0',
                 'pipeline_id': source, 'status': 'success', 'result': []}
         (raw / name).write_text(json.dumps(line))
-        return tmp_path / 'raw', tmp_path / 'proc', tmp_path / 'finished'
+        return raw, tmp_path / 'proc', tmp_path / 'finished'
 
-    def _importer(self, raw, proc, finished, override: bool = False,
-                  include_finished: bool = False):
+    def _importer(self, raw, proc, finished, override: bool = False, refused=None):
         return SignalDataImporter(
             source_dir=str(raw), target_dir=str(proc), override=override,
             finished_dir=str(finished) if finished else None,
-            include_finished=include_finished)
+            refused_dir=str(refused) if refused else None)
 
-    def test_imported_file_moves_and_keeps_its_structure(self, tmp_path):
+    def test_imported_file_moves_flat_and_is_keyed_by_its_envelopes(self, tmp_path):
         raw, proc, finished = self._tree(tmp_path)
         self._importer(raw, proc, finished).process_all_signals()
 
-        assert not (raw / 'sentiment_a' / 'day.jsonl').exists()
-        assert (finished / 'sentiment_a' / 'day.jsonl').exists()
+        assert not (raw / 'day.jsonl').exists()
+        assert (finished / 'day.jsonl').exists()
+        # The pipeline comes from the envelopes, not from where the file lay
         assert (proc / 'sentiment_a' / 'day.parquet').exists()
 
     def test_without_finished_dir_the_file_stays(self, tmp_path):
         raw, proc, _ = self._tree(tmp_path)
         self._importer(raw, proc, None).process_all_signals()
 
-        assert (raw / 'sentiment_a' / 'day.jsonl').exists()
+        assert (raw / 'day.jsonl').exists()
 
     def test_rerun_without_override_finds_nothing_and_reports_no_error(self, tmp_path):
         raw, proc, finished = self._tree(tmp_path)
         self._importer(raw, proc, finished).process_all_signals()
 
-        # The whole point: a second run costs nothing instead of raising FileExistsError
-        # on every already-imported file.
         again = self._importer(raw, proc, finished)
         again.process_all_signals()
         assert again.processed_files == 0
         assert again.errors == []
 
-    def test_include_finished_re_reads_the_archive(self, tmp_path):
-        raw, proc, finished = self._tree(tmp_path)
-        self._importer(raw, proc, finished).process_all_signals()
-        (proc / 'sentiment_a' / 'day.parquet').unlink()
-
-        # Re-projecting an already-imported day means reading it where it now lives.
-        rebuild = self._importer(raw, proc, finished, override=True,
-                                 include_finished=True)
-        rebuild.process_all_signals()
-        assert rebuild.processed_files == 1
-        assert (proc / 'sentiment_a' / 'day.parquet').exists()
-        assert (finished / 'sentiment_a' / 'day.jsonl').exists()
-
-    def test_override_alone_never_reaches_the_archive(self, tmp_path):
+    def test_the_finished_directory_is_never_read(self, tmp_path):
         """
-        The tick-parity pin: one word, one contract.
-
-        The two acts were one flag until 2026-08-28, so a plain --override silently
-        re-projected every day ever imported while the tick importer's flag of the same
-        name only ever touched the inbox. Measured once for real: 408 files where two
-        were expected.
+        One inbox in, one finished directory out: an import reads the inbox only. A day is
+        projected again by putting its file back into the inbox, never by re-reading the
+        archive — not with --override either, whose one meaning is to replace a parquet.
         """
         raw, proc, finished = self._tree(tmp_path)
         self._importer(raw, proc, finished).process_all_signals()
@@ -351,49 +334,47 @@ class TestFinishedArchive:
         assert rebuild.processed_files == 0
         assert not (proc / 'sentiment_a' / 'day.parquet').exists()
 
-    def test_an_already_imported_day_is_a_warning_not_an_error(self, tmp_path):
+    def test_an_already_imported_day_is_a_warning_and_leaves_the_inbox(self, tmp_path):
         """
-        Same grading as the tick importer's duplicate: warn, skip, keep the batch clean.
-
-        An error would put a healthy run into the §35 error pot, and re-importing an
-        inbox whose days are archived is the normal case rather than a fault.
+        Same grading as the tick importer's duplicate: warn, skip, keep the batch clean — and
+        the file leaves the inbox like one the archive took, so the inbox only ever holds new
+        work. An identical copy in the finished directory makes the inbox copy redundant.
         """
         raw, proc, finished = self._tree(tmp_path)
         self._importer(raw, proc, finished).process_all_signals()
 
-        # Put the same day back in the inbox: the parquet exists, override is off.
-        (raw / 'sentiment_a').mkdir(parents=True, exist_ok=True)
         line = {'collected_msc': BASE_MSC, 'schema_version': '1.0',
                 'pipeline_id': 'sentiment_a', 'status': 'success', 'result': []}
-        (raw / 'sentiment_a' / 'day.jsonl').write_text(json.dumps(line))
+        (raw / 'day.jsonl').write_text(json.dumps(line))
 
         again = self._importer(raw, proc, finished)
         again.process_all_signals()
 
         assert again.errors == []
         assert again.warnings
-        assert (raw / 'sentiment_a' / 'day.jsonl').exists(), (
-            'a skipped file must stay in the inbox, not be archived as if imported')
+        assert not (raw / 'day.jsonl').exists()
+        assert (finished / 'day.jsonl').exists()
 
-    def test_a_re_exported_day_supersedes_its_archived_copy(self, tmp_path):
+    def test_a_different_file_of_an_archived_name_is_never_overwritten(self, tmp_path):
+        """A re-exported day is projected with --override, and its raw file stays in the inbox
+        beside the archived one of its name — never overwriting it, and named as an error."""
         raw, proc, finished = self._tree(tmp_path)
         self._importer(raw, proc, finished).process_all_signals()
 
-        # Same relative path back in raw — the newer export must win, and exactly one
-        # import must run (not two, which would make the outcome order-dependent).
-        (raw / 'sentiment_a').mkdir(parents=True, exist_ok=True)
         line = {'collected_msc': BASE_MSC + STEP_MSC, 'schema_version': '1.0',
                 'pipeline_id': 'sentiment_a', 'status': 'success', 'result': []}
-        (raw / 'sentiment_a' / 'day.jsonl').write_text(json.dumps(line))
+        (raw / 'day.jsonl').write_text(json.dumps(line))
 
         rerun = self._importer(raw, proc, finished, override=True)
         rerun.process_all_signals()
+
         assert rerun.processed_files == 1
+        assert (raw / 'day.jsonl').exists()
+        archived = json.loads((finished / 'day.jsonl').read_text())
+        assert archived['collected_msc'] == BASE_MSC
+        assert any('KEPT IN THE INBOX day.jsonl' in error for error in rerun.errors)
 
-        archived = json.loads((finished / 'sentiment_a' / 'day.jsonl').read_text())
-        assert archived['collected_msc'] == BASE_MSC + STEP_MSC
-
-    def test_a_failed_import_leaves_the_file_in_place(self, tmp_path):
+    def test_a_refused_file_goes_to_the_refused_directory_with_its_reason(self, tmp_path):
         raw, proc, finished = self._tree(tmp_path)
         lines = [
             {'collected_msc': BASE_MSC, 'schema_version': '1.0',
@@ -401,65 +382,96 @@ class TestFinishedArchive:
             {'collected_msc': BASE_MSC + STEP_MSC, 'schema_version': '1.0',
              'pipeline_id': 'b', 'status': 'success', 'result': []},
         ]
-        (raw / 'sentiment_a' / 'day.jsonl').write_text(
-            '\n'.join(json.dumps(line) for line in lines))
+        (raw / 'day.jsonl').write_text('\n'.join(json.dumps(line) for line in lines))
+        refused = tmp_path / 'refused'
+
+        importer = self._importer(raw, proc, finished, refused=refused)
+        importer.process_all_signals()
+
+        assert importer.errors
+        assert importer.get_refused_files() == ['day.jsonl']
+        assert not (raw / 'day.jsonl').exists() and (refused / 'day.jsonl').exists()
+        assert "mixed 'pipeline_id'" in (refused / 'day.jsonl.refused.txt').read_text()
+        assert not (finished / 'day.jsonl').exists()
+
+    def test_a_file_without_an_envelope_is_refused(self, tmp_path):
+        raw, proc, finished = self._tree(tmp_path)
+        (raw / 'day.jsonl').write_text('')
+        refused = tmp_path / 'refused'
+
+        importer = self._importer(raw, proc, finished, refused=refused)
+        importer.process_all_signals()
+
+        assert (refused / 'day.jsonl').exists()
+        assert 'holds no envelope' in (refused / 'day.jsonl.refused.txt').read_text()
+
+    def test_a_jsonl_in_a_folder_of_the_inbox_is_not_read(self, tmp_path):
+        """The inbox is flat, as for the tick exports: a folder in it is nobody's work."""
+        raw, proc, finished = self._tree(tmp_path)
+        (raw / 'day.jsonl').rename(raw / 'nested.jsonl')
+        (raw / 'sentiment_a').mkdir()
+        (raw / 'nested.jsonl').rename(raw / 'sentiment_a' / 'day.jsonl')
 
         importer = self._importer(raw, proc, finished)
         importer.process_all_signals()
 
-        assert importer.errors
+        assert importer.processed_files == 0
         assert (raw / 'sentiment_a' / 'day.jsonl').exists()
-        assert not (finished / 'sentiment_a' / 'day.jsonl').exists()
 
-    def test_emptied_pipeline_folder_is_removed(self, tmp_path):
-        """An inbox whose files all moved must look empty, not occupied."""
-        raw, proc, finished = self._tree(tmp_path)
-        importer = self._importer(raw, proc, finished)
+
+class TestAPipelineAndDayName:
+    """
+    A producer's package names a member after its pipeline and day
+    (`crypto_sentiment_2026-11-10.jsonl`), its export after the day alone. Both write one parquet
+    named by the day, and a name whose pipeline is not the envelopes' is refused.
+    """
+
+    def _importer(self, tmp_path):
+        return SignalDataImporter(
+            source_dir=str(tmp_path / 'raw'), target_dir=str(tmp_path / 'proc'),
+            finished_dir=str(tmp_path / 'finished'), refused_dir=str(tmp_path / 'refused'))
+
+    def _put(self, tmp_path, name: str, pipeline_id: str = 'sentiment_a'):
+        raw = tmp_path / 'raw'
+        raw.mkdir(parents=True, exist_ok=True)
+        line = {'collected_msc': BASE_MSC, 'schema_version': '1.0',
+                'pipeline_id': pipeline_id, 'status': 'success', 'result': []}
+        (raw / name).write_text(json.dumps(line))
+
+    def test_a_package_member_writes_the_parquet_of_its_day(self, tmp_path):
+        self._put(tmp_path, 'sentiment_a_2026-11-10.jsonl')
+        importer = self._importer(tmp_path)
         importer.process_all_signals()
 
-        assert not (raw / 'sentiment_a').exists()
-        assert raw.exists()
-        assert importer.pruned_dirs == 1
+        assert importer.errors == []
+        assert sorted(p.name for p in (tmp_path / 'proc' / 'sentiment_a').iterdir()) == [
+            '2026-11-10.parquet']
+        assert (tmp_path / 'finished' / 'sentiment_a_2026-11-10.jsonl').exists()
 
-    def test_folder_with_unimported_content_survives(self, tmp_path):
-        """rmdir refuses a non-empty folder — anything left behind keeps its home."""
-        raw, proc, finished = self._tree(tmp_path)
-        (raw / 'sentiment_a' / 'notes.txt').write_text('not a jsonl')
-
-        importer = self._importer(raw, proc, finished)
-        importer.process_all_signals()
-
-        assert (raw / 'sentiment_a' / 'notes.txt').exists()
-        assert importer.pruned_dirs == 0
-
-    def test_failed_import_keeps_its_folder(self, tmp_path):
-        """The file stays on failure (previous test), so its folder must stay too."""
-        raw, proc, finished = self._tree(tmp_path)
-        lines = [
-            {'collected_msc': BASE_MSC, 'schema_version': '1.0',
-             'pipeline_id': 'a', 'status': 'success', 'result': []},
-            {'collected_msc': BASE_MSC + STEP_MSC, 'schema_version': '1.0',
-             'pipeline_id': 'b', 'status': 'success', 'result': []},
-        ]
-        (raw / 'sentiment_a' / 'day.jsonl').write_text(
-            '\n'.join(json.dumps(line) for line in lines))
-
-        importer = self._importer(raw, proc, finished)
+    def test_a_name_giving_another_pipeline_is_refused(self, tmp_path):
+        self._put(tmp_path, 'sentiment_b_2026-11-10.jsonl', pipeline_id='sentiment_a')
+        importer = self._importer(tmp_path)
         importer.process_all_signals()
 
         assert importer.errors
-        assert (raw / 'sentiment_a').exists()
+        assert not (tmp_path / 'proc' / 'sentiment_a').exists()
+        reason = (tmp_path / 'refused' / 'sentiment_b_2026-11-10.jsonl.refused.txt').read_text()
+        assert "'sentiment_b'" in reason and "'sentiment_a'" in reason
 
-    def test_stale_empty_folder_is_removed_on_an_idle_run(self, tmp_path):
-        """Nothing to import is not a reason to leave scaffolding behind."""
-        raw, proc, finished = self._tree(tmp_path)
-        self._importer(raw, proc, finished).process_all_signals()
-        (raw / 'left_over').mkdir()
+    def test_one_day_by_either_name_is_one_parquet(self, tmp_path):
+        """The day a hand-carried export brought is the day a later package brings again: it
+        is already archived, never a second parquet whose rows a reader would count twice."""
+        self._put(tmp_path, '2026-11-10.jsonl')
+        self._importer(tmp_path).process_all_signals()
 
-        importer = self._importer(raw, proc, finished)
-        importer.process_all_signals()
+        self._put(tmp_path, 'sentiment_a_2026-11-10.jsonl')
+        again = self._importer(tmp_path)
+        again.process_all_signals()
 
-        assert not (raw / 'left_over').exists()
+        assert again.errors == []
+        assert again.warnings
+        assert sorted(p.name for p in (tmp_path / 'proc' / 'sentiment_a').iterdir()) == [
+            '2026-11-10.parquet']
 
 
 # ---------------------------------------------------------------- §33 availability

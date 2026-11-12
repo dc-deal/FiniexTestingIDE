@@ -523,12 +523,12 @@ delay in a backtest, measured live, and empty where the answer was learned by as
 [Pending Orders](architecture/pending_order_architecture.md).
 
 **inbox** — Three different places, so the bare word is not used alone:
-- **import inbox** — the folder a producer's files wait in until an import takes them: `data/raw/`
-  for tick exports, `data/raw/signals/` for signal JSONL. An import writes the archive from it.
-  Every tick import drains `data/raw/`: a file the archive took — written, or skipped as a
-  duplicate — moves to `data/finished/`, one it refused or failed on to `data/refused/` with its
-  reason beside it; a zip there is unpacked and moves on the same way. The signal inbox keeps its
-  own rule. The import screen's first step scans both. See [Data Import
+- **import inbox** — the one folder a producer's files wait in until an import takes them:
+  `data/raw/`, flat, for tick exports and signal JSONL alike, loose or in zips; each file goes to
+  the import of its kind. An import writes the archive from it, and every import drains it: a file
+  the archive took — written, or skipped as a duplicate — moves to `data/finished/`, one it refused
+  or failed on to `data/refused/` with its reason beside it; a zip there is unpacked and moves on
+  the same way. The import screen's first step scans it. See [Data Import
   Pipeline](data_pipeline/data_import_pipeline.md#the-import-screen-its-log-and-its-estimate).
 - **signal inbox** (`SignalInbox`) — the buffer between a signal stream's transport thread and the
   loop: it holds the snapshots that arrived until the loop takes them. See [Signal Data

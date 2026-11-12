@@ -81,7 +81,7 @@ class TradedPriceMissingException(DataQualityException):
     pass
 
 
-class TickZipUnpackException(DataQualityException):
+class InboxZipUnpackException(DataQualityException):
     """
     Raised when a member of a zip in the import inbox cannot be unpacked
 

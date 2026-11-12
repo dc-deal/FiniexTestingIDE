@@ -8,7 +8,7 @@ bars are pre-rendered for all standard timeframes (M1 through D1).
 
 **Related**: [tick_collector_guide.md](tick_collector_guide.md) — MQL5 collector usage, JSON schema, error classification.
 
-**Scope — this doc covers the TICK path.** One command imports both import inboxes — tick exports first,
+**Scope — this doc covers the TICK path.** One command imports the import inbox — tick exports first,
 then signal JSONL — and shows one screen for both (see [The import screen](#the-import-screen-its-log-and-its-estimate)).
 Signal data (LLM sentiment envelopes, JSONL → parquet) has its own importer with its own duplicate
 rule; see [signal_data_source.md](signal_data_source.md).
@@ -16,11 +16,11 @@ rule; see [signal_data_source.md](signal_data_source.md).
 **Flow:**
 ```
 data_index_cli.py import → ImportCoordinator
-  ├─ Fetch the data collector's tick packages into the tick inbox (see Fetching the collector's packages)
-  ├─ Scan both import inboxes (each file's size; a tick file's broker from the metadata at its head;
-  │   a zip's files from its central directory)
-  ├─ Unpack the zips of the tick inbox, a step of its own (see Zip packages in the inbox)
-  ├─ Ticks (below) → Signals (signal_data_source.md) → discovery caches, once
+  ├─ Fetch the data collector's tick packages into the import inbox (see Fetching the collector's packages)
+  ├─ Scan the one import inbox, data/raw/ (each file's size; a tick file's broker from the metadata at
+  │   its head; a zip's files from its central directory, and its kind — tick exports or signal files)
+  ├─ Ticks: unpack the tick zips, a step of its own (see Zip packages in the inbox), then import (below)
+  ├─ Signals: unpack the signal zips, then import (signal_data_source.md) → discovery caches, once
   ├─ Acknowledge each fetched package whose zip reached data/finished/
   └─ Its own log: logs/imports/import_<import_id>.log
        ↓
@@ -472,7 +472,7 @@ how a field was obtained. See [discovery_system.md](../discovery_system.md).
 ## CLI Usage
 
 ```bash
-# Standard import of both import inboxes — each broker's server clock (market_config.json) converts
+# Standard import of the import inbox — each broker's server clock (market_config.json) converts
 # its times to UTC
 python -m python.cli.data_index_cli import
 
@@ -481,7 +481,7 @@ python -m python.cli.data_index_cli import --override
 
 # One archive only, or without the live screen
 python -m python.cli.data_index_cli import --only ticks
-python -m python.cli.data_index_cli import --only signals --include-finished
+python -m python.cli.data_index_cli import --only signals
 python -m python.cli.data_index_cli import --no-display
 
 # Without fetching the data collector's packages first
@@ -508,8 +508,8 @@ and, in its summary, how many files each resolved offset converted:
 
 ## The import screen, its log and its estimate
 
-A terminal run shows one live screen for the whole import. It opens once both import inboxes
-are scanned, with every step listed — pending, with what it has to do and its estimate — and fills
+A terminal run shows one live screen for the whole import. It opens once the import inbox
+is scanned, with every step listed — pending, with what it has to do and its estimate — and fills
 in as the steps run:
 
 ```
@@ -518,7 +518,7 @@ in as the steps run:
 │ signals  6 files · 38.0 MB · 0 rows written                                                  │
 │ elapsed 2m 5s · remaining ~14m 25s · total ~16m 30s · ends ~13:03 UTC (estimate)             │
 │ CPU  22 %   RAM ████░░░░░░░░░░░░░░░░░░░░ 4.8 / 30.3 GB  16 %                                 │
-│  ✅  Scan import inboxes              46/46 files  kraken_spot 16 · mt5 24 · signals 6    0s  │
+│  ✅  Scan the import inbox            46/46 files  kraken_spot 16 · mt5 24 · signals 6    0s  │
 │ ticks ──────────────────────────────────────────────────────────────────────────────────────  │
 │  ✅  Import tick files                40/40 files  100 % ████████████████████       1m 53s  │
 │  ⏳  Tick index                      12/40 files   30 % ██████░░░░░░░░░░░░░░          ~2s  │
@@ -736,9 +736,10 @@ and the projection is per day.
 
 ---
 
-## Every import drains the tick inbox
+## Every import drains the import inbox
 
-`data/raw/` holds new work and nothing else. A file left there would be read again by every
+`data/raw/` holds new work and nothing else — tick exports and signal files alike, loose or in
+zips, each going to the import of its kind. A file left there would be read again by every
 import, and one thrown away would hide the problem, so each file leaves the inbox for one of two
 places once its import ended — the pattern *Enterprise Integration Patterns* (Hohpe and Woolf)
 calls an Invalid Message Channel:
@@ -755,21 +756,27 @@ calls an Invalid Message Channel:
 - **Neither directory is ever overwritten.** An identical file of that name there already makes the
   inbox copy redundant, and it is removed; a different one keeps the file in the inbox, counted as an
   error, because a second file under one name is something to look at.
-- **Signals are not part of it** (yet): the signal inbox keeps its own rule
-  ([signal_data_source.md](signal_data_source.md)).
+- **Signal files follow the same rule.** A loose `*.jsonl` lies flat in `data/raw/` beside the tick
+  exports, and leaves it for `data/finished/` or `data/refused/` the same way; its pipeline is read
+  from its envelopes, never from a folder ([signal_data_source.md](signal_data_source.md)).
+- **The inbox is flat.** A file in a folder of `data/raw/` is not read, for either kind.
+- **Nothing reads `data/finished/` back.** An import reads the inbox only; a day is imported again by
+  putting its file back into `data/raw/`, by hand — a clear source, a clear destination, and a hand
+  where something went wrong.
 - `move_processed_files: false` keeps every file where it is, as before.
 
 ### Zip packages in the inbox
 
-A zip in `data/raw/` is imported by the same command: a zip is only the packaging of tick files,
-which go through the import exactly as loose ones do. It arrives that way from a collector's weekly
-package, or zipped by hand (#120).
+A zip in `data/raw/` is imported by the same command: a zip is only the packaging of raw files,
+which go through the import exactly as loose ones do. One zip holds one kind — tick exports, or the
+signal files of one pipeline — and its files go to that kind's import. It arrives that way from a
+producer's weekly package, or zipped by hand (#120).
 
 ```
 data/raw/week45.zip
   ├─ scan: its files from the central directory — refused as a whole, nothing written, when one
-  │   is not a tick export lying flat in it, a name occurs twice, or a name is taken by a loose
-  │   file or another zip of this import
+  │   is neither a tick export nor a signal file lying flat in it, it mixes the two kinds, a name
+  │   occurs twice, or a tick export's name is taken by a loose file or another zip of this import
   ├─ Unpack zips — a step of its own, timed by the zips' size — into data/unpacking/week45/,
   │   after checking the files fit on the disk; zipfile checks each file's CRC
   ├─ Import tick files: each one like a loose file; the copy of a file the archive took is removed
@@ -779,8 +786,14 @@ data/raw/week45.zip
        nothing of use → data/refused/week45.zip, its note naming every file's reason
 ```
 
-- **Refused as a whole** — a file that is no tick export, a damaged file, a doubled name — the zip
-  goes to `data/refused/` before anything of it is written.
+- **Refused as a whole** — a file that is neither kind, two kinds in one zip, a damaged file, a
+  doubled name — the zip goes to `data/refused/` before anything of it is written.
+- **A signal file's name is unique within its zip only.** A producer's package names its files
+  after their pipeline and day (`crypto_sentiment_2026-11-10.jsonl`), its export after the day
+  alone, so two pipelines' zips packed by hand may both hold `2026-11-10.jsonl`. Their parquets part
+  by the pipeline in the envelopes and are named by the day either way, and a name whose pipeline
+  is not the envelopes' is refused. A signal file the import refused from a zip goes to
+  `data/refused/<zip stem>/`, so that two such names cannot meet there.
 - **A zip stays in the inbox only when what stopped it lay outside it:** its files would not fit on
   the disk, or the file system refused the unpacking. The next import tries again.
 - **`data/unpacking/` exists only while a zip is unpacked.** It holds a zip's files only while
@@ -804,8 +817,9 @@ Fetch packages        every package that waits for our receipt, oldest first
   otherwise   the manifest → data/raw/<zip stem>.manifest.json
               the zip → data/raw/<zip>.part, resumed with a Range request after a break-off,
               renamed to data/raw/<zip> once its SHA-256 matches the list
-… the import as above: a fetched zip whose files differ from its manifest — a name, or a file's
-  SHA-256 checked while it is unpacked — is refused whole; the manifest moves with its zip
+… the import as above: a fetched zip whose files differ from its manifest — a name or a size,
+  checked before anything is unpacked, or a file's SHA-256, checked while it is unpacked — is
+  refused whole; the manifest moves with its zip
 Acknowledge packages  for each package whose zip lies in data/finished/: the receipt, carrying the
                       SHA-256 of the zip we hold and what the import did with it
 ```

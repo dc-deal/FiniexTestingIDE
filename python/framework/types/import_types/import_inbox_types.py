@@ -1,7 +1,8 @@
 """
-FiniexTestingIDE - Tick Inbox Types
-What leaves the tick import inbox, and where it goes (#120): how the import of each export
-ended, where a file or a zip went afterwards, and the members of a zip.
+FiniexTestingIDE - Import Inbox Types
+What leaves the import inbox, and where it goes (#120): how the import of each file ended,
+where a file or a zip went afterwards, and the members of a zip. One inbox holds both kinds of
+raw file — tick exports and signal files, loose or in zips — and each goes to its own import.
 
 The inbox is drained by every import. A file the import took — written, or skipped by the
 duplicate check because the archive holds it — goes to the finished directory; one it refused
@@ -15,7 +16,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 
-class TickImportOutcome(Enum):
+class InboxImportOutcome(Enum):
     """
     How the import of one tick export ended.
     """
@@ -35,11 +36,11 @@ class TickImportOutcome(Enum):
         Returns:
             True for IMPORTED and ALREADY_ARCHIVED
         """
-        return self in (TickImportOutcome.IMPORTED, TickImportOutcome.ALREADY_ARCHIVED)
+        return self in (InboxImportOutcome.IMPORTED, InboxImportOutcome.ALREADY_ARCHIVED)
 
 
 @dataclass(frozen=True)
-class TickImportResult:
+class InboxImportResult:
     """
     The end of one export's import.
 
@@ -47,7 +48,7 @@ class TickImportResult:
         outcome: How it ended
         reason: Why it was refused or failed, None when it was taken
     """
-    outcome: TickImportOutcome
+    outcome: InboxImportOutcome
     reason: Optional[str] = None
 
 
@@ -77,14 +78,24 @@ class InboxMove:
     detail: Optional[str] = None
 
 
-@dataclass(frozen=True)
-class TickZipMember:
+class InboxFileKind(Enum):
     """
-    One tick export inside a zip of the inbox.
+    Which import a raw file of the inbox goes to, told by its name.
+    """
+    # A collector's tick export: SYMBOL_YYYYMMDD_HHMMSS_ticks.json
+    TICK_EXPORT = 'tick_export'
+    # A signal producer's JSONL of envelopes; its pipeline is read from the envelopes
+    SIGNAL_FILE = 'signal_file'
+
+
+@dataclass(frozen=True)
+class InboxZipMember:
+    """
+    One raw file inside a zip of the inbox.
 
     Args:
         zip_path: The zip that holds it
-        name: The member's name, which is the export's file name
+        name: The member's name, which is the file's name
         size_bytes: Its size unpacked, from the zip's central directory
     """
     zip_path: Path
@@ -93,22 +104,24 @@ class TickZipMember:
 
 
 @dataclass
-class TickZipContent:
+class InboxZipContent:
     """
     What a zip of the inbox holds, read from its central directory.
 
     Args:
         zip_path: The zip
-        members: Its tick exports, sorted by name; empty when the zip is refused
+        members: Its files, sorted by name; empty when the zip is refused
         refusal: Why the zip is refused as a whole, None when its members can be imported
+        kind: What its files are — one zip holds one kind; None when it is refused
     """
     zip_path: Path
-    members: List[TickZipMember] = field(default_factory=list)
+    members: List[InboxZipMember] = field(default_factory=list)
     refusal: Optional[str] = None
+    kind: Optional[InboxFileKind] = None
 
 
 @dataclass
-class TickZipSettlement:
+class InboxZipSettlement:
     """
     A zip of the inbox after the import: how each member's import ended and where the zip went.
 
@@ -121,12 +134,12 @@ class TickZipSettlement:
             name — filled when the zip itself went to the finished directory
     """
     zip_path: Path
-    results: Dict[str, TickImportResult]
+    results: Dict[str, InboxImportResult]
     move: InboxMove
     reason: Optional[str] = None
     member_moves: Dict[str, InboxMove] = field(default_factory=dict)
 
-    def count(self, outcome: TickImportOutcome) -> int:
+    def count(self, outcome: InboxImportOutcome) -> int:
         """
         How many members ended with an outcome.
 

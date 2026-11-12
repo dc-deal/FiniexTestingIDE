@@ -22,7 +22,7 @@ import pyarrow.parquet as pq
 from python.configuration.data_origin_registry import DataOriginRegistry
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.importers.bar_importer import BarImporter
-from python.data_management.importers.tick_inbox_conveyor import TickInboxConveyor
+from python.data_management.importers.import_inbox_conveyor import ImportInboxConveyor
 from python.data_management.index.tick_index_manager import TickIndexManager
 
 # Import duplicate detection
@@ -39,11 +39,11 @@ from python.framework.types.import_types.import_schema_types import (
     DISCARDED_METADATA_KEYS,
     NESTED_METADATA_KEYS,
 )
-from python.framework.types.import_types.tick_inbox_types import (
+from python.framework.types.import_types.import_inbox_types import (
     InboxDisposition,
     InboxMove,
-    TickImportOutcome,
-    TickImportResult,
+    InboxImportOutcome,
+    InboxImportResult,
 )
 from python.framework.types.validation_types import TickFileValidationResult
 from python.framework.utils.file_utils import create_directory
@@ -112,7 +112,7 @@ class TickDataImporter:
         # Per broker: how many files resolved to each UTC offset — the summary's evidence that
         # a season boundary was crossed rather than one constant applied to everything.
         self._applied_offsets: Dict[str, Dict[str, int]] = {}
-        self._conveyor = TickInboxConveyor(
+        self._conveyor = ImportInboxConveyor(
             finished_dir=Path(finished_dir) if move_processed_files and finished_dir else None,
             refused_dir=Path(refused_dir) if move_processed_files and refused_dir else None)
         # The loose files this import moved to the refused directory
@@ -226,10 +226,10 @@ class TickDataImporter:
         Returns:
             True when the file was processed, False when it was skipped or failed
         """
-        return self.import_file_result(json_file).outcome is TickImportOutcome.IMPORTED
+        return self.import_file_result(json_file).outcome is InboxImportOutcome.IMPORTED
 
     def import_file_result(self, json_file: Path,
-                           archived_in: Optional[Path] = None) -> TickImportResult:
+                           archived_in: Optional[Path] = None) -> InboxImportResult:
         """
         Import one tick export and say how it ended. A refused, duplicate or failing file is
         counted and logged, never raised — the batch goes on with the next file. A loose export
@@ -260,7 +260,7 @@ class TickDataImporter:
         """
         return list(self._refused_files)
 
-    def _convert_and_judge(self, json_file: Path, origin: str) -> TickImportResult:
+    def _convert_and_judge(self, json_file: Path, origin: str) -> InboxImportResult:
         """
         Convert one export, counting and logging whatever stops it.
 
@@ -274,7 +274,7 @@ class TickDataImporter:
         try:
             self.convert_json_to_parquet(json_file)
             self.processed_files += 1
-            return TickImportResult(outcome=TickImportOutcome.IMPORTED)
+            return InboxImportResult(outcome=InboxImportOutcome.IMPORTED)
         except ArtificialDuplicateException as e:
             # Special handling for duplicate detection
             warning_msg = f'DUPLICATE DETECTED in {json_file.name}{origin}'
@@ -282,7 +282,7 @@ class TickDataImporter:
             vLog.warning(str(e))
             self.warnings.append(warning_msg)
             vLog.info('→ Skipping import (duplicate already exists)')
-            return TickImportResult(outcome=TickImportOutcome.ALREADY_ARCHIVED)
+            return InboxImportResult(outcome=InboxImportOutcome.ALREADY_ARCHIVED)
         except TickFileValidationException as e:
             # Structural defect in the source file — refuse it, keep the batch running
             error_msg = f'VALIDATION FAILED in {json_file.name}{origin}'
@@ -290,15 +290,15 @@ class TickDataImporter:
             vLog.error(str(e))
             self.errors.append(error_msg)
             vLog.info('→ Skipping import (file not written)')
-            return TickImportResult(outcome=TickImportOutcome.REFUSED, reason=str(e))
+            return InboxImportResult(outcome=InboxImportOutcome.REFUSED, reason=str(e))
         except Exception as e:
             error_msg = f'ERROR in {json_file.name}{origin}: {str(e)}'
             vLog.error(error_msg)
             self.errors.append(error_msg)
-            return TickImportResult(outcome=TickImportOutcome.FAILED,
+            return InboxImportResult(outcome=InboxImportOutcome.FAILED,
                                     reason=f'{type(e).__name__}: {e}')
 
-    def _leave_inbox(self, json_file: Path, result: TickImportResult) -> None:
+    def _leave_inbox(self, json_file: Path, result: InboxImportResult) -> None:
         """
         Move a loose export out of the inbox once its import ended.
 

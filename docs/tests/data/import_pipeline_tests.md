@@ -380,7 +380,7 @@ assert what was REPORTED rather than what was returned.
 
 ### test_import_coordinator.py
 
-The one import over both import inboxes (`ImportCoordinator`, #175), run against a temporary
+The one import over the import inbox (`ImportCoordinator`, #175), run against a temporary
 tree:
 
 - **TestBothArchives** — ticks and signals are imported, moved and rendered; every step ends
@@ -418,9 +418,9 @@ tree:
 - `test_bar_files_carry_the_render_after_a_complete_import` — a complete import leaves only
   finished bar files, each readable in full
 
-### test_tick_zip_import.py
+### test_inbox_zip_import.py
 
-Every import drains the tick inbox, and a zip there is imported like loose files (#120). Run
+Every import drains the one import inbox, and a zip there is imported like loose files (#120). Run
 through the coordinator against a temporary tree with its own finished, unpacking and refused
 directories:
 
@@ -447,8 +447,16 @@ directories:
   inbox, a name twice in one zip and a damaged file (a CRC that no longer matches, found while
   unpacking) each send the zip to refused/ with nothing written; a zip too large for the disk stays
   in the inbox for the next import, nothing refused
+- **TestASignalZip** — a zip of one pipeline's flat day files reaches the signal archive, keyed by
+  the pipeline in the envelopes, and moves to finished/ byte-identical in its own unpack step; two
+  pipelines' zips may both hold one day's name; members named `<pipeline_id>_<YYYY-MM-DD>.jsonl`
+  write the parquet of their day, one whose name gives another pipeline is refused; ticks and
+  signals, loose and zipped, in one import;
+  a zip mixing the two kinds is refused whole; a signal file refused from a zip goes to a folder of
+  refused/ named after the zip; `--only` leaves the other kind's zip in the inbox; a member whose
+  size differs from its manifest refuses the zip before anything is unpacked
 
-### test_tick_package_fetch.py
+### test_package_fetch.py
 
 The import fetches the data collector's tick packages and acknowledges them (#120). Run through
 the coordinator against a stub package service on a local port (`ThreadingHTTPServer`) that serves
@@ -470,6 +478,9 @@ the list, a manifest, the zip with `Range` support, and the receipt:
   the inbox; `--no-fetch` shows the step skipped with its reason
 - **TestTheConfiguration** — the tracked file mirrors the model's defaults and fetches nothing; an
   address in the workspace copy makes a source
+- **TestTheContractsFields** — a listing's source is read from `source`, with the data collector's
+  `collector` standing in until its deploy adds `source`, and `source` winning where both are
+  served; a manifest's member sizes are read beside their hashes
 
 ### test_bar_render_replace.py
 

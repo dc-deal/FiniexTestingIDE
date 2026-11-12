@@ -1,7 +1,8 @@
 """
-FiniexTestingIDE - Tick Inbox Conveyor
-Where a raw file leaves the tick import inbox for (#120): the finished directory when the import
-took it, the refused directory when it refused or failed on it — a loose export and a zip alike.
+FiniexTestingIDE - Import Inbox Conveyor
+Where a raw file leaves the import inbox for (#120): the finished directory when the import
+took it, the refused directory when it refused or failed on it — a loose file and a zip alike,
+a tick export and a signal file alike.
 
 Every import drains the inbox this way, so the inbox only ever holds new work: a file left there
 would be read again by every import, and one thrown away would hide the problem (the Invalid
@@ -19,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from python.framework.types.import_types.tick_inbox_types import (
+from python.framework.types.import_types.import_inbox_types import (
     InboxDisposition,
     InboxMove,
 )
@@ -31,9 +32,9 @@ REFUSAL_NOTE_SUFFIX = '.refused.txt'
 _HASH_CHUNK_BYTES = 1 << 20
 
 
-class TickInboxConveyor:
+class ImportInboxConveyor:
     """
-    Moves files and zips out of the tick import inbox, never overwriting what lies at the
+    Moves files and zips out of the import inbox, never overwriting what lies at the
     destination.
     """
 
@@ -69,7 +70,7 @@ class TickInboxConveyor:
                                        InboxDisposition.MOVED_TO_FINISHED,
                                        holds='the raw files after their import')
 
-    def to_refused(self, path: Path, reason: str) -> InboxMove:
+    def to_refused(self, path: Path, reason: str, subfolder: Optional[str] = None) -> InboxMove:
         """
         Move a file the import refused or failed on to the refused directory, and append the
         reason to the note beside it — also when an identical file lay there already, so the
@@ -78,15 +79,20 @@ class TickInboxConveyor:
         Args:
             path: The file or zip
             reason: Why it was refused
+            subfolder: A folder of the refused directory to put it in, None for the directory
+                itself — for a file whose name is unique only within the zip it came from
 
         Returns:
             Where it went
         """
-        move = _move_without_overwrite(path, self._refused_dir,
+        target_dir = self._refused_dir
+        if target_dir is not None and subfolder is not None:
+            target_dir = target_dir / subfolder
+        move = _move_without_overwrite(path, target_dir,
                                        InboxDisposition.MOVED_TO_REFUSED,
                                        holds='the raw files the import refused')
         if move.disposition is not InboxDisposition.KEPT_IN_INBOX:
-            note = self._refused_dir / f'{path.name}{REFUSAL_NOTE_SUFFIX}'
+            note = target_dir / f'{path.name}{REFUSAL_NOTE_SUFFIX}'
             # When WE wrote the note — an observation, not an event time
             stamp = datetime.now(timezone.utc).isoformat(timespec='seconds')
             # One line per refusal: a validation message spans several

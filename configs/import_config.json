@@ -20,9 +20,7 @@
         "data_finished": "data/test/import/finished"
     },
     "signal_paths": {
-        "data_raw": "data/raw/signals",
-        "import_output": "data/processed/signals",
-        "data_finished": "data/finished/signals"
+        "import_output": "data/processed/signals"
     },
     "processing": {
         "move_processed_files": true,

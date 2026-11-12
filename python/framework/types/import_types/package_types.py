@@ -1,5 +1,5 @@
 """
-FiniexTestingIDE - Tick Package Types
+FiniexTestingIDE - Package Types
 The data collector's weekly tick packages as the import sees them (#120): an entry of the
 service's list, the parts of a manifest the import checks, what the fetch did with a package, and
 how its receipt ended.
@@ -10,7 +10,7 @@ from enum import Enum
 from typing import Dict, List, Optional
 
 
-class TickPackageState(Enum):
+class PackageState(Enum):
     """
     Where a package stands at the collector, in its own words.
     """
@@ -21,26 +21,28 @@ class TickPackageState(Enum):
 
 
 @dataclass(frozen=True)
-class TickPackageListing:
+class PackageListing:
     """
     One package as the service lists it.
 
     Args:
-        package_id: e.g. 'kraken-0003-20261115' — collector, sequence, cutoff date
-        collector: 'kraken' or 'mt5'
+        package_id: e.g. 'kraken-0003-20261115' — source, sequence, cutoff date. A source may
+            hold an underscore ('crypto_sentiment'), so an id is read from the right
+        source: The package source: a collector ('kraken', 'mt5', 'krakendev') or a signal
+            pipeline
         size_bytes: The zip's size
         sha256: The zip's SHA-256
         state: Whether it waits for our receipt
     """
     package_id: str
-    collector: str
+    source: str
     size_bytes: int
     sha256: str
-    state: TickPackageState
+    state: PackageState
 
 
 @dataclass
-class TickPackageManifest:
+class PackageManifest:
     """
     The parts of a package's manifest the import relies on. The whole manifest is kept beside the
     zip as the service served it; these are the fields checked against what arrived.
@@ -51,6 +53,8 @@ class TickPackageManifest:
         zip_sha256: The zip's SHA-256
         zip_size_bytes: The zip's size
         member_sha256: Each member's SHA-256, by name
+        member_size_bytes: Each member's size unpacked, by name — with its name and its hash the
+            third field of a member's integrity
         held_for_next: Files that reach past the cutoff and wait for the next package
         excluded: Files left out, each with its reason
         open_files: Files still being written at the collector, never packed
@@ -61,13 +65,14 @@ class TickPackageManifest:
     zip_sha256: str
     zip_size_bytes: int
     member_sha256: Dict[str, str] = field(default_factory=dict)
+    member_size_bytes: Dict[str, int] = field(default_factory=dict)
     held_for_next: List[str] = field(default_factory=list)
     excluded: List[str] = field(default_factory=list)
     open_files: List[str] = field(default_factory=list)
     receipt_recorded: bool = False
 
 
-class TickPackageFetchOutcome(Enum):
+class PackageFetchOutcome(Enum):
     """
     What the fetch did with one listed package.
     """
@@ -82,7 +87,7 @@ class TickPackageFetchOutcome(Enum):
 
 
 @dataclass
-class TickPackageFetch:
+class PackageFetch:
     """
     One listed package after the fetch.
 
@@ -92,13 +97,13 @@ class TickPackageFetch:
         manifest: Its manifest, None when it could not be read
         detail: Why it failed or was not fetched, None otherwise
     """
-    listing: TickPackageListing
-    outcome: TickPackageFetchOutcome
-    manifest: Optional[TickPackageManifest] = None
+    listing: PackageListing
+    outcome: PackageFetchOutcome
+    manifest: Optional[PackageManifest] = None
     detail: Optional[str] = None
 
 
-class TickReceiptOutcome(Enum):
+class PackageReceiptOutcome(Enum):
     """
     How a package's receipt ended.
     """
