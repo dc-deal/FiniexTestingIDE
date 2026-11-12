@@ -27,7 +27,9 @@ holds can change the engine's state: assigning to a mask raises `AttributeError`
 
 ```
 algo ──calls──► DecisionTradingApi ──► executor (backtest or live) ──► portfolio
-algo ◄─masks─── AlgoPosition  ◄── made once per position, computes on every read
+algo ◄─masks─── AlgoPosition     ◄── made once per position, computes on every read
+                AlgoOrder        ◄── made once per resting order, reads the order on every read
+                AlgoOrderResult  ◄── one per order result handed out, and in every decision event
 ```
 
 The same masks serve the backtest and a live session: the decision API, the executor's base and the
@@ -72,6 +74,63 @@ mask is made on the first read of its position and handed out again on every lat
 algo keeps across passes stays current, because it computes on every read. A closed position's mask
 shows the values the position closed with.
 
+## `AlgoOrder` — a resting order
+
+What `get_active_orders` hands out: one mask per limit or stop order resting in the engine. The
+engine keeps changing a resting order — a modify moves its price, a partial fill at a venue lowers
+what is left, an operation marks it while in flight — so every field is read from the order when
+the algo reads it. A mask is made on the first read of its order and handed out again while the
+order rests; one the algo keeps after the order filled, was cancelled or expired shows the values
+the order ended with.
+
+| Field | Where it comes from |
+|---|---|
+| `pending_order_id` | stored when the order was placed — the identifier `modify_limit_order`, `modify_stop_order` and the cancels take |
+| `order_action` | stored — whether the order opens a position or closes one |
+| `order_type` | stored — LIMIT, STOP or STOP_LIMIT |
+| `symbol` | stored |
+| `direction` | stored — the direction of the position it opens |
+| `lots` | read — the lots still working; a partial fill at a venue lowers it |
+| `filled_lots` | read — the lots already executed of it, `0` while nothing filled |
+| `entry_price` | read — the price it rests at: a limit's limit price, a stop's trigger; a modify moves it |
+| `limit_price` | read — a stop-limit's limit price, which applies once its trigger is reached; `None` for the others |
+| `stop_loss` | read — the stop loss the position it opens will carry, `None` when none was asked for |
+| `take_profit` | read — as `stop_loss` |
+| `entry_time` | stored — when the order was placed, on the canonical clock |
+| `in_flight_operation` | read — a submit, modify or cancel still on its way, `NONE` in steady state; while a modify is in flight the fields above still show the values it would replace |
+
+## `AlgoOrderResult` — an order's outcome
+
+What `send_order` and `close_position` return, and the `result` of every decision event. The
+engine keeps each booked result in its order history and hands the same result to every listener,
+so the algo receives this mask in its place. A result does not change once it is booked; the
+engine's own bookkeeping on it — the submission's details, its free metadata and its order-event
+sequence number — is not shown.
+
+| Field | Where it comes from |
+|---|---|
+| `order_id` | stored — the order's identifier |
+| `status` | stored — pending, executed, denied, rejected, cancelled or expired |
+| `is_success` | derived — whether the order executed |
+| `is_refused` | derived — whether it was refused, here (denied) or by the venue (rejected) |
+| `executed_price` | stored — the price it executed at, `None` while nothing executed |
+| `executed_lots` | stored — the lots executed, `None` while nothing executed |
+| `execution_time` | stored — when it executed, on the canonical clock |
+| `commission` | stored — the fee it was charged, in the account currency |
+| `fee_source` | stored — whether the fee is the venue's own figure or the model's estimate |
+| `rejection_reason` | stored — why it was refused, `None` where it was not |
+| `rejection_message` | stored — the refusal in words, `''` where it was not refused |
+| `position_id` | stored — the position it opened or closed |
+| `action` | stored — whether it opened, closed or partly closed a position |
+| `symbol` | stored |
+| `direction` | stored — LONG or SHORT; a close's is the closed position's |
+| `requested_lots` | stored — the lots the order asked for |
+| `close_type` | stored — for a close, whether it closed the position in full or in part |
+| `order_type` | stored — the type the order was asked as |
+| `initiator` | stored — who ended the order, where it ended other than by a fill |
+| `end_reason` | stored — why it ended, where it ended other than by a fill |
+| `joined_in_flight_close` | stored — for a close asked while another close of the same position was already on its way: the request joined that close and describes it, nothing new was sent |
+
 ## What a mask guarantees, and where it stops
 
 - **Read-only.** Every assignment raises; a mask has no instance dictionary to add to.
@@ -99,6 +158,15 @@ event instead. A strategy's results must not depend on it — run one with it of
 
 ## What is masked so far
 
-Positions are the first mask. The other things the decision API and a worker receive — active
-orders, order results and the `result` in the decision events, order capabilities, the market data
-status, and a worker's ticks and bars — follow in #654, each with its own table on this page.
+Every read of the decision trading API hands the decision one of four kinds of thing, and the API
+declares which beside each method (`DECISION_API_READS_RETURN`), held to the method's return type by
+a test:
+
+- **a mask** — positions, resting orders, order results;
+- **a frozen value** — the symbol's specification, the order capabilities and the market data
+  status: the engine replaces such a value rather than changing it, and assigning to one raises;
+- **a copy made for the call** — the account info, the cost breakdown, the active order counts;
+- **a plain value** — a number, a flag, a text, an enum or a time.
+
+The decision events are frozen too, and their `result` is an `AlgoOrderResult`. A worker's ticks and
+bars follow (#654), decided by a measurement first, because they are the hottest path.

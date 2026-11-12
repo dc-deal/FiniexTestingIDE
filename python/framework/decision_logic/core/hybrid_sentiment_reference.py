@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.decision_logic_types import (
     AwarenessLevel,
@@ -27,7 +28,6 @@ from python.framework.types.trading_env_types.market_data_status_types import Ma
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderFeature,
-    OrderResult,
     OrderSide,
     OrderStatus,
     OrderType,
@@ -347,7 +347,7 @@ class HybridSentimentReference(AbstractDecisionLogic):
         self,
         decision: Decision,
         tick: TickData
-    ) -> Optional[OrderResult]:
+    ) -> Optional[AlgoOrderResult]:
         """
         Execute the decision: BUY opens a long, SELL exits it (one position).
 
@@ -356,7 +356,7 @@ class HybridSentimentReference(AbstractDecisionLogic):
             tick: Current tick
 
         Returns:
-            OrderResult if an order was sent, else None
+            AlgoOrderResult if an order was sent, else None
         """
         if not self.trading_api:
             return None

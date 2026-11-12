@@ -306,7 +306,8 @@ class TestAnUndeclaredLevelIsRefusedAtOrderTime:
         assert result.rejection_reason == RejectionReason.ORDER_FEATURE_NOT_DECLARED
         assert 'stop_loss' in result.rejection_message
         assert executor.opened == []
-        assert executor.guard_rejections == [result]
+        rejected, = executor.guard_rejections
+        assert result.is_mask_of(rejected), 'the algo receives the booked refusal through its mask'
 
     def test_it_names_each_one(self):
         api, _ = _api()

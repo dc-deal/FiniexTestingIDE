@@ -30,11 +30,11 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Optional, Union
 
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderEndReason,
-    OrderResult,
     OrderStatus,
     RejectionReason,
 )
@@ -74,7 +74,7 @@ class OrderFilledEvent:
         direction: Position direction (LONG/SHORT)
         fill_price: Executed price
         lots: Executed lots
-        result: Full OrderResult for detailed access
+        result: The order's full result, as a read-only mask (#654)
         tick_time: Tick timestamp at delivery (sim time / wall-clock)
     """
     order_id: str
@@ -82,7 +82,7 @@ class OrderFilledEvent:
     direction: OrderDirection
     fill_price: Optional[float]
     lots: Optional[float]
-    result: OrderResult
+    result: AlgoOrderResult
     tick_time: Optional[datetime] = None
 
 
@@ -107,14 +107,14 @@ class OrderRejectedEvent:
             position it closes; None when that position is no longer held
         reason: Machine-readable rejection reason; None for an undelivered order
         message: Human-readable rejection message
-        result: Full OrderResult for detailed access
+        result: The order's full result, as a read-only mask (#654)
         tick_time: Tick timestamp at delivery (sim time / wall-clock)
     """
     order_id: str
     direction: Optional[OrderDirection]
     reason: Optional[RejectionReason]
     message: str
-    result: OrderResult
+    result: AlgoOrderResult
     tick_time: Optional[datetime] = None
 
 
@@ -138,13 +138,13 @@ class OrderUnaccountedEvent:
         direction: Position direction (LONG/SHORT) — for a close, the direction of the
             position it closes; None when that position is no longer held
         end_reason: Why the framework stopped asking — the timeout or the resolution ceiling
-        result: Full OrderResult for detailed access
+        result: The order's full result, as a read-only mask (#654)
         tick_time: Tick timestamp at delivery (sim time / wall-clock)
     """
     order_id: str
     direction: Optional[OrderDirection]
     end_reason: Optional[OrderEndReason]
-    result: OrderResult
+    result: AlgoOrderResult
     tick_time: Optional[datetime] = None
 
 
@@ -165,7 +165,7 @@ class OrderCancelledEvent:
     """
     order_id: str
     direction: Optional[OrderDirection]
-    result: OrderResult
+    result: AlgoOrderResult
     tick_time: Optional[datetime] = None
 
 
@@ -180,7 +180,7 @@ class PartialCloseEvent:
         closed_lots: Lots closed by this fill
         remaining_lots: Lots still open after this fill
         fill_price: Executed close price
-        result: Full OrderResult for detailed access
+        result: The order's full result, as a read-only mask (#654)
         tick_time: Tick timestamp at delivery (sim time / wall-clock)
     """
     position_id: str
@@ -188,7 +188,7 @@ class PartialCloseEvent:
     closed_lots: float
     remaining_lots: float
     fill_price: Optional[float]
-    result: OrderResult
+    result: AlgoOrderResult
     tick_time: Optional[datetime] = None
 
 
@@ -208,7 +208,7 @@ class PositionClosedEvent:
         fill_price: Executed close price
         lots: Lots closed
         realized_pnl: Realised P&L of the close
-        result: Full OrderResult for detailed access
+        result: The order's full result, as a read-only mask (#654)
         tick_time: Tick timestamp at delivery (sim time / wall-clock)
     """
     position_id: str
@@ -217,7 +217,7 @@ class PositionClosedEvent:
     fill_price: Optional[float]
     lots: Optional[float]
     realized_pnl: float
-    result: OrderResult
+    result: AlgoOrderResult
     tick_time: Optional[datetime] = None
 
 
@@ -260,7 +260,7 @@ class SessionEndOrderOutcomeEvent:
     order_id: str
     position_id: Optional[str]
     status: OrderStatus
-    result: OrderResult
+    result: AlgoOrderResult
     tick_time: Optional[datetime] = None
 
 

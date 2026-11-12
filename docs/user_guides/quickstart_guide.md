@@ -372,8 +372,9 @@ class AggressiveTrend(AbstractDecisionLogic):
         self,
         decision: Decision,
         tick: TickData
-    ) -> Optional[OrderResult]:
-        """Execute the trading decision"""
+    ) -> Optional[AlgoOrderResult]:
+        """Execute the trading decision — send_order's result is a read-only AlgoOrderResult
+        (docs/user_guides/algo_masks.md)"""
 
         if decision.action == DecisionLogicAction.FLAT:
             return None

@@ -14,12 +14,14 @@ from typing import List, Type
 import pytest
 
 from python.framework.trading_env.algo_masks.abstract_algo_mask import AbstractAlgoMask
+from python.framework.trading_env.algo_masks.algo_order import AlgoOrder
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.trading_env.algo_masks.algo_position import AlgoPosition
 
 DOC = Path('docs/user_guides/algo_masks.md')
 
 # Every algo mask and the page documents, each under a heading that opens with its class name
-DOCUMENTED_MASKS: List[Type[AbstractAlgoMask]] = [AlgoPosition]
+DOCUMENTED_MASKS: List[Type[AbstractAlgoMask]] = [AlgoPosition, AlgoOrder, AlgoOrderResult]
 
 
 def _documented_fields(mask: Type[AbstractAlgoMask]) -> List[str]:

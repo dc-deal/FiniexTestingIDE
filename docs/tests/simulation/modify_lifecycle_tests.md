@@ -88,7 +88,15 @@ clears. Capability gates for stop-order modify and position modify.
 | Test | Description |
 |---|---|
 | `test_modify_position_sync_fallback_for_kraken_caps` | `native_position_sl_tp=False` → instant `portfolio.modify_position` (sync fallback, `status=SUCCESS`, no entry in `_pending_position_modifications`) |
-| `test_modify_position_async_path_with_mt5_caps` | Monkey-patched `native_position_sl_tp=True` → async pending pattern: schedule registers in `_pending_position_modifications`, next tick applies SL/TP via portfolio.modify_position, tracker drained |
+| `test_modify_position_async_path_with_mt5_caps` | The capabilities replaced by a copy with `native_position_sl_tp=True` (they are frozen) → async pending pattern: schedule registers in `_pending_position_modifications`, next tick applies SL/TP via portfolio.modify_position, tracker drained |
+
+#### TestTheAlgoSeesItsOrder
+
+| Test | Description |
+|---|---|
+| `test_a_kept_mask_shows_the_modify_in_flight_then_applied` | the algo's mask of a resting limit shows `PENDING_MODIFY` and the old price while the modify is in flight, the new price and stop loss once applied, and is the same mask on the next read (#654) |
+| `test_assigning_to_the_mask_changes_nothing` | an assignment raises, and the order keeps its price |
+| `test_a_cancelled_order_leaves_the_reads` | once the cancel resolves, no mask of it is handed out |
 
 ---
 

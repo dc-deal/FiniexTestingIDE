@@ -34,6 +34,7 @@ from typing import Any, Dict, List, Optional
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.own_exit_levels import OwnExitLevels
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
@@ -51,7 +52,6 @@ from python.framework.types.trading_env_types.market_data_status_types import Ma
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderFeature,
-    OrderResult,
     OrderSide,
     OrderStatus,
     OrderType,
@@ -555,7 +555,7 @@ class CautiousMacd(AbstractDecisionLogic):
         self,
         decision: Decision,
         tick: TickData
-    ) -> Optional[OrderResult]:
+    ) -> Optional[AlgoOrderResult]:
         """
         Execute state machine: FLAT / PENDING_ENTRY / IN_POSITION.
 
@@ -580,7 +580,7 @@ class CautiousMacd(AbstractDecisionLogic):
             tick: Current tick data
 
         Returns:
-            OrderResult if order was placed, None otherwise
+            AlgoOrderResult if order was placed, None otherwise
         """
         if not self.trading_api:
             self.logger.warning('Trading API not available - cannot execute')

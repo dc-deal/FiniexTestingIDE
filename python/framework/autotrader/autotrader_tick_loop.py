@@ -63,6 +63,7 @@ from python.framework.signal_data.transport.abstract_signal_transport import (
 from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.stress_test.stale_data_stress_driver import StaleDataStressDriver
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.reconciler import Reconciler
@@ -85,7 +86,6 @@ from python.framework.types.persistence_types import BaselineQuantities
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
 from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
-from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.utils.trading_day_anchor import boundary_opening
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
@@ -1009,7 +1009,7 @@ class AutotraderTickLoop:
         if self._decision_event_dispatcher is not None:
             self._decision_event_dispatcher.drain()
 
-    def _record_rejection(self, order_result: Optional[OrderResult], decision: Decision) -> None:
+    def _record_rejection(self, order_result: Optional[AlgoOrderResult], decision: Decision) -> None:
         """
         Record a rejected order into the rolling rejection buffer (display + count).
 
@@ -1163,7 +1163,7 @@ class AutotraderTickLoop:
 
         return ticks_processed - self._last_book_drift_tick >= self._book_drift_interval_ticks
 
-    def _run_decision_heartbeat(self, ticks_processed: int) -> Optional[OrderResult]:
+    def _run_decision_heartbeat(self, ticks_processed: int) -> Optional[AlgoOrderResult]:
         """
         #360 ghost-pass: run an opt-in decision between ticks without a synthetic tick.
 

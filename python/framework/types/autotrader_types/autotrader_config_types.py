@@ -4,6 +4,7 @@ Typed configuration for live AutoTrader sessions.
 """
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -29,6 +30,17 @@ from python.framework.types.config_types.scenario_settings_config_types import (
     ScenarioSettingsConfig,
 )
 from python.framework.types.run_purpose_types import RunPurpose
+
+
+class AdapterType(StrEnum):
+    """
+    What an AutoTrader session trades against.
+
+    MOCK: a replay of recorded data against a simulated venue
+    LIVE: a venue's real API — with real money, or placing nothing where `dry_run` resolves true
+    """
+    MOCK = 'mock'
+    LIVE = 'live'
 
 
 @dataclass
@@ -121,7 +133,7 @@ class AutoTraderConfig:
     carry_over_from: str = ''
     symbol: str = ''
     broker_type: str = ''
-    adapter_type: str = 'mock'
+    adapter_type: AdapterType = AdapterType.MOCK
     strategy_config: Dict[str, Any] = field(default_factory=dict)
     scenario_settings: Optional[ScenarioSettingsConfig] = None
     tick_source: TickSourceConfig = field(default_factory=TickSourceConfig)

@@ -66,6 +66,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
@@ -76,7 +77,6 @@ from python.framework.types.trading_env_types.market_data_status_types import Ma
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderFeature,
-    OrderResult,
     OrderSide,
     OrderType,
 )
@@ -365,7 +365,7 @@ class MultiPositionProbe(AbstractDecisionLogic):
         self,
         decision: Decision,
         tick: TickData
-    ) -> Optional[OrderResult]:
+    ) -> Optional[AlgoOrderResult]:
         """
         Execute multi-position trading logic.
 
@@ -383,7 +383,7 @@ class MultiPositionProbe(AbstractDecisionLogic):
             tick: Current tick data
 
         Returns:
-            OrderResult if new order was sent, None otherwise
+            AlgoOrderResult if new order was sent, None otherwise
         """
         if not self.trading_api:
             self.logger.warning(

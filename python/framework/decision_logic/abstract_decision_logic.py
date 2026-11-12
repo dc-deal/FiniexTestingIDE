@@ -22,6 +22,7 @@ from python.framework.reporting.diagnostics_csv_sink import DiagnosticsCsvSink
 from python.framework.reporting.io.run_stream_appender import RunStreamAppender
 from python.framework.store.entry_members.strategy_file import StrategyFile
 from python.framework.store.entry_members.strategy_file_writer import StrategyFileWriter
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
@@ -57,7 +58,6 @@ from python.framework.types.persistence_types import RestoreContext
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     OrderFeature,
-    OrderResult,
     OrderType,
 )
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
@@ -282,7 +282,7 @@ class AbstractDecisionLogic(ABC):
         self,
         decision: Decision,
         tick: Optional[TickData]
-    ) -> Optional[OrderResult]:
+    ) -> Optional[AlgoOrderResult]:
         """
         Execute trading decision via DecisionTradingApi (Template Method).
 
@@ -301,7 +301,7 @@ class AbstractDecisionLogic(ABC):
             tick: Current tick data
 
         Returns:
-            OrderResult if order was sent, None if no trade
+            AlgoOrderResult if order was sent, None if no trade
         """
         # Call implementation (subclass)
         order_result = self._execute_decision_impl(decision, tick)
@@ -318,7 +318,7 @@ class AbstractDecisionLogic(ABC):
         self,
         decision: Decision,
         tick: Optional[TickData]
-    ) -> Optional[OrderResult]:
+    ) -> Optional[AlgoOrderResult]:
         """
         Implementation of decision execution (to be overridden by subclass).
 
@@ -330,7 +330,7 @@ class AbstractDecisionLogic(ABC):
             tick: Current tick data
 
         Returns:
-            OrderResult if order was sent, None if no trade
+            AlgoOrderResult if order was sent, None if no trade
         """
         pass
 

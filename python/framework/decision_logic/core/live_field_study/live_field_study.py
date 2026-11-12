@@ -228,7 +228,7 @@ class LiveFieldStudy(AbstractAcceptanceStudy):
                        if o.pending_order_id == order_id), None)
         if target is not None and target.order_type in STOP_WORLD_TYPES:
             self.trading_api.modify_stop_order(
-                order_id=order_id, new_stop_price=action.price)
+                order_id=order_id, stop_price=action.price)
             return
         self.trading_api.modify_limit_order(order_id=order_id, price=action.price)
 

@@ -1,7 +1,7 @@
 # Cache Transparency Tests
 
 `tests/framework/cache_transparency/` — nothing an algo can see depends on the portfolio's lazy
-marking, and what an algo receives is a read-only algo mask (#653).
+marking, and what an algo receives is a read-only algo mask or a frozen value (#653, #654).
 
 Run: `python -m pytest tests/framework/cache_transparency/ -v`
 Launch entry: `🧩 Pytest: Cache Transparency (All)`
@@ -22,6 +22,7 @@ API hands out, on every pass, and the record must not depend on the cache.
 | A value an algo reads differs with the cache on and off | A strategy decides on a stale or unmarked value, and its backtest differs from its live session by construction |
 | A position read in a session is not marked at its tick | The live side reads what the backtest does not |
 | A public method of the decision API is neither declared nor observed | A new read reaches algos unchecked |
+| A read says it hands out a mask, a frozen value or a plain value and its return type is something else | An engine object reaches the algo through a read nobody looked at |
 | A mask can be written to, or hands out an engine object | An algo changes engine state past the order guard and, live, the venue |
 | A mask's documented fields differ from the mask | The page an algo author reads describes another contract |
 
@@ -39,7 +40,7 @@ first pass and field.
 
 | Test | Description |
 |------|-------------|
-| `TestTheFixturesAreWorthComparing` | at spot and at margin the plan opened two positions, one at a heartbeat, closed one in part and both in full |
+| `TestTheFixturesAreWorthComparing` | at spot and at margin the plan opened two positions, one at a heartbeat, closed one in part and both in full; it rested a limit far from the market, kept its mask and cancelled it; every event carries a readable result |
 | `TestNothingADecisionSeesDependsOnTheCache` | at spot and at margin the two records are equal |
 
 ### `test_cache_transparency_session.py`
@@ -70,6 +71,14 @@ The mask against a real portfolio, at spot and at margin.
 |------|-------------|
 | `TestTheDeclarationIsComplete` | every public method of the decision trading API is declared as reading or acting, nothing is declared the class lacks, and both kinds occur |
 | `TestTheProbeObservesEveryRead` | the observer probe calls exactly the declared reading methods |
+| `TestEveryReadSaysWhatItReturns` | every reading method declares what it hands out — a mask, a frozen value, a copy made for the call or a plain value — and its return type agrees |
+
+### `test_algo_order_result.py`
+
+| Test | Description |
+|---|---|
+| `TestTheResultMask` | the mask shows the outcome and a refusal; a close that joined another says so; the engine's bookkeeping — metadata, submission, order-event sequence — is not shown; an assignment raises and changes nothing; a decision event carries the mask |
+| `TestFrozenValues` | the order capabilities and the market data status refuse every assignment |
 
 ### `test_algo_mask_docs.py`
 

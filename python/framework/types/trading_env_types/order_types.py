@@ -307,7 +307,7 @@ class FeeReport(Enum):
 # Order Capability System
 # ============================================
 
-@dataclass
+@dataclass(frozen=True)
 class OrderCapabilities:
     """
     Runtime capability checks for broker-specific order types.

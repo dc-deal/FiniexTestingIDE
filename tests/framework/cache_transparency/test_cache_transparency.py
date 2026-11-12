@@ -41,6 +41,9 @@ SPOT_PLAN = [
     {'trigger': 'tick', 'at': 1500, 'action': 'partial_close', 'position_index': 0, 'lots': 0.004},
     {'trigger': 'tick', 'at': 2200, 'action': 'close', 'position_index': 1},
     {'trigger': 'tick', 'at': 2800, 'action': 'close', 'position_index': 0},
+    {'trigger': 'tick', 'at': 600, 'action': 'rest_limit', 'direction': 'LONG', 'lots': 0.01,
+     'offset': 0.2},
+    {'trigger': 'tick', 'at': 1200, 'action': 'cancel_resting', 'resting_index': 0},
 ]
 MARGIN_PLAN = [
     {'trigger': 'tick', 'at': 100, 'action': 'open', 'direction': 'LONG', 'lots': 0.02},
@@ -48,6 +51,9 @@ MARGIN_PLAN = [
     {'trigger': 'tick', 'at': 2500, 'action': 'partial_close', 'position_index': 0, 'lots': 0.01},
     {'trigger': 'tick', 'at': 4000, 'action': 'close', 'position_index': 1},
     {'trigger': 'tick', 'at': 5500, 'action': 'close', 'position_index': 0},
+    {'trigger': 'tick', 'at': 700, 'action': 'rest_limit', 'direction': 'SHORT', 'lots': 0.01,
+     'offset': 0.2},
+    {'trigger': 'tick', 'at': 1800, 'action': 'cancel_resting', 'resting_index': 0},
 ]
 MARGIN_MAX_TICKS = 6000
 
@@ -150,6 +156,13 @@ def _assert_worth_comparing(record: List[Dict[str, Any]]) -> None:
                           if entry['kind'] == 'heartbeat' and entry['reads']['get_open_positions']]
     assert heartbeats_holding, 'no heartbeat pass saw an open position — the fixture has no gap to test'
     assert any(len(entry['kept']) >= 2 for entry in record), 'the probe never held two positions'
+    assert any(entry['reads']['get_active_orders'] for entry in record), 'no pass saw a resting order'
+    assert any(entry['kept_orders'] for entry in record), 'the probe never kept a resting order'
+    assert kinds.count('order_cancelled') == 1, 'the plan cancelled no resting order'
+    results = [entry['event']['result'] for entry in record
+               if entry.get('event') and 'result' in entry['event']]
+    assert results and all('order_id' in result and 'status' in result for result in results), \
+        'the events carry no readable result'
 
 
 def _assert_equal(pair: Dict[str, Any]) -> None:
