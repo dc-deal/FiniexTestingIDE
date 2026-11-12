@@ -1,13 +1,13 @@
 # Loop Pass Order Tests
 
 `tests/framework/loop_pass_order/` — what each tick loop calls in each kind of pass, and in which
-order. Both loops are about to send their passes through one dispatcher (#458), a move that must
-not change behaviour. A parity test compares what the two pipelines produce, but a step that moves
+order. Both loops send their passes through one dispatcher (#458), a move that was not to change
+behaviour. A parity test compares what the two pipelines produce, but a step that moves
 inside one pass can leave every output the same on a fixture and still change a real run: a drain
 that comes after the ghost pass instead of before it, a boundary checked after the broker path
 instead of before. This suite pins the call order itself.
 
-It was written against the loops before the move and is meant to stay unchanged through it. When
+It was written against the loops before the move and stayed unchanged through it. When
 the passes later take the phase order of the event model (#460 for the backtest, #461 for the
 AutoTrader), the differences become deliberate, and this suite is where they are written down.
 
@@ -66,6 +66,7 @@ clipping gate.
 |---|---|
 | `test_inbox_before_the_clock_then_broker_account_bars_algo_safety_execute_drain` | Two tick passes, then the session-end event and the outcomes of its orders, each drained |
 | `test_clock_boundary_heartbeat_staleness_reconcile_inbox_drain_then_ghost` | Two ticks, then two idle passes on a fixed wall clock a second later: the first ghost decision executes, the second is None, and neither is drained after |
+| `test_a_ghost_decision_executes_as_flat_while_entries_are_blocked` | With the safety layer blocking entries, a ghost pass's BUY reaches the logic as FLAT — the override the idle pass applies between the decision and its execution |
 | `test_clock_boundary_heartbeat_drain_carry_over` | A stop asked for before the first pass with a market buy on its way: no tick or idle pass, wait passes until the buy is settled, each heard, then the session end |
 | `TestTheIndicatorSeries` (#379) | the indicator series right after the state frame on every tick pass; with the series alone the closed bars are still read, right after the bars render |
 | `test_after_the_session_end_event_nothing_is_heard` | Nothing on its way before the stop, an order sent from the session-end event: the second wait's passes drain nothing, and the outcomes of that order are delivered after it |

@@ -4,8 +4,7 @@ Both pipelines run the same strategy over the same kind of events — ticks, tim
 due — but each tick loop used to decide on its own what runs in which order. That is how the two
 drifted apart before (the clipping gate once ran before the bars in one loop and after them in the
 other). The loop core gives the order one home: an event model with one timeline, and one unit
-that owns the order of every pass, fed by each pipeline's own drive — the backtest's today, the
-AutoTrader's next.
+that owns the order of every pass, fed by each pipeline's own drive.
 
 This document covers the event model, the timeline and the dispatcher. Not here: what the executor
 does inside a step ([Execution Layer](architecture_execution_layer.md)), the two drives side by side
@@ -45,8 +44,7 @@ whole budget per tick (measured with `python/experiments/cost_probes/probe_loop_
 
 `loop/loop_event_dispatcher.py` holds the order of a pass as code — one entry per kind of pass,
 never a table, because a table hides its conditions and invites reordering at runtime. A runner
-keeps its drive and hands each pass to an entry; the backtest does today, the AutoTrader's passes
-follow:
+keeps its drive and hands each pass to an entry:
 
 ```
 backtest drive (process_tick_loop)              loop core
@@ -56,6 +54,20 @@ backtest drive (process_tick_loop)              loop core
       state frame · session end · live export     clock → day boundary → broker path → bars
                                                   → equity sample → clipping gate → stress +
                                                   tracker → algo → execute → drain
+
+AutoTrader drive (AutotraderTickLoop.run)
+  while running:
+      no tick within the heartbeat ────────▶  dispatch_live_timer(now, ctx, hooks)
+                                                  clock → day boundary → heartbeat → staleness
+                                                  → reconcile → signal inbox → drain → ghost
+                                                  → safety override → execute
+      slice_of_tick(tick) ─────────────────▶  dispatch_live_slice(event, ctx, hooks, record)
+      session end · reconcile · persistence       signal inbox → clock → day boundary → broker
+      · clipping monitor · display · frame        path → market status + account value → bars
+                                                  → algo → safety → safety override → execute
+                                                  → drain
+  a stop's wait, per pass ─────────────────▶  dispatch_live_order_wait(now, ctx, hooks, hear)
+                                                  clock → day boundary → heartbeat → drain
 ```
 
 What a pass works with is bundled once per run:
@@ -66,20 +78,29 @@ What a pass works with is bundled once per run:
 - **The blocks** (`loop/blocks/`) — the steps both pipelines share: rendering a tick's bars,
   computing the workers and the decision, the ghost pass's decision.
 - **The hooks** — the runner's own steps inside a pass, at fixed points
-  (`AbstractBacktestPassHooks`). A hook exists only where the runner has work, so a pass makes no
-  call that does nothing.
+  (`AbstractBacktestPassHooks`, which `SimPassHooks` implements; `AbstractLivePassHooks`, which
+  the AutoTrader's tick loop implements itself, because the steps are its own state). A hook
+  exists only where the runner has work, so a pass makes no call that does nothing.
 - **`LoopPassRecord`** — what a pass leaves for its drive: the ticks applied, the forming bars, the
   bars the tick closed, the decision and what it sent.
 
 A pass ends with its last engine step. What a runner does after it stays in the runner, in its
-order: the state frame, the session-end check, the live export, the timing.
+order: the state frame, the session-end check, the live export, the timing — and in the AutoTrader
+the reconcile after a tick, the persistence, the clipping monitor and the display.
 
 ### Today: each runner's own order
 
 The two runners order their passes differently today — where the equity is sampled, how often the
 decision events drain around a ghost pass — and the dispatcher keeps each runner's order exactly,
 so every result stays as it was. The tests in `tests/framework/loop_pass_order/` pin both orders
-step by step. The backtest passes run through the dispatcher; the AutoTrader's follow.
+step by step; they were written before the move and passed unchanged after it. Where the two
+differ in the order of the steps they share: the AutoTrader folds in its signal inbox before the
+clock moves, reads the market-data status and the account value before the bars where the backtest
+reads them after, samples the account again after the algo for its safety layer and may turn a
+decision into FLAT, and drains the decision events once around a ghost pass where the backtest
+drains twice. Beyond that each pass has steps of its own — the backtest's clipping gate, the
+AutoTrader's staleness, reconcile and signal inbox on its idle pass. The diagram above and the
+pass-order tests hold the full orders.
 
 The phase order of an instant takes over with the timeline drivers, which feed whole instants: the
 backtest's (#460) and the live session's (#461). Both change results on purpose and are measured

@@ -216,6 +216,38 @@ class TestIdlePass:
             _TICK_PASS * 2 + _IDLE_PASS_ACTING + _IDLE_PASS_QUIET
             + _SESSION_END_EVENT + _SESSION_END_ORDERS)
 
+    def test_a_ghost_decision_executes_as_flat_while_entries_are_blocked(
+            self, live_steps, monkeypatch: pytest.MonkeyPatch):
+        """The safety layer blocks entries: the ghost pass's BUY reaches the logic as FLAT."""
+        ticks = _ticks(2)
+        after_the_ticks = ticks[-1].timestamp + timedelta(seconds=1)
+
+        class _WallClock(datetime):
+            @classmethod
+            def now(cls, tz: Optional[Any] = None) -> datetime:
+                return after_the_ticks
+
+        monkeypatch.setattr(tick_loop_module, 'datetime', _WallClock)
+        monkeypatch.setattr(SafetyCircuitBreaker, 'entries_blocked', lambda breaker: True)
+        ghost_actions: List[DecisionLogicAction] = []
+        spied_execute = DeterministicProbe.execute_decision
+
+        def execute(logic: DeterministicProbe, decision: Decision,
+                    tick: Optional[TickData] = None) -> Any:
+            if tick is None:
+                ghost_actions.append(decision.action)
+            return spied_execute(logic, decision, tick)
+
+        monkeypatch.setattr(DeterministicProbe, 'execute_decision', execute)
+        loop = autotrader_loop(ticks, spot_mode=False,
+                               orchestrator=live_steps.orchestrator(
+                                   [Decision(action=DecisionLogicAction.BUY)]),
+                               decision_events=True, idle_heartbeats=1, heartbeat_interval_ms=5)
+
+        loop.run()
+
+        assert ghost_actions == [DecisionLogicAction.FLAT]
+
 
 class TestOrderWaitPass:
     """

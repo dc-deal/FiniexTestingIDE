@@ -43,9 +43,15 @@ from python.framework.autotrader.tick_sources.abstract_tick_source import Abstra
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.loop.blocks.algo_compute_block import execute_algo_path
-from python.framework.loop.blocks.algo_heartbeat_block import run_ghost_pass
-from python.framework.loop.blocks.bar_render_block import render_bars_for_tick
+from python.framework.loop.abstract_live_pass_hooks import AbstractLivePassHooks
+from python.framework.loop.event_sequencer import EventSequencer
+from python.framework.loop.loop_context import LoopContext
+from python.framework.loop.loop_event_dispatcher import (
+    dispatch_live_order_wait,
+    dispatch_live_slice,
+    dispatch_live_timer,
+)
+from python.framework.loop.tick_slicer import slice_of_tick
 from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.persistence.position_book_watcher import PositionBookWatcher
 from python.framework.process.indicator_series_recorder import IndicatorSeriesRecorder
@@ -77,9 +83,10 @@ from python.framework.types.autotrader_types.safety_session_types import SafetyS
 from python.framework.types.autotrader_types.shutdown_status_types import endings_by_order
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
-from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
+from python.framework.types.decision_logic_types import Decision
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.log_level import LogLevel
+from python.framework.types.loop_types.loop_pass_record_types import LoopPassRecord
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.persistence_types import BaselineQuantities
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
@@ -89,13 +96,15 @@ from python.framework.utils.trading_day_anchor import boundary_opening
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
-class AutotraderTickLoop:
+class AutotraderTickLoop(AbstractLivePassHooks):
     """
     Tick processing loop for an AutoTrader session.
 
-    Pulls ticks from a queue.Queue (fed by a TickSource thread),
-    processes each tick through the full algo pipeline:
-    on_tick → bars → workers → decision → clipping monitor.
+    Pulls ticks from a queue.Queue (fed by a TickSource thread) and hands each pass to the loop
+    core (#458) — a tick, the pass when no tick came, a stop's wait — whose order runs
+    on_tick → bars → workers → decision; this loop's own steps inside a pass are its hooks, and
+    what follows a pass (reconcile, persistence, clipping monitor, display, state frame) stays
+    here.
 
     Session log rotates when the market crosses into a new trading day — each day gets its
     own file in session_logs/ to prevent unbounded log growth on 24/7 sessions.
@@ -394,6 +403,23 @@ class AutotraderTickLoop:
             signal_transport=self._signal_transport,
         )
 
+        # #458 — what every pass of the loop core works with, bundled once for the session
+        self._loop_context = LoopContext(
+            executor=self._executor,
+            bar_controller=self._bar_controller,
+            orchestrator=self._worker_orchestrator,
+            decision_logic=self._decision_logic,
+            decision_event_dispatcher=self._decision_event_dispatcher,
+            symbol=self._config.symbol,
+            booking=self._booking,
+            seal_source=self._seal_source,
+            reads_closed_bars=(self._state_frames is not None
+                               or self._indicator_series is not None),
+            profiling_enabled=False,
+            profile_times={},
+            profile_counts={},
+        )
+
     def stop(self) -> None:
         """Signal the tick loop to stop. Thread-safe."""
         self._running = False
@@ -414,6 +440,9 @@ class AutotraderTickLoop:
         ticks_processed = 0
         ticks_clipped = 0
         prev_msc: int = 0
+        # #458: what each tick pass leaves for the steps below it, and the slices' numbering
+        pass_record = LoopPassRecord()
+        sequencer = EventSequencer()
 
         # #320 — Push an initial startup pulse frame so the display renders
         # the full dashboard from t=0 instead of falling back to a wait
@@ -447,35 +476,10 @@ class AutotraderTickLoop:
                     self._logger.info(
                         '📭 Tick source exhausted — ending session')
                     break
-                # #360: timer event. The canonical clock advances during idle (phase/op
-                # timeouts track real elapsed time) — live by the wall clock, a replay by its
-                # own time, which the tick source answers (#616) — then run the side-effect-free
-                # cadence — no tick state mutation.
-                self._executor.set_current_time(self._idle_pass_time())
-                self._pass_day_boundary_off_tick()
-                # #320 + #360: drain async responses + check timeouts + re-poll
-                # active orders (the fill/cancel-confirm query now fires during idle).
-                self._executor.heartbeat()
-                # #436: market-data staleness contract — evaluate the last real
-                # tick's age BEFORE events/ghost-pass, so the decision sees the
-                # stale status (and the edge hook) in this very pass.
-                self._evaluate_market_data_staleness()
-                # #151 + #360: reconcile on the timer too (was tick-only). Time-bounded
-                # by min_interval_seconds → self-throttled, no API storm during idle.
-                self._reconcile_if_due(ticks_processed)
-                # #141 Part 2a: an envelope that landed between two ticks reaches the
-                # decision HERE. process_heartbeat forwards cached worker results by design,
-                # so without this the arrival would wait for the next tick — minutes on a
-                # quiet instrument, which is exactly what the push channel exists to avoid.
-                self._drain_signal_inbox(off_tick=True)
-                # #348: deliver events surfaced by the heartbeat drain
-                # (idle-time fills/cancels) to the algo hooks — before the ghost-pass
-                # so the decision observes them this pass.
-                self._drain_decision_events()
-                # #360 ghost-pass: let an opt-in decision act between ticks (advance
-                # phases, react to drained events, issue follow-up orders) with no
-                # synthetic tick and no tick-state mutation.
-                ghost_order = self._run_decision_heartbeat(ticks_processed)
+                # #360: timer event, through the loop core (#458) — the clock on the tick
+                # source's time, the heartbeat, staleness, reconcile, the signal inbox, the
+                # drain and the ghost pass
+                ghost_order = dispatch_live_timer(self._idle_pass_time(), self._loop_context, self)
                 # #354: persist algo state on the idle timer too (hybrid cadence).
                 self._persist_state_if_due(ticks_processed)
                 # #355: a fill can resolve on the heartbeat, so the book can change here too.
@@ -514,136 +518,13 @@ class AutotraderTickLoop:
             ticks_processed += 1
             self._ticks_processed = ticks_processed
 
-            # #141 Part 2a: fold in whatever the signal transport received since the last
-            # pass, BEFORE the workers run — the existing should_refresh picks a new snapshot
-            # up exactly as it picks up a mounted one, so tick behaviour and its counters are
-            # untouched.
-            self._drain_signal_inbox(off_tick=False)
-
-            # === 0. Trading-day boundary (#476) — BEFORE the tick is applied ===
-            # A day ends at its boundary: the seal reads the account as the previous pass left
-            # it and is stamped with the boundary, so this tick's fills, trades and valuation
-            # open the new day — the same cut the heartbeat makes, and the one the simulation
-            # makes. The daily loss limit rolls on this seal too, from the value it read. The
-            # canonical clock moves to the tick's instant first — forward only, so a clock a
-            # heartbeat set ahead of the venue's stamp stays where it is, which is the instant
-            # on_tick applies the tick at — and the boundary is checked on it.
-            self._executor.set_current_time(tick.timestamp)
-            self._booking.check_boundary(
-                self._executor.get_current_time_if_set(), self._seal_source)
-            self._close_sealed_days()
-
-            # === DAILY LOG ROTATION ===
-            # On the booking period's day, which the check above advanced — after it, so the
-            # line that sealed the day stays in that day's file, and before the tick, so what the
-            # tick logs (a fill, a triggered stop) is in the file of the day it is booked to. In a
-            # live-adapter session the heartbeat has almost always rotated first; this covers a
-            # replay whose queue never runs empty.
-            self._log_rotator.check_daily_rotation()
-
-            # === 1. Trade Executor — BROKER PATH (all ticks) ===
-            self._executor.on_tick(tick)
-            if self._first_tick_time is None:
-                self._first_tick_time = tick.timestamp
-            self._last_tick_time = tick.timestamp
-
-            # #436: a real tick ends a stale episode (recovery, edge reset).
-            if self._market_stale:
-                self._end_market_stale_episode()
-            elif self._last_real_tick_wall_time <= 0 and self._market_data_alert.is_open():
-                # #235: the first tick ends the wait for it the operator was told about
-                self._market_data_alert.clears(self._executor.get_current_time())
-            if self._market_data_alert.is_open():
-                self._send_market_data_all_clear_if_due()
-
-            # #444: advance the planned stale-window state machine AFTER that recovery and
-            # BEFORE the tracker observes — the wall-clock episode resolves itself first,
-            # then an injected window re-states its claim, and the tracker sees the status
-            # both of them left behind. Ticks keep flowing inside a window by design.
-            if self._stale_stress_driver is not None:
-                self._stale_stress_driver.on_tick(self._executor.get_current_time())
-
-            # #451: observe the resulting status — counts this tick and closes the
-            # episode record from what the session actually experienced.
-            self._market_data_tracker.on_tick(
-                self._executor.get_current_time(),
-                self._executor.get_market_data_status(),
-                self._injected_outage_label(),
-            )
-
-            # Capture spot equity baseline on first tick (first live price available)
-            if ticks_processed == 1 and self._trading_model == TradingModel.SPOT:
-                first_price = tick.mid
-                self._initial_spot_equity = self._executor.portfolio.get_spot_equity(first_price)
-            # #356 — the RISK baseline, which is a different question and answers it once:
-            # `ensure_taken` does nothing when a record was restored from the predecessor, so
-            # a restart mid-drawdown keeps the reference it had instead of re-anchoring at
-            # the drawn-down value. `observe` then advances a high-water mark, and only that.
-            # The booking period observes the same value; its boundary was checked above,
-            # before this tick moved the account (#476).
-            self._observe_account_value(tick)
-
-            # === 2. Bar Rendering (shared core, #303) ===
-            current_bars = render_bars_for_tick(tick, self._bar_controller)
-            # #579: read before the algo pass below consumes them — a state frame names the bar
-            # the decision just saw close
-            closed_timeframes = (self._bar_controller.get_pending_closed_timeframes()
-                                 if self._state_frames is not None
-                                 or self._indicator_series is not None else frozenset())
-
-            # === 3+4. Bar History + Worker Processing + Decision (shared core, #303) ===
-            decision = execute_algo_path(
-                tick=tick,
-                current_bars=current_bars,
-                bar_controller=self._bar_controller,
-                worker_orchestrator=self._worker_orchestrator,
-                symbol=self._config.symbol,
-            )
-
-            # === 4b. New-max debug logging ===
-            self._check_new_maxes()
-
-            # === 5. Safety Check (circuit breaker) ===
-            # ONE value definition, the same one the drawdown series uses (#356/#492). The
-            # margin branch used to read `get_balance()` — settled cash, which by
-            # construction moves only on REALISED P&L, so an open drawdown was invisible to
-            # the breaker of the account model that can lose more than it holds. None means
-            # the holdings cannot be valued yet; the breaker then does not measure rather
-            # than measuring against a guess.
-            safety_value = self._executor.portfolio.get_account_value()
-            safety_baseline = self._safety.baseline_value()
-            if safety_value is not None:
-                # #497 — the REPORT's drawdown reads the same per-tick value the breaker
-                # does, and pays nothing for it: the evaluation above is already done. The
-                # series was otherwise written only when a position CLOSED, which measures
-                # the largest decline across closed trades rather than the largest decline
-                # of the equity curve. Two different measures; only the second is what the
-                # word means. (#515 will add the stop-out pass — it rides this
-                # same seam rather than opening a second one.)
-                self._executor.portfolio.sample_equity(safety_value)
-
-                # Record the excursion BEFORE the checks and from the same two values they
-                # read. A report measuring a different number from the one that decides is
-                # the defect this issue removes, one layer up.
-                self._safety.observe_excursion(safety_value, safety_baseline)
-                self._safety.check_safety(safety_value, safety_baseline)
-                # #356 — the HARD stop, checked after the soft one so a session that trips
-                # both reports both. Sends the closes ONCE; the drain below carries them.
-                self._safety.check_emergency_flatten(
-                    safety_value, safety_baseline, ticks_processed)
-            self._safety.drive_emergency_flatten(ticks_processed)
-
-            # === 6. Order Execution ===
-            if self._safety.entries_blocked():
-                decision.action = DecisionLogicAction.FLAT
-            order_result = self._decision_logic.execute_decision(decision, tick)
-            self._record_rejection(order_result, decision)
-
-            # === 6b. Decision event drain (#348) ===
-            # Events buffered during on_tick (fills, partial closes, cancels)
-            # are delivered to the algo hooks here — after compute/execute and
-            # before the next tick. A hook may request session end.
-            self._drain_decision_events()
+            # === 0.–6b. The tick pass, through the loop core (#458) ===
+            # Signal inbox, clock and day boundary, broker path, bars, algo, safety, execute,
+            # drain — this loop's own steps inside it are its hooks below
+            dispatch_live_slice(slice_of_tick(tick, sequencer), self._loop_context, self,
+                                pass_record)
+            decision = pass_record.decision
+            order_result = pass_record.order_result
             if self._executor.is_session_end_requested():
                 self._logger.info(
                     f'🛑 Session end requested: {self._executor.get_session_end_reason()}')
@@ -703,11 +584,12 @@ class AutotraderTickLoop:
                 safety = self._safety.get_display_state()
                 self._state_frames.on_pass(
                     ticks_processed, decision, on_tick=True,
-                    closed_timeframes=closed_timeframes, order=order_result,
+                    closed_timeframes=pass_record.closed_timeframes, order=order_result,
                     safety_blocked=safety.blocked, safety_drawdown_pct=safety.drawdown_pct)
             # #379: each drawing worker's value for a bar that closed, in the same place
             if self._indicator_series is not None:
-                self._indicator_series.on_pass(closed_timeframes, current_bars)
+                self._indicator_series.on_pass(pass_record.closed_timeframes,
+                                               pass_record.current_bars)
 
             # Track last valid tick/decision for the final shutdown snapshot
             # and heartbeat pulse frames (#320).
@@ -850,8 +732,9 @@ class AutotraderTickLoop:
         """
         One pass of a stop's wait: what an idle pass does for the orders, and nothing for the algo.
 
-        Stamps the liveness, so the monitor stays quiet. No tick, no ghost pass, no signal inbox, no
-        reconcile and no state frame: the decisions have stopped, and a write is never repeated.
+        Stamps the liveness, so the monitor stays quiet, and hands the pass to the loop core (#458).
+        No tick, no ghost pass, no signal inbox, no reconcile and no state frame: the decisions have
+        stopped, and a write is never repeated.
 
         Args:
             ticks_processed: The session's tick count
@@ -859,11 +742,7 @@ class AutotraderTickLoop:
             hear: Whether the logic hears what this pass settles; not after the session-end event
         """
         self._loop_progress.stamp()
-        self._executor.set_current_time(now)
-        self._pass_day_boundary_off_tick()
-        self._executor.heartbeat()
-        if hear:
-            self._drain_decision_events()
+        dispatch_live_order_wait(now, self._loop_context, self, hear)
         self._persist_carry_over_if_needed(ticks_processed)
 
     def _idle_pass_time(self) -> datetime:
@@ -878,20 +757,160 @@ class AutotraderTickLoop:
             return datetime.now(timezone.utc)
         return self._tick_source.get_idle_pass_time()
 
-    def _pass_day_boundary_off_tick(self) -> None:
+    # === The loop core's hooks (#458) — this session's own steps inside a pass ===
+
+    def refresh_signals(self, off_tick: bool) -> None:
         """
-        The trading day's boundary, for the passes that carry no tick: the idle and the wait pass.
+        Fold in the signal envelopes received since the last pass (#141).
+
+        Args:
+            off_tick: True on a pass with no tick, False on a tick
         """
-        # #537 / #476: the boundary is checked HERE too, before anything this pass
-        # resolves — a fill the heartbeat drains after the boundary belongs to the day
-        # it opened. The seal is stamped with the boundary, whenever it is noticed.
-        self._booking.check_boundary(
-            self._executor.get_current_time_if_set(), self._seal_source)
+        self._drain_signal_inbox(off_tick)
+
+    def close_sealed_days(self) -> None:
+        """
+        Close the trading days the boundary check just sealed, then move the session log onto the
+        day that opened (#476).
+        """
         self._close_sealed_days()
-        # The log follows the booking period's day, and after it: the line that seals a
-        # day is written into that day's file, and a feed that goes quiet across the
-        # rollover still rotates. A booking does not depend on whether logs are written.
+        # === DAILY LOG ROTATION ===
+        # On the booking period's day, which the boundary check before this hook advanced —
+        # after it, so the line that sealed the day stays in that day's file. On a tick pass
+        # it runs before the tick, so what the tick logs (a fill, a triggered stop) is in the
+        # file of the day it is booked to; on an idle or a wait pass it runs before the
+        # heartbeat, so a feed that goes quiet across the rollover still rotates. In a
+        # live-adapter session the idle pass has almost always rotated first; the tick pass
+        # covers a replay whose queue never runs empty. A booking does not depend on whether
+        # logs are written.
         self._log_rotator.check_daily_rotation()
+
+    def observe_market(self, tick: TickData) -> None:
+        """
+        The tick span, the market-data status and the account's value, once the broker path has
+        seen a tick.
+
+        Args:
+            tick: The tick the broker path just applied
+        """
+        if self._first_tick_time is None:
+            self._first_tick_time = tick.timestamp
+        self._last_tick_time = tick.timestamp
+
+        # #436: a real tick ends a stale episode (recovery, edge reset).
+        if self._market_stale:
+            self._end_market_stale_episode()
+        elif self._last_real_tick_wall_time <= 0 and self._market_data_alert.is_open():
+            # #235: the first tick ends the wait for it the operator was told about
+            self._market_data_alert.clears(self._executor.get_current_time())
+        if self._market_data_alert.is_open():
+            self._send_market_data_all_clear_if_due()
+
+        # #444: advance the planned stale-window state machine AFTER that recovery and
+        # BEFORE the tracker observes — the wall-clock episode resolves itself first,
+        # then an injected window re-states its claim, and the tracker sees the status
+        # both of them left behind. Ticks keep flowing inside a window by design.
+        if self._stale_stress_driver is not None:
+            self._stale_stress_driver.on_tick(self._executor.get_current_time())
+
+        # #451: observe the resulting status — counts this tick and closes the
+        # episode record from what the session actually experienced.
+        self._market_data_tracker.on_tick(
+            self._executor.get_current_time(),
+            self._executor.get_market_data_status(),
+            self._injected_outage_label(),
+        )
+
+        # Capture spot equity baseline on first tick (first live price available)
+        if self._ticks_processed == 1 and self._trading_model == TradingModel.SPOT:
+            first_price = tick.mid
+            self._initial_spot_equity = self._executor.portfolio.get_spot_equity(first_price)
+        # #356 — the RISK baseline, which is a different question and answers it once:
+        # `ensure_taken` does nothing when a record was restored from the predecessor, so
+        # a restart mid-drawdown keeps the reference it had instead of re-anchoring at
+        # the drawn-down value. `observe` then advances a high-water mark, and only that.
+        # The booking period observes the same value; its boundary was checked above,
+        # before this tick moved the account (#476).
+        self._observe_account_value(tick)
+
+    def guard_account(self) -> None:
+        """
+        Value the account after the decision and run the safety layer on that value: the soft
+        breaker, the hard stop and its closes (#356).
+        """
+        ticks_processed = self._ticks_processed
+        # ONE value definition, the same one the drawdown series uses (#356/#492). The
+        # margin branch used to read `get_balance()` — settled cash, which by
+        # construction moves only on REALISED P&L, so an open drawdown was invisible to
+        # the breaker of the account model that can lose more than it holds. None means
+        # the holdings cannot be valued yet; the breaker then does not measure rather
+        # than measuring against a guess.
+        safety_value = self._executor.portfolio.get_account_value()
+        safety_baseline = self._safety.baseline_value()
+        if safety_value is not None:
+            # #497 — the REPORT's drawdown reads the same per-tick value the breaker
+            # does, and pays nothing for it: the evaluation above is already done. The
+            # series was otherwise written only when a position CLOSED, which measures
+            # the largest decline across closed trades rather than the largest decline
+            # of the equity curve. Two different measures; only the second is what the
+            # word means. (#515 will add the stop-out pass — it rides this
+            # same seam rather than opening a second one.)
+            self._executor.portfolio.sample_equity(safety_value)
+
+            # Record the excursion BEFORE the checks and from the same two values they
+            # read. A report measuring a different number from the one that decides is
+            # the defect this issue removes, one layer up.
+            self._safety.observe_excursion(safety_value, safety_baseline)
+            self._safety.check_safety(safety_value, safety_baseline)
+            # #356 — the HARD stop, checked after the soft one so a session that trips
+            # both reports both. Sends the closes ONCE; the drain below carries them.
+            self._safety.check_emergency_flatten(
+                safety_value, safety_baseline, ticks_processed)
+        self._safety.drive_emergency_flatten(ticks_processed)
+
+    def entries_blocked(self) -> bool:
+        """
+        Whether the safety layer blocks new entries, which turns a decision into FLAT.
+
+        Returns:
+            True when entries are blocked
+        """
+        return self._safety.entries_blocked()
+
+    def record_order(self, order_result: Optional[AlgoOrderResult], decision: Decision) -> None:
+        """
+        Note what a tick's decision sent, for the display's rejections.
+
+        Args:
+            order_result: What the decision sent, or None
+            decision: The decision that sent it
+        """
+        self._record_rejection(order_result, decision)
+
+    def evaluate_staleness(self) -> None:
+        """Judge the age of the last real tick on a pass with no tick (#436)."""
+        self._evaluate_market_data_staleness()
+
+    def reconcile(self) -> None:
+        """Compare the book with the venue's when its cadence is due (#151)."""
+        self._reconcile_if_due(self._ticks_processed)
+
+    def count_ghost_pass(self) -> None:
+        """Count a decision that ran between two ticks (#360), for the session's GHOST line."""
+        self._ghost_pass_count += 1
+
+    def record_ghost_order(self, order_result: Optional[AlgoOrderResult],
+                           decision: Decision) -> None:
+        """
+        Note what a decision between two ticks sent: whether it acted, and a rejection.
+
+        Args:
+            order_result: What the decision sent, or None
+            decision: The decision that sent it
+        """
+        if order_result is not None:
+            self._ghost_action_count += 1
+        self._record_rejection(order_result, decision)
 
     def _report_order_wait(self, awaited: List[AwaitedOrder], before_pass: List[AwaitedOrder],
                            waited_s: float, bound_s: float, ticks_processed: int) -> None:
@@ -1186,34 +1205,6 @@ class AutotraderTickLoop:
 
         return ticks_processed - self._last_book_drift_tick >= self._book_drift_interval_ticks
 
-    def _run_decision_heartbeat(self, ticks_processed: int) -> Optional[AlgoOrderResult]:
-        """
-        #360 ghost-pass: run an opt-in decision between ticks without a synthetic tick.
-
-        Workers do not recompute — the orchestrator serves their cached results. The
-        decision runs with tick=None so it can advance internal state (e.g. field-study
-        phases), react to drained #348 events, and issue follow-up orders (re-arm /
-        cancel / confirm). No tick state is mutated (no counter, no mark_dirty, no bar
-        render). Safety reuses the last evaluated block state (no fresh price on idle).
-
-        Args:
-            ticks_processed: Current tick counter (unchanged on a ghost-pass)
-
-        Returns:
-            What the decision sent, or None when it sent nothing or did not run
-        """
-        decision = run_ghost_pass(self._worker_orchestrator)
-        if decision is None:
-            return None
-        self._ghost_pass_count += 1
-        if self._safety.entries_blocked():
-            decision.action = DecisionLogicAction.FLAT
-        order_result = self._decision_logic.execute_decision(decision, tick=None)
-        if order_result is not None:
-            self._ghost_action_count += 1
-        self._record_rejection(order_result, decision)
-        return order_result
-
     def _push_pulse_frame(self, ticks_processed: int) -> None:
         """
         Push a heartbeat pulse frame to the display queue (#320).
@@ -1450,7 +1441,7 @@ class AutotraderTickLoop:
         """
         return self._market_data_tracker.get_tick_stats()
 
-    def _check_new_maxes(self) -> None:
+    def log_new_maxima(self) -> None:
         """Log new all-time max execution times for workers and decision logic."""
         for name, worker in self._worker_orchestrator.workers.items():
             if not worker.performance_logger:

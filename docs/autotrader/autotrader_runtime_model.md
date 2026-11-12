@@ -145,7 +145,13 @@ the run header and reported as a Tier-1 warning, and never through the second �
 
 ### Tick Loop
 
-Each tick follows the same 5-step path as backtesting:
+The loop is the session's drive: it takes each tick off the queue, or notices that none came, and
+hands the pass to the loop core (`dispatch_live_slice`, `dispatch_live_timer`; see
+[The Loop Core](../architecture/loop_core_architecture.md)), which keeps the session's order of
+the steps. The full order of each pass, and where it differs from the backtest's — no clipping
+gate, a safety layer that may turn a decision into FLAT — is in
+[The dispatcher](../architecture/loop_core_architecture.md#the-dispatcher). The main steps of a
+tick are the backtest's:
 
 1. **Broker Path** — `executor.on_tick(tick)` — pending order processing, price updates
 2. **Bar Rendering** — `bar_controller.process_tick(tick)` — aggregate ticks into OHLC bars
@@ -159,14 +165,19 @@ When the tick queue times out (no tick within `heartbeat_interval_ms`, default
 1000 ms), the loop fires a **timer event** instead of falling through silently —
 the single main-loop consumer runs the cadence work without a second thread (#360):
 
-1. `executor.set_current_time(now)` — inject the wall-clock so the canonical clock
-   advances during idle (phase/op timeouts track real elapsed time, not a frozen tick).
-2. `executor.heartbeat()` — drain async worker responses (submit, edit, cancel,
+1. `executor.set_current_time(now)` — inject the tick source's time (the wall clock live, a
+   replay's own time in a mock session, #616) so the canonical clock advances during idle
+   (phase/op timeouts track real elapsed time, not a frozen tick).
+2. The trading day's boundary — a day that ended on a quiet feed is sealed here, before anything
+   this pass resolves.
+3. `executor.heartbeat()` — drain async worker responses (submit, edit, cancel,
    query, trades), process order timeouts, **and re-poll active orders** so the
    fill/cancel-confirm query fires during idle (not only on a real tick).
-3. `reconciler.reconcile()` if due — broker truth-pull on the timer too (was tick-only),
+4. The market-data staleness check (#436), on the last real tick's age.
+5. `reconciler.reconcile()` if due — broker truth-pull on the timer too (was tick-only),
    self-throttled by `min_interval_seconds`.
-4. `orchestrator.process_heartbeat()` — a **decision ghost-pass**: for a logic that
+6. The signal inbox (#141), then the decision events (#348) the heartbeat surfaced.
+7. `orchestrator.process_heartbeat()` — a **decision ghost-pass**: for a logic that
    opts in via `wants_heartbeat()`, the decision runs with `tick=None` and the cached
    worker results (workers do not recompute) so it can advance internal state, react to
    drained events, and issue follow-up orders. No tick state is mutated (no `_tick_counter`
@@ -176,10 +187,11 @@ It also pushes a *pulse* display frame so the dashboard shows `💓 N s since la
 instead of freezing. See "Polling Cadence" below.
 
 **Canonical clock (#360):** `get_current_time()` returns a loop-injected time — set from
-the tick timestamp in `on_tick`, and from the wall-clock on the heartbeat. The loop owns
-the between-tick time source, so the clock never freezes to the last tick. This is the one
-place wall-clock is read in the AutoTrader (decision logic and workers only ever call
-`get_current_time()`, the one canonical clock). In sim the injected time is the simulated tick
+the tick timestamp in `on_tick`, and on the heartbeat from the tick source's time: the wall clock
+live, a replay's own time in a mock session (#616). The loop owns the between-tick time source,
+so the clock never freezes to the last tick. Live, this is the one place the wall clock is read
+in the AutoTrader (decision logic and workers only ever call `get_current_time()`, the one
+canonical clock). In sim the injected time is the simulated tick
 time (reproducible).
 
 ### Shutdown

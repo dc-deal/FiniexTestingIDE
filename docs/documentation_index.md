@@ -56,7 +56,7 @@
 |----------|-------------|
 | [Execution Layer](architecture/architecture_execution_layer.md) | Core Sim/Live hybrid architecture, shared portfolio logic |
 | [Simulation vs Live Flow](architecture/simulation_vs_autotrader_flow.md) | Side-by-side tick flow comparison |
-| [Loop Core](architecture/loop_core_architecture.md) | The event model and its one timeline, and the dispatcher that owns the order of every backtest pass; the AutoTrader's follow (#457, #458) |
+| [Loop Core](architecture/loop_core_architecture.md) | The event model and its one timeline, and the dispatcher that owns the order of every pass in both pipelines (#457, #458) |
 | [Live Execution](architecture/live_execution_architecture.md) | LiveTradeExecutor, broker polling, LiveRequestProcessor |
 | [Pending Order Lifecycle](architecture/pending_order_architecture.md) | 3-world model (latency, limit, stop), trigger logic |
 | [Order-Event Stream](architecture/order_event_stream.md) | One record per order transition in both pipelines — the vocabulary and who writes it, where each step is recorded, the stream on disk and in the run index, determinism (#362) |

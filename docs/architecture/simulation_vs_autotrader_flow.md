@@ -104,13 +104,18 @@ AutotraderTickLoop.run()
     while running:                                  # infinite, real-time
         │
         tick = tick_queue.get(timeout=heartbeat_interval_ms)  # fed by TickSource thread (WebSocket)
-        │   └── queue.Empty (idle, #360 timer event):
+        │   └── queue.Empty (idle, #360 timer event) → dispatch_live_timer(now, …):  # loop core
         │         → set_current_time(now)             # advance the canonical clock (no frozen tick)
+        │         → day boundary                      # seal a finished day on a quiet feed too
         │         → executor.heartbeat()              # drain async responses + timeouts + re-poll active orders
-        │         → reconcile if due (#151)           # broker truth-pull on the timer too
+        │         → staleness · reconcile if due (#151) · signal inbox
         │         → drain #348 events                 # idle-time fills/cancels → algo hooks
         │         → process_heartbeat()               # decision GHOST-PASS (tick=None, cached workers, opt-in)
-        │         → push display pulse                # "💓 Ns since last tick"
+        │       then, in run(): persistence, state frame, display pulse ("💓 Ns since last tick")
+        │
+        │   dispatch_live_slice(event, …) — the loop core; the full order in loop_core_architecture.md:
+        │
+        ├── 0. signal inbox · clock · day boundary
         │
         ├── 1. executor.on_tick(tick)                # AbstractTradeExecutor (sets clock from tick)
         │       ├── Update prices (bid/ask)
@@ -134,9 +139,10 @@ AutotraderTickLoop.run()
         │
         ├── 7. drain #348 decision events             # fills/cancels delivered to algo hooks
         │
+        │   then, in run():
         ├── 8. reconcile (#151, hybrid cadence)       # broker truth-pull, ALERT_ONLY
         │
-        └── 9. clipping monitor + display stats
+        └── 9. persistence, clipping monitor, display stats, state frame
 ```
 
 **Key characteristics:**
@@ -161,7 +167,7 @@ AutotraderTickLoop.run()
 
 The identical algo-pipeline steps live in ONE implementation each — the loop core's blocks under
 `python/framework/loop/blocks/` — called by both runners, so ordering divergence (the #293 bug
-class) is impossible by construction. The backtest hands each pass to the loop core's dispatcher,
+class) is impossible by construction. Both runners hand each pass to the loop core's dispatcher,
 which owns its order; see [The Loop Core](loop_core_architecture.md):
 
 | Function | Steps | Called for |
@@ -170,11 +176,14 @@ which owns its order; see [The Loop Core](loop_core_architecture.md):
 | `execute_algo_path` | 3–4 — bar history + worker/decision compute | non-clipped ticks |
 | `run_ghost_pass` | heartbeat decision compute (#360) | idle heartbeats (opt-in algos) |
 
-Outside the shared blocks, and still in each runner's own order: the clipping gate, the
-per-step profiling, step 5 `execute_decision` with its error handling, the #348 event-drain
-boundary and the clock injection (simulated vs wall-clock, #360). The backtest's sit in its
-dispatcher entries (`dispatch_backtest_slice`, `dispatch_backtest_heartbeat`); the AutoTrader's —
-with its safety override, display and clipping monitor — are still in its tick loop.
+Outside the shared blocks, each runner's own steps sit in its own dispatcher entries, in its own
+order. The backtest's `dispatch_backtest_slice` and `dispatch_backtest_heartbeat` hold the
+clipping gate, the per-step profiling and the error wrap around step 5 `execute_decision`. The
+AutoTrader's `dispatch_live_slice` and `dispatch_live_timer` hold the safety override and have no
+clipping gate and no profiling; `dispatch_live_order_wait` is one pass of a stop's wait. Both keep
+the #348 event-drain boundary and the clock injection (simulated vs wall-clock, #360) in their
+entries. The reconcile after a tick, the persistence, the clipping monitor, the display and the
+state frame follow a pass in the AutoTrader's tick loop.
 
 ## Side-by-Side Comparison
 

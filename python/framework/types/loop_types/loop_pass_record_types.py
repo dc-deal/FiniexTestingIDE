@@ -23,7 +23,9 @@ class LoopPassRecord:
 
     Args:
         ticks_applied: How many ticks have reached the broker path, counted right after each did,
-            so a pass that fails later in its course has already counted its tick
+            so a pass that fails later in its course has already counted its tick. The backtest's
+            count; an AutoTrader drive counts each tick as it takes it off its queue, before the
+            pass, and leaves this at 0
         current_bars: The forming bars after the last tick, by timeframe
         closed_timeframes: The timeframes whose bar the last tick closed — read only when the run
             records state frames or indicator series, and empty otherwise
