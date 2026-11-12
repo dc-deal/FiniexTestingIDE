@@ -89,6 +89,8 @@ class MarketDataEpisodeTracker:
 
         # Wall time is read only where it is the measuring axis (live) — the simulation
         # runs this per tick on the hot path and measures on the canonical axis anyway.
+        # A duration taken from two wall readings moves with every step of the clock; it belongs
+        # on the monotonic clock (#549)
         wall = time.time() if self._measure_wall_duration else 0.0
 
         # A flip seen on a tick begins with THIS tick — it is the first one the run
@@ -246,5 +248,6 @@ class MarketDataEpisodeTracker:
             Duration in seconds — wall axis live, canonical axis in simulation
         """
         if self._measure_wall_duration:
+            # Two wall readings: a step of the clock lands in the duration (#549)
             return max(0.0, time.time() - self._open_wall_anchor)
         return max(0.0, (end - self._open_from).total_seconds())
