@@ -4,6 +4,23 @@
 
 End-to-end validation of AutoTrader mock sessions and unit testing of AutoTrader components.
 
+## Both account models
+
+The tick loop is one for both account models, and the money paths branch inside it, so a margin
+defect hides behind a green spot suite. Where a whole session runs on a margin account:
+
+| Test | Profile | What runs at margin |
+|---|---|---|
+| `test_partial_close_live_pipeline.py` | `partial_close_lifecycle.json` (MT5 USDJPY) | warmup, a worker, partial closes, entry and exit trades, the event stream |
+| `test_event_channel_live_pipeline.py` | `event_channel_lifecycle.json` (MT5 USDJPY) | the decision event channel end to end |
+| `session_end/test_stop_waits_for_orders.py` | `session_stop_awaited_order_margin.json` (MT5 USDJPY) | a stop that waits for its order |
+| `safety/test_margin_safety_integration.py` | `margin_safety_test.json` (MT5 EURUSD) | the safety breaker on margin equity |
+
+The live executor suite builds its portfolio at margin unless a test asks for spot
+(`MockOrderExecution(spot_mode=True)`), and the money paths that differ are run in both
+(`[margin, spot]` in [live_executor_tests.md](live_executor_tests.md)). A margin session's whole
+report is also frozen as a golden sample (the fixture catalog's `mock_session_margin`).
+
 ## Test Files
 
 ### test_autotrader_mock_session.py

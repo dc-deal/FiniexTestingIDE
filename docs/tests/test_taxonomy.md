@@ -111,6 +111,7 @@ tests/
 │   ├── fixture_catalog/   unit + one real production — the runs a consumer pins: the catalog's completeness, the production record and the current fixture, a session sequence's profiles, the report-coverage run carrying every asserted property (#576)
 │   ├── golden_samples/    unit over committed samples — every aggregate frozen from a fixture production, rebuilt through today's code and compared field by field, and the read-time views composed from the frozen rows (#557)
 │   ├── indicators/        unit — the shared indicator library: what each name means (Wilder vs EMA vs simple), the scalar/series parity, and the warmup each recursive average needs (#517)
+│   ├── loop_events/       unit — the loop core's event vocabulary and its one timeline (#457): two stamps per event, earliest stamp then submission order, no kind first, one instant per stamp, ticks of one instant as one data slice
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
 │   ├── warmup_history/    unit + cross-path — the bars a run starts from: one synthetic stream through the backtest, mock and live
 │   │                      warmup paths, the venue read by period and commit, start invariance, the injection guard, the outcome table (#588)
