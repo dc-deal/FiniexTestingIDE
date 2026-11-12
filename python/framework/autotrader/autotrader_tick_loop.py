@@ -704,6 +704,8 @@ class AutotraderTickLoop:
             # and heartbeat pulse frames (#320).
             self._last_real_tick = tick
             self._last_real_decision = decision
+            # Read back only as an age (the staleness flip, the display): a step of the wall clock
+            # lands in it — it belongs on the monotonic clock (#549)
             self._last_real_tick_wall_time = time.time()
 
         # #630: a normal stop waits here for the orders on their way — the last moment a hook can
@@ -1266,6 +1268,8 @@ class AutotraderTickLoop:
             # hears when it outlasts the threshold (#235)
             self._alert_on_missing_first_tick()
             return
+        # An age from two wall readings decides the flip — a step of the clock can call a healthy
+        # feed stale or keep a dead one fresh (#549)
         seconds_since = time.time() - self._last_real_tick_wall_time
         if seconds_since <= self._market_data_stale_after_s:
             return
