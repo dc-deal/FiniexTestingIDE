@@ -378,6 +378,10 @@ The gatekeeper. DecisionLogic interacts *only* through this API. It provides:
 - Clean method signatures (`send_order`, `get_open_positions`, `close_position`)
 - Pending order awareness (`has_pending_orders`, `has_pipeline_orders`, `is_pending_close`)
 - Executor-agnostic: works identically with TradeSimulator and LiveTradeExecutor
+- Read-only answers: what it hands back is an algo mask, a frozen type, a copy or a plain value —
+  never the engine's own object, so nothing an algo reads can change the engine. Every read
+  declares which of the four it returns in `DECISION_API_READS_RETURN`
+  ([Algo Masks](../user_guides/algo_masks.md))
 
 #### Which order types are allowed: TWO declarations, one intersection
 
