@@ -19,10 +19,11 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 from python.framework.types.git_info_types import GitInfo, RepoCommitHistory, RepoStatus
 
@@ -76,6 +77,17 @@ _PATCH_FORMAT = (
 # one clone and `5d9b401` in another; a fixed prefix of the full hash reads it alike in both.
 _RECENT_COMMITS_LIMIT = 50
 _COMMIT_PREFIX_LENGTH = 12
+
+# A read about HEAD that did not resolve it is read once more after a pause. Where the tree sits
+# on the bridged Windows drive, a ref another process is rewriting — a commit, an amend, a rebase,
+# a fast-forward of a shared branch — is missing for an instant: renaming the new ref into place
+# is not atomic for a reader there. Measured 2026-11-11 on a throwaway repository while a second
+# process moved its branch back and forth: 7 of 217 `rev-list HEAD` reads failed with "ambiguous
+# argument 'HEAD': unknown revision", and 7 `log -1` reads with "does not have any commits yet";
+# on the container's own disk 0 of 1,570. A HEAD that is truly missing fails both reads.
+_UNRESOLVED_HEAD_MARKERS = ('unknown revision', 'does not have any commits yet',
+                            'needed a single revision')
+_UNRESOLVED_HEAD_PAUSE_S = 0.1
 
 
 @lru_cache(maxsize=1)
@@ -263,13 +275,41 @@ def _git(root: str, args: List[str], text: bool = True,
             the inherited variables in `_DROPPED_GIT_ENV` are dropped
 
     Returns:
-        The completed process; the caller decides what a non-zero exit means
+        The completed process; the caller decides what a non-zero exit means. A read that could
+        not resolve HEAD is run once more first (`_UNRESOLVED_HEAD_MARKERS`)
     """
     clean_env = {key: value for key, value in os.environ.items()
                  if key not in _DROPPED_GIT_ENV and not key.startswith(_DROPPED_GIT_ENV_PREFIXES)}
     clean_env.update(env or {})
-    return subprocess.run(['git', '-C', root, _LITERAL_PATHSPECS, *_PINNED_CONFIG, *args],
-                          capture_output=True, text=text, timeout=30, env=clean_env)
+    command = ['git', '-C', root, _LITERAL_PATHSPECS, *_PINNED_CONFIG, *args]
+    result = subprocess.run(command, capture_output=True, text=text, timeout=30, env=clean_env)
+    if result.returncode != 0 and _head_did_not_resolve(args, result.stderr):
+        time.sleep(_UNRESOLVED_HEAD_PAUSE_S)
+        result = subprocess.run(command, capture_output=True, text=text, timeout=30,
+                                env=clean_env)
+    return result
+
+
+def _head_did_not_resolve(args: List[str], stderr: Optional[Union[str, bytes]]) -> bool:
+    """
+    Whether a failed git read failed because HEAD did not resolve.
+
+    Said by git's own message, or by the command itself where it asks about HEAD quietly
+    (`rev-parse --verify --quiet HEAD` writes nothing to stderr).
+
+    Args:
+        args: The git arguments that were run
+        stderr: What git wrote to stderr, as text or bytes
+
+    Returns:
+        True when the failure is one a ref being rewritten produces
+    """
+    if 'HEAD' in args:
+        return True
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode('utf-8', errors='replace')
+    message = (stderr or '').lower()
+    return any(marker in message for marker in _UNRESOLVED_HEAD_MARKERS)
 
 
 def _checked(root: str, args: List[str]) -> str:

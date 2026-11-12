@@ -803,6 +803,79 @@ class TestTheCommitHistoryOfARepository:
         assert get_git_info().message == 'signed subject'
 
 
+class TestAHeadBeingRewrittenIsReadAgain:
+    """
+    A read about HEAD that finds none is read once more (F-1355's cause, measured 2026-11-11).
+
+    On the bridged Windows drive a ref another process is rewriting is missing for an instant, and
+    a session starting then recorded no commit history. The race itself cannot be timed in a test,
+    so git's first answer is replaced by the one the drive gave, and the second goes to real git.
+    """
+
+    @staticmethod
+    def _failing_once(stderr: str, failing_call: int):
+        """
+        A stand-in for `subprocess.run` whose n-th call answers as a missing HEAD did.
+
+        Args:
+            stderr: The message git wrote
+            failing_call: Which call fails, counted from 1
+
+        Returns:
+            The stand-in, and the list of the commands it was given
+        """
+        calls: List[List[str]] = []
+        real_run = subprocess.run
+
+        def run(command, **kwargs):
+            calls.append(command)
+            if len(calls) == failing_call:
+                body = stderr.encode() if kwargs.get('text') is False else stderr
+                return subprocess.CompletedProcess(command, 128, stdout=b'' if kwargs.get(
+                    'text') is False else '', stderr=body)
+            return real_run(command, **kwargs)
+
+        return run, calls
+
+    def test_a_list_read_while_the_ref_moved_is_read_again(self, tmp_path, monkeypatch):
+        repo = make_repo(tmp_path / 'r', {'a.py': 'A = 0\n'})
+        head = _prefix(repo)
+        # The subject is read first, the list second: the list's read is the one that fails
+        run, calls = self._failing_once(
+            "fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.",
+            failing_call=2)
+        monkeypatch.setattr(git_info_utils.subprocess, 'run', run)
+
+        history = get_repo_commit_history(str(repo))
+
+        assert history.recent_commits, 'the session would record no history'
+        assert history.recent_commits[0] == head
+        assert len(calls) == 3
+
+    def test_a_subject_read_on_a_branch_without_commits_is_read_again(self, tmp_path,
+                                                                         monkeypatch):
+        repo = make_repo(tmp_path / 'r', {'a.py': 'A = 0\n'})
+        run, calls = self._failing_once(
+            "fatal: your current branch 'main' does not have any commits yet", failing_call=1)
+        monkeypatch.setattr(git_info_utils.subprocess, 'run', run)
+
+        assert get_repo_commit_history(str(repo)).subject == 'initial'
+        assert len(calls) == 3
+
+    def test_a_failure_about_something_else_is_answered_at_once(self, tmp_path, monkeypatch):
+        """A path in no repository is no race: its read runs once and answers unknown."""
+        calls: List[List[str]] = []
+        real_run = subprocess.run
+        monkeypatch.setattr(git_info_utils.subprocess, 'run',
+                            lambda command, **kwargs: calls.append(command) or real_run(
+                                command, **kwargs))
+        outside = tmp_path / 'no_repository'
+        outside.mkdir()
+
+        assert get_repo_toplevel(outside) is None
+        assert len(calls) == 1
+
+
 class TestTwoAbbreviationsOfOneCommitAgree:
     """`rev-parse --short` reads one commit as `5d9b4017` in one clone and `5d9b401` in another."""
 

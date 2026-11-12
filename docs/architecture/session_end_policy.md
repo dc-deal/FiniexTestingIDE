@@ -304,6 +304,13 @@ again after it, because a fill the cleanup found, on a read after a refused canc
 **At margin the carry-over holds no book:** such a fill reaches the report and not the next session,
 which reads its positions from the venue (#209).
 
+A third write closes the session, once the results are collected. Three of the carried figures are
+not final before that: the last booking period is sealed only there, the run-end equity sample can
+deepen the drawdown, and the positions are marked once more, which can deepen their excursion
+extrema. The closing write carries the period floor, the drawdown curve and, under the same gate as
+the first write, the open book again (#537, #497, #542). A figure that a later step of the end can
+still move is written after that step, never only before it.
+
 Under a declared kill every venue call of the cleanup, and each part of the end read, asks the
 budget first. The read at the START is untouched: a session that has not begun has no kill to fit
 under.

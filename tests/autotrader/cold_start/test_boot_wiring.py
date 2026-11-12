@@ -34,6 +34,8 @@ from python.framework.autotrader.cold_start.cold_start_setup import (
     setup_cold_start,
 )
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
+from python.framework.testing.mock_broker_adapter import MockExecutionMode
+from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.persistence.cold_start_state_store import ColdStartStateStore
 from python.framework.persistence.position_book_watcher import PositionBookWatcher
 from python.framework.types.config_types.autotrader_defaults_config_types import SafetyConfig
@@ -361,6 +363,87 @@ class TestTheReportedDrawdownReachesTheStore:
         assert main._load_carry_over_records(OrdersTo.VENUE) == ColdStartPayload(), (
             'the successor of a session with the switch off continued its curve anyway')
 
+
+
+class TestTheClosingWriteCarriesTheBookAsReported:
+    """
+    The open book is written before the cleanup, and its extrema are not final there (#542).
+
+    The third of one shape: the period floor (#537) and the drawdown curve (#497) were written
+    before the figures that move them were final, and the closing write carries them again. Each
+    position in the book carries its excursion extrema, and `get_portfolio_statistics()` in the
+    collection marks the positions once more — so a successor reading the book of the earlier
+    write inherits an excursion one mark older than the one this session reported.
+    """
+
+    @staticmethod
+    def _closing(executor, store, persist_venue_claims: bool = True) -> AutotraderMain:
+        """
+        A session at its close: the loop has run, so the period floor can be read.
+
+        Args:
+            executor: The session's executor
+            store: The spy store
+            persist_venue_claims: False for a dry run
+
+        Returns:
+            The session object the two shutdown writes run on
+        """
+        main = _main(executor, store, persist=True, persist_venue_claims=persist_venue_claims)
+        main._tick_loop = SimpleNamespace(get_highest_period_no=lambda: 1)
+        return main
+
+    def test_the_extrema_the_session_reported_reach_the_closing_write(self):
+        mock = MockOrderExecution(mode=MockExecutionMode.TIMEOUT, spot_mode=True,
+                                  initial_balances={'USD': 1000.0, 'BTC': 0.01})
+        executor = mock.create_executor()
+        executor.portfolio.restore_position_book([_note()])
+        # The last tick of the session, 1,200 below the entry: it reaches the position only
+        # when somebody marks it
+        mock.feed_tick(executor, symbol='BTCUSD', bid=60000.0, ask=60001.0)
+        store = SpyStore()
+        main = self._closing(executor, store)
+
+        main._persist_cold_start_carry_over()           # the write before the cleanup
+        executor.portfolio.get_portfolio_statistics()   # what the collection does
+        main._carry_over_final_figures()                # the write that bounds the session
+
+        reported = executor.portfolio.get_open_positions()[0]
+        # The shape this class exists for, provable from the mock chain like the period floor:
+        # the earlier write still holds the extrema from before the last mark
+        assert store.saves[0]['open_positions'][0].mae_pnl > reported.mae_pnl
+        closing = store.saves[1]['open_positions']
+        assert closing is not None, (
+            'the closing write left the book of the earlier write, so the successor inherits '
+            'the extrema as they stood before the last mark')
+        assert closing[0].mae_pnl == pytest.approx(reported.mae_pnl)
+        assert closing[0].mae_price == pytest.approx(reported.mae_price)
+        assert closing[0].mfe_pnl == pytest.approx(reported.mfe_pnl)
+
+    def test_a_flat_spot_session_says_so_at_the_close(self, spot_executor):
+        """The empty list, as the write after the cleanup gives it: nothing is carried on."""
+        store = SpyStore()
+
+        self._closing(spot_executor, store)._carry_over_final_figures()
+
+        assert store.saves[0]['open_positions'] == []
+
+    def test_a_dry_run_claims_no_book_at_the_close_either(self, spot_executor):
+        store = SpyStore()
+        spot_executor.portfolio.restore_position_book([_note()])
+
+        self._closing(spot_executor, store,
+                      persist_venue_claims=False)._carry_over_final_figures()
+
+        assert store.saves[0]['open_positions'] is None, (
+            'the successor would inherit a book the venue does not hold')
+
+    def test_margin_leaves_the_book_alone_at_the_close(self, executor):
+        store = SpyStore()
+
+        self._closing(executor, store)._carry_over_final_figures()
+
+        assert store.saves[0]['open_positions'] is None
 
 
 class TestTheConfigurationRidesWithTheVenueClaims:

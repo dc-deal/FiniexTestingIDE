@@ -115,6 +115,12 @@ MarketClock (executor-owned)  ── canonical clock + MarketCalendar + rollover
   rollover crossings since the last accrual and books one signed `SwapFee` per crossing
   (×3 on the triple weekday). `swap_accrued_until` advances to the canonical `now`. Gated:
   margin only, `swap_mode == POINTS`, swap-bearing market.
+- **The next rollover due** (#528): after each accrual the portfolio keeps the first rollover
+  after `now` for that position. Until the clock reaches it a refresh crosses none, so it only
+  advances `swap_accrued_until` and searches nothing — the search cost about 5 µs per position
+  and refresh on a margin account, the comparison about 0.5 µs. A position with no rollover due
+  yet (opened or restored since) takes the full search once. The instant follows from the date
+  and the configured rollover alone, never from market data.
 - **Deterministic anchor:** the conversion uses the position's **`entry_tick_value`** (fixed
   at open), not a per-tick lazy value — so the swap is independent of *when* the refresh
   runs and is bit-reproducible (the #368 determinism promise). For a quote-currency account

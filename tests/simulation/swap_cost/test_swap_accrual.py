@@ -7,7 +7,7 @@ rollovers, and asserts the signed swap on the position — the worked debit / cr
 triple examples, the spot gate, and determinism (idempotent re-accrual).
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -16,7 +16,7 @@ from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.trading_env.portfolio_manager import PortfolioManager
 from python.framework.types.config_types.market_config_types import SwapRolloverConfig
 from python.framework.types.portfolio_types.portfolio_types import Position
-from python.framework.types.trading_env_types.broker_types import SwapMode
+from python.framework.types.trading_env_types.broker_types import FeeType, SwapMode
 from python.framework.types.trading_env_types.order_types import OrderDirection
 
 _MT5_CONFIG = 'configs/brokers/mt5/mt5_broker_config.json'
@@ -144,3 +144,37 @@ class TestSwapModeImplemented:
         # multiple inheritance (§10) — catchable as both
         err = SwapModeNotImplementedError('EURUSD', SwapMode.UNKNOWN)
         assert isinstance(err, ValueError)
+
+
+@pytest.mark.parametrize('direction', [OrderDirection.LONG, OrderDirection.SHORT])
+def test_a_pass_every_ten_minutes_books_what_one_accrual_over_the_week_does(direction):
+    """
+    The next rollover due gates every pass (#528): until the clock reaches it, a pass books
+    nothing and searches nothing. A week of passes — the weekend, the triple Wednesday and passes
+    landing exactly on a rollover inside it — must book the same swaps, at the same instants, as
+    one accrual over the whole week.
+    """
+    start, end = _utc(2026, 1, 12, 10), _utc(2026, 1, 19, 10)
+
+    stepped_clock = _Clock(start)
+    stepped = _portfolio(stepped_clock)
+    stepped_position = _open(stepped, direction, start)
+    now = start
+    while now < end:
+        now += timedelta(minutes=10)    # lands on 22:00 UTC, the rollover of an EST evening
+        stepped_clock.set(now)
+        stepped._accrue_all_swaps()
+
+    once_clock = _Clock(start)
+    once = _portfolio(once_clock)
+    once_position = _open(once, direction, start)
+    once_clock.set(end)
+    once._accrue_all_swaps()
+
+    def booked(position):
+        return [(fee.timestamp, fee.cost) for fee in position.get_fees_by_type(FeeType.SWAP)]
+
+    assert booked(stepped_position) == booked(once_position)
+    assert stepped_position.get_swap_cost() == pytest.approx(once_position.get_swap_cost())
+    # Mon to Fri carry one rollover each, Wednesday's counting three
+    assert len(booked(once_position)) == 5

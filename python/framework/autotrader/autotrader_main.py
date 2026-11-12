@@ -2241,7 +2241,7 @@ class AutotraderMain:
 
     def _carry_over_final_figures(self) -> None:
         """
-        Carry over the two figures that were not final when the carry-over was written.
+        Carry over the figures that were not final when the carry-over was written.
 
         The write above happens BEFORE the position cleanup, because the venue claims it
         carries describe the state at that instant (#355/#492). The period floor cannot ride
@@ -2262,6 +2262,13 @@ class AutotraderMain:
         period numbered 6, which is precisely the "number already in the books" the store's own
         floor comment warns against.
 
+        The open book is the third of the same shape (#542). It IS a claim about the venue, and
+        it was written before the cleanup for that reason — but each position in it carries its
+        excursion extrema, and `get_portfolio_statistics()` above marks the positions once more
+        and can deepen them. So the book is projected again here, under the same gate as the first
+        write: a dry run holds nothing at any venue, and a margin book comes back from the venue
+        (#209). A session that is flat writes the empty list, as the write after the cleanup does.
+
         A partial write is what the store is built for, so this second write cannot contradict
         the first: a FLOOR for the counters, and "leave alone" for everything the venue owns.
         A failure is logged and swallowed for the same reason as the write above — a carry-over
@@ -2275,14 +2282,21 @@ class AutotraderMain:
         try:
             readings = self._may_write_readings
             replace = self._replace_readings_pending
+            portfolio = self._executor.portfolio
             self._cold_start.store.save(
-                # Everything the venue owns stays untouched: '' appends no key, 0 is a floor
-                # that cannot lower the stored counter, and the omitted arguments default to
-                # None, which the store reads as "not supplied" for the book, the baseline,
-                # the drawdown curve and the deployment identity.
+                # What the venue owns stays untouched but the book: '' appends no key, 0 is a
+                # floor that cannot lower the stored counter, and the omitted arguments default
+                # to None, which the store reads as "not supplied" for the baseline, the drawdown
+                # curve and the deployment identity.
                 session_key='',
                 highest_position_counter=0,
                 highest_period_no=self._tick_loop.get_highest_period_no(),
+                # #542 — the book once more, with the extrema the session reported. Gated as the
+                # first write is: a claim about the venue, and spot only.
+                open_positions=(
+                    portfolio.get_position_book()
+                    if self._cold_start.persist_venue_claims and portfolio.is_spot_mode()
+                    else None),
                 # A replacement still pending — no earlier write went through — carries the
                 # baseline as well, or replacing the readings would erase it (#626)
                 risk_baseline=(self._risk_baseline.get_baseline()
@@ -2290,7 +2304,7 @@ class AutotraderMain:
                 # OUR OWN record, like the floor above — never a claim about the venue — so it
                 # rides this write without the dry-run split the first one needs. Only the run
                 # kind decides it: a rehearsal over real money's readings writes none (#626).
-                account_drawdown=(self._executor.portfolio.get_account_drawdown_carry_over()
+                account_drawdown=(portfolio.get_account_drawdown_carry_over()
                                   if readings else None),
                 readings_orders_to=self._readings_stamp if readings else None,
                 replace_readings=replace,
@@ -2302,7 +2316,8 @@ class AutotraderMain:
             # would share an identity.
             self._session_logger.error(
                 f'Final carry-over figures not written: {e} — the next session would reuse '
-                f'a period number already in the books and continue a shallower drawdown')
+                f'a period number already in the books, continue a shallower drawdown and '
+                f'inherit excursion extrema one mark older than this session reported')
 
     def _collect_observed_feed(self) -> Optional[SignalObservedSeries]:
         """
