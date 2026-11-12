@@ -47,13 +47,13 @@ from typing import Any, Dict, List, Optional
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.decision_logic_types import (
     AwarenessLevel,
     Decision,
     DecisionLogicAction,
 )
-from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
@@ -243,7 +243,7 @@ class AggressiveTrend(AbstractDecisionLogic):
     def _execute_decision_impl(
         self,
         decision: Decision,
-        tick: TickData
+        tick: AlgoTick
     ) -> Optional[AlgoOrderResult]:
         """
         Implementation: Execute trading decision via DecisionTradingApi.
@@ -392,7 +392,7 @@ class AggressiveTrend(AbstractDecisionLogic):
 
     def compute_tick(
         self,
-        tick: TickData,
+        tick: AlgoTick,
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         """
@@ -519,7 +519,7 @@ class AggressiveTrend(AbstractDecisionLogic):
         rsi_value: float,
         bollinger_position: float,
         reason: str,
-        tick: TickData,
+        tick: AlgoTick,
     ) -> None:
         """
         Append one row to the signal diagnostics CSV (#376 demonstration).

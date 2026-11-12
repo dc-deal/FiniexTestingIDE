@@ -8,7 +8,8 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from types import MappingProxyType
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
 
 from python.configuration.data_home import resolve_strategy_file
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
@@ -17,13 +18,20 @@ from python.framework.decision_logic.decision_logic_performance_tracker import (
 )
 from python.framework.logging.coordinator_tick_logger import CoordinatorTickLogger
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
+from python.framework.trading_env.algo_masks.algo_bar import AlgoBar
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
 from python.framework.types.decision_logic_types import Decision
 from python.framework.types.disturbance_episode_types import (
     DisturbanceDomain,
     DisturbanceEpisode,
     DisturbanceOrigin,
 )
-from python.framework.types.market_types.market_data_types import Bar, BarRenderState, TickData
+from python.framework.types.market_types.market_data_types import (
+    Bar,
+    BarRenderState,
+    FormingBar,
+    TickData,
+)
 from python.framework.types.performance_types.performance_stats_types import (
     WorkerCoordinatorPerformanceStats,
     WorkerPerformanceStats,
@@ -117,6 +125,9 @@ class WorkerOrchestrator:
 
         self.is_initialized = False
         self._worker_results: Dict[str, WorkerResult] = {}
+        # One mask per forming bar, made on the first pass that sees the bar and kept until the
+        # renderer starts the next period's bar (#654)
+        self._algo_bars: Dict[str, AlgoBar] = {}
 
         self._signal_source = signal_source
         self._signal_boot = signal_boot
@@ -388,8 +399,8 @@ class WorkerOrchestrator:
     def process_tick(
         self,
         tick: TickData,
-        current_bars: Dict[str, Bar],
-        bar_history: Dict[str, List[Bar]] = None,
+        current_bars: Dict[str, FormingBar],
+        bar_history: Optional[Mapping[str, Tuple[Bar, ...]]] = None,
         bar_render_state: Optional[BarRenderState] = None,
     ) -> Decision:
         """
@@ -419,13 +430,19 @@ class WorkerOrchestrator:
         # Determine if any bars were updated
         bar_updated = len(current_bars) > 0
 
+        # What the workers and the decision receive (#654): the tick and the forming bars as
+        # masks, the history as tuples of frozen bars — nothing one of them could change for the
+        # next. The signal pass and the tick logger keep the engine's own objects.
+        algo_tick = self.decision_logic.get_algo_tick(tick)
+        algo_bars = self._get_algo_bars(current_bars)
+
         # Execute workers (parallel or sequential)
         if self.parallel_workers and len(self.workers) > 1:
             self._process_workers_parallel(
-                tick, bar_updated, bar_history, current_bars, closed_timeframes)
+                algo_tick, bar_updated, bar_history, algo_bars, closed_timeframes)
         else:
             self._process_workers_sequential(
-                tick, bar_updated, bar_history, current_bars, closed_timeframes
+                algo_tick, bar_updated, bar_history, algo_bars, closed_timeframes
             )
 
         # Signal pass: count this tick's resolution (#433) and fire on_signal_stale
@@ -441,7 +458,7 @@ class WorkerOrchestrator:
         decision_start = time.perf_counter()
 
         decision = self.decision_logic.compute_tick(
-            tick=tick,
+            tick=algo_tick,
             worker_results=self._worker_results
         )
 
@@ -464,6 +481,28 @@ class WorkerOrchestrator:
                 decision_time_ms, decision)
 
         return decision
+
+    def _get_algo_bars(self, current_bars: Dict[str, FormingBar]) -> Mapping[str, AlgoBar]:
+        """
+        The forming bars as the workers receive them (#654).
+
+        One mask per forming bar, made on the first pass that sees the bar and kept until the
+        renderer starts the next period's, in a mapping no worker can change for the next.
+
+        Args:
+            current_bars: The renderer's forming bars per timeframe
+
+        Returns:
+            Their masks per timeframe, read-only
+        """
+        masks: Dict[str, AlgoBar] = {}
+        for timeframe, bar in current_bars.items():
+            mask = self._algo_bars.get(timeframe)
+            if mask is None or not mask.is_mask_of(bar):
+                mask = AlgoBar(bar)
+                self._algo_bars[timeframe] = mask
+            masks[timeframe] = mask
+        return MappingProxyType(masks)
 
     def _process_signal_pass(
         self, tick_time: datetime, count_tick: bool = True
@@ -752,7 +791,7 @@ class WorkerOrchestrator:
         self,
         name: str,
         worker: AbstractWorker,
-        tick: TickData,
+        tick: AlgoTick,
         bar_updated: bool,
         closed_timeframes: Set[str],
     ) -> bool:
@@ -792,9 +831,9 @@ class WorkerOrchestrator:
     def _run_worker(
         self,
         worker: AbstractWorker,
-        tick: TickData,
-        bar_history: Dict[str, List[Bar]],
-        current_bars: Dict[str, Bar],
+        tick: AlgoTick,
+        bar_history: Mapping[str, Tuple[Bar, ...]],
+        current_bars: Mapping[str, AlgoBar],
     ) -> WorkerResult:
         """
         Dispatch a worker's compute by type (#141).
@@ -817,10 +856,10 @@ class WorkerOrchestrator:
 
     def _process_workers_sequential(
         self,
-        tick: TickData,
+        tick: AlgoTick,
         bar_updated: bool,
-        bar_history: Dict[str, List[Bar]],
-        current_bars: Dict[str, Bar],
+        bar_history: Mapping[str, Tuple[Bar, ...]],
+        current_bars: Mapping[str, AlgoBar],
         closed_timeframes: Set[str],
     ):
         """
@@ -861,10 +900,10 @@ class WorkerOrchestrator:
 
     def _process_workers_parallel(
         self,
-        tick: TickData,
+        tick: AlgoTick,
         bar_updated: bool,
-        bar_history: Dict[str, List[Bar]],
-        current_bars: Dict[str, Bar],
+        bar_history: Mapping[str, Tuple[Bar, ...]],
+        current_bars: Mapping[str, AlgoBar],
         closed_timeframes: Set[str],
     ):
         """
@@ -937,8 +976,8 @@ class WorkerOrchestrator:
             self._coordination_stats.parallel_time_saved_ms += time_saved
 
     def _filter_bar_history_for_worker(
-        self, worker: AbstractWorker, bar_history: Dict[str, List[Bar]]
-    ) -> Dict[str, List[Bar]]:
+        self, worker: AbstractWorker, bar_history: Mapping[str, Tuple[Bar, ...]]
+    ) -> Dict[str, Tuple[Bar, ...]]:
         """
         Filter bar_history to only include timeframes required by worker.
 
@@ -960,9 +999,9 @@ class WorkerOrchestrator:
     def _compute_worker(
         self,
         worker: AbstractWorker,
-        tick: TickData,
-        bar_history: Dict[str, List[Bar]],
-        current_bars: Dict[str, Bar],
+        tick: AlgoTick,
+        bar_history: Mapping[str, Tuple[Bar, ...]],
+        current_bars: Mapping[str, AlgoBar],
     ) -> tuple:
         """
         Compute worker result (thread-safe helper method).

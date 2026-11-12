@@ -35,6 +35,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.decision_logic.own_exit_levels import OwnExitLevels
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
@@ -45,7 +46,6 @@ from python.framework.types.decision_logic_types import (
     Decision,
     DecisionLogicAction,
 )
-from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
@@ -385,7 +385,7 @@ class CautiousMacd(AbstractDecisionLogic):
 
     def compute_tick(
         self,
-        tick: TickData,
+        tick: AlgoTick,
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         """
@@ -554,7 +554,7 @@ class CautiousMacd(AbstractDecisionLogic):
     def _execute_decision_impl(
         self,
         decision: Decision,
-        tick: TickData
+        tick: AlgoTick
     ) -> Optional[AlgoOrderResult]:
         """
         Execute state machine: FLAT / PENDING_ENTRY / IN_POSITION.
@@ -787,7 +787,7 @@ class CautiousMacd(AbstractDecisionLogic):
     # Private helpers
     # ============================================
 
-    def _check_and_apply_break_even(self, position, tick: TickData) -> None:
+    def _check_and_apply_break_even(self, position, tick: AlgoTick) -> None:
         """
         Move the own stop to entry_price once profit exceeds break_even_trigger_pips.
 

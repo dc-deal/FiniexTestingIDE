@@ -98,13 +98,15 @@ class TickData:
         }
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class Bar:
     """
-    Standard bar structure for all timeframes.
+    One finished bar of a timeframe — a value.
 
-    OPTIMIZATION: Uses __slots__ to reduce memory footprint and pickle overhead.
-    Removes __dict__ from each instance (~15% pickle size reduction).
+    The warmup history, the renderer's archive and every worker's bar history hold it, and every
+    worker reads the same objects, so it is frozen: nothing that reads a bar can change it for the
+    next reader (#654). The bar of the period still running is a FormingBar; the renderer turns it
+    into a Bar when the period closes.
     """
 
     symbol: str
@@ -122,20 +124,6 @@ class Bar:
     def ohlc(self) -> Tuple[float, float, float, float]:
         """OHLC tuple"""
         return (self.open, self.high, self.low, self.close)
-
-    def update_with_tick(self, tick_price: float, tick_volume: float = 0):
-        """Update bar with new tick data"""
-        if self.open == 0:
-            self.open = tick_price
-            self.high = tick_price
-            self.low = tick_price
-        else:
-            self.high = max(self.high, tick_price)
-            self.low = min(self.low, tick_price)
-
-        self.close = tick_price
-        self.volume += tick_volume
-        self.tick_count += 1
 
     def to_dict(self) -> dict:
         """
@@ -163,6 +151,72 @@ class Bar:
             'tick_count': self.tick_count,
             'is_complete': self.is_complete
         }
+
+
+@dataclass(slots=True)
+class FormingBar:
+    """
+    The bar of the period still running — the renderer updates it on every tick.
+
+    It changes with every tick, so it stays the renderer's own: a worker reads it through an
+    `AlgoBar`, and the history receives a frozen Bar when the period closes (`to_bar`). Its fields
+    are Bar's, a test holds the two to the same set.
+    """
+
+    symbol: str
+    timeframe: str
+    timestamp: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    tick_count: int = 0
+    is_complete: bool = False
+
+    @property
+    def ohlc(self) -> Tuple[float, float, float, float]:
+        """OHLC tuple"""
+        return (self.open, self.high, self.low, self.close)
+
+    def update_with_tick(self, tick_price: float, tick_volume: float = 0) -> None:
+        """
+        Update bar with new tick data
+
+        Args:
+            tick_price: The tick's price
+            tick_volume: The tick's volume
+        """
+        if self.open == 0:
+            self.open = tick_price
+            self.high = tick_price
+            self.low = tick_price
+        else:
+            self.high = max(self.high, tick_price)
+            self.low = min(self.low, tick_price)
+
+        self.close = tick_price
+        self.volume += tick_volume
+        self.tick_count += 1
+
+    def to_bar(self) -> Bar:
+        """
+        The bar as it stands, as a frozen value.
+
+        Returns:
+            A Bar with every field of this one
+        """
+        return Bar(self.symbol, self.timeframe, self.timestamp, self.open, self.high, self.low,
+                   self.close, self.volume, self.tick_count, self.is_complete)
+
+    def to_dict(self) -> dict:
+        """
+        Convert the bar to a dictionary for serialization, as Bar.to_dict() does.
+
+        Returns:
+            Dict with all bar fields
+        """
+        return self.to_bar().to_dict()
 
 
 @dataclass

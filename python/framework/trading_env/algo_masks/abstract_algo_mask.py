@@ -45,6 +45,20 @@ class AbstractAlgoMask:
         """
         raise AttributeError(f'{type(self).__name__} is read-only: {name} cannot be set')
 
+    def __reduce_ex__(self, protocol: int) -> Any:
+        """
+        Refuse a copy or a pickle — a second view of the engine object, or one cut off from it,
+        is not what a read-only view is. A mask whose source never changes says otherwise itself.
+
+        Args:
+            protocol: The pickle protocol asked for
+
+        Returns:
+            Nothing — it raises
+        """
+        raise TypeError(f'{type(self).__name__} cannot be copied or pickled: read its fields '
+                        f'into values of your own')
+
     def is_mask_of(self, source: Any) -> bool:
         """
         Whether this mask shows exactly this engine object.

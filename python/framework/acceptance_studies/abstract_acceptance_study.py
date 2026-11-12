@@ -25,6 +25,9 @@ from python.framework.acceptance_studies.abstract_study_phase_machine import (
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
+from python.framework.trading_env.algo_masks.algo_order import AlgoOrder
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
 from python.framework.types.acceptance_study_types.study_phase_types import (
     PhaseAction,
     PhaseActionKind,
@@ -48,14 +51,11 @@ from python.framework.types.decision_logic_types import (
     Decision,
     DecisionLogicAction,
 )
-from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.store_member_types import RunEntryMemberId
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
-    OrderResult,
     OrderSide,
     OrderType,
     RejectionReason,
@@ -394,7 +394,7 @@ class AbstractAcceptanceStudy(AbstractDecisionLogic):
 
     def compute_tick(
         self,
-        tick: TickData,
+        tick: AlgoTick,
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         self._symbol = tick.symbol
@@ -493,8 +493,8 @@ class AbstractAcceptanceStudy(AbstractDecisionLogic):
     def _execute_decision_impl(
         self,
         decision: Decision,
-        tick: Optional[TickData],
-    ) -> Optional[OrderResult]:
+        tick: Optional[AlgoTick],
+    ) -> Optional[AlgoOrderResult]:
         if not self.trading_api or self._pending_action is None:
             return None
 
@@ -542,7 +542,7 @@ class AbstractAcceptanceStudy(AbstractDecisionLogic):
     # Action dispatch helpers
     # ============================================
 
-    def _submit(self, action: PhaseAction) -> Optional[OrderResult]:
+    def _submit(self, action: PhaseAction) -> Optional[AlgoOrderResult]:
         side = OrderSide.BUY if action.side == PhaseSide.LONG else OrderSide.SELL
         order_type = SUBMIT_KIND_TO_TYPE[action.kind]
         # A stop's price is its TRIGGER, and it travels in a different argument. Passing it
@@ -607,11 +607,11 @@ class AbstractAcceptanceStudy(AbstractDecisionLogic):
             self.logger.debug(
                 f"[FS_CANCEL] order={order.pending_order_id} ref={order.broker_ref or 'NONE'} "
                 f"type={order.order_type.value if order.order_type else 'none'} "
-                f"op={order.execution_state.in_flight_operation.name} q={int(order.execution_state.in_flight_query)} "
+                f"op={order.in_flight_operation.name} q={int(order.in_flight_query)} "
                 f"scheduled={int(scheduled)}")
         self._phase_order_ids = []
 
-    def _cancel_one(self, order: PendingOrder) -> bool:
+    def _cancel_one(self, order: AlgoOrder) -> bool:
         """
         Cancel one resting order through the path that owns its world.
 
@@ -629,7 +629,7 @@ class AbstractAcceptanceStudy(AbstractDecisionLogic):
     # Diagnostic trace (#13/#15 forensics — machine-parseable key=value)
     # ============================================
 
-    def _resting_snapshot_str(self, orders: Optional[List[PendingOrder]] = None) -> str:
+    def _resting_snapshot_str(self, orders: Optional[List[AlgoOrder]] = None) -> str:
         """
         Compact snapshot of the currently resting orders (id | broker_ref | in-flight op
         | in-flight query). A phase that fails with n>0 here is leaking/orphaning an order.
@@ -644,7 +644,7 @@ class AbstractAcceptanceStudy(AbstractDecisionLogic):
             orders = self.trading_api.get_active_orders()
         parts = [
             f"{o.pending_order_id}|ref={o.broker_ref or 'NONE'}"
-            f"|op={o.execution_state.in_flight_operation.name}|q={int(o.execution_state.in_flight_query)}"
+            f"|op={o.in_flight_operation.name}|q={int(o.in_flight_query)}"
             for o in orders
         ]
         return f"n={len(orders)} orders=[{','.join(parts)}]"

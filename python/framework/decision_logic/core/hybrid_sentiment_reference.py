@@ -15,13 +15,13 @@ from typing import Any, Dict, List, Optional
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.decision_logic_types import (
     AwarenessLevel,
     Decision,
     DecisionLogicAction,
 )
-from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
@@ -239,7 +239,7 @@ class HybridSentimentReference(AbstractDecisionLogic):
 
     def compute_tick(
         self,
-        tick: TickData,
+        tick: AlgoTick,
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         """
@@ -327,7 +327,7 @@ class HybridSentimentReference(AbstractDecisionLogic):
         usable = (not sentiment_result.is_stale) and confidence >= self.min_sentiment_confidence
         return score, usable
 
-    def _flat(self, tick: TickData, confidence: float, reason: str) -> Decision:
+    def _flat(self, tick: AlgoTick, confidence: float, reason: str) -> Decision:
         """Build a FLAT decision with the given confidence and reason."""
         return Decision(
             action=DecisionLogicAction.FLAT,
@@ -346,7 +346,7 @@ class HybridSentimentReference(AbstractDecisionLogic):
     def _execute_decision_impl(
         self,
         decision: Decision,
-        tick: TickData
+        tick: AlgoTick
     ) -> Optional[AlgoOrderResult]:
         """
         Execute the decision: BUY opens a long, SELL exits it (one position).

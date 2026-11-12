@@ -92,8 +92,9 @@ partial bar closes where the full one does.
 Warmup bars enter the renderer's history through one route,
 `BarRenderingController.inject_warmup_bars`, in both pipelines. It refuses, as a defect
 (`WarmupHistoryDefectError`), a bar not complete at the instant the history was selected for, an
-opening instant that repeats or goes backwards, and a bar of another timeframe; a bar that passes is
-stamped `is_complete` there and nowhere else. At the first bar the session renders itself, the
+opening instant that repeats or goes backwards, and a bar of another timeframe; a bar that passes
+enters stamped `is_complete` there and nowhere else — as a new frozen bar, the one handed in stays
+as it was. At the first bar the session renders itself, the
 renderer checks that the history ends where that bar opens — a second, independent line that also
 catches a history selected for the wrong instant.
 

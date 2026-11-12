@@ -103,6 +103,17 @@ class AlgoOrder(AbstractAlgoMask):
         in flight the fields above still show the values it would replace."""
         return self._source.execution_state.in_flight_operation
 
+    @property
+    def broker_ref(self) -> Optional[str]:
+        """The venue's identifier for the order, once the venue confirmed it; None before that and
+        in a backtest."""
+        return self._source.broker_ref
+
+    @property
+    def in_flight_query(self) -> bool:
+        """Whether a status query for the order is on its way to the venue — live only."""
+        return self._source.execution_state.in_flight_query
+
     def _order_argument(self, name: str) -> Optional[float]:
         """
         One price the order was placed with, from its order arguments.

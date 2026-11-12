@@ -4,9 +4,10 @@ The Algo Masks' Documentation — every mask's table names exactly the fields th
 `docs/user_guides/algo_masks.md` gives each mask a table of its fields and where each value comes
 from. The mask's field list is its class, so the table is held to the class here: a field the mask
 gains without a row, or a row the mask no longer has, fails the suite. A new mask adds its class to
-DOCUMENTED_MASKS and its section to the page.
+DOCUMENTED_MASKS and its section to the page; a mask missing from the list fails the suite too.
 """
 
+import importlib
 import re
 from pathlib import Path
 from typing import List, Type
@@ -14,14 +15,18 @@ from typing import List, Type
 import pytest
 
 from python.framework.trading_env.algo_masks.abstract_algo_mask import AbstractAlgoMask
+from python.framework.trading_env.algo_masks.algo_bar import AlgoBar
 from python.framework.trading_env.algo_masks.algo_order import AlgoOrder
 from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.trading_env.algo_masks.algo_position import AlgoPosition
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
 
 DOC = Path('docs/user_guides/algo_masks.md')
+MASK_DIR = Path('python/framework/trading_env/algo_masks')
 
 # Every algo mask and the page documents, each under a heading that opens with its class name
-DOCUMENTED_MASKS: List[Type[AbstractAlgoMask]] = [AlgoPosition, AlgoOrder, AlgoOrderResult]
+DOCUMENTED_MASKS: List[Type[AbstractAlgoMask]] = [
+    AlgoPosition, AlgoOrder, AlgoOrderResult, AlgoTick, AlgoBar]
 
 
 def _documented_fields(mask: Type[AbstractAlgoMask]) -> List[str]:
@@ -34,6 +39,25 @@ def _documented_fields(mask: Type[AbstractAlgoMask]) -> List[str]:
     if next_heading:
         section = section[:next_heading.start()]
     return re.findall(r'^\| `([a-z_]+)` \|', section, re.MULTILINE)
+
+
+def _every_mask_class() -> set:
+    """Every subclass of AbstractAlgoMask in the masks' directory, each module imported first."""
+    for module in sorted(MASK_DIR.glob('*.py')):
+        importlib.import_module('.'.join(module.with_suffix('').parts))
+    found, pending = set(), list(AbstractAlgoMask.__subclasses__())
+    while pending:
+        mask = pending.pop()
+        found.add(mask)
+        pending.extend(mask.__subclasses__())
+    return found
+
+
+class TestEveryMaskIsListed:
+    """No mask can exist without its section on the page."""
+
+    def test_the_list_holds_every_mask(self):
+        assert _every_mask_class() == set(DOCUMENTED_MASKS)
 
 
 @pytest.mark.parametrize('mask', DOCUMENTED_MASKS, ids=lambda mask: mask.__name__)

@@ -4,13 +4,19 @@ Main orchestrator for bar rendering system: renders bars from ticks for the time
 registered workers require, holds their history, and takes the warmup history at startup.
 The symbol comes from the configuration, never from a bar dict.
 """
+from dataclasses import replace
 from datetime import datetime
-from typing import Callable, Dict, FrozenSet, List, Optional, Sequence, Set
+from typing import Callable, Dict, FrozenSet, Optional, Sequence, Set, Tuple
 
 from python.framework.bars.bar_renderer import BarRenderer
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryDefectError
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.types.market_types.market_data_types import Bar, BarRenderState, TickData
+from python.framework.types.market_types.market_data_types import (
+    Bar,
+    BarRenderState,
+    FormingBar,
+    TickData,
+)
 from python.framework.utils.bar_period import is_complete_at, open_time_of
 
 
@@ -41,7 +47,7 @@ class BarRenderingController:
         # PERFORMANCE OPTIMIZATION: Bar history caching
         # Cache is built on first get_all_bar_history() call
         # and invalidated whenever a bar closes
-        self._cached_bar_history: Dict[str, List[Bar]] = {}
+        self._cached_bar_history: Dict[str, Tuple[Bar, ...]] = {}
         # CASHE PER TIMEFRAME!
         self._cache_valid_per_timeframe: Dict[str, bool] = {}
 
@@ -73,7 +79,7 @@ class BarRenderingController:
             f'Registered {len(workers)} workers requiring timeframes: {self._required_timeframes}'
         )
 
-    def process_tick(self, tick_data: TickData) -> Dict[str, Bar]:
+    def process_tick(self, tick_data: TickData) -> Dict[str, FormingBar]:
         """
         Process tick and update all current bars.
 
@@ -83,7 +89,7 @@ class BarRenderingController:
             tick_data: Current tick to process
 
         Returns:
-            Dict[timeframe, Bar] - Updated current bars
+            Dict[timeframe, FormingBar] - Updated current bars
         """
         if self._warmup_seam is not None:
             close_seam, self._warmup_seam = self._warmup_seam, None
@@ -133,7 +139,7 @@ class BarRenderingController:
 
     def get_bar_history(
         self, symbol: str, timeframe: str
-    ) -> List[Bar]:
+    ) -> Tuple[Bar, ...]:
         """
         Get bar history (completed bars) for specific timeframe.
 
@@ -142,11 +148,11 @@ class BarRenderingController:
             timeframe: Timeframe (e.g., "M5")
 
         Returns:
-            List of completed Bar objects
+            The completed bars, oldest first
         """
         return self.bar_renderer.get_bar_history(symbol, timeframe)
 
-    def get_current_bar(self, symbol: str, timeframe: str) -> Optional[Bar]:
+    def get_current_bar(self, symbol: str, timeframe: str) -> Optional[FormingBar]:
         """
         Get current (incomplete) bar for specific timeframe.
 
@@ -155,11 +161,11 @@ class BarRenderingController:
             timeframe: Timeframe (e.g., "M5")
 
         Returns:
-            Current Bar object or None if no bar yet
+            The forming bar, or None if no bar yet
         """
         return self.bar_renderer.get_current_bar(symbol, timeframe)
 
-    def get_all_bar_history(self, symbol: str) -> Dict[str, List[Bar]]:
+    def get_all_bar_history(self, symbol: str) -> Dict[str, Tuple[Bar, ...]]:
         """
         Get all loaded warmup bars per timeframe.
 
@@ -199,7 +205,8 @@ class BarRenderingController:
         ended by then), and opening instants strictly increasing. A bar failing either is a
         defect in the selection that produced it, so the history is refused whole rather than
         trimmed — a trimmed history would hide the defect and still differ from every other
-        path. Each bar's is_complete is stamped here, from the rule, once it has passed.
+        path. Each bar enters with is_complete stamped, from the rule, once it has passed — as a
+        new frozen Bar, the handed-in ones stay as they were.
 
         Args:
             symbol: Trading symbol from config.symbol (authoritative)
@@ -211,12 +218,10 @@ class BarRenderingController:
         """
         for timeframe, bars in bars_by_timeframe.items():
             self._require_complete_history(symbol, timeframe, bars, reference_time)
-            for bar in bars:
-                bar.is_complete = True
             self.bar_renderer.initialize_historical_bars(
                 symbol=symbol,
                 timeframe=timeframe,
-                bars=bars
+                bars=[replace(bar, is_complete=True) for bar in bars]
             )
             # Invalidate cache for this timeframe after injection
             self._cache_valid_per_timeframe[timeframe] = False

@@ -30,10 +30,12 @@ algo ──calls──► DecisionTradingApi ──► executor (backtest or liv
 algo ◄─masks─── AlgoPosition     ◄── made once per position, computes on every read
                 AlgoOrder        ◄── made once per resting order, reads the order on every read
                 AlgoOrderResult  ◄── one per order result handed out, and in every decision event
+                AlgoTick         ◄── one per tick, the same for every worker and the decision
+                AlgoBar          ◄── made once per forming bar, reads the bar on every read
 ```
 
-The same masks serve the backtest and a live session: the decision API, the executor's base and the
-portfolio are shared by both pipelines.
+The same masks serve the backtest and a live session: the decision API, the executor's base, the
+portfolio and the worker orchestrator are shared by both pipelines.
 
 ## `AlgoPosition` — an open position
 
@@ -98,6 +100,8 @@ the order ended with.
 | `take_profit` | read — as `stop_loss` |
 | `entry_time` | stored — when the order was placed, on the canonical clock |
 | `in_flight_operation` | read — a submit, modify or cancel still on its way, `NONE` in steady state; while a modify is in flight the fields above still show the values it would replace |
+| `broker_ref` | read — the venue's identifier for the order once the venue confirmed it, `None` before that and in a backtest |
+| `in_flight_query` | read — whether a status query for the order is on its way to the venue; live only |
 
 ## `AlgoOrderResult` — an order's outcome
 
@@ -131,6 +135,58 @@ sequence number — is not shown.
 | `end_reason` | stored — why it ended, where it ended other than by a fill |
 | `joined_in_flight_close` | stored — for a close asked while another close of the same position was already on its way: the request joined that close and describes it, nothing new was sent |
 
+## `AlgoTick` — the tick
+
+What a worker receives as its tick — in `compute`, `should_recompute`, and a signal worker's
+`should_refresh` and `compute_signal` — and what the decision receives in `compute_tick` and
+`_execute_decision_impl`. The engine hands one tick to the executor, the bar renderer and every
+reader, and a tick does not change once it is built, so the mask simply reads it. What it keeps out
+are the engine's own fields: when the collector received the tick, whether the processing budget
+clipped it. A pass makes one mask: the workers and the decision read the same.
+
+| Field | Where it comes from |
+|---|---|
+| `timestamp` | stored — when the tick happened at its source, in UTC |
+| `symbol` | stored |
+| `bid` | stored |
+| `ask` | stored |
+| `mid` | derived — the midpoint of bid and ask; what a valuation uses |
+| `price` | derived — the strategy's price: the traded price where the venue prints one, the midpoint where it does not |
+| `last` | stored — the price the tick traded at, `None` where the venue prints none |
+| `volume` | stored — `0.0` where the venue reports none |
+
+## `AlgoBar` — the forming bar
+
+What a worker finds in `current_bars`: one mask per timeframe over the bar of the period still
+running. The renderer changes that bar on every tick, so every field is read from it when the worker
+reads it. A mask is made on the first pass that sees a bar and handed out again until the period
+closes; then the bar enters the history as a frozen `Bar`, and the next period's bar gets a mask of
+its own. `to_dict()` gives the fields as plain values, as `Bar.to_dict()` does.
+
+| Field | Where it comes from |
+|---|---|
+| `symbol` | stored |
+| `timeframe` | stored — such as `M5` |
+| `timestamp` | stored — the instant the period opens, an ISO string in UTC |
+| `open` | read — the first price of the period |
+| `high` | read — the highest price so far |
+| `low` | read — the lowest price so far |
+| `close` | read — the latest price |
+| `volume` | read — the volume so far |
+| `tick_count` | read — the ticks the bar holds so far |
+| `is_complete` | read — whether the period has ended by the latest tick's time |
+| `ohlc` | read — open, high, low and close |
+
+## The bar history — frozen bars in a tuple
+
+Not a mask, a frozen value. `bar_history` maps each timeframe to a tuple of `Bar`, oldest first:
+the warmup bars and every bar the session closed since. A closed bar no longer changes, so the
+renderer archives a frozen copy of it once, when its period closes, and every worker reads the same
+tuple; appending to it or assigning to one of its bars raises. `effective_bars` returns a tuple as
+well — the history's tail, plus the forming bar's mask on a LIVE compute basis. Each worker gets a
+`bar_history` mapping of its own, with only the timeframes it requires; `current_bars` is shared by
+the workers of a pass and read-only.
+
 ## What a mask guarantees, and where it stops
 
 - **Read-only.** Every assignment raises; a mask has no instance dictionary to add to.
@@ -146,7 +202,19 @@ sequence number — is not shown.
   probe `python/experiments/cost_probes/probe_portfolio_cache_cost.py`): a mask is made once per
   position in about 0.4 µs; a stored field reads in about 45 ns; a computed field — price, P&L,
   excursion, fees — runs the full valuation, about 1.7 µs. An algo that reads only identifiers and
-  directions pays nothing for the valuation.
+  directions pays nothing for the valuation. A worker's market data, measured the same way
+  (2026-11-12, a loaded machine, `python/experiments/cost_probes/probe_algo_tick_bar_cost.py`): a
+  pass makes the tick's mask once, finds it again for `execute_decision` and builds the forming
+  bars' mapping — about 1 µs in all with three timeframes. On a whole worker and decision pass,
+  measured against the code before the masks, they cost about 3 µs of about 85 µs, about 1 % of
+  the 0.38 ms a backtest process spent on a tick in the 1.5.0 benchmark. A field read through a
+  mask costs some tens of nanoseconds more than on the engine's object; a closed bar's frozen copy
+  costs about 1.4 µs once, at the close, and a window of closes reads from it as fast as before.
+- **Not copied.** `copy.copy`, `copy.deepcopy` and `pickle` refuse a mask with a `TypeError` that
+  says so: read its fields into values of your own. Two masks answer differently, because their
+  copy is well defined: a tick does not change, so an `AlgoTick` is its own copy, and an `AlgoBar`'s
+  copy is the bar as it stands, a frozen `Bar`. `current_bars` is a read-only mapping, and
+  `dict(current_bars)` makes one of your own.
 - **Not a lock against intent.** Python has no true privacy: an algo that deliberately reaches through
   the mask's private reference still reaches the engine object, and with it every guard the read-only
   contract stands for. That is unsupported; the mask protects against accidents and against an engine
@@ -168,5 +236,7 @@ a test:
 - **a copy made for the call** — the account info, the cost breakdown, the active order counts;
 - **a plain value** — a number, a flag, a text, an enum or a time.
 
-The decision events are frozen too, and their `result` is an `AlgoOrderResult`. A worker's ticks and
-bars follow (#654), decided by a measurement first, because they are the hottest path.
+The decision events are frozen too, and their `result` is an `AlgoOrderResult`. A worker and the
+decision receive the tick as an `AlgoTick`; a worker receives the forming bars as `AlgoBar` masks and
+the history as tuples of frozen `Bar`s. Mask or frozen value was decided for each of them by a
+measurement (#654), because it is the hottest path.

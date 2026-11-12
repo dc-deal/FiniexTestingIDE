@@ -7,6 +7,7 @@ import pytest
 
 from python.framework.exceptions.signal_data_errors import SignalProviderNotInjectedError
 from python.framework.factory.worker_factory import WorkerFactory
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.signal_data_types import SignalResolutionStats
 from python.framework.types.worker_types import WorkerType
@@ -112,6 +113,9 @@ class _StubDecisionLogic:
     def compute_tick(self, tick, worker_results):
         return Decision(action=DecisionLogicAction.FLAT, outputs={})
 
+    def get_algo_tick(self, tick):
+        return AlgoTick(tick)
+
 
 def _orchestrator(worker) -> WorkerOrchestrator:
     """process_tick-ready orchestrator without the heavy constructor."""
@@ -119,6 +123,7 @@ def _orchestrator(worker) -> WorkerOrchestrator:
     orch.is_initialized = True
     orch.workers = {worker.name: worker}
     orch._worker_results = {}
+    orch._algo_bars = {}
     orch._signal_workers = {worker.name: worker}
     orch._signal_stale_state = {}
     orch._signal_episodes = []

@@ -25,6 +25,9 @@ Recorded results:
       7.79, 27.67 → 26.10, no difference, as the sample marks every position there anyway. Against
       the 1.5.0 benchmark's 61,900 ticks a second (about 16 µs a tick), dropping the cache costs a
       spot run about a tenth of its speed per open position. Not yet measured on a server.
+      Corrected 2026-11-12 (#654): the 61,900 ticks a second add up the benchmark's parallel
+      scenarios and are no figure for one tick. One backtest process spent about 0.38 ms on a tick
+      there, so the 1.2 µs per open position come to about 0.3 % of a spot run's speed, not a tenth.
   2026-11-05 12:02 UTC — the same container (load average about 7), with the algo masks of #653 and
       the mark at open; the lazy marking, cache on → off, µs a tick: spot 1.32 → 3.66 (1 open),
       2.35 → 11.65 (5), 5.57 → 40.46 (20); margin 3.32 → 3.44, 10.58 → 10.97, 38.45 → 39.95. An
