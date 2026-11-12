@@ -92,6 +92,7 @@ Also pinned in the suites whose code raises the alerts:
 | `test_no_ping_before_the_loop_has_passed` | nothing to vouch for yet |
 | `test_pings_while_the_loop_passes` | the ordinary ping |
 | `test_a_stalled_loop_silences_the_ping_and_says_so_once` | no ping, the fail URL once, one alert, one error line |
+| `test_the_stall_and_the_recovery_say_when_they_were_noticed` | both lines carry the wall-clock instant they were noticed, because the session log stamps them with the run's clock, which stands still while the whole process is frozen |
 | `test_the_ping_resumes_with_the_loop` | the stall ends, and the operator hears it |
 | `test_without_a_ping_url_it_only_watches_the_loop` | Telegram on, the ping off: the stall and its end are alerted; nothing pinged, no stamp file |
 | `test_the_watch_ends_with_its_thread` | once the session stops it, a shutdown longer than the threshold is no stall |
