@@ -351,3 +351,18 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
             self.remove_order(order_id)
 
         return to_fill
+
+    def peek_next_due_msc(self) -> Optional[int]:
+        """
+        When the next pending order comes due, resolving nothing (#457).
+
+        So a timeline can ask when the next fill lands without reading this simulator's state.
+        The instant lies on the axis fills are timed on here: a tick's `collected_msc` where it was
+        recorded, its `time_msc` otherwise (`_get_tick_msc`) — the receipt axis, not the event axis
+        a backtest's clock follows. Which stamp a resolution event takes from it is #460's to decide.
+
+        Returns:
+            The earliest `broker_fill_msc` among the pending orders, or None when none is pending
+        """
+        return min((pending.timing.broker_fill_msc for pending in self._pending_orders.values()),
+                   default=None)

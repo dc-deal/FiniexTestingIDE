@@ -295,6 +295,11 @@ the operating system's home directory (`~`), where the list of what runs on the 
 `development`, `unknown`, `external`) with its evidence grade, stamped at import and carried into
 every run's consumption record. Not the *broker*. See [Data Provenance](architecture/data_provenance.md).
 
+**data slice** (`DataSliceEvent`) — Every tick of one instant, as one event of the loop core: the
+ticks that share the stamp the run orders by. A sweep through the book prints several trades with one
+stamp, and as one slice the broker path still sees each of them while the algo computes once. See
+[Loop Event Tests](tests/framework/loop_events_tests.md).
+
 **data source** — One of the inputs a scenario reads, named by its key: its *data broker* for the
 ticks, its `data_sentiment_type` for the signals. A stale-data stress event names the one it makes
 stale in `stale_data_source`. See [Stress Test](stress_test.md).
@@ -892,6 +897,10 @@ order of the stream; never sort by time instead, because several steps often car
 order — and is how the steps of one order are grouped, since the *order id* repeats across a
 position's orders.
 
+**seq** (on a loop event) — The submission order of the loop's events, which breaks ties between
+events with an equal stamp; the stamp orders first. Unlike an order event's `seq`, it is not the
+order of a stream on its own. See [Loop Event Tests](tests/framework/loop_events_tests.md).
+
 **server clock** (`server_clock`) — The clock a venue stamps its own data with, declared per broker
 in `market_config.json` as an IANA zone and the whole hours the server runs ahead of it. The MT5
 server is `America/New_York` + 7 — UTC+2 in US winter, UTC+3 in summer — so its times are converted
@@ -1030,9 +1039,18 @@ row and the trade are made in the same step; the row does not carry the trade's 
 
 **trade window basis** — Whether a trade is placed in a window by its entry or its exit.
 
+**ts_event** (on a loop event) — The source stamp of an event, in UTC epoch milliseconds: a tick's
+venue stamp, a timer's due instant. A backtest orders the loop's timeline by it. Not the order
+history's *event time*, which is a row's instant on the *canonical clock*. See *ts_init*.
+
 **ts_init** (on an order event) — When this process saw the step, on the *wall clock*. Live only;
 empty in a backtest, which has to come out the same every time it runs. Kept beside the step's own
 time on the *canonical clock*, never in its place.
+
+**ts_init** (on a loop event) — The receipt stamp of an event, in UTC epoch milliseconds: when this
+process received or made it — a tick's collection stamp, or its *ts_event* where none was recorded.
+Set in a backtest too, from the recorded data, unlike the order event's, and an archived tick's is
+the recording collector's. A live session orders the loop's timeline by it. See *ts_event*.
 
 **unaccounted** (an order status and an order event) — We stopped asking about an order and do not
 know how it ended: its answer was lost and the venue was asked until the resolution ran out, or the
