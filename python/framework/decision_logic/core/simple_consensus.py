@@ -42,6 +42,7 @@ from typing import Any, Dict, List, Optional
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.decision_logic_types import (
     AwarenessLevel,
@@ -55,7 +56,6 @@ from python.framework.types.trading_env_types.market_data_status_types import Ma
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderFeature,
-    OrderResult,
     OrderSide,
     OrderStatus,
     OrderType,
@@ -270,7 +270,7 @@ class SimpleConsensus(AbstractDecisionLogic):
         self,
         decision: Decision,
         tick: TickData
-    ) -> Optional[OrderResult]:
+    ) -> Optional[AlgoOrderResult]:
         """
         Implementation: Execute trading decision via DecisionTradingApi.
 
@@ -289,7 +289,7 @@ class SimpleConsensus(AbstractDecisionLogic):
             tick: Current tick data
 
         Returns:
-            OrderResult if order was sent, None if no trade
+            AlgoOrderResult if order was sent, None if no trade
         """
         # Check if trading API is available
         if not self.trading_api:

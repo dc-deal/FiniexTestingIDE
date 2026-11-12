@@ -149,13 +149,14 @@ class TestThresholdIsAParameter:
         assert clean.stale_ticks == 0 and tight.stale_ticks > 0
 
 
+@pytest.fixture(scope='module')
+def report(summary):
+    """The signal report the batch's counters project into."""
+    return build_signal_report(_RUN_ID, summary.signal_scenario_map, run_units_from_batch(summary))
+
+
 class TestReportProjection:
     """The counters reach the model, keyed to the right scenario."""
-
-    @pytest.fixture(scope='class')
-    def report(self, summary):
-        return build_signal_report(_RUN_ID, 
-            summary.signal_scenario_map, run_units_from_batch(summary))
 
     def test_one_source_with_every_scenario(self, report):
         assert len(report.units) == 1

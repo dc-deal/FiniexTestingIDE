@@ -34,12 +34,20 @@ from datetime import datetime, timedelta
 from typing import Any, Collection, Dict, FrozenSet, List, Optional, Sequence, Union
 
 from python.framework.exceptions.order_feature_errors import OrderFeatureRefusedError
+from python.framework.trading_env.algo_masks.algo_order import AlgoOrder
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.trading_env.algo_masks.algo_position import AlgoPosition
 from python.framework.types.config_types.autotrader_defaults_config_types import OrderGuardDefaults
 from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.trading_env_types.broker_types import SymbolSpecification
-from python.framework.types.trading_env_types.decision_api_method_types import DecisionApiMethodKind
-from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
+from python.framework.types.trading_env_types.decision_api_method_types import (
+    DecisionApiMethodKind,
+    DecisionApiReturnKind,
+)
+from python.framework.types.trading_env_types.latency_simulator_types import (
+    PendingOperation,
+    PendingOrder,
+)
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     ModificationRejectionReason,
@@ -120,6 +128,37 @@ DECISION_API_METHOD_KINDS: Dict[str, DecisionApiMethodKind] = {
     'get_active_order_counts': DecisionApiMethodKind.READS,
     'get_active_orders': DecisionApiMethodKind.READS,
     'get_order_history': DecisionApiMethodKind.READS,
+}
+
+# What every READS method hands the decision (#654): a mask, a frozen value, a copy made for the
+# call, or a plain value — never the engine's own object. A test holds this map to the READS
+# methods and each kind to the method's declared return type.
+DECISION_API_READS_RETURN: Dict[str, DecisionApiReturnKind] = {
+    'get_account_info': DecisionApiReturnKind.COPY,
+    'get_symbol_spec': DecisionApiReturnKind.FROZEN,
+    'is_spot_mode': DecisionApiReturnKind.VALUE,
+    'get_asset_balance': DecisionApiReturnKind.VALUE,
+    'get_free_entry_capital': DecisionApiReturnKind.VALUE,
+    'get_cost_breakdown': DecisionApiReturnKind.COPY,
+    'get_open_positions': DecisionApiReturnKind.MASK,
+    'get_position': DecisionApiReturnKind.MASK,
+    'has_pending_orders': DecisionApiReturnKind.VALUE,
+    'has_pipeline_orders': DecisionApiReturnKind.VALUE,
+    'has_in_flight_operation': DecisionApiReturnKind.VALUE,
+    'get_in_flight_operation': DecisionApiReturnKind.VALUE,
+    'is_pending_close': DecisionApiReturnKind.VALUE,
+    'get_order_capabilities': DecisionApiReturnKind.FROZEN,
+    'get_current_time': DecisionApiReturnKind.VALUE,
+    'get_market_data_status': DecisionApiReturnKind.FROZEN,
+    'get_broker_name': DecisionApiReturnKind.VALUE,
+    'get_leverage': DecisionApiReturnKind.VALUE,
+    'get_time_to_next_rollover': DecisionApiReturnKind.VALUE,
+    'is_next_rollover_triple': DecisionApiReturnKind.VALUE,
+    'get_time_to_market_close': DecisionApiReturnKind.VALUE,
+    'is_weekend_ahead': DecisionApiReturnKind.VALUE,
+    'get_active_order_counts': DecisionApiReturnKind.COPY,
+    'get_active_orders': DecisionApiReturnKind.MASK,
+    'get_order_history': DecisionApiReturnKind.MASK,
 }
 
 
@@ -331,7 +370,7 @@ class DecisionTradingApi:
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
         comment: str = '',
-    ) -> OrderResult:
+    ) -> AlgoOrderResult:
         """
         Send order to trading environment.
 
@@ -353,7 +392,7 @@ class DecisionTradingApi:
             comment: Order comment (e.g., strategy name)
 
         Returns:
-            OrderResult with execution details
+            The order's result, as a read-only mask (#654)
         """
         # Resolve algo-facing OrderSide to internal OrderDirection.
         # The executor owns this mapping — it knows the trading model.
@@ -376,7 +415,7 @@ class DecisionTradingApi:
             refusal = self._order_guard.refuse_undeclared_features(
                 request, self._executor.get_current_time(), undeclared)
             self._executor.record_guard_rejection(refusal)
-            return refusal
+            return AlgoOrderResult(refusal)
 
         # Pre-trade guard — rejection cooldown + stale-market-data block (#436) +
         # unresolved-write block (#487). Time source is the executor's current tick
@@ -389,7 +428,7 @@ class DecisionTradingApi:
             unresolved_at_ceiling=self._executor.get_unresolved_at_ceiling())
         if guard_result is not None:
             self._executor.record_guard_rejection(guard_result)
-            return guard_result
+            return AlgoOrderResult(guard_result)
 
         result = self._executor.open_order(request)
 
@@ -406,7 +445,7 @@ class DecisionTradingApi:
             if result.rejection_reason in _COOLDOWN_REJECTION_REASONS:
                 self._order_guard.record_rejection(request.direction, now)
 
-        return result
+        return AlgoOrderResult(result)
 
     # ============================================
     # Async Order Outcome Callback
@@ -639,7 +678,7 @@ class DecisionTradingApi:
         """
         return self._executor.has_in_flight_operation(order_id)
 
-    def get_in_flight_operation(self, order_id: str):
+    def get_in_flight_operation(self, order_id: str) -> PendingOperation:
         """
         Return the in-flight operation type for an order (#318), or NONE.
 
@@ -673,7 +712,7 @@ class DecisionTradingApi:
         position_id: str,
         lots: Optional[float] = None,
         exit: Optional[OwnExit] = None,
-    ) -> OrderResult:
+    ) -> AlgoOrderResult:
         """
         Close position (full or partial).
 
@@ -685,19 +724,19 @@ class DecisionTradingApi:
                 anywhere — it describes the close, it does not make one
 
         Returns:
-            OrderResult with close execution details. While a close for this position
+            The close's result, as a read-only mask (#654). While a close for this position
             is already in flight, the request joins it: PENDING, describing that close,
-            with `joined_in_flight_close` in its metadata
+            with `joined_in_flight_close` set
         """
         if exit is None:
-            return self._executor.close_position(position_id, lots)
+            return AlgoOrderResult(self._executor.close_position(position_id, lots))
         result = self._executor.close_position(
             position_id, lots, close_reason=exit.reason, exit_level=exit.level)
         # Counted as the level check counts its own closes: once, when the close goes out —
         # not a refused one, and not a request that joined a close already on its way
         if not result.is_refused and not result.metadata.get('joined_in_flight_close'):
             self._executor.record_own_exit()
-        return result
+        return AlgoOrderResult(result)
     # ============================================
     # Public API: Broker Capabilities
     # ============================================
@@ -965,7 +1004,7 @@ class DecisionTradingApi:
         """
         return self._executor.get_active_order_counts()
 
-    def get_active_orders(self) -> List[PendingOrder]:
+    def get_active_orders(self) -> List[AlgoOrder]:
         """
         Get the currently resting (active) orders — limit + stop.
 
@@ -974,11 +1013,12 @@ class DecisionTradingApi:
         is resting (broker-aligned), rather than relying on its own bookkeeping.
 
         Returns:
-            List of active limit + stop PendingOrders
+            A read-only mask of each resting limit and stop order (#654) — current at every read,
+            never the engine's own order
         """
-        return self._executor.get_active_orders()
+        return self._executor.get_algo_orders()
 
-    def get_order_history(self, symbol: Optional[str] = None) -> List[OrderResult]:
+    def get_order_history(self, symbol: Optional[str] = None) -> List[AlgoOrderResult]:
         """
         Get historical orders (executed + rejected).
 
@@ -991,7 +1031,7 @@ class DecisionTradingApi:
             symbol: Filter by symbol (None = all orders)
 
         Returns:
-            List of OrderResult objects
+            A read-only mask of each order's result (#654)
         """
         raise NotImplementedError(
             'Order history is Post-V1 feature. '

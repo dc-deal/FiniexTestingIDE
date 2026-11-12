@@ -44,6 +44,8 @@ from python.framework.factory.trading_fee_factory import (
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
+from python.framework.trading_env.algo_masks.algo_order import AlgoOrder
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.trading_env.algo_masks.algo_position import AlgoPosition
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.execution_counters import ExecutionCounters
@@ -257,6 +259,10 @@ class AbstractTradeExecutor(ABC):
         # Kraken says so itself: a stop-loss-limit is not linked to a position and has to be
         # cancelled by hand once the position is gone.
         self._active_stop_orders: List[PendingOrder] = []
+
+        # One mask per resting order, made on the first read and dropped once the order no longer
+        # rests (#654) — an algo never holds the engine's own order
+        self._algo_orders: Dict[str, AlgoOrder] = {}
 
         # Executor mode — subclasses override (LiveTradeExecutor → LIVE)
         self._executor_mode = ExecutorMode.SIMULATION
@@ -829,7 +835,7 @@ class AbstractTradeExecutor(ABC):
         self._emit_decision_event(OrderCancelledEvent(
             order_id=pending.pending_order_id,
             direction=result.direction,
-            result=result,
+            result=AlgoOrderResult(result),
             tick_time=self.get_current_time(),
         ))
 
@@ -2331,7 +2337,7 @@ class AbstractTradeExecutor(ABC):
                 closed_lots=executed_lots,
                 remaining_lots=pre_close_total_lots - executed_lots,
                 fill_price=close_price,
-                result=result,
+                result=AlgoOrderResult(result),
                 tick_time=self.get_current_time(),
             ))
         # A dust remainder that left the book ends the position as a full close does
@@ -2343,7 +2349,7 @@ class AbstractTradeExecutor(ABC):
                 fill_price=close_price,
                 lots=executed_lots,
                 realized_pnl=realized_pnl,
-                result=result,
+                result=AlgoOrderResult(result),
                 tick_time=self.get_current_time(),
             ))
         return result
@@ -2483,6 +2489,25 @@ class AbstractTradeExecutor(ABC):
             Combined list of active limit and stop PendingOrders
         """
         return self._active_limit_orders + self._active_stop_orders
+
+    def get_algo_orders(self) -> List[AlgoOrder]:
+        """
+        The resting orders as an algo receives them — read-only masks (#654). A mask is reused for
+        as long as its order rests; one whose order filled, was cancelled or expired is dropped
+        here, at the next read, rather than at each of the many places an order ends.
+
+        Returns:
+            A mask for each resting limit and stop order
+        """
+        resting = self._active_limit_orders + self._active_stop_orders
+        masks: Dict[str, AlgoOrder] = {}
+        for order in resting:
+            mask = self._algo_orders.get(order.pending_order_id)
+            if mask is None or not mask.is_mask_of(order):
+                mask = AlgoOrder(order)
+            masks[order.pending_order_id] = mask
+        self._algo_orders = masks
+        return list(masks.values())
 
     def get_committed_funds(
         self,
@@ -3354,6 +3379,7 @@ class AbstractTradeExecutor(ABC):
         self._protective_fill_levels.clear()
         self._active_limit_orders.clear()
         self._active_stop_orders.clear()
+        self._algo_orders.clear()
 
     # ============================================
     # Shared Calculations (used by subclasses)

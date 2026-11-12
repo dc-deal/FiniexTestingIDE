@@ -44,6 +44,7 @@ from typing import Any, Dict, List, Optional, Set
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.own_exit_levels import OwnExitLevels
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
@@ -66,7 +67,6 @@ from python.framework.types.trading_env_types.market_data_status_types import Ma
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderFeature,
-    OrderResult,
     OrderSide,
     OrderType,
 )
@@ -592,7 +592,7 @@ class TrendChannelReference(AbstractDecisionLogic):
         self,
         decision: Decision,
         tick: TickData
-    ) -> Optional[OrderResult]:
+    ) -> Optional[AlgoOrderResult]:
         """
         Manage open positions + resting entries, then place a new entry if armed.
 
@@ -607,7 +607,7 @@ class TrendChannelReference(AbstractDecisionLogic):
             tick: Current tick data
 
         Returns:
-            OrderResult if a new entry order was submitted, None otherwise
+            AlgoOrderResult if a new entry order was submitted, None otherwise
         """
         if not self.trading_api:
             self.logger.warning('Trading API not available - cannot execute')
@@ -688,7 +688,7 @@ class TrendChannelReference(AbstractDecisionLogic):
         self,
         decision: Decision,
         tick: TickData
-    ) -> Optional[OrderResult]:
+    ) -> Optional[AlgoOrderResult]:
         """
         Place a resting LIMIT/STOP entry if capacity and entry capital allow.
 
@@ -700,7 +700,7 @@ class TrendChannelReference(AbstractDecisionLogic):
             tick: Current tick data
 
         Returns:
-            OrderResult if an entry was submitted, None otherwise
+            AlgoOrderResult if an entry was submitted, None otherwise
         """
         symbol = tick.symbol
 

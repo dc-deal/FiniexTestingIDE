@@ -51,6 +51,7 @@ from python.framework.reporting.builders.pending_orders_report_builder import ac
 from python.framework.reporting.builders.portfolio_report_builder import open_position_rows
 from python.framework.reporting.io.run_stream_appender import RunStreamAppender
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.types.api.state_frame_types import (
     ProcessMemoryRow,
     StateFrame,
@@ -59,7 +60,6 @@ from python.framework.types.api.state_frame_types import (
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_logic_types import Decision
 from python.framework.types.process_table_types import OwnProcessMemory
-from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.utils.bar_period import open_time_of, period_start
 from python.framework.utils.process_memory_reader import read_own_memory
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
@@ -182,7 +182,7 @@ class StateFrameRecorder:
         decision: Optional[Decision],
         on_tick: bool,
         closed_timeframes: FrozenSet[str] = frozenset(),
-        order: Optional[OrderResult] = None,
+        order: Optional[AlgoOrderResult] = None,
         safety_blocked: bool = False,
         safety_drawdown_pct: Optional[float] = None,
     ) -> None:
@@ -297,7 +297,7 @@ class StateFrameRecorder:
         safety_blocked: bool,
         safety_drawdown_pct: Optional[float],
         closed_timeframes: FrozenSet[str],
-        order: Optional[OrderResult],
+        order: Optional[AlgoOrderResult],
         valued: bool,
     ) -> bool:
         """
@@ -344,7 +344,7 @@ class StateFrameRecorder:
         safety_blocked: bool,
         safety_drawdown_pct: Optional[float],
         closed_timeframes: FrozenSet[str],
-        order: Optional[OrderResult],
+        order: Optional[AlgoOrderResult],
         valued: bool,
     ) -> StateFrame:
         """

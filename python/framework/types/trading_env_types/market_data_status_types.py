@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional
 
 
-@dataclass
+@dataclass(frozen=True)
 class MarketDataStatus:
     """
     Session-level market-data health, evaluated by the live tick loop (#436).
@@ -22,6 +22,9 @@ class MarketDataStatus:
 
     Upgrade path (#375): grows into the typed FeedStatus struct on the unified
     event timeline (error states, typed connection events).
+
+    Frozen (#654): the loop replaces the status on every change and never edits one in place, so
+    the instance an algo is handed is a value it cannot change for anyone else.
     """
     is_stale: bool = False
     stale_since: Optional[datetime] = None

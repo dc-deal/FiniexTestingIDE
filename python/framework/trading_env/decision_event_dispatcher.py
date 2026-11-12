@@ -20,6 +20,7 @@ from typing import Dict, List, Optional, Set, Type
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.types.decision_event_types import (
     DecisionEvent,
     DecisionEventType,
@@ -154,6 +155,7 @@ class DecisionEventDispatcher:
                 position_id=(result.position_id if result.position_id is not None
                              or result.action is not OrderAction.CLOSE else result.order_id),
                 status=result.status,
+                # Already the mask the ending event carried
                 result=result,
                 tick_time=event.tick_time,
             )
@@ -244,7 +246,7 @@ class DecisionEventDispatcher:
                 direction=direction,
                 fill_price=result.executed_price,
                 lots=result.executed_lots,
-                result=result,
+                result=AlgoOrderResult(result),
                 tick_time=tick_time,
             ))
         elif result.status in (OrderStatus.REJECTED, OrderStatus.UNDELIVERED):
@@ -253,7 +255,7 @@ class DecisionEventDispatcher:
                 direction=direction,
                 reason=result.rejection_reason,
                 message=result.rejection_message,
-                result=result,
+                result=AlgoOrderResult(result),
                 tick_time=tick_time,
             ))
         elif result.status is OrderStatus.UNACCOUNTED:
@@ -261,7 +263,7 @@ class DecisionEventDispatcher:
                 order_id=result.order_id,
                 direction=direction,
                 end_reason=result.end_reason,
-                result=result,
+                result=AlgoOrderResult(result),
                 tick_time=tick_time,
             ))
 

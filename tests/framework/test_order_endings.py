@@ -227,7 +227,9 @@ class TestEveryEndingHasARowInTheSimulation:
         assert [(r.status, r.initiator, r.end_reason) for r in ended] == [
             (OrderStatus.CANCELLED, OrderInitiator.STRATEGY, OrderEndReason.CANCEL_REQUESTED)]
         cancels = [e for e in events if isinstance(e, OrderCancelledEvent)]
-        assert [e.result for e in cancels] == ended, 'the event carries the booked row'
+        assert len(cancels) == len(ended) and all(
+            event.result.is_mask_of(row) for event, row in zip(cancels, ended)), \
+            'the event shows the booked row, through its read-only mask (#654)'
 
     def test_the_data_end_expires_resting_and_travelling_orders_alike(self):
         sim = _simulator(spot_mode=False, latency_ms=500)

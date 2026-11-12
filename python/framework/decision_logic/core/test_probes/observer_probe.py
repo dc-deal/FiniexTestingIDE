@@ -17,8 +17,14 @@ Plan steps (decision_logic_config.plan), for example:
     {"trigger": "heartbeat", "at": 200, "action": "open", "direction": "LONG", "lots": 0.01}
     {"trigger": "tick", "at": 1500, "action": "partial_close", "position_index": 0, "lots": 0.004}
     {"trigger": "tick", "at": 2200, "action": "close", "position_index": 1}
+    {"trigger": "tick", "at": 600, "action": "rest_limit", "direction": "LONG", "lots": 0.01,
+     "offset": 0.2}
+    {"trigger": "tick", "at": 1200, "action": "cancel_resting", "resting_index": 0}
 A tick step fires on that tick pass; a heartbeat step on the first heartbeat pass after that many
 tick passes. position_index counts the positions the plan opened, in the order they filled.
+rest_limit places a limit that far from the tick's mid — 0.2 is 20 % — so it rests rather than
+fills; resting_index counts the orders it placed. A resting order is read through its mask on
+every pass and kept, like a position, so its record shows it stays current (#654).
 """
 
 from dataclasses import fields, is_dataclass
@@ -28,7 +34,14 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.trading_env.algo_masks.abstract_algo_mask import AbstractAlgoMask
+from python.framework.trading_env.algo_masks.algo_order import AlgoOrder
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.trading_env.algo_masks.algo_position import AlgoPosition
+from python.framework.types.autotrader_types.cold_start_types import (
+    ColdStartSituation,
+    ColdStartVerdict,
+)
 from python.framework.types.decision_event_types import (
     DecisionEventType,
     OrderCancelledEvent,
@@ -47,7 +60,6 @@ from python.framework.types.trading_env_types.market_data_status_types import Ma
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderFeature,
-    OrderResult,
     OrderSide,
     OrderType,
 )
@@ -106,6 +118,10 @@ class ObserverProbe(AbstractDecisionLogic):
         # A reference to each opened position, kept from the pass that first saw it — a strategy
         # that holds a position reads it without asking the API again
         self._kept_positions: Dict[str, AlgoPosition] = {}
+        # The resting orders the plan placed, and a mask of each kept from the pass that first read
+        # it — a strategy that holds an order reads it without asking the API again (#654)
+        self._resting_order_ids: List[str] = []
+        self._kept_orders: Dict[str, AlgoOrder] = {}
         self._observations: List[Dict[str, Any]] = []
 
     # ============================================
@@ -156,8 +172,11 @@ class ObserverProbe(AbstractDecisionLogic):
             decision_logic_config: Decision logic configuration dict
 
         Returns:
-            List containing OrderType.MARKET
+            MARKET, and LIMIT where the plan rests an order
         """
+        plan = decision_logic_config.get('plan') or []
+        if any(step.get('action') == 'rest_limit' for step in plan):
+            return [OrderType.MARKET, OrderType.LIMIT]
         return [OrderType.MARKET]
 
     @classmethod
@@ -251,7 +270,7 @@ class ObserverProbe(AbstractDecisionLogic):
         self,
         decision: Decision,
         tick: Optional[TickData]
-    ) -> Optional[OrderResult]:
+    ) -> Optional[AlgoOrderResult]:
         """
         Execute the plan step the decision names.
 
@@ -260,12 +279,18 @@ class ObserverProbe(AbstractDecisionLogic):
             tick: Current tick data, None on a heartbeat pass
 
         Returns:
-            OrderResult of the step's order, None when no step was due or nothing could be sent
+            AlgoOrderResult of the step's order, None when no step was due or nothing could be sent
         """
         step_index = decision.outputs.get('step', -1)
         if step_index < 0:
             return None
         step = self._plan[step_index]
+        if step['action'] == 'rest_limit':
+            return self._rest_limit(step, step_index, tick)
+        if step['action'] == 'cancel_resting':
+            if step['resting_index'] < len(self._resting_order_ids):
+                self.trading_api.cancel_limit_order(self._resting_order_ids[step['resting_index']])
+            return None
         if step['action'] == 'open':
             side = OrderSide.BUY if step['direction'] == 'LONG' else OrderSide.SELL
             result = self.trading_api.send_order(
@@ -290,9 +315,53 @@ class ObserverProbe(AbstractDecisionLogic):
         self._sent_order_ids.append(result.order_id)
         return result
 
+    def _rest_limit(self, step: Dict[str, Any], step_index: int,
+                    tick: Optional[TickData]) -> Optional[AlgoOrderResult]:
+        """
+        Place a limit far enough from the market that it rests.
+
+        Args:
+            step: The plan step — its direction, lots and offset from the mid
+            step_index: The step's index
+            tick: The tick of the pass; None on a heartbeat pass, which places nothing
+
+        Returns:
+            The order's result, None on a heartbeat pass
+        """
+        if tick is None:
+            return None
+        long = step['direction'] == 'LONG'
+        digits = self.trading_api.get_symbol_spec(self._symbol).digits
+        price = round(tick.mid * (1 - step['offset'] if long else 1 + step['offset']), digits)
+        result = self.trading_api.send_order(
+            symbol=self._symbol,
+            order_type=OrderType.LIMIT,
+            side=OrderSide.BUY if long else OrderSide.SELL,
+            lots=step['lots'],
+            price=price,
+            comment=f'observer step {step_index}',
+        )
+        self._sent_order_ids.append(result.order_id)
+        if not result.is_refused:
+            self._resting_order_ids.append(result.order_id)
+        return result
+
     # ============================================
     # Hooks — a hook is a pass a decision can read in
     # ============================================
+
+    def on_cold_start(self, situation: ColdStartSituation) -> ColdStartVerdict:
+        """
+        The boot's question, asked of a logic that can leave an order resting: this probe runs in
+        backtests, where no venue holds anything across a restart.
+
+        Args:
+            situation: What the boot found at the venue
+
+        Returns:
+            A declining verdict with the reason
+        """
+        return ColdStartVerdict(False, 'observer probe — no live venue to account for')
 
     def on_order_filled(self, event: OrderFilledEvent) -> None:
         """
@@ -363,10 +432,11 @@ class ObserverProbe(AbstractDecisionLogic):
         if quote is not None:
             record['quote'] = {'bid': quote[0], 'ask': quote[1]}
         if event is not None:
-            record['event'] = {item.name: _plain(getattr(event, item.name)) for item in fields(event)
-                               if item.name != 'result'}
+            record['event'] = {item.name: _plain(getattr(event, item.name)) for item in fields(event)}
         record['kept'] = {position_id: _position_view(position)
                           for position_id, position in self._kept_positions.items()}
+        record['kept_orders'] = {order_id: _plain(order)
+                                 for order_id, order in self._kept_orders.items()}
         record['reads'] = self._read_everything()
         self._observations.append(record)
 
@@ -412,7 +482,10 @@ class ObserverProbe(AbstractDecisionLogic):
         reads['get_time_to_market_close'] = _plain(api.get_time_to_market_close())
         reads['is_weekend_ahead'] = api.is_weekend_ahead(_WEEKEND_HORIZON)
         reads['get_active_order_counts'] = dict(api.get_active_order_counts())
-        reads['get_active_orders'] = [_plain(order) for order in api.get_active_orders()]
+        active_orders = api.get_active_orders()
+        for order in active_orders:
+            self._kept_orders.setdefault(order.pending_order_id, order)
+        reads['get_active_orders'] = [_plain(order) for order in active_orders]
         try:
             reads['get_order_history'] = [_plain(order) for order in api.get_order_history()]
         except NotImplementedError:
@@ -510,6 +583,9 @@ def _plain(value: Any) -> Any:
         return value.isoformat()
     if isinstance(value, timedelta):
         return value.total_seconds()
+    if isinstance(value, AbstractAlgoMask):
+        # A mask is read through its own field list, so a field it gains is recorded unasked
+        return {name: _plain(getattr(value, name)) for name in type(value).get_mask_fields()}
     if is_dataclass(value):
         return {item.name: _plain(getattr(value, item.name)) for item in fields(value)}
     if isinstance(value, dict):
