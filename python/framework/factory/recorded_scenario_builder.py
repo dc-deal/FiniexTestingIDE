@@ -26,6 +26,7 @@ from python.framework.factory.strategy_config_renderer import LOGIC_TYPE_KEY, WO
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     AutotraderExecutionDefaults,
+    IndicatorSeriesDefaults,
     StateFramesDefaults,
 )
 from python.framework.types.config_types.backtesting_config_types import (
@@ -45,6 +46,9 @@ RENDERED_BLOCK_TARGETS: Dict[str, str] = {
     'execution': 'field by field, RENDERED_EXECUTION_TARGETS',
     'state_frames': ("execution_config.state_frames, switched on with the session's cadence — the "
                      'backtest records its frames on the slots the session recorded on (#579)'),
+    'indicator_series': ('execution_config.indicator_series, as the session ran it — a drawing '
+                         'that changes no decision, so the backtest draws the panes the session '
+                         'drew (#379)'),
     'order_guard': 'the order_guard block — one model in both pipelines',
 }
 
@@ -149,6 +153,10 @@ class RecordedScenarioBuilder:
                         'enabled': True,
                         'cadence_timeframe': (blocks.get('state_frames') or {}).get(
                             'cadence_timeframe', StateFramesDefaults().cadence_timeframe),
+                    },
+                    'indicator_series': {
+                        'enabled': (blocks.get('indicator_series') or {}).get(
+                            'enabled', IndicatorSeriesDefaults().enabled),
                     },
                 },
                 # The release's own simulator in full, every field written: a workspace override

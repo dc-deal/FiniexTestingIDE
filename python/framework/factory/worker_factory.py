@@ -25,6 +25,10 @@ from python.framework.exceptions.warmup_history_errors import WarmupRequirementM
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import ValidatedParameters
+from python.framework.validators.indicator_series_validator import (
+    validate_indicator_series,
+    validate_indicator_series_timeframes,
+)
 from python.framework.validators.parameter_validator import apply_defaults
 from python.framework.workers.abstract_worker import AbstractWorker
 from python.framework.workers.core.bollinger_worker import BollingerWorker
@@ -33,10 +37,19 @@ from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
 from python.framework.workers.core.obv_worker import ObvWorker
 from python.framework.workers.core.rsi_worker import RsiWorker
+from python.framework.workers.core.tide_and_wave_worker import TideAndWaveWorker
 from python.framework.workers.core.test_probes.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.test_probes.sample_probe_worker import (
     SampleProbeWorker,
 )
+
+# The CORE workers that draw nothing on a run's chart, and why (#379). Every other CORE worker
+# declares its indicator series; a test holds the two to the registry.
+CORE_WORKERS_DRAWING_NOTHING: Dict[str, str] = {
+    'CORE/llm_sentiment': 'a signal worker resolves snapshots; it has no bars to give a value to',
+    'CORE/heavy_rsi': 'a load probe for the test suites',
+    'CORE/test_probes/sample_probe_worker': 'a warmup probe for the test suites',
+}
 
 
 class WorkerFactory:
@@ -84,6 +97,7 @@ class WorkerFactory:
             self._registry['CORE/heavy_rsi'] = (HeavyRsiWorker, None)
             self._registry['CORE/macd'] = (MacdWorker, None)
             self._registry['CORE/obv'] = (ObvWorker, None)
+            self._registry['CORE/tide_and_wave'] = (TideAndWaveWorker, None)
             self._registry['CORE/llm_sentiment'] = (LlmSentimentWorker, None)
             self._registry['CORE/test_probes/sample_probe_worker'] = (SampleProbeWorker, None)
 
@@ -137,6 +151,7 @@ class WorkerFactory:
         worker_class, _ = self.resolve_worker_class(worker_type, base_path)
 
         worker_class.validate_config(worker_config)
+        validate_indicator_series(worker_class, worker_type)
 
         warnings = worker_class.validate_parameter_schema(
             worker_config, strict=self._strict_validation
@@ -157,6 +172,7 @@ class WorkerFactory:
         )
 
         self._require_one_warmup_answer(worker_type, worker_config, worker_instance)
+        validate_indicator_series_timeframes(worker_instance, worker_type)
 
         self._logger.debug(
             f'✅ Created worker: {instance_name} ({worker_type}) '

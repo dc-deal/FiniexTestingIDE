@@ -31,6 +31,8 @@ from python.framework.types.api.report_types import (
     RunInfo,
     RunResultRow,
 )
+from python.framework.types.chart_types.drawing_style_types import DrawingRole
+from python.framework.types.chart_types.indicator_series_entry_types import IndicatorSeriesEntry
 from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.coverage_report_types import Gap, GapCategory
 from python.framework.types.run_kind_types import OrdersTo
@@ -131,6 +133,13 @@ class TestTimeframes:
         served = {row['check']: row for row in body['checks']}
         assert set(served) == set(VALIDATION_CHECKS_BY_ID)
         assert served['warmup_quality']['title'] == VALIDATION_CHECKS_BY_ID['warmup_quality'].title
+
+    def test_the_drawing_types_are_the_entry_schema(self, client):
+        """The served schema is the indicator series entry's own, its style vocabulary inside (#379)."""
+        schema = client.get('/api/v1/drawing-types').json()['indicator_series']
+        assert schema == IndicatorSeriesEntry.model_json_schema(mode='serialization')
+        assert {'times', 'data', 'plots', 'layer', 'pane'} <= set(schema['properties'])
+        assert set(schema['$defs']['DrawingRole']['enum']) == {role.value for role in DrawingRole}
 
     def test_list_timeframes_structure(self, client):
         r = client.get('/api/v1/timeframes')

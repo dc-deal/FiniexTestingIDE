@@ -198,6 +198,7 @@ def simulation_result(ticks: List[TickData], spot_mode: bool,
                       orchestrator: Optional[OrchestratorFactory] = None,
                       decision_events: bool = False,
                       state_frames: Optional[Any] = None,
+                      indicator_series: Optional[Any] = None,
                       **config_options: Any) -> ProcessTickLoopResult:
     """
     Run the simulation's tick loop over the ticks.
@@ -209,6 +210,7 @@ def simulation_result(ticks: List[TickData], spot_mode: bool,
         orchestrator: Builds the orchestrator from the probe; the harness's own when None
         decision_events: Hand the loop a decision event dispatcher (#348) over the probe
         state_frames: The state-frame recorder the loop feeds, or None for none
+        indicator_series: The indicator series recorder the loop feeds, or None for none
         config_options: Further scenario settings, by name
 
     Returns:
@@ -238,6 +240,7 @@ def simulation_result(ticks: List[TickData], spot_mode: bool,
         decision_event_dispatcher=(
             DecisionEventDispatcher(logic, simulator, logger) if decision_events else None),
         state_frames=state_frames,
+        indicator_series=indicator_series,
     )
     return result
 

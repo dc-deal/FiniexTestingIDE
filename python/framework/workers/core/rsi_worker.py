@@ -4,6 +4,15 @@ import numpy as np
 
 from python.framework.trading_env.algo_masks.algo_bar import AlgoBar
 from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
+from python.framework.types.chart_types.indicator_series_types import (
+    FilledArea,
+    IndicatorPane,
+    IndicatorSeriesDeclaration,
+    Plot,
+    PriceFormat,
+    PriceLine,
+    ValueRange,
+)
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.parameter_types import OutputParamDef
@@ -43,6 +52,21 @@ class RsiWorker(AbstractIndicatorWorker):
     def get_required_activity_metric(cls) -> Optional[str]:
         """RSI is price-based — no activity-data dependency."""
         return None
+
+    @classmethod
+    def get_indicator_series(cls) -> Tuple[IndicatorSeriesDeclaration, ...]:
+        """
+        RSI in a pane of its own on its fixed 0–100 scale, with the conventional 70 and 30.
+
+        Returns:
+            The series
+        """
+        return (IndicatorSeriesDeclaration(
+            pane=IndicatorPane.OWN, title='RSI', price_format=PriceFormat(precision=2),
+            range=ValueRange(min_value=0, max_value=100),
+            plots=(Plot(id='rsi_value'),),
+            price_lines=(PriceLine(price=70, title='70'), PriceLine(price=30, title='30')),
+            filled_areas=(FilledArea(between=('price_line:70', 'price_line:30')),)),)
 
     @classmethod
     def get_output_schema(cls) -> Dict[str, OutputParamDef]:

@@ -436,6 +436,10 @@ modification time as the tick index records them. An index update keeps the entr
 size and time are unchanged and reads every other file again; an index that records none is
 rebuilt in full once. Not the *code identity* of a run, and not an `IDENTITY` column of the ledger.
 
+**filled area** (`filled_areas` on an *indicator series*) — The area between two plots, or between
+two *price lines*, of one series, such as the channel between the upper and lower Bollinger bands.
+Never between a plot and a price line. See [Indicator series](consumer/indicator-series.md).
+
 **first start** (`--first-start`, served as `origin.first_start`) — A start declared the bot's
 first: the one way a session trading real money starts without a carry-over to continue. A
 declared first start that finds a usable carry-over is refused. See
@@ -510,6 +514,12 @@ delay in a backtest, measured live, and empty where the answer was learned by as
 
 **index** — A derived single file, `<store>_index.parquet`, at the root of its store and rebuilt
 from the store's own entries. See [Data Storage Layout](architecture/data_storage_layout.md).
+
+**indicator series** (`indicator_series` in a unit's recorded streams) — One worker's outputs drawn
+on a run's chart the way a chart draws an indicator: one value per closed bar of the worker's
+timeframe, on the candles or in a *pane* of its own, with its scale, its *price lines* and a legend.
+The worker declares it; the run records it. Not the bars the bars route serves, and not a worker's
+output read by a decision. See [Indicator series](consumer/indicator-series.md).
 
 **initiator** (`initiator`) — Who ended an order that did not fill — `strategy`, `framework` or
 `venue` — and, on a cancel request in the order-event stream, who asked for it. See *end reason*.
@@ -701,6 +711,10 @@ is measured against it), while `stop_loss` / `take_profit` on the position and t
 empty, and so do the R-multiple and, where no trade has one, `expectancy`. Counted in `sl_tp_triggered` like a close the framework's own
 level check made, once when the close goes out. See [Quickstart — Own Exits](user_guides/quickstart_guide.md).
 
+**pane** (`pane` on an *indicator series*) — One stacked area of a run's chart with its own scale:
+`price`, the candles' pane, or one under it named for the series drawn there. Not a *panel*, which is
+a block of a screen, such as a stop's panel in the console.
+
 **paper** — The planned name for a dry run, not yet a configuration value (#304).
 
 **partial** — Never used alone. *Partial close*: part of a position was closed. *Partial fill*: part
@@ -730,6 +744,9 @@ a venue with a spread — the traded price for bars and decisions, the mid for e
 event): whose account a record is — `bot`, what this process did and was told, or `broker_truth`,
 what the venue reported when it was asked.
 
+**plot** (`plots` on an *indicator series*) — One output of a worker drawn as one line, histogram,
+area or baseline, named by the output's own name. The plots of one series switch together.
+
 **pressure level** (`pressure_level`) — How close the machine's memory is to the limit that binds
 it: `ok`, `warn` from one threshold, `critical` from the next. Memory alone is graded — a busy
 processor is the machine doing its work, while memory that runs out is the moment the operating
@@ -747,6 +764,9 @@ for an order-driven venue, the mid for a quote-driven one. See [Market Model](ar
 **price formation** — How a venue forms its prices: `order_driven` (a central order book, every
 trade prints) or `quote_driven` (a dealer quotes both sides, nothing prints). See
 [Market Model](architecture/market_model.md).
+
+**price line** (`price_lines` on an *indicator series*) — A horizontal reference line at a fixed value
+on a series' scale, such as RSI's 30 and 70. Not a price the market traded at.
 
 **principal** (`origin.principal`, served as `origin_principal`) — On whose behalf a run was
 started: `operator`, the console's own principal, or the account an API token acts for — which may

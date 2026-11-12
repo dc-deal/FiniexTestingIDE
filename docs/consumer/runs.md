@@ -111,7 +111,8 @@ stay null.
 ## `stream_files` — the run's streams
 
 `stream_files` names the run's streams: today the [order events](/api/v1/docs/order-events) and,
-for an AutoTrader session, its [state frames](/api/v1/docs/state-frames). A live session writes them
+for an AutoTrader session, its [state frames](/api/v1/docs/state-frames) and one
+[indicator series](/api/v1/docs/indicator-series) file per drawing worker. A live session writes them
 as it runs, a backtest its order events with its report. They are kept out of `artifacts` on
 purpose. A live session writes its order events from its first order and its state frames from its
 first pass, so a session that ended without its report still has them — counted as artifacts, it

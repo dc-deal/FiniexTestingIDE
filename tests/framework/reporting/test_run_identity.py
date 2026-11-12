@@ -221,6 +221,8 @@ class TestTheIndexListsOnlyWhatTheStoreDeclares:
         (run_dir / IO_SUBDIR).mkdir(parents=True)
         index.register_run(_header(self._RUN_ID), run_dir)
         for name in names:
+            # A scenario's indicator series lies in a folder of its own under io/ (#379)
+            (run_dir / IO_SUBDIR / name).parent.mkdir(parents=True, exist_ok=True)
             (run_dir / IO_SUBDIR / name).write_text('{}', encoding='utf-8')
         index.record_artifacts(self._RUN_ID, run_dir)
         return index.list_runs()[0]

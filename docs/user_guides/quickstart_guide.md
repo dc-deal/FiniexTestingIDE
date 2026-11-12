@@ -177,6 +177,16 @@ class RsiWorker(AbstractIndicatorWorker):
 
 Workers return results via `WorkerResult(outputs={...})`. Decision Logics access values with `result.get_signal('key')`.
 
+### Drawing the Outputs on the Chart
+
+A worker can also show its outputs on a run's chart, as an indicator pane under the candles or on
+them — RSI in its own pane from 0 to 100 with lines at 30 and 70, Bollinger bands on the candles. It
+declares how in `get_indicator_series()`, beside the output schema, and writes no drawing code; a
+scenario set records the values with `execution_config.indicator_series.enabled`. The
+`indicator_series_test` scenario set draws the RSI, Bollinger and OBV of `CORE/simple_consensus`, and
+beside them `CORE/tide_and_wave` on two timeframes at once.
+How to declare one: [Drawing a Worker's Outputs](worker_naming_doc.md#drawing-a-workers-outputs).
+
 ---
 
 **Validation behavior** is controlled by `strict_parameter_validation` in `execution_config`:

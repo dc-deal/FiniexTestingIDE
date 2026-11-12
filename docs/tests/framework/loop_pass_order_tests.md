@@ -57,6 +57,7 @@ clipping gate.
 | `test_stops_after_the_equity_sample` | The clipped middle tick of three stops after the booking observation: no tracker, no algo, no execute, no drain, no frame |
 | `test_clock_boundary_heartbeat_drain_ghost_execute_drain` | A heartbeat logic, ticks a second apart and a heartbeat every 400 ms: two ghost passes between the two ticks, the first executing its decision, the second computing none and executing nothing, each drained before and after |
 | `test_none_in_a_gap_no_longer_than_the_interval` | A heartbeat every 1000 ms over the same gap: no ghost pass |
+| `TestTheIndicatorSeries` (#379) | the indicator series is recorded right after the state frame on every tick pass, and with the series alone the bars a tick closed are still read |
 | `test_keys_in_pass_order_and_counted_per_pass` | The profiling timers' keys in the order the pass reaches them, and their counts over three ticks with one clipped — the reports read both |
 
 ### `test_autotrader_pass_order.py`
@@ -66,6 +67,7 @@ clipping gate.
 | `test_inbox_before_the_clock_then_broker_account_bars_algo_safety_execute_drain` | Two tick passes, then the session-end event and the outcomes of its orders, each drained |
 | `test_clock_boundary_heartbeat_staleness_reconcile_inbox_drain_then_ghost` | Two ticks, then two idle passes on a fixed wall clock a second later: the first ghost decision executes, the second is None, and neither is drained after |
 | `test_clock_boundary_heartbeat_drain_carry_over` | A stop asked for before the first pass with a market buy on its way: no tick or idle pass, wait passes until the buy is settled, each heard, then the session end |
+| `TestTheIndicatorSeries` (#379) | the indicator series right after the state frame on every tick pass; with the series alone the closed bars are still read, right after the bars render |
 | `test_after_the_session_end_event_nothing_is_heard` | Nothing on its way before the stop, an order sent from the session-end event: the second wait's passes drain nothing, and the outcomes of that order are delivered after it |
 
 A stop's wait makes as many passes as the venue's answer takes to arrive, which is the venue's

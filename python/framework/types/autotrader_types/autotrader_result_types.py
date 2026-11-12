@@ -54,6 +54,8 @@ class SessionReach:
         tick_loop_entered: The state frames were opened and the tick loop was built
         day_log_opened: A pass of the tick loop opened the trading day's session log
         algo_state_found: The start found a saved algo state, so it recorded what it found (#476)
+        indicator_series_opened: The indicator series streams were opened — the profile records
+            them and a worker draws (#379)
         sealed_day_records: The day records a seal was due for — the members of every stream
             that was open when a trading day ended (#476)
     """
@@ -63,6 +65,7 @@ class SessionReach:
     tick_loop_entered: bool = False
     day_log_opened: bool = False
     algo_state_found: bool = False
+    indicator_series_opened: bool = False
     sealed_day_records: FrozenSet[RunEntryMemberId] = frozenset()
 
 

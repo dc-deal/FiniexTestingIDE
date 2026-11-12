@@ -29,10 +29,11 @@ what this server IS: whether it answers, which contract it serves, the names its
 who you are to it. Everything about what this installation holds or does — market data, runs,
 configurations, the machine and what runs on it — needs a grant.
 
-`/health`, `/timeframes` and `/validation-checks` are open. A timeframe list and a check vocabulary
-are this server's own static declaration — what a name *means* — and say nothing about a venue, a
-run or an account. Gating the timeframe list would make a market-data grant the precondition for a
-list that reveals nothing about market data.
+`/health`, `/timeframes` and `/validation-checks` are open, and so is `/drawing-types`, the schema
+of what a drawn series holds ([indicator series](/api/v1/docs/indicator-series)). A timeframe list,
+a check vocabulary and a drawing vocabulary are this server's own static declaration — what a name
+*means* — and say nothing about a venue, a run or an account. Gating the timeframe list would make
+a market-data grant the precondition for a list that reveals nothing about market data.
 
 `/caller` needs a token while gating is on, and takes no grant: a grant required in order to ask
 what you hold would be circular.
@@ -216,7 +217,7 @@ current.
 
 ## What to cache, and what tells you to drop it
 
-`/timeframes` and `/validation-checks` change only when the server does. Fetch each once and keep
+`/timeframes`, `/validation-checks` and `/drawing-types` change only when the server does. Fetch each once and keep
 it; re-fetch when `/health` answers with a `version` or a `started_at` you have not seen before. A
 `host_id` you have not seen is another installation: nothing you cached from the last one holds.
 `/caller` changes when your token or its account changes, which is also a restart. `/health`,

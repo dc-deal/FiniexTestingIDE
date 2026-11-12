@@ -26,7 +26,7 @@ class LoopPassRecord:
             so a pass that fails later in its course has already counted its tick
         current_bars: The forming bars after the last tick, by timeframe
         closed_timeframes: The timeframes whose bar the last tick closed — read only when the run
-            records state frames, and empty otherwise
+            records state frames or indicator series, and empty otherwise
         decision: The last tick pass's decision
         order_result: What the last tick pass's decision sent, if anything
     """

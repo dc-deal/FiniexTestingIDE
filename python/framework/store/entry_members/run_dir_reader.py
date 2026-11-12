@@ -14,7 +14,7 @@ A stream is read as one across the trading days a session sealed out of it and i
 
 import os
 from pathlib import Path
-from typing import List, Optional, TypeVar
+from typing import Dict, List, Optional, TypeVar
 
 from python.framework.reporting.io.artifact_specs import ArtifactSpec
 from python.framework.reporting.io.report_artifact_io import read_artifact
@@ -217,6 +217,21 @@ class RunDirReader:
         paths = (self._run_dir / day_member.path_for(day=day_name, **names)
                  for day_name in day_names)
         return [path for path in paths if path.is_file()]
+
+    def names_of_files(self, member_id: RunEntryMemberId) -> List[Dict[str, str]]:
+        """
+        The variable parts of every file of one member — which workers a run records an indicator
+        series for, say.
+
+        Args:
+            member_id: The member
+
+        Returns:
+            One mapping per file, in the order of the files' paths
+        """
+        member = RUN_ENTRY_MEMBERS_BY_ID[member_id]
+        return [member.names_of(path.relative_to(self._run_dir).as_posix())
+                for path in self.files_of(member_id)]
 
     def files_of(self, member_id: RunEntryMemberId) -> List[Path]:
         """

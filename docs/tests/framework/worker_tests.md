@@ -430,6 +430,18 @@ The EMA itself is pinned in `tests/framework/indicators/test_recursive_average.p
 
 ---
 
+#### test_tide_and_wave_computation.py
+
+`CORE/tide_and_wave` (#379): the first two screens of Elder's Triple Screen as an indicator, each
+on its own timeframe.
+
+| Group | Checks |
+|------|-------------|
+| `TestEachScreenReadsItsOwnTimeframe` | the wave is the library's RSI over the first timeframe's closes · the tide is the library's MACD histogram over the second's, and its slope the change from the bar before · other bars on the tide's timeframe leave the wave where it is |
+| `TestTheConfiguration` | each timeframe warms up for its own screen · one timeframe is refused, and so is a tide no longer than the wave · the wave draws on the first timeframe, the tide on the second |
+
+---
+
 #### test_obv_computation.py
 
 ##### TestOBVBasicComputation

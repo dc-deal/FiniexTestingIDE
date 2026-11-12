@@ -65,7 +65,8 @@ _WRITE_MODES_BY_SHAPE = {
 # renamed constant would carry a derived pin along with it. The declaration may grow, the contract
 # moves only on purpose.
 _SERVED_BY_COLUMN = {
-    RunIndexColumn.STREAM_FILES: {'order_events.jsonl', 'state_frames.jsonl'},
+    RunIndexColumn.STREAM_FILES: {'order_events.jsonl', 'state_frames.jsonl',
+                                  'indicator_series_{worker}.jsonl'},
     RunIndexColumn.ARTIFACTS: {
         'aggregated_portfolio.json', 'block_splitting.json', 'booking_periods.json', 'broker.json',
         'cold_start.json', 'execution_stats.json', 'feed_stability.json', 'order_history.json',

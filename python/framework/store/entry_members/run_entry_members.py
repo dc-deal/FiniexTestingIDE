@@ -32,6 +32,8 @@ from python.framework.constants.run_layout_constants import (
     FEED_STABILITY_ARTIFACT_FILE,
     FIELD_STUDY_CAPTURE,
     FOOTPRINT_FILE,
+    INDICATOR_SERIES_FILE_PATTERN,
+    INDICATOR_SERIES_SCHEMA_VERSION,
     IO_SUBDIR,
     ORDER_EVENTS_FILE,
     ORDER_EVENTS_SCHEMA_VERSION,
@@ -52,6 +54,7 @@ from python.framework.constants.run_layout_constants import (
     SCENARIO_DETAILS_ARTIFACT_FILE,
     SCENARIO_DIAGNOSTICS_FILE_PATTERN,
     SCENARIO_EVENTS_FILE_PATTERN,
+    SCENARIO_INDICATOR_SERIES_FILE_PATTERN,
     SCENARIO_STATE_FRAMES_FILE_PATTERN,
     SCENARIO_LOG_NAME_PATTERN,
     SCENARIO_LOGS_SUBDIR,
@@ -101,6 +104,7 @@ _DOC_SECTIONS = 'docs/architecture/reporting_pipeline.md#report-sections--domain
 _DOC_DIAGNOSTICS = 'docs/architecture/diagnostics_csv_sink.md#lifecycle-framework-owned'
 _DOC_STRATEGY_FILES = 'docs/architecture/store_entry_members.md#strategy-files'
 _DOC_DAY_RECORDS = 'docs/architecture/run_stream_day_records.md#what-a-day-record-holds'
+_DOC_INDICATOR_SERIES = 'docs/architecture/drawing_channel_architecture.md#the-indicator-series-stream'
 
 
 def _backtest_log(log_name: str) -> str:
@@ -412,6 +416,23 @@ RUN_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
         'docs/architecture/live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream',
         schema_version=STATE_FRAMES_SCHEMA_VERSION, time_fields=('frame_time',)),
     EntryMember(
+        RunEntryMemberId.INDICATOR_SERIES, f'{IO_SUBDIR}/{INDICATOR_SERIES_FILE_PATTERN}',
+        EntryMemberShape.STREAM, "a drawing worker's outputs, one value per closed bar",
+        (EntryMemberWrite(RUN_TYPE_AUTOTRADER, EntryMemberMoment.RUN_START,
+                          'the profile records indicator series and a worker declares one'),),
+        EntryMemberWriteMode.APPEND_LINES, _DOC_INDICATOR_SERIES,
+        index_column=RunIndexColumn.STREAM_FILES, schema_version=INDICATOR_SERIES_SCHEMA_VERSION,
+        time_fields=('bar_time',), day_record=RunEntryMemberId.INDICATOR_SERIES_DAY,
+        recorded_stream_kind=RecordedStreamKind.INDICATOR_SERIES),
+    EntryMember(
+        RunEntryMemberId.SCENARIO_INDICATOR_SERIES,
+        f'{IO_SUBDIR}/{SCENARIO_INDICATOR_SERIES_FILE_PATTERN}', EntryMemberShape.STREAM,
+        "a backtest scenario's drawing worker's outputs, one value per closed bar",
+        (EntryMemberWrite(RUN_TYPE_SIMULATION, EntryMemberMoment.AS_IT_RUNS,
+                          'the scenario records indicator series and a worker declares one'),),
+        EntryMemberWriteMode.APPEND_LINES, _DOC_INDICATOR_SERIES,
+        schema_version=INDICATOR_SERIES_SCHEMA_VERSION, time_fields=('bar_time',)),
+    EntryMember(
         RunEntryMemberId.TICK_STREAM_EVENTS, f'{IO_SUBDIR}/{TICK_STREAM_EVENTS_FILE}',
         EntryMemberShape.STREAM, 'the tick stream\'s outages and the trades it refused',
         (EntryMemberWrite(RUN_TYPE_AUTOTRADER, EntryMemberMoment.RUN_START,
@@ -446,6 +467,9 @@ RUN_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
     _day_record(RunEntryMemberId.STATE_FRAMES_DAY, f'{IO_SUBDIR}/{STATE_FRAMES_FILE}',
                 'one trading day of the state frames, sealed',
                 'the profile records state frames'),
+    _day_record(RunEntryMemberId.INDICATOR_SERIES_DAY, f'{IO_SUBDIR}/{INDICATOR_SERIES_FILE_PATTERN}',
+                "one trading day of a drawing worker's indicator series, sealed",
+                'the profile records indicator series and a worker declares one'),
     _day_record(RunEntryMemberId.TICK_STREAM_EVENTS_DAY, f'{IO_SUBDIR}/{TICK_STREAM_EVENTS_FILE}',
                 'one trading day of the tick stream\'s outages and refused trades, sealed',
                 'the session reads its ticks from a venue'),

@@ -47,6 +47,7 @@
     "execution": "neutral",
     "execution.heartbeat_interval_ms": "defining",
     "execution.market_data_stale_after_s": "defining",
+    "indicator_series": "neutral",
     "operator_alerts": "neutral",
     "order_guard": "defining",
     "profile_name": "neutral",

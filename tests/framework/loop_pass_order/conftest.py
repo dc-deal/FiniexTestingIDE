@@ -98,6 +98,17 @@ class PassSteps:
         recorder.on_pass.side_effect = lambda *args, **kwargs: self.names.append('frame')
         return recorder
 
+    def series(self) -> MagicMock:
+        """
+        An indicator series recorder that records each pass it is handed ('series', #379).
+
+        Returns:
+            The recorder double
+        """
+        recorder = MagicMock()
+        recorder.on_pass.side_effect = lambda *args, **kwargs: self.names.append('series')
+        return recorder
+
 
 @pytest.fixture
 def steps(monkeypatch: pytest.MonkeyPatch) -> PassSteps:

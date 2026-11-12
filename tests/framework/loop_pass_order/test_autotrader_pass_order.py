@@ -163,6 +163,31 @@ class TestTickPass:
             _TICK_PASS * 2 + _SESSION_END_EVENT + _SESSION_END_ORDERS)
 
 
+class TestTheIndicatorSeries:
+    """#379: the series is recorded right after the frame, and alone it still reads the bars."""
+
+    def test_recorded_right_after_the_frame_on_a_tick_pass(self, live_steps):
+        loop = autotrader_loop(_ticks(2), spot_mode=False, orchestrator=live_steps.orchestrator(),
+                               decision_events=True, state_frames=live_steps.frames(),
+                               indicator_series=live_steps.series())
+
+        loop.run()
+
+        assert live_steps.names == (
+            (_TICK_PASS + ['series']) * 2 + _SESSION_END_EVENT + _SESSION_END_ORDERS)
+
+    def test_without_state_frames_the_closed_bars_are_still_read(self, live_steps):
+        live_steps.spy(BarRenderingController, 'get_pending_closed_timeframes', 'closed')
+        loop = autotrader_loop(_ticks(2), spot_mode=False, orchestrator=live_steps.orchestrator(),
+                               decision_events=True, indicator_series=live_steps.series())
+
+        loop.run()
+
+        tick_pass = [step for step in _TICK_PASS if step != 'frame'] + ['series']
+        tick_pass.insert(tick_pass.index('render') + 1, 'closed')
+        assert live_steps.names == tick_pass * 2 + _SESSION_END_EVENT + _SESSION_END_ORDERS
+
+
 class TestIdlePass:
 
     def test_clock_boundary_heartbeat_staleness_reconcile_inbox_drain_then_ghost(

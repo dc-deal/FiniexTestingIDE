@@ -340,7 +340,11 @@ class BatchReportCoordinator:
                 result.tick_loop_results is not None
                 and (scenario.execution_config or {}).get('state_frames', {}).get('enabled', False)
                 for result, scenario in zip(
-                    process_results, self._batch_execution_summary.single_scenario_list)))
+                    process_results, self._batch_execution_summary.single_scenario_list)),
+            indicator_series_opened=any(
+                result.tick_loop_results is not None
+                and result.tick_loop_results.indicator_series_opened
+                for result in process_results))
         try:
             write_footprint(run_dir, run_id, RUN_TYPE_SIMULATION, expectations)
         except OSError as error:
@@ -349,8 +353,8 @@ class BatchReportCoordinator:
 
     def _footprint_expectations(self, scenario_ran: bool, orders_placed: bool,
                                 block_splitting_written: bool, robustness_written: bool,
-                                order_events_written: bool,
-                                state_frames_asked: bool) -> List[MemberExpectation]:
+                                order_events_written: bool, state_frames_asked: bool,
+                                indicator_series_opened: bool) -> List[MemberExpectation]:
         """
         For each file a backtest writes only sometimes, whether this run expected it — judged
         from what the run knows at its close. A scenario's diagnostics tables are written by its
@@ -363,6 +367,8 @@ class BatchReportCoordinator:
             robustness_written: Whether the robustness section was written
             order_events_written: Whether any scenario recorded an order event
             state_frames_asked: Whether a scenario that reached its process asked for state frames
+            indicator_series_opened: Whether a scenario asked for indicator series and one of its
+                workers draws
 
         Returns:
             One expectation per member the run decides on
@@ -391,5 +397,8 @@ class BatchReportCoordinator:
             expectation(RunEntryMemberId.SCENARIO_STATE_FRAMES, state_frames_asked,
                         'a scenario asked for state frames',
                         'no scenario asked for state frames'),
+            expectation(RunEntryMemberId.SCENARIO_INDICATOR_SERIES, indicator_series_opened,
+                        'a scenario recorded indicator series',
+                        'no scenario asked for indicator series, or none of its workers draws'),
         ]
 
