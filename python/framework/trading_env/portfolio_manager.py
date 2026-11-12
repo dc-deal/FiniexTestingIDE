@@ -140,6 +140,11 @@ class PortfolioManager:
         # Swap / overnight-funding accrual config (#365) — injected by the executor's
         # MarketClock (the single resolver). None for spot/crypto or unknown broker → no accrual.
         self._swap_rollover: Optional[SwapRolloverConfig] = swap_rollover
+        # The next rollover after each position's last accrual (#528): until the clock reaches it,
+        # an accrual crosses none and costs one comparison. Not a cache of anything the market
+        # says — the instant follows from the date and the configured rollover alone, the way a
+        # trading day's boundary does — so it is not the kind of cache a worker may not keep.
+        self._swap_due_utc: Dict[str, datetime] = {}
 
         # Account state
 
@@ -585,6 +590,7 @@ class PortfolioManager:
         self._file_trade_record(trade_record)
         del self.open_positions[position_id]
         self._algo_positions.pop(position_id, None)
+        self._swap_due_utc.pop(position_id, None)
 
         # Update statistics
         self._update_statistics(position, realized_pnl, trade_record.total_fees)
@@ -1149,6 +1155,13 @@ class PortfolioManager:
         """
         if now <= position.swap_accrued_until:
             return
+        # No rollover lies before the one due next, so the window crosses none. Measured
+        # 2026-11-11: an accrual that searches its window for rollovers costs about 5.3 µs per
+        # position and pass at margin, two thirds of it the search itself.
+        due = self._swap_due_utc.get(position.position_id)
+        if due is not None and now < due:
+            position.swap_accrued_until = now
+            return
 
         spec = self.broker_config.get_symbol_specification(position.symbol)
         if spec.swap_mode != SwapMode.POINTS:
@@ -1178,6 +1191,8 @@ class PortfolioManager:
             self._record_fee_cost(fee)
 
         position.swap_accrued_until = now
+        self._swap_due_utc[position.position_id], _ = MarketCalendar.next_swap_rollover(
+            now, self._swap_rollover.local_time, self._swap_rollover.timezone, triple_weekday_py)
 
     def _ensure_positions_updated(self) -> None:
         """

@@ -15,6 +15,7 @@ See the model: [Swap / Overnight-Funding Cost Model](../../trading_realism/swap_
 | `test_short_credit_triple_wednesday` | SHORT EURUSD (`swap_short = +3.80`), Tue→Thu over the Wednesday triple = 4 swap-days → **−15.20** cost (credit) |
 | `test_spot_mode_accrues_no_swap` | spot mode → accrual gated off, swap stays 0 |
 | `test_accrual_is_deterministic_and_idempotent` | same inputs twice → identical swap; a second accrual at the same clock adds nothing (no double-count) |
+| `test_a_pass_every_ten_minutes_books_what_one_accrual_over_the_week_does` | LONG and SHORT: a week of passes ten minutes apart — the weekend, the triple Wednesday and passes landing exactly on a rollover inside it — books the same fees at the same instants as one accrual over the whole week; the guard on the next rollover due (#528) |
 
 ### `TestSwapModeImplemented` — the #407 contract
 
