@@ -43,15 +43,13 @@ from python.framework.autotrader.tick_sources.abstract_tick_source import Abstra
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.loop.blocks.algo_compute_block import execute_algo_path
+from python.framework.loop.blocks.algo_heartbeat_block import run_ghost_pass
+from python.framework.loop.blocks.bar_render_block import render_bars_for_tick
 from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.persistence.position_book_watcher import PositionBookWatcher
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
 from python.framework.process.state_frame_recorder import StateFrameRecorder
-from python.framework.process.tick_pipeline_core import (
-    execute_algo_path,
-    render_bars_for_tick,
-    run_ghost_pass,
-)
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.booking_period_recorder import (
     BookingPeriodRecorder,

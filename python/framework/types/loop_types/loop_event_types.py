@@ -13,7 +13,7 @@ from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.signal_data_types import SignalSnapshot
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class LoopEvent:
     """
     One thing that happened, placed on the loop's one timeline.
@@ -23,6 +23,10 @@ class LoopEvent:
     `EventOrdering`; the other stays as data. Both are UTC epoch milliseconds, the resolution the
     archive records ticks in, so the timeline compares integers. Not instantiated itself — every
     event is one of the kinds below.
+
+    Not frozen, and nothing writes one after it is made: one is built for every instant a
+    backtest replays, and the frozen form cost more than the loop core's whole budget per tick
+    (measured for #458, `python/experiments/cost_probes/probe_loop_dispatch_cost.py`).
 
     Args:
         ts_event: Its source stamp — a tick's venue stamp, a timer's due instant
@@ -48,7 +52,7 @@ class LoopEvent:
         return self.KIND
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class DataSliceEvent(LoopEvent):
     """
     Every tick of one instant, in the order they arrived.
@@ -73,7 +77,7 @@ class DataSliceEvent(LoopEvent):
             raise ValueError('A data slice holds at least one tick')
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class TimeEvent(LoopEvent):
     """
     A timer or a heartbeat falls due at its instant, with or without data at the same instant.
@@ -87,7 +91,7 @@ class TimeEvent(LoopEvent):
     KIND: ClassVar[EventKind] = EventKind.TIME
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class ResolutionEvent(LoopEvent):
     """
     A pending order at the broker comes due.
@@ -99,7 +103,7 @@ class ResolutionEvent(LoopEvent):
     KIND: ClassVar[EventKind] = EventKind.RESOLUTION
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class SignalEvent(LoopEvent):
     """
     An external signal snapshot becomes visible to the run.

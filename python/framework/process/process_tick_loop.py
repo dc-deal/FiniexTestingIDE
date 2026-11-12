@@ -17,9 +17,7 @@ Process-based scenario execution with live update support
 # ✅ from threading import BrokenBarrierError       # Correct!
 # ============================================================================
 import time
-import traceback
 from collections import defaultdict
-from datetime import datetime, timezone
 from multiprocessing import Queue
 from typing import List, Optional, Tuple
 
@@ -28,14 +26,17 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.constants.currency_constants import format_currency_signed
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.loop.event_sequencer import EventSequencer
+from python.framework.loop.loop_context import LoopContext
+from python.framework.loop.loop_event_dispatcher import (
+    dispatch_backtest_heartbeat,
+    dispatch_backtest_slice,
+)
+from python.framework.loop.tick_slicer import slice_of_tick
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
 from python.framework.process.process_live_export import process_live_export, process_live_setup
+from python.framework.process.sim_pass_hooks import SimPassHooks
 from python.framework.process.state_frame_recorder import StateFrameRecorder
-from python.framework.process.tick_pipeline_core import (
-    execute_algo_path,
-    render_bars_for_tick,
-    run_ghost_pass,
-)
 from python.framework.reporting.booking_period_recorder import (
     BookingPeriodRecorder,
     snapshot_from_executor,
@@ -47,6 +48,7 @@ from python.framework.stress_test.stale_data_stress_driver import (
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.types.decision_logic_types import Decision
+from python.framework.types.loop_types.loop_pass_record_types import LoopPassRecord
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.process_data_types import (
@@ -115,22 +117,9 @@ def _run_sim_heartbeats(
 
     k = 1
     while prev_msc + k * interval_ms < current_msc:
-        ghost_msc = prev_msc + k * interval_ms
-        trade_simulator.set_current_time(
-            datetime.fromtimestamp(ghost_msc / 1000.0, tz=timezone.utc))
-        # BEFORE the resolutions of this instant, so the boundary is the cut: what closed
-        # earlier is sealed into the day that is ending, and a fill resolving AT this instant
-        # falls into the day that is opening (the window is end-exclusive).
-        booking.check_boundary(trade_simulator.get_current_time(), seal_source)
-        trade_simulator.heartbeat()
-        if decision_event_dispatcher is not None:
-            decision_event_dispatcher.drain()
-        decision = run_ghost_pass(worker_coordinator)
-        ghost_order = None
-        if decision is not None:
-            ghost_order = decision_logic.execute_decision(decision, tick=None)
-        if decision_event_dispatcher is not None:
-            decision_event_dispatcher.drain()
+        ghost_order = dispatch_backtest_heartbeat(
+            prev_msc + k * interval_ms, trade_simulator, worker_coordinator, decision_logic,
+            decision_event_dispatcher, booking, seal_source)
         # #579 part B item 3: a heartbeat fills the slot it reaches, with the last tick's decision
         # and no closed bar — as a live session's heartbeat does
         if state_frames is not None:
@@ -202,9 +191,10 @@ def execute_tick_loop(
         prev_interval_msc: int = 0
 
         tick_range_stats = get_tick_range_stats(scenario_logger, trade_simulator, ticks)
-        # How many ticks reached the broker path — measured again after the loop, so a session
-        # that ended early reports the market time it processed rather than the time it loaded.
-        processed_count = 0
+        # What the loop core's passes leave for this drive (#458) — among it how many ticks
+        # reached the broker path, measured again after the loop, so a session that ended early
+        # reports the market time it processed rather than the time it loaded.
+        pass_record = LoopPassRecord()
         # The last tick's decision — what a heartbeat frame and the final frame record
         last_decision: Optional[Decision] = None
 
@@ -213,7 +203,6 @@ def execute_tick_loop(
         live_update_count = 0
 
         tick_loop_error: Exception = None
-        current_bars = {}
         current_tick = None
 
         # === BOOKING PERIODS (#537) — this scenario's ledger entries ===
@@ -263,6 +252,20 @@ def execute_tick_loop(
             (ticks[0].timestamp, ticks[-1].timestamp) if ticks else None,
             trade_simulator, decision_logic, scenario_logger)
 
+        # #458: the scenario's collaborators for the loop core's passes, and the runner's own
+        # steps inside them
+        loop_context = LoopContext(
+            executor=trade_simulator, bar_controller=bar_rendering_controller,
+            orchestrator=worker_coordinator, decision_logic=decision_logic,
+            decision_event_dispatcher=decision_event_dispatcher, symbol=config.symbol,
+            booking=booking, seal_source=seal_source, reads_closed_bars=state_frames is not None,
+            profiling_enabled=profiling_enabled, profile_times=profile_times,
+            profile_counts=profile_counts)
+        pass_hooks = SimPassHooks(
+            trade_simulator, portfolio, booking, stale_stress_driver, market_data_tracker,
+            profiling_enabled, profile_times, profile_counts)
+        sequencer = EventSequencer()
+
         if has_clipping:
             scenario_logger.info(
                 f'🔄 Starting tick loop ({live_setup.tick_count:,} ticks, '
@@ -302,145 +305,26 @@ def execute_tick_loop(
                 if _run_sim_heartbeats(
                         prev_interval_msc, current_msc, config, trade_simulator,
                         worker_coordinator, decision_logic, decision_event_dispatcher,
-                        booking, seal_source, state_frames, processed_count, last_decision):
+                        booking, seal_source, state_frames, pass_record.ticks_applied,
+                        last_decision):
                     scenario_logger.info(
                         f'🛑 Session end requested: {trade_simulator.get_session_end_reason()}')
                     break
 
             prev_interval_msc = current_msc
 
-            # #476: the trading day ends BEFORE the tick that crosses its boundary is applied —
-            # the seal reads the account as the previous tick left it, stamps the boundary, and
-            # this tick's fills, trades and valuation open the new day. The canonical clock moves
-            # to the tick's instant first (on_tick keeps it there) and the boundary is checked on
-            # it — the clock of the event about to be applied. Exact without heartbeats too: a
-            # quiet stretch across the boundary is sealed at the boundary, as a live session's
-            # heartbeat seals it. Measured 2026-10-25: 95 ns per tick for the extra set.
-            trade_simulator.set_current_time(tick.timestamp)
-            booking.check_boundary(trade_simulator.get_current_time(), seal_source)
-
-            # === 1. Trade Executor (BROKER PATH — all ticks) ===
-            # Broker sees every tick regardless of algo processing budget.
-            # Pending order fills, SL/TP triggers, limit/stop monitoring
-            # all operate on the full tick stream.
-            if profiling_enabled: t1 = time.perf_counter()
-            trade_simulator.on_tick(tick)
-            processed_count = tick_idx + 1
-            if profiling_enabled:
-                profile_times['trade_simulator'] += (time.perf_counter() - t1) * 1000
-                profile_counts['trade_simulator'] += 1
-
-            # === 2. Bar Rendering (all ticks — shared core, #303) ===
-            # Bars must reflect the complete market data stream — including
-            # clipped ticks. Clipping simulates "algo was too slow to react",
-            # NOT "market data was incomplete". Same ordering as AutoTrader.
-            if profiling_enabled: t3 = time.perf_counter()
-            current_bars = render_bars_for_tick(tick, bar_rendering_controller)
-            if profiling_enabled:
-                profile_times['bar_rendering'] += (time.perf_counter() - t3) * 1000
-                profile_counts['bar_rendering'] += 1
-            # #579 part B item 3: which bars this tick closed — read before the algo path
-            # consumes them, and only when the scenario records frames
-            closed_timeframes = (bar_rendering_controller.get_pending_closed_timeframes()
-                                 if state_frames is not None else frozenset())
-
-            # === 2b. Equity sample (#497) ===
-            # BEFORE the clipping gate, with the broker path and the bar rendering, and for
-            # the same reason they are there: a drawdown measures what the MARKET did to the
-            # account, not whether the algo got to look. A clipped tick still happened, and
-            # the account really was that far down.
-            #
-            # Deliberately outside the portfolio's lazy cache as well: the account value is
-            # the input every risk measure reads, and some of what it depends on cannot be
-            # cached, so the mechanism sits on the tick update rather than behind the
-            # laziness that exists for the algo path.
-            #
-            # NOT guarded on an open position, which an earlier attempt was: in SPOT a
-            # holding lives in the BALANCES, so its value moves with every price whether or
-            # not a position is open — the guard would have skipped exactly the account
-            # model the 30-day run uses.
-            #
-            # Cost measured 2026-09-14: 0.007 ms/tick on MARGIN (6.7 % of tick time),
-            # 0.001 ms on SPOT (1.1 %) — margin must re-mark every position against the new
-            # price, spot multiplies a balance. This raises the sim's throughput floor, so
-            # the BENCHMARK baseline and its certificate are re-registered BY HAND with this
-            # as the stated reason (§42): a deliberate regression must not look like one
-            # that crept in. #515's stop-out pass rides this sample rather than opening a
-            # second one.
-            if profiling_enabled: t14 = time.perf_counter()
-            # The booking period's VALUATION half rides this sample rather than opening a
-            # second evaluation: on MARGIN the note above measures it at 6.7 % of tick time,
-            # so asking twice would be the most expensive line in this loop (#537). The tick
-            # counts even when the holdings cannot be valued yet: the market was heard.
-            _equity = portfolio.sample_equity()
-            booking.observe_tick(_equity)
-            if profiling_enabled:
-                profile_times['equity_sample'] += (time.perf_counter() - t14) * 1000
-                profile_counts['equity_sample'] += 1
-
-            # === CLIPPING GATE ===
-            # Ticks flagged by tick processing budget skip the algo path.
-            # The broker and bar rendering already processed them above.
-            if tick.is_clipped:
+            # #458: the pass itself — the broker path, the bars, the equity sample, the clipping gate,
+            # the algo, the execution and the drain — runs in the loop core, in this runner's order
+            if not dispatch_backtest_slice(slice_of_tick(tick, sequencer), loop_context, pass_hooks,
+                                           pass_record):
                 continue
-
-            # === ALGO PATH (non-clipped ticks only) ===
-
-            # #436: advance the planned stale-window state machine BEFORE the
-            # decision computes — status + edge hook are visible this pass.
-            if stale_stress_driver is not None:
-                stale_stress_driver.on_tick(tick.timestamp)
-
-            # #451: observe the resulting market-data status — counts this tick and
-            # records the episode edges from what the run actually experienced.
-            market_data_tracker.on_tick(
-                tick.timestamp,
-                trade_simulator.get_market_data_status(),
-                stale_stress_driver.get_active_label() if stale_stress_driver else '',
-            )
-
-            # === 3+4. Bar History + Worker Processing + Decision (shared core, #303) ===
-            # 'worker_decision' now also covers the (tiny) bar-history
-            # retrieval — the former 'bar_history' timer had no report consumer.
-            if profiling_enabled: t7 = time.perf_counter()
-            decision = execute_algo_path(
-                tick=tick,
-                current_bars=current_bars,
-                bar_controller=bar_rendering_controller,
-                worker_orchestrator=worker_coordinator,
-                symbol=config.symbol,
-            )
-            if profiling_enabled:
-                profile_times['worker_decision'] += (time.perf_counter() - t7) * 1000
-                profile_counts['worker_decision'] += 1
-
-            # === 5. Order Execution ===
-            if profiling_enabled: t9 = time.perf_counter()
-            try:
-                order_result = decision_logic.execute_decision(decision, tick)
-            except Exception as e:
-                raise RuntimeError(
-                    f'Order execution failed: {e} \n{traceback.format_exc()}')
-
-            if profiling_enabled:
-                profile_times['order_execution'] += (time.perf_counter() - t9) * 1000
-                profile_counts['order_execution'] += 1
-
-            # === 5b. Decision Event Drain (#348) ===
-            # Events buffered during on_tick (fills, partial closes, cancels)
-            # are delivered to the algo hooks here, before the next tick.
-            if decision_event_dispatcher is not None:
-                if profiling_enabled: t13 = time.perf_counter()
-                decision_event_dispatcher.drain()
-                if profiling_enabled:
-                    profile_times['decision_events'] += (time.perf_counter() - t13) * 1000
-                    profile_counts['decision_events'] += 1
 
             # === 5c. State Frame (#579 part B item 3) — at the end of the pass, before an end ===
             if state_frames is not None:
-                state_frames.on_pass(processed_count, decision, on_tick=True,
-                                     closed_timeframes=closed_timeframes, order=order_result)
-            last_decision = decision
+                state_frames.on_pass(pass_record.ticks_applied, pass_record.decision, on_tick=True,
+                                     closed_timeframes=pass_record.closed_timeframes,
+                                     order=pass_record.order_result)
+            last_decision = pass_record.decision
 
             if decision_event_dispatcher is not None and trade_simulator.is_session_end_requested():
                 scenario_logger.info(
@@ -451,7 +335,8 @@ def execute_tick_loop(
             # === 6. LIVE UPDATES (Time-based) ===
             if profiling_enabled: t11 = time.perf_counter()
             live_updated = process_live_export(
-                live_setup, config, tick_idx, tick, portfolio, worker_coordinator, current_bars)
+                live_setup, config, tick_idx, tick, portfolio, worker_coordinator,
+                pass_record.current_bars)
             if (live_updated):
                 live_update_count += 1
             if profiling_enabled:
@@ -497,10 +382,11 @@ def execute_tick_loop(
         trade_simulator.check_clean_shutdown(expect_flat=False)
         # #579 part B item 3: the scenario's last frame, at the state its report describes
         if state_frames is not None:
-            state_frames.write_shutdown(processed_count, last_decision)
+            state_frames.write_shutdown(pass_record.ticks_applied, last_decision)
         # update live the last time - to show final balance correctly
         live_updated = process_live_export(
-            live_setup, config, current_index, current_tick, portfolio, worker_coordinator, current_bars)
+            live_setup, config, current_index, current_tick, portfolio, worker_coordinator,
+            pass_record.current_bars)
 
     except Exception as e:
         # in case of an error, abort & try to collect the rest of data.
@@ -517,7 +403,7 @@ def execute_tick_loop(
         scenario_logger.debug('✅ Coordinator cleanup completed')
 
         # === GET RESULTS ===
-        tick_range_stats = processed_tick_range_stats(ticks, processed_count)
+        tick_range_stats = processed_tick_range_stats(ticks, pass_record.ticks_applied)
         # Collect statistics from Algorithm section
         decision_statistics = decision_logic.get_statistics()
         worker_statistics = worker_coordinator.get_worker_statistics()

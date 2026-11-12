@@ -11,7 +11,10 @@ For how the console dashboards get their live data (the throttled telemetry feed
 
 The backtesting flow processes a finite list of historical ticks synchronously. All components run in sequence per tick.
 
-**Entry point:** `python/framework/process/process_tick_loop.py` → `execute_tick_loop()`
+**Entry point:** `python/framework/process/process_tick_loop.py` → `execute_tick_loop()`. The
+drive walks the ticks and the gaps between them; each pass — steps 1 to 5 below, with the clock,
+the day boundary and the equity sample — runs in the loop core
+(`dispatch_backtest_slice`, `dispatch_backtest_heartbeat`, [The Loop Core](loop_core_architecture.md)).
 
 ```
 execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_controller, decision_logic, scenario_logger, ticks)
@@ -149,16 +152,17 @@ AutotraderTickLoop.run()
   runs a side-effect-free decision **ghost-pass** (`tick=None`, cached worker results, opt-in via
   `wants_heartbeat()`) so the algo reacts in ~1 s instead of waiting for the next tick. No second
   thread, no synthetic market tick, no tick-state mutation.
-- Canonical clock (#360): `get_current_time()` is loop-injected — the tick timestamp on a real tick, wall-clock on the heartbeat (sim: simulated time). It never freezes to the last tick, so phase/op timeouts track real elapsed time.
+- Canonical clock (#360): `get_current_time()` is loop-injected — the tick timestamp on a real tick, the tick source's time on the heartbeat: the wall clock live, a replay's own time in a mock session (#616); sim: simulated time. It never freezes to the last tick, so phase/op timeouts track real elapsed time.
 - Same `compute_tick()` → `execute_decision()` two-phase pattern
 
 ---
 
-## Shared Tick Pipeline Core (#303)
+## Shared Blocks and the Loop Core (#303, #458)
 
-The identical algo-pipeline steps live in ONE implementation —
-`python/framework/process/tick_pipeline_core.py` — called by both runners, so
-ordering divergence (the #293 bug class) is impossible by construction:
+The identical algo-pipeline steps live in ONE implementation each — the loop core's blocks under
+`python/framework/loop/blocks/` — called by both runners, so ordering divergence (the #293 bug
+class) is impossible by construction. The backtest hands each pass to the loop core's dispatcher,
+which owns its order; see [The Loop Core](loop_core_architecture.md):
 
 | Function | Steps | Called for |
 |---|---|---|
@@ -166,10 +170,11 @@ ordering divergence (the #293 bug class) is impossible by construction:
 | `execute_algo_path` | 3–4 — bar history + worker/decision compute | non-clipped ticks |
 | `run_ghost_pass` | heartbeat decision compute (#360) | idle heartbeats (opt-in algos) |
 
-Deliberately runner-specific (NOT in the shared core): the simulation clipping
-gate + per-step profiling, the AutoTrader safety override / display / clipping
-monitor, step 5 `execute_decision` with its per-runner error handling, the
-#348 event-drain boundary, and clock injection (simulated vs wall-clock, #360).
+Outside the shared blocks, and still in each runner's own order: the clipping gate, the
+per-step profiling, step 5 `execute_decision` with its error handling, the #348 event-drain
+boundary and the clock injection (simulated vs wall-clock, #360). The backtest's sit in its
+dispatcher entries (`dispatch_backtest_slice`, `dispatch_backtest_heartbeat`); the AutoTrader's —
+with its safety override, display and clipping monitor — are still in its tick loop.
 
 ## Side-by-Side Comparison
 

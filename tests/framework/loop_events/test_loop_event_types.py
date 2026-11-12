@@ -6,7 +6,6 @@ Nothing in the loops uses these yet; what is held here is the contract the dispa
 the two drivers will be built on, so it is readable in one place before anything depends on it.
 """
 
-from dataclasses import FrozenInstanceError
 from datetime import datetime, timezone
 
 import pytest
@@ -65,14 +64,8 @@ class TestEachOrderingNamesItsStamp:
         assert EventOrdering.BY_TS_INIT.pick('source', 'receipt') == 'receipt'
 
 
-class TestAnEventIsFinalOnceMade:
-    """Stamps and seq are fixed when an event is made; the timeline never rewrites them."""
-
-    def test_an_event_cannot_be_changed(self):
-        event = TimeEvent(ts_event=1_000, ts_init=1_000, seq=3)
-
-        with pytest.raises(FrozenInstanceError):
-            event.ts_event = 2_000  # type: ignore[misc]
+class TestAnEventIsCompleteWhenMade:
+    """An event carries everything it needs from the moment it is made."""
 
     def test_a_slice_without_a_tick_is_refused(self):
         """An instant without data carries no data slice."""

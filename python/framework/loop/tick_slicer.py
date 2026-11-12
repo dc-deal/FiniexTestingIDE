@@ -98,6 +98,25 @@ def slice_ticks(
         yield _slice_of(group, sequencer)
 
 
+def slice_of_tick(tick: TickData, sequencer: EventSequencer) -> DataSliceEvent:
+    """
+    One tick as a data slice of its own, for a drive that hands the loop core one tick at a time.
+
+    `slice_ticks` groups the ticks that share a stamp into one slice, so the algo computes once
+    for all of them; a drive that keeps today's one pass per tick (#458) uses this instead, and
+    its passes compute exactly as before.
+
+    Args:
+        tick: The tick
+        sequencer: The run's sequencer; the slice takes its next number
+
+    Returns:
+        The slice, carrying the tick's two stamps
+    """
+    return DataSliceEvent(tick_event_msc(tick), tick_receipt_msc(tick), sequencer.next_seq(),
+                          (tick,))
+
+
 def _slice_of(group: List[TickData], sequencer: EventSequencer) -> DataSliceEvent:
     """
     Make the data slice of one instant's ticks.
