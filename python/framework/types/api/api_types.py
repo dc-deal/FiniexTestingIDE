@@ -6,7 +6,7 @@ because FastAPI requires Pydantic for automatic OpenAPI schema generation
 and response serialization.
 """
 
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
 
@@ -294,6 +294,18 @@ class ValidationCheckListResponse(BaseModel):
     """Every check a finding can name — the vocabulary behind every `check` id served."""
     key: list[str] = ['check']
     checks: list[ValidationCheckRow]
+
+
+class DrawingTypesResponse(BaseModel):
+    """
+    The drawing vocabulary as JSON Schema (#379) — what a served drawing's fields hold, so a client
+    generates its own types from it rather than copying a description.
+
+    Args:
+        indicator_series: The JSON Schema of one indicator series entry, as the recorded streams
+            serve it, the style vocabulary in its definitions
+    """
+    indicator_series: Dict[str, Any]
 
 
 class IndicatorPointResponse(BaseModel):

@@ -177,6 +177,10 @@
       "enabled": true,
       "cadence_timeframe": "M1"
     },
+    "indicator_series": {
+      "_comment": "Each drawing worker's outputs, one value per closed bar of its timeframe (#379), in io/indicator_series_{worker}.jsonl, for the run's chart. Reads what the workers computed anyway and changes nothing they compute.",
+      "enabled": false
+    },
     "cold_start": {
       "enabled": true,
       "path": "data/runtime/cold_start_state",
@@ -252,6 +256,10 @@
           "_comment": "A backtest scenario's state frames (#579 part B item 3), in io/state_frames_{scenario}.jsonl: off unless a scenario asks; a backtest of a live session's window (#512) switches them on with the session's cadence.",
           "enabled": false,
           "cadence_timeframe": "M1"
+        },
+        "indicator_series": {
+          "_comment": "A backtest scenario's indicator series (#379), in io/indicator_series_{scenario}_{worker}.jsonl: each drawing worker's outputs, one value per closed bar; off unless a scenario asks.",
+          "enabled": false
         },
         "verification": {
           "_comment": "Switches that change no result by design (#653): portfolio_cache true marks open positions lazily, only when something asks; false keeps every position current at every event, the reference a run compares the lazy marking against. Turned off only to compare.",

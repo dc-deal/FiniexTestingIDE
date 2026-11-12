@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.types.config_types.autotrader_defaults_config_types import (
+    IndicatorSeriesDefaults,
     OrderGuardDefaults,
     StateFramesDefaults,
 )
@@ -312,6 +313,8 @@ class ProcessScenarioConfig:
     # Whether the scenario records its state on the session's slots, and on which cadence
     state_frames_enabled: bool = False
     state_frames_cadence: str = StateFramesDefaults().cadence_timeframe
+    # Whether the scenario records each drawing worker's value per closed bar (#379)
+    indicator_series_enabled: bool = False
 
     # === VERIFICATION (#653) ===
     # Whether the portfolio marks open positions lazily (the ordinary behaviour) or keeps every
@@ -430,6 +433,10 @@ class ProcessScenarioConfig:
         frames_block = exec_config.get('state_frames')
         state_frames = (StateFramesDefaults(**frames_block) if frames_block is not None
                         else _EXECUTION_DEFAULTS.state_frames)
+        # The scenario's indicator series (#379): the block as a whole through its model
+        series_block = exec_config.get('indicator_series')
+        indicator_series = (IndicatorSeriesDefaults(**series_block) if series_block is not None
+                            else _EXECUTION_DEFAULTS.indicator_series)
         # The scenario's verification switches (#653), the block as a whole through its model
         verification_block = exec_config.get('verification')
         verification = (VerificationConfig(**verification_block) if verification_block is not None
@@ -483,6 +490,7 @@ class ProcessScenarioConfig:
             inter_tick_gap_threshold_s=inter_tick_gap_threshold_s,
             heartbeat_interval_ms=heartbeat_interval_ms,
             state_frames_enabled=state_frames.enabled,
+            indicator_series_enabled=indicator_series.enabled,
             state_frames_cadence=state_frames.cadence_timeframe,
             portfolio_cache=verification.portfolio_cache,
             tick_processing_budget_ms=tick_processing_budget_ms,
@@ -620,6 +628,10 @@ class ProcessTickLoopResult:
     # longer force-closes them, so this is where the block edge's impact now lives — the
     # block-splitting builder derives the disposition from here, off the run.
     open_positions: List[Position] = field(default_factory=list)
+
+    # Whether the scenario recorded indicator series: it asked for them and a worker draws (#379).
+    # The batch judges the scenario's stream files by it at the run's close
+    indicator_series_opened: bool = False
 
     # Error handling
     tick_loop_error: Optional[Exception] = None

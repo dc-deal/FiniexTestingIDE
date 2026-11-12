@@ -53,6 +53,9 @@ from python.framework.autotrader.operator_alerts.operator_alerts_setup import (
 from python.framework.autotrader.run_record.autotrader_report_coordinator import (
     AutotraderReportCoordinator,
 )
+from python.framework.autotrader.run_record.indicator_series_stream_opener import (
+    open_indicator_series_streams,
+)
 from python.framework.autotrader.run_record.order_event_stream_setup import (
     open_order_event_stream,
     read_back_order_event_stream,
@@ -93,6 +96,7 @@ from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.persistence.algo_state_store import AlgoStateStore
+from python.framework.process.indicator_series_recorder import IndicatorSeriesRecorder
 from python.framework.process.state_frame_recorder import StateFrameRecorder
 from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
@@ -360,6 +364,7 @@ class AutotraderMain:
         self._order_event_stream: Optional[OrderEventStreamWriter] = None
         # #579 part A — what the session holds and decides, moment by moment
         self._state_frames: Optional[StateFrameRecorder] = None
+        self._indicator_series: Optional[IndicatorSeriesRecorder] = None
         # #476 — every trade the session closes and every diagnostics row, written as they happen
         self._trade_stream: Optional[RunStreamAppender] = None
         self._diagnostics_streams: List[RunStreamAppender] = []
@@ -788,6 +793,10 @@ class AutotraderMain:
                 self._config, self._run_writer, self._run_id, self._executor,
                 self._worker_orchestrator, self._bar_controller, self._trading_model,
                 self._reconciler, self._session_logger)
+            # === INDICATOR SERIES (#379) === one per drawing worker, when the profile asks
+            self._indicator_series = open_indicator_series_streams(
+                self._config, self._run_writer, self._run_id, self._worker_orchestrator,
+                self._bar_controller, self._session_logger)
             self._tick_loop = self._build_tick_loop(run_timestamp, dry_run)
             self._tick_loop_started = True
             self._operator_alerts.start_liveness()
@@ -1311,6 +1320,7 @@ class AutotraderMain:
                 (lambda: self._persist_cold_start_carry_over(refresh_index=False))
                 if self._cold_start.persist else None),
             state_frames=self._state_frames,
+            indicator_series=self._indicator_series,
             # #476: each sealed trading day reaches the ledger when it seals, so a session that
             # dies on day 29 leaves the 28 days behind it
             book_sealed_periods=SealedPeriodBooker(
@@ -1509,6 +1519,8 @@ class AutotraderMain:
                     self._state_frames.close()
             except Exception as e:
                 self._session_logger.error(f'Error writing the last state frame: {e}')
+        if self._indicator_series:
+            self._indicator_series.close()
 
         # #327 — Drift auditor cleanup (surfaces unfinished audits + final summary)
         if self._drift_auditor:
@@ -1597,6 +1609,7 @@ class AutotraderMain:
                 tick_loop_entered=self._tick_loop_started,
                 day_log_opened=self._tick_loop is not None and self._tick_loop.has_opened_day_log(),
                 algo_state_found=self._algo_state_found,
+                indicator_series_opened=self._indicator_series is not None,
                 sealed_day_records=(self._stream_sealer.get_due_day_members()
                                     if self._stream_sealer is not None else frozenset())),
         )

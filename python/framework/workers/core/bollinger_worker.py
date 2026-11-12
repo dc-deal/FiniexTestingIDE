@@ -9,6 +9,13 @@ import numpy as np
 
 from python.framework.trading_env.algo_masks.algo_bar import AlgoBar
 from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
+from python.framework.types.chart_types.drawing_style_types import DrawingEmphasis, DrawingStyle
+from python.framework.types.chart_types.indicator_series_types import (
+    FilledArea,
+    IndicatorPane,
+    IndicatorSeriesDeclaration,
+    Plot,
+)
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.indicator_types import MaType
 from python.framework.types.market_types.market_data_types import Bar
@@ -72,6 +79,21 @@ class BollingerWorker(AbstractIndicatorWorker):
                 description='Moving-average type for the midline (sma or ema)'
             ),
         }
+
+    @classmethod
+    def get_indicator_series(cls) -> Tuple[IndicatorSeriesDeclaration, ...]:
+        """
+        The bands on the candles, the middle line quieter, the channel between them filled.
+
+        Returns:
+            The series
+        """
+        return (IndicatorSeriesDeclaration(
+            pane=IndicatorPane.PRICE, title='Bollinger',
+            plots=(Plot(id='upper', style=DrawingStyle(series=0)),
+                   Plot(id='middle', style=DrawingStyle(series=1, emphasis=DrawingEmphasis.QUIET)),
+                   Plot(id='lower', style=DrawingStyle(series=0))),
+            filled_areas=(FilledArea(between=('plot:upper', 'plot:lower')),)),)
 
     @classmethod
     def get_output_schema(cls) -> Dict[str, OutputParamDef]:

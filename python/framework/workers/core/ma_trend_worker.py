@@ -9,6 +9,11 @@ import numpy as np
 
 from python.framework.trading_env.algo_masks.algo_bar import AlgoBar
 from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
+from python.framework.types.chart_types.indicator_series_types import (
+    IndicatorPane,
+    IndicatorSeriesDeclaration,
+    Plot,
+)
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.indicator_types import MaType
 from python.framework.types.market_types.market_data_types import Bar
@@ -71,6 +76,17 @@ class MaTrendWorker(AbstractIndicatorWorker):
                 description='Slope magnitude (volatility units/bar) below which the trend is NEUTRAL'
             ),
         }
+
+    @classmethod
+    def get_indicator_series(cls) -> Tuple[IndicatorSeriesDeclaration, ...]:
+        """
+        The moving average on the candles.
+
+        Returns:
+            The series
+        """
+        return (IndicatorSeriesDeclaration(
+            pane=IndicatorPane.PRICE, title='MA', plots=(Plot(id='ma_value'),)),)
 
     @classmethod
     def get_output_schema(cls) -> Dict[str, OutputParamDef]:

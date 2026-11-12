@@ -4,9 +4,10 @@ Base class for all worker implementations
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.types.chart_types.indicator_series_types import IndicatorSeriesDeclaration
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import (
@@ -180,6 +181,20 @@ class AbstractWorker(ABC):
             ComponentMetadata for this worker
         """
         return ComponentMetadata()
+
+    @classmethod
+    def get_indicator_series(cls) -> Tuple[IndicatorSeriesDeclaration, ...]:
+        """
+        How this worker's outputs are drawn on a run's chart, one value per bar (#379).
+
+        Override to declare; the default draws nothing. The values are the outputs the worker
+        computes anyway, so a worker writes no drawing code. The first series is drawn in the
+        layer 'worker:<instance>'; a further one names its own layer.
+
+        Returns:
+            The series, in the order they are drawn
+        """
+        return ()
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:

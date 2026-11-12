@@ -210,6 +210,16 @@ class StateFramesDefaults(StrictConfigModel):
         return value
 
 
+class IndicatorSeriesDefaults(StrictConfigModel):
+    """
+    The indicator series a run records (#379) — each drawing worker's outputs, one value per closed
+    bar of its timeframe, into one stream per worker instance, so the run's chart can show them as
+    indicator panes. It reads what the workers computed anyway and changes nothing they compute.
+    Off unless a profile or a scenario asks.
+    """
+    enabled: bool = False
+
+
 class ColdStartDefaults(StrictConfigModel):
     """
     Cold-start recovery defaults (#355) — adopting our own resting orders on boot.
@@ -530,6 +540,7 @@ class AutotraderDefaultsConfig(StrictConfigModel):
     api_monitor: ApiMonitorConfig = ApiMonitorConfig()
     state_persistence: StatePersistenceDefaults = StatePersistenceDefaults()
     state_frames: StateFramesDefaults = StateFramesDefaults()
+    indicator_series: IndicatorSeriesDefaults = IndicatorSeriesDefaults()
     cold_start: ColdStartDefaults = ColdStartDefaults()
     session_end: SessionEndDefaults = SessionEndDefaults()
     shutdown: ShutdownDefaults = ShutdownDefaults()

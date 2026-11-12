@@ -19,6 +19,13 @@ import numpy as np
 
 from python.framework.trading_env.algo_masks.algo_bar import AlgoBar
 from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
+from python.framework.types.chart_types.indicator_series_types import (
+    IndicatorPane,
+    IndicatorSeriesDeclaration,
+    Plot,
+    PriceFormat,
+    PriceFormatType,
+)
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.parameter_types import OutputParamDef
@@ -64,6 +71,19 @@ class ObvWorker(AbstractIndicatorWorker):
     def get_required_activity_metric(cls) -> Optional[str]:
         """OBV requires real trade volume — crypto markets only."""
         return 'volume'
+
+    @classmethod
+    def get_indicator_series(cls) -> Tuple[IndicatorSeriesDeclaration, ...]:
+        """
+        On-balance volume in a pane of its own, on a volume scale.
+
+        Returns:
+            The series
+        """
+        return (IndicatorSeriesDeclaration(
+            pane=IndicatorPane.OWN, title='OBV',
+            price_format=PriceFormat(type=PriceFormatType.VOLUME, precision=0),
+            plots=(Plot(id='obv_value'),)),)
 
     @classmethod
     def get_output_schema(cls) -> Dict[str, OutputParamDef]:

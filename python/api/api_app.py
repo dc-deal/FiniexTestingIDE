@@ -51,12 +51,14 @@ from python.framework.types.api.api_identity_types import ApiConsumerIdentity
 from python.framework.types.api.api_types import (
     ApiContractResponse,
     CallerResponse,
+    DrawingTypesResponse,
     HealthResponse,
     TimeframeInfo,
     TimeframeListResponse,
     ValidationCheckListResponse,
     ValidationCheckRow,
 )
+from python.framework.types.chart_types.indicator_series_entry_types import IndicatorSeriesEntry
 from python.framework.utils.machine_resources_reader import MachineResourcesReader
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 from python.framework.validators.validation_check_catalog import VALIDATION_CHECKS
@@ -332,6 +334,15 @@ def create_app() -> FastAPI:
             ValidationCheckRow(check=info.check, title=info.title, description=info.description)
             for info in VALIDATION_CHECKS
         ])
+
+    # Open beside /timeframes for the same reason: the drawing vocabulary is the app's own static
+    # declaration — what a served drawing's fields MEAN — and says nothing about a venue, a run or
+    # an account (#379)
+    @app.get('/api/v1/drawing-types', response_model=DrawingTypesResponse,
+             openapi_extra=describes('indicator-series'))
+    def describe_drawing_types() -> DrawingTypesResponse:
+        return DrawingTypesResponse(
+            indicator_series=IndicatorSeriesEntry.model_json_schema(mode='serialization'))
 
     # Token-only, and it takes no grant: it is about the CALLER — what the application says
     # about whoever asks — and there is no path parameter for a grant to name. Deliberately not

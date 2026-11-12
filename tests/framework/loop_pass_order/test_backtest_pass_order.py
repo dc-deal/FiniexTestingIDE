@@ -120,6 +120,24 @@ class TestTickPass:
         assert backtest_steps.names == _TICK_PASS_WITHOUT_EVENTS * 3 + _RUN_END_WITHOUT_EVENTS
 
 
+class TestTheIndicatorSeries:
+    """#379: the series is recorded right after the frame, and alone it still reads the bars."""
+
+    def test_recorded_right_after_the_frame_on_a_tick_pass(self, backtest_steps):
+        simulation_result(_ticks(3), spot_mode=False, orchestrator=backtest_steps.orchestrator(),
+                          decision_events=True, state_frames=backtest_steps.frames(),
+                          indicator_series=backtest_steps.series())
+
+        assert backtest_steps.names == (_TICK_PASS + ['series']) * 3 + _RUN_END
+
+    def test_without_state_frames_the_closed_bars_are_still_read(self, backtest_steps):
+        simulation_result(_ticks(3), spot_mode=False, orchestrator=backtest_steps.orchestrator(),
+                          decision_events=True, indicator_series=backtest_steps.series())
+
+        tick_pass = [step for step in _TICK_PASS if step != 'frame'] + ['series']
+        assert backtest_steps.names == tick_pass * 3 + _RUN_END
+
+
 class TestClippedTick:
 
     def test_stops_after_the_equity_sample(self, backtest_steps):

@@ -320,6 +320,49 @@ window above: the consumer declares the *outputs* it reads, the worker the *bars
 
 ---
 
+## Drawing a Worker's Outputs
+
+A worker can show what it computes on a run's chart, as an indicator pane: one value per closed bar,
+on the candles or in a pane of its own. It writes no drawing code — it declares, once, how its
+outputs are drawn, in a class method beside `get_output_schema()`:
+
+```python
+@classmethod
+def get_indicator_series(cls) -> Tuple[IndicatorSeriesDeclaration, ...]:
+    return (IndicatorSeriesDeclaration(
+        pane=IndicatorPane.OWN, title='My Oscillator', price_format=PriceFormat(precision=2),
+        range=ValueRange(min_value=-1, max_value=1),
+        plots=(Plot(id='oscillator_value'),),
+        price_lines=(PriceLine(price=0, line_style=LineStyle.DOTTED),)),)
+```
+
+- **A plot draws one output**, named exactly as `get_output_schema()` names it, and that output is a
+  number. Outputs that belong together are plots of one series and switch together.
+- **`pane`** is `IndicatorPane.PRICE` for a series on the candles, in price units, or
+  `IndicatorPane.OWN` for a pane of its own. Only a series in its own pane takes a fixed `range`.
+- **Style is a role**, never a colour: `DrawingStyle(role=DrawingRole.POSITIVE)`. The viewer's theme
+  picks the colour.
+- **A further series** of the same worker gives itself a `layer_name`.
+- **A series draws on the first timeframe of `periods`** unless it says otherwise:
+  `timeframe_position=1` puts it on the second. A worker that computes on two timeframes gives the
+  second one a series of its own — its own `layer_name`, its own pane — and `CORE/tide_and_wave` is
+  the example to copy. A position the worker's `periods` do not give it is refused when the worker
+  is created.
+- **The declaration is checked when the worker is created**, before the run starts: a plot of an
+  output the worker lacks, or of one that is not a number, stops the run with
+  `IndicatorSeriesDeclarationError`, naming the worker and what is wrong.
+- **A plot of an optional output** — one the worker computes only when a decision reads it, behind
+  `wants_output()` — stays null where no decision logic reads it. Drawing changes nothing about what
+  a run computes.
+
+The values are recorded only when the run asks: `execution_config.indicator_series.enabled` in a
+scenario set, `indicator_series.enabled` in an AutoTrader profile. A worker that declares nothing
+draws nothing. The CORE workers that declare a series are the examples to copy from; the drawing
+vocabulary and the stream are described in
+[the drawing channel](../architecture/drawing_channel_architecture.md).
+
+---
+
 ## Accessing Framework Capabilities — Injected vs Imported
 
 There are two ways your worker or decision logic reaches framework functionality, and one

@@ -48,6 +48,7 @@ from python.framework.loop.blocks.algo_heartbeat_block import run_ghost_pass
 from python.framework.loop.blocks.bar_render_block import render_bars_for_tick
 from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.persistence.position_book_watcher import PositionBookWatcher
+from python.framework.process.indicator_series_recorder import IndicatorSeriesRecorder
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
 from python.framework.process.state_frame_recorder import StateFrameRecorder
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
@@ -114,6 +115,8 @@ class AutotraderTickLoop:
             loop progress on every pass and reports its symptoms through them; off by default
         state_frames: Records what the session holds and decides, moment by moment (#579 part A)
             — asked at the end of every pass; None when the profile records no frames
+        indicator_series: Records each drawing worker's value per closed bar (#379) — asked
+            beside the state frame after every tick pass; None when the profile records none
         book_sealed_periods: Writes the booking periods sealed so far into the results ledger,
             called at each trading day's seal (#476); None writes nothing before the session ends
         seal_streams: Seals the session's streams into day records at a trading day's boundary
@@ -155,6 +158,7 @@ class AutotraderTickLoop:
         stale_stress_driver: Optional[StaleDataStressDriver] = None,
         operator_alerts: Optional[OperatorAlerts] = None,
         state_frames: Optional[StateFrameRecorder] = None,
+        indicator_series: Optional[IndicatorSeriesRecorder] = None,
         book_sealed_periods: Optional[Callable[[List[BookingPeriod]], None]] = None,
         seal_streams: Optional[Callable[[date, date], None]] = None,
         open_stop_budget: Optional[Callable[[], StopBudget]] = None,
@@ -215,6 +219,7 @@ class AutotraderTickLoop:
         self._api_monitor = api_monitor
         self._state_store = state_store
         self._state_frames = state_frames
+        self._indicator_series = indicator_series
         self._risk_baseline = risk_baseline
         # #355 — the open book is written when it CHANGES, in two classes. A STRUCTURAL
         # change (a position opens, closes, is partially closed) is written at once: it cannot
@@ -583,7 +588,8 @@ class AutotraderTickLoop:
             # #579: read before the algo pass below consumes them — a state frame names the bar
             # the decision just saw close
             closed_timeframes = (self._bar_controller.get_pending_closed_timeframes()
-                                 if self._state_frames is not None else frozenset())
+                                 if self._state_frames is not None
+                                 or self._indicator_series is not None else frozenset())
 
             # === 3+4. Bar History + Worker Processing + Decision (shared core, #303) ===
             decision = execute_algo_path(
@@ -699,6 +705,9 @@ class AutotraderTickLoop:
                     ticks_processed, decision, on_tick=True,
                     closed_timeframes=closed_timeframes, order=order_result,
                     safety_blocked=safety.blocked, safety_drawdown_pct=safety.drawdown_pct)
+            # #379: each drawing worker's value for a bar that closed, in the same place
+            if self._indicator_series is not None:
+                self._indicator_series.on_pass(closed_timeframes, current_bars)
 
             # Track last valid tick/decision for the final shutdown snapshot
             # and heartbeat pulse frames (#320).

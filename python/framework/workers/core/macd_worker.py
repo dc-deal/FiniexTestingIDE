@@ -9,6 +9,16 @@ import numpy as np
 
 from python.framework.trading_env.algo_masks.algo_bar import AlgoBar
 from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
+from python.framework.types.chart_types.drawing_style_types import DrawingStyle
+from python.framework.types.chart_types.indicator_series_types import (
+    IndicatorPane,
+    IndicatorSeriesDeclaration,
+    LineStyle,
+    Plot,
+    PlotKind,
+    PlotOptions,
+    PriceLine,
+)
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.parameter_types import REQUIRED, InputParamDef, OutputParamDef
@@ -81,6 +91,22 @@ class MacdWorker(AbstractIndicatorWorker):
                 description='Signal line EMA period (e.g. 9)'
             ),
         }
+
+    @classmethod
+    def get_indicator_series(cls) -> Tuple[IndicatorSeriesDeclaration, ...]:
+        """
+        MACD in a pane of its own, in price units: the histogram from zero behind the MACD and
+        signal lines.
+
+        Returns:
+            The series
+        """
+        return (IndicatorSeriesDeclaration(
+            pane=IndicatorPane.OWN, title='MACD',
+            plots=(Plot(id='histogram', kind=PlotKind.HISTOGRAM, options=PlotOptions(base=0.0)),
+                   Plot(id='macd', style=DrawingStyle(series=0)),
+                   Plot(id='signal', style=DrawingStyle(series=1))),
+            price_lines=(PriceLine(price=0, line_style=LineStyle.DOTTED),)),)
 
     @classmethod
     def get_output_schema(cls) -> Dict[str, OutputParamDef]:

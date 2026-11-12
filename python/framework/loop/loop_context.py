@@ -35,8 +35,8 @@ class LoopContext:
         symbol: The traded symbol, for the bar history
         booking: The run's booking period recorder, asked at every pass whether a trading day ended
         seal_source: What a seal reads at its instant — the trade records and the stock reading
-        reads_closed_bars: Whether the run records state frames, the only reader of the bars a
-            tick closed
+        reads_closed_bars: Whether the run records state frames or indicator series (#379), the
+            readers of the bars a tick closed
         profiling_enabled: Whether the backtest times its steps; False live
         profile_times: The backtest's step timings in milliseconds, by step; empty when off
         profile_counts: How often each timed step ran, by step; empty when off

@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 54
+API_CONTRACT_VERSION = 55
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,8 +36,15 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "portfolio: drawdown_started_at is the instant the equity curve began on the run's own clock "
-    "— the replayed time in a backtest, the market's time in a session — no longer the wall clock "
-    'when the unit began measuring; empty when a session ended before its first pass; nothing '
-    'added, removed or renamed',
+    'drawing-types: new open route serving the JSON Schema of a drawn indicator series and its '
+    'style vocabulary',
+    'recorded-streams timeline: one row per drawing worker, stream_kind indicator_series, named '
+    'for its worker instance, its time in bar_time, its cadence the finest timeframe the worker '
+    'draws on; recording null for a unit that records no state frames',
+    'recorded-streams window: indicator_series (new), one entry per series with the bars of its own '
+    'timeframe in parallel times and data arrays, keyed by layer; limit, matched, returned and '
+    'next_from now count over every stream of the unit, merged by time',
+    'recorded-streams: streams_not_recorded and state_frame_not_written_yet also cover a unit that '
+    'records only indicator series',
+    "runs: stream_files also names a session's indicator series files, one per drawing worker",
 ]

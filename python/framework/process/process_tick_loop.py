@@ -33,6 +33,7 @@ from python.framework.loop.loop_event_dispatcher import (
     dispatch_backtest_slice,
 )
 from python.framework.loop.tick_slicer import slice_of_tick
+from python.framework.process.indicator_series_recorder import IndicatorSeriesRecorder
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
 from python.framework.process.process_live_export import process_live_export, process_live_setup
 from python.framework.process.sim_pass_hooks import SimPassHooks
@@ -141,6 +142,7 @@ def execute_tick_loop(
     live_queue: Optional[Queue] = None,
     decision_event_dispatcher: Optional[DecisionEventDispatcher] = None,
     state_frames: Optional[StateFrameRecorder] = None,
+    indicator_series: Optional[IndicatorSeriesRecorder] = None,
 ) -> ProcessTickLoopResult:
     """
     Execute tick processing loop with live update support.
@@ -159,6 +161,8 @@ def execute_tick_loop(
         live_queue: Queue for live updates (optional)
         decision_event_dispatcher: The decision event channel (#348), or None
         state_frames: The scenario's state-frame recorder (#579 part B item 3), or None when it
+            records none
+        indicator_series: The scenario's indicator series recorder (#379), or None when it
             records none
 
     Returns:
@@ -258,7 +262,8 @@ def execute_tick_loop(
             executor=trade_simulator, bar_controller=bar_rendering_controller,
             orchestrator=worker_coordinator, decision_logic=decision_logic,
             decision_event_dispatcher=decision_event_dispatcher, symbol=config.symbol,
-            booking=booking, seal_source=seal_source, reads_closed_bars=state_frames is not None,
+            booking=booking, seal_source=seal_source,
+            reads_closed_bars=state_frames is not None or indicator_series is not None,
             profiling_enabled=profiling_enabled, profile_times=profile_times,
             profile_counts=profile_counts)
         pass_hooks = SimPassHooks(
@@ -324,6 +329,9 @@ def execute_tick_loop(
                 state_frames.on_pass(pass_record.ticks_applied, pass_record.decision, on_tick=True,
                                      closed_timeframes=pass_record.closed_timeframes,
                                      order=pass_record.order_result)
+            # #379: each drawing worker's value for a bar that closed, in the same place
+            if indicator_series is not None:
+                indicator_series.on_pass(pass_record.closed_timeframes, pass_record.current_bars)
             last_decision = pass_record.decision
 
             if decision_event_dispatcher is not None and trade_simulator.is_session_end_requested():
@@ -396,6 +404,10 @@ def execute_tick_loop(
         tick_loop_error = e
         if state_frames is not None:
             state_frames.close()
+    # #379: closed once on both ends — every line is flushed as written; the close releases the
+    # file handles, which a sequential batch would otherwise hold for every scenario it ran
+    if indicator_series is not None:
+        indicator_series.close()
 
     try:
         # === CLEANUP COORDINATOR ===
@@ -483,6 +495,7 @@ def execute_tick_loop(
                 ticks_total=len(ticks)
             ),
             tick_range_stats=tick_range_stats,
+            indicator_series_opened=indicator_series is not None,
             tick_loop_error=tick_loop_error
         )
     except Exception as e:

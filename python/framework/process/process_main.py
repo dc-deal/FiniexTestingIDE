@@ -7,6 +7,10 @@ from typing import Optional
 
 from python.framework.constants.run_layout_constants import RUN_TYPE_SIMULATION
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.process.indicator_series_recorder import (
+    IndicatorSeriesRecorder,
+    open_indicator_series,
+)
 from python.framework.process.process_live_queue_helper import send_status_update_process
 from python.framework.process.process_pipeline_bundle import ProcessPipelineBundle
 from python.framework.process.process_startup_preparation import process_startup_preparation
@@ -97,6 +101,8 @@ def process_main(
         # Only when the scenario asks: a backtest of a session's window records the session's frame
         # on the session's slots, so the divergence report can lay the two side by side (#512).
         state_frames = _open_state_frames(config, pipeline, scenario_logger)
+        # === INDICATOR SERIES (#379) === only when the scenario asks
+        indicator_series = _open_indicator_series(config, pipeline, scenario_logger)
 
         # === STATUS: RUNNING ===
         send_status_update_process(live_queue, config, ScenarioStatus.RUNNING)
@@ -106,7 +112,7 @@ def process_main(
             config, worker_coordinator, trade_simulator,
             bar_rendering_controller, decision_logic,
             scenario_logger, ticks, live_queue,
-            decision_event_dispatcher, state_frames)
+            decision_event_dispatcher, state_frames, indicator_series)
         scenario_logger.debug(
             '🔄 Execute tick loop finished')
 
@@ -191,6 +197,37 @@ def process_main(
             traceback=traceback.format_exc(),
             scenario_logger_buffer=log_buffer
         )
+
+
+def _open_indicator_series(
+    config: ProcessScenarioConfig,
+    pipeline: ProcessPipelineBundle,
+    scenario_logger: ScenarioLogger,
+) -> Optional[IndicatorSeriesRecorder]:
+    """
+    Open the scenario's indicator series streams when the scenario asks for them (#379) — one per
+    drawing worker, in the run's `io/` beside its state frames.
+
+    Args:
+        config: The scenario's configuration — whether it records indicator series
+        pipeline: The scenario's objects — workers, bars
+        scenario_logger: The scenario's logger, which knows the run directory
+
+    Returns:
+        The recorder, or None when the scenario records none or no worker draws
+    """
+    if not config.indicator_series_enabled:
+        return None
+    run_dir = scenario_logger.get_log_dir()
+    if not run_dir:
+        scenario_logger.warning(
+            '📈 Indicator series were asked for, but this scenario writes into no run directory '
+            '— none are recorded')
+        return None
+    return open_indicator_series(
+        RunEntryWriter(run_dir, RUN_TYPE_SIMULATION), RunEntryMemberId.SCENARIO_INDICATOR_SERIES,
+        config.run_id, config.name, pipeline.worker_coordinator,
+        pipeline.bar_rendering_controller, config.symbol, scenario_logger, scenario=config.name)
 
 
 def _open_state_frames(

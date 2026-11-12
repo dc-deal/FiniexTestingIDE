@@ -33,6 +33,34 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 55 — 2026-11-12 (#379)
+
+A worker can draw its outputs on a run's chart, as an indicator pane: one value per closed bar of its
+timeframe, on the candles or in a pane of its own. A session that records them serves them beside
+its state frames. Its document is [indicator series](/api/v1/docs/indicator-series).
+
+- `GET /api/v1/drawing-types` (new, open like `/timeframes`): the JSON Schema of a served indicator
+  series, with the style vocabulary in its definitions.
+- [Recorded streams](/api/v1/docs/recorded-streams), the timeline: one row per drawing worker,
+  **`stream_kind: "indicator_series"`**, named for its worker instance, its records' time in
+  `bar_time` and its cadence the finest timeframe the worker draws on. `recording` is null for a
+  unit that records no state frames.
+- Recorded streams, the window: **`indicator_series`** (new), one entry per series of every drawing
+  worker, with the page's bars of its own `timeframe` in parallel arrays `times` and `data`, keyed by
+  `layer` in `keys`; a worker that draws on two timeframes gives an entry for each. A
+  changed meaning: the window merges every stream of the unit by time, so **`limit`, `matched`,
+  `returned` and `next_from` count over every stream**, and a page ends before the first record any
+  stream left out.
+- [Runs](/api/v1/docs/runs): **`stream_files`** also names a session's indicator series files, one
+  per drawing worker.
+- [Errors](/api/v1/docs/errors) on both routes: `streams_not_recorded` means the run records neither
+  state frames nor an indicator series; `state_frame_not_written_yet` that none of the unit's streams
+  has written its header yet.
+
+**A run recorded before this contract** records no indicator series; its timeline and window answer
+as before. A backtest's series are recorded but not served yet, like the rest of its streams over
+time.
+
 ## Version 54 — 2026-11-12 (#497)
 
 A backtest's drawdown curve now begins in the replayed time.
@@ -114,31 +142,13 @@ A deployment no longer reads twice in the list, once of the two rows empty.
 
 Nothing removed or renamed; two fields added.
 
-## Version 50 — 2026-11-04 (#646)
-
-A run that failed before it measured anything no longer reads like a session that traded and broke
-even.
-
-- [Deployments](/api/v1/docs/deployments), a changed meaning: such a session serves **no figure** —
-  `net_pnl`, `max_drawdown` and `max_drawdown_pct` null where they read `0.0` — and no currency, null
-  where it read the empty string. It stands with the sessions that have booked nothing yet, in the
-  list row whose `currency` is null.
-- Deployments, the detail: every session carries **`booking_state`** — `booked`, `failed` (it failed
-  before it measured anything) or `not_booked_yet`. The sessions without booked figures follow the
-  booked ones as one series, oldest first and numbered from 1, and mark no gap and no change.
-- [Sweeps](/api/v1/docs/sweeps): `net_pnl`, `win_rate`, `total_fees`, `total_trades`,
-  `winning_trades`, `losing_trades` and `r_trade_count` of a combination are nullable in the schema.
-  A ranked combination never carries null there: a run that failed is left out of the ranking, as
-  before.
-
-Nothing removed or renamed; one field added — `booking_state`.
-
-## Versions 49 and earlier
+## Versions 50 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 50** — 2026-11-04 (#646): A run that failed before it measured anything no longer reads like a session that traded and broke even — such a [deployments](/api/v1/docs/deployments) session serves no figure and no currency (null, not `0.0` and the empty string), every session in the detail carries `booking_state` (`booked`, `failed`, `not_booked_yet`), and a [sweep](/api/v1/docs/sweeps) combination's figures are nullable in the schema while a ranked one never carries null.
 - **Version 49** — 2026-11-02 (#645): A deployment is listed from its first session's start — sessions without a sealed day stand in the list and the detail without figures, in a row of their own with `currency: null`; `net_pnl` and `currency` nullable; `/deployments/{deployment_id}` and its booking periods answer 200 for such a deployment, and `deployment_not_found` means no run and no ledger row names it.
 - **Version 48** — 2026-11-01: The installation answering names itself on `/health` — `host_id`, the key, the same value as `origin_host` on activities and runs, and `host_name`, for people to read and no key.
 - **Version 47** — 2026-10-30 (#559): A deployment notices when its sessions ran different code — `changed` also true when only the code moved, `configuration_changed` beside it, `code_changes` on the session rows, `code_summary` on the list rows and the detail, `commit_subject` and `recent_commits` on the run header's repositories, `code_stand` on a sweep's combinations.

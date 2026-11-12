@@ -168,6 +168,7 @@ def test_the_result_carries_the_refusal(monkeypatch):
     # record and entered its loop, but this double built none of them
     session._order_event_stream = None
     session._study_recorder = None
+    session._indicator_series = None
     session._tick_source = None
     session._tick_loop = None
     session._algo_state_found = False
