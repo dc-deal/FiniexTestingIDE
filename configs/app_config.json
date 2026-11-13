@@ -258,7 +258,7 @@
           "cadence_timeframe": "M1"
         },
         "indicator_series": {
-          "_comment": "A backtest scenario's indicator series (#379), in io/indicator_series_{scenario}_{worker}.jsonl: each drawing worker's outputs, one value per closed bar; off unless a scenario asks.",
+          "_comment": "A backtest scenario's indicator series (#379), in io/indicator_series_{scenario}/{worker}.jsonl: each drawing worker's outputs, one value per closed bar; off unless a scenario asks.",
           "enabled": false
         },
         "verification": {
