@@ -267,10 +267,8 @@ def _listing_of(entry: Dict[str, Any]) -> Optional[PackageListing]:
         vLog.warning(f"📦 Package {entry.get('package_id')} is in the state '{raw_state}', "
                      'which this import does not know — left alone')
         return None
-    # 'source' is the contract's key; the data collector still names it 'collector' until its
-    # next deploy adds 'source' beside it, and the fallback goes once that deploy is live
     return PackageListing(
-        package_id=entry['package_id'], source=entry.get('source') or entry.get('collector', ''),
+        package_id=entry['package_id'], source=entry['source'],
         size_bytes=int(entry['size_bytes']), sha256=entry['sha256'], state=state)
 
 

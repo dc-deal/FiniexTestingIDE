@@ -84,7 +84,7 @@ class _PackageService:
         zip_name = f'{package_id}.zip'
         self.packages[package_id] = {
             'zip': data,
-            'listing': {'package_id': package_id, 'collector': package_id.split('-')[0],
+            'listing': {'package_id': package_id, 'source': package_id.split('-')[0],
                         'size_bytes': len(data), 'sha256': _sha(data), 'state': state,
                         'received_at': None},
             'manifest': {'schema': 1, 'package_id': package_id,
@@ -485,14 +485,6 @@ class TestTheContractsFields:
     def test_the_source_is_read_from_source(self):
         listing = _listing_of({**self._ENTRY, 'source': 'crypto_sentiment'})
         assert listing.source == 'crypto_sentiment'
-
-    def test_the_collector_key_stands_in_until_its_deploy_adds_source(self):
-        listing = _listing_of({**self._ENTRY, 'collector': 'kraken'})
-        assert listing.source == 'kraken'
-
-    def test_source_wins_over_collector(self):
-        listing = _listing_of({**self._ENTRY, 'source': 'kraken', 'collector': 'old'})
-        assert listing.source == 'kraken'
 
     def test_each_members_size_is_read_beside_its_hash(self):
         manifest = parse_manifest({'manifest': {

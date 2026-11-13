@@ -478,9 +478,8 @@ the list, a manifest, the zip with `Range` support, and the receipt:
   the inbox; `--no-fetch` shows the step skipped with its reason
 - **TestTheConfiguration** — the tracked file mirrors the model's defaults and fetches nothing; an
   address in the workspace copy makes a source
-- **TestTheContractsFields** — a listing's source is read from `source`, with the data collector's
-  `collector` standing in until its deploy adds `source`, and `source` winning where both are
-  served; a manifest's member sizes are read beside their hashes
+- **TestTheContractsFields** — a listing's source is read from `source`; a manifest's member
+  sizes are read beside their hashes
 
 ### test_bar_render_replace.py
 
