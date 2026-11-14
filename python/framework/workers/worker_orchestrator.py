@@ -330,8 +330,11 @@ class WorkerOrchestrator:
             if norm_required != norm_config:
                 errors.append(
                     f"Type mismatch for '{instance_name}': "
-                    f"DecisionLogic requires '{required_type}', "
-                    f"but config has '{config_type}'. Type override not allowed!"
+                    f"DecisionLogic requires '{required_type}' (resolved: {norm_required}), "
+                    f"but config has '{config_type}' (resolved: {norm_config}). "
+                    'A path the decision logic requires is resolved from its own folder, a '
+                    'configured path from the data home or the project root. '
+                    'Type override not allowed!'
                 )
                 continue
 
