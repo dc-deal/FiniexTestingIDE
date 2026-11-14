@@ -344,7 +344,8 @@ class AutotraderReportCoordinator:
             closing_block=AutotraderSessionSummary(
                 result, unified.trade_history, self._run_dir, unified.run_summary,
                 warnings_errors_report, cold_start_report, safety_report,
-                venue_account_report),
+                venue_account_report, portfolio_report=unified.portfolio,
+                order_report=unified.order_history),
         )
 
         # Render once (live always full detail); capture, print to console (with colors), and
@@ -408,6 +409,11 @@ class AutotraderReportCoordinator:
                    if isinstance(self._decision_logic, AbstractAcceptanceStudy) else None)
         sinks = self._decision_logic.get_diagnostics_sinks() if self._decision_logic else []
         reach = self._result.session_reach
+        series_on = self._config.indicator_series.enabled
+        series_skipped = ('the profile records no indicator series' if not series_on
+                          else 'the session stopped before its tick loop'
+                          if not reach.tick_loop_entered
+                          else 'no worker of the session draws')
         log_members = (RunEntryMemberId.SESSION_GLOBAL_LOG, RunEntryMemberId.SESSION_SUMMARY_LOG,
                        RunEntryMemberId.SESSION_BOOT_LOG)
         return [
@@ -444,6 +450,9 @@ class AutotraderReportCoordinator:
                               reach.tick_loop_entered, 'the profile records state frames',
                               'the profile records no state frames',
                               'the session stopped before its tick loop'),
+            expectation(RunEntryMemberId.INDICATOR_SERIES, reach.indicator_series_opened,
+                        'the profile records indicator series and a worker draws',
+                        series_skipped),
             expectation_after(RunEntryMemberId.TRADES, True, reach.tick_loop_entered,
                               'the session reached its tick loop', '',
                               'the session stopped before its tick loop'),

@@ -34,10 +34,11 @@ takes about 18 s (measured 2026-10-23).
   ([`census_probe_decision.py`](../../../tests/fixtures/run_entry_census/census_probe_decision.py))
   that writes one diagnostics row and one file of its own and opens and closes one position, so
   every member that hangs on an order, a sink, the strategy's own folder or the robustness mode is
-  written.
+  written; its RSI worker's indicator series is recorded (#379).
 - **A mock session** on [`run_entry_census_test.json`](../../../configs/autotrader_profiles/mock/run_entry_census_test.json)
-  with the same probe, its state frames recorded and its API monitor switched on, so it writes the
-  venue API section — with no endpoint, since the mock adapter calls none (#631). It starts ten
+  with the same probe and an RSI worker, its state frames and indicator series recorded and its API
+  monitor switched on, so it writes the venue API section — with no endpoint, since the mock adapter
+  calls none (#631). It starts ten
   minutes before a trading day's boundary and runs across it, so it seals a day and writes its streams' day records (#476); the
   tick stream's day record is covered where that stream is, since only a venue session writes it.
 - **The same session with its log files switched off**, which must still be a declared run with its

@@ -148,7 +148,8 @@ Error handling is **not a feature of the live execution stack only**. It belongs
 2. Latency delay elapses → _fill_open_order() called
 3. Funds check, per account model: margin compares against free margin (INSUFFICIENT_MARGIN);
    spot compares against the asset the order spends, net of what this bot's own unfilled
-   orders already claim (INSUFFICIENT_FUNDS, #489)
+   orders already claim (INSUFFICIENT_FUNDS, #489). Every such refusal names both figures and
+   the share of the order the free amount would have covered (`— covers 98.0 % of it`)
 4. Rejection stored in _order_history, order never reaches portfolio
 ```
 
@@ -265,7 +266,8 @@ The foundation. Contains all concrete fill processing and shared infrastructure.
   override for live (broker's actual price); `None` for simulation (use current tick bid/ask)
 - `_fill_close_order(pending_order, fill_price=None)` — Portfolio close, P&L realization, statistics. Same price override pattern.
 - `get_order_history()` — All OrderResults (fills + rejections) for audit trail
-- `get_open_positions()` — Returns confirmed portfolio positions only
+- `get_open_positions()` — Returns confirmed portfolio positions only, each as a read-only
+  `AlgoPosition` — an [algo mask](../user_guides/algo_masks.md), never the engine's `Position`
 - `get_account_info()` — Balance, equity, position counts, and the multi-currency `balances`
   at spot. **`margin_used`, `free_margin` and `margin_level` are None at SPOT** (2026-09-24):
   a spot account posts no margin, and the figures it used to receive were the branch of the
@@ -376,6 +378,10 @@ The gatekeeper. DecisionLogic interacts *only* through this API. It provides:
 - Clean method signatures (`send_order`, `get_open_positions`, `close_position`)
 - Pending order awareness (`has_pending_orders`, `has_pipeline_orders`, `is_pending_close`)
 - Executor-agnostic: works identically with TradeSimulator and LiveTradeExecutor
+- Read-only answers: what it hands back is an algo mask, a frozen type, a copy or a plain value —
+  never the engine's own object, so nothing an algo reads can change the engine. Every read
+  declares which of the four it returns in `DECISION_API_READS_RETURN`
+  ([Algo Masks](../user_guides/algo_masks.md))
 
 #### Which order types are allowed: TWO declarations, one intersection
 
@@ -446,6 +452,18 @@ if new_side == OrderSide.SELL and self.trading_api.is_spot_mode():
     if base_balance < required:
         return None  # silent skip — no base to sell
 ```
+
+**A close is funded like any order (#639).** At spot, closing a LONG sells the base and closing a
+SHORT buys it back with the quote, so `close_position` is checked by the same calculation an open
+uses — what the account holds, less what its unfilled orders claim. A close of coins the account no
+longer holds (sold by a SELL, claimed by a resting sell) is DENIED with `insufficient_funds` at
+submission, and the position stays in the book. Before, it went through and left the base balance
+negative, a sell no venue executes. At the fill the open's split holds: the simulation refuses a
+close it cannot fund (`REJECTED`), a live session books the close the venue executed and reports
+that the book disagrees. A level the simulation holds for a position fires once when its close is
+refused there: the level is not tried again, as a venue cancels a stop it cannot fund, where it
+used to add a rejected row and a protective close on every tick. Margin moves no coins on a close
+and is not checked.
 
 The executor's INSUFFICIENT_FUNDS branch remains in place as a hard safety net for edge cases (race conditions on live broker state, algos that forget the check), but in normal operation the algo decides.
 
@@ -521,6 +539,8 @@ The previous approach mixed pending orders into `get_open_positions()` as "pseud
 The new design separates concerns completely:
 
 **`get_open_positions()`** — Returns only confirmed, filled, real portfolio positions. Always. In every mode.
+Each comes as an `AlgoPosition` that computes its price and P&L from the latest quote when read
+([Algo Masks](../user_guides/algo_masks.md)).
 
 **`has_pending_orders()`** — Global check: "Is anything in flight across all worlds?" Concrete in
 `AbstractTradeExecutor` — combines `has_pipeline_orders()` + `_active_limit_orders` +

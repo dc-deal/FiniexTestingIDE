@@ -23,23 +23,26 @@ from python.framework.types.api.report_types import (
     DeploymentCodeChange,
     DeploymentCodeSummary,
     DeploymentComparabilityAdvisory,
+    DeploymentListResponse,
     DeploymentSessionRow,
     DeploymentSummary,
+    SessionBookingState,
 )
 from python.framework.types.run_origin_types import FRAMEWORK_REPOSITORY
 from python.framework.utils.math_utils import negated_magnitude
 
 
-def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
+def render_deployment_list(listing: DeploymentListResponse) -> None:
     """
     Print every deployment as one line — the overview half.
 
     Formatting only; every figure was derived in the builder (§12).
 
     Args:
-        summaries: The roll-ups, already ordered
+        listing: The deployment list's answer — its roll-ups, already ordered, and their count
     """
-    print(f'\n{len(summaries)} deployment(s)')
+    summaries = listing.deployments
+    print(f'\n{listing.count} deployment(s)')
     print('─' * 155)
     # 32 holds a deployment id with its random half (31 characters) and the gap after it
     print(f'{"deployment":<32} {"bot":<22} {"bot id":<20} {"orders to":<16} {"sessions":>8} '
@@ -61,11 +64,23 @@ def render_deployment_list(summaries: List[DeploymentSummary]) -> None:
         deepest = (f'{negated_magnitude(summary.max_drawdown):>11.2f}'
                    if summary.max_drawdown is not None
                    else f'{"—":>11}')
+        net_pnl = (f'{summary.net_pnl:>11.2f}' if summary.net_pnl is not None
+                   else f'{"—":>11}')
+        # The sessions without booked figures stand on a booked row as a count; a row of
+        # their own, a dash under net P&L, says the same for a deployment that booked nothing
+        without = ''
+        if summary.currency is not None and summary.sessions_without_figures:
+            without = f'  +{summary.sessions_without_figures} without figures'
+            if summary.sessions_failed:
+                without += f' ({summary.sessions_failed} failed)'
         print(f'{summary.deployment_id:<32} {summary.bot:<22} '
               f'{(summary.bot_id or "—"):<20} {orders_to:<16} {summary.sessions:>8} '
-              f'{since:<17} {summary.net_pnl:>11.2f} {deepest} '
-              f'{gap:>9}{mark}')
+              f'{since:<17} {net_pnl} {deepest} '
+              f'{gap:>9}{mark}{without}')
     print('─' * 155)
+    if any(s.currency is None for s in summaries):
+        print('— under net P&L = a deployment that has booked nothing: its sessions failed before '
+              'they measured anything, run before their first seal, or ended before it.')
     if any(s.configuration_changed for s in summaries):
         print('⚠ = the sessions were not all produced by the same configuration; the detail '
               'view draws the break.')
@@ -94,21 +109,20 @@ def render_deployment_history(
         advisory: What the comparability analyzer found, printed ABOVE the table when it
             found anything. Above, because the question it answers — may these rows be read
             as one series — has to reach the reader before the numbers do
-        unfinished: How many of this deployment's runs never reached their close. The table
-            is built from the LEDGER, which holds a session's sealed days (#476) but the row
-            of its close only at the end — so such a run stands in the table without an end
-            when it sealed a day, and is absent from it when it died before its first seal.
-            The two counts overlap and are never added. Zero leaves the line exactly as it was
+        unfinished: How many of this deployment's runs never reached their close. The LEDGER
+            holds a session's sealed days (#476) but the row of its close only at the end — so
+            such a run stands in the table without an end when it sealed a day, and with no
+            figures when it sealed none yet (#645). Every run it counts is in the table, and the
+            two are never added. Zero leaves the line exactly as it was
         code_summary: How often the code moved, printed as one dated line above the table and above
             the advisory's block. One line, because it never leaves the deployment's history: a
             block here would stand on every maintained deployment for good
     """
     caption = deployment_caption(sessions)
     first = caption.first_started.strftime('%Y-%m-%d %H:%M') if caption.first_started else '?'
-    recorded = (f'{caption.session_count} session(s) in the ledger · {unfinished} never completed'
+    recorded = (f'{caption.session_count} session(s) · {unfinished} not completed'
                 if unfinished else f'{caption.session_count} session(s)')
-    bot_id = next((s.bot_id for s in sessions if s.bot_id), '')
-    identity = f' · bot {bot_id}' if bot_id else ''
+    identity = f' · bot {caption.bot_id}' if caption.bot_id else ''
     print(f'\n{deployment} — {recorded} · since {first} UTC{identity}')
     if code_summary is not None:
         print(_code_warning(code_summary))
@@ -137,7 +151,15 @@ def render_deployment_history(
     # other way is a second thing to read. The id is what the next question needs: it is the
     # directory name under runs/autotrader/<profile>/, so a reader can descend from here into the
     # logs of one session — the last step of deployments → sessions → this run.
-    for session in reversed(sessions):
+    # Each series reads newest first on its own — the sessions of one currency, and those without
+    # booked figures — and a line between two series says where the next begins, so a gap or a
+    # change mark is read against its own series and not against the row printed above it.
+    previous_series: Optional[str] = None
+    for position, session in enumerate(reversed(sessions)):
+        if position and session.currency != previous_series:
+            print(f'{"·" * 26} {_series_label(previous_series)} above · '
+                  f'{_series_label(session.currency)} below {"·" * 26}')
+        previous_series = session.currency
         started = session.started.strftime('%Y-%m-%d %H:%M') if session.started else '?'
         ran = f'{session.ran_hours:.1f} h' if session.ran_hours is not None else '—'
         notes = []
@@ -147,6 +169,10 @@ def render_deployment_history(
         # Reported, never judged: no threshold here decides what is "too long" — that is a
         # judgement about the market and the bot, not about the data. Named "idle" because
         # the table now reads downwards into the past: it is the stretch before this session.
+        if session.booking_state is SessionBookingState.FAILED:
+            notes.append('failed before it measured anything')
+        elif session.booking_state is SessionBookingState.NOT_BOOKED_YET:
+            notes.append('nothing booked yet')
         if session.gap_hours is not None and session.gap_hours >= 1:
             measure = ' between starts' if session.gap_between_starts else ''
             notes.append(f'idle {session.gap_hours:.1f} h{measure}'
@@ -157,7 +183,9 @@ def render_deployment_history(
                    else f'{"—":>13}')
         share = (f'{session.max_drawdown_pct:>6.2f}%' if session.max_drawdown_pct is not None
                  else f'{"—":>7}')
-        print(f'{session.run_id:<26} {started:<17} {ran:>7} {session.net_pnl:>11.2f} '
+        net_pnl = (f'{session.net_pnl:>11.2f}' if session.net_pnl is not None
+                   else f'{"—":>11}')
+        print(f'{session.run_id:<26} {started:<17} {ran:>7} {net_pnl} '
               f'{decline} {share}   '
               f'{" · ".join(notes)}')
 
@@ -182,8 +210,8 @@ def render_deployment_history(
 
     print('─' * 104)
     amounts = ', '.join(caption.currencies) or '—'
-    print(f'Amounts in {amounts}. Newest session first. `ran` is measured from the start to '
-          'the moment the')
+    print(f'Amounts in {amounts}. Newest first within each series. `ran` is measured from the '
+          'start to the moment the')
     print('row was written, so it carries the reporting tail. The drawdown column is '
           'CUMULATIVE over the')
     print('deployment — each row holds the running figure against the inherited peak, so '
@@ -230,6 +258,21 @@ def _code_warning(code: DeploymentCodeSummary) -> str:
             else 'on an unknown date')
     return (f'⚠️  Code changed {when} — {code.code_stands} code stands over {code.sessions} '
             'sessions; net P&L adds them up')
+
+
+def _series_label(currency: Optional[str]) -> str:
+    """
+    How a series of sessions is named on the line that parts it from the next.
+
+    Args:
+        currency: The series' account currency, None for the sessions without booked figures
+
+    Returns:
+        The name
+    """
+    if currency is None:
+        return 'without booked figures'
+    return currency or 'no currency'
 
 
 def _print_code_changes(changes: List[DeploymentCodeChange]) -> None:

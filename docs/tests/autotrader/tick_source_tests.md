@@ -22,6 +22,7 @@ the retry ladder itself, which `ConnectionLadder`'s own suite pins.
 | `test_kraken_quote_stamping.py` | the parser: which channel produces a tick, the quote stamped on it, and what happens without one |
 | `test_kraken_tick_stream_record.py` | the tick stream's own record (#609): one line per outage with the public trade ids around it, the folding of connections that drop before a trade, a restoration lost again leaving none behind, refused trades and their reasons, the first 100 of a reason listed and the totals closing the record, a record that cannot be written or closed, why a connection ended, TLS read off the parsed scheme; and the loop against a local server — the backoff that climbs until a connection delivered, silence aborting a connection to a far side that answers nothing, a trade ahead of its acknowledgement held until the subscription stands and dropped with a refused one, a refused subscription closing its socket, stop() waking a long backoff |
 | `test_kraken_quote_subscription.py` | the source: which channels are requested, what a refusal does, and what the CONNECTION panel is told |
+| `test_idle_pass_time.py` | the time of a pass without a tick (#616): a live source answers the wall clock in UTC; a replay answers its first tick before any, then the last tick it put on the queue plus the real time since, never the day the session runs; an empty replay keeps the wall clock |
 
 ## Why a quote at all
 

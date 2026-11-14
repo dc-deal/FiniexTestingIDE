@@ -1,0 +1,21 @@
+{
+    "_comment": "How the import reaches the data collector's package service (#120): every import fetches the weekly tick packages first and acknowledges each one it took. The address stands beside the credential that opens it. The tracked production address is empty, so nothing is fetched until a workspace copy (user_configs/data_collector_config.json) names it.",
+    "packages": {
+        "active": "production",
+        "endpoints": {
+            "production": {
+                "base_url": "",
+                "credentials_file": "peers/collector_credentials.json"
+            }
+        },
+        "_comment_connection": "The ladder of the service's reads (list, manifest, zip). A give-up lets the import go on with what lies in the inbox, counted as an error. The receipt is a write: it is never retried, a lost answer is settled by reading the package back.",
+        "connection": {
+            "initial_delay_s": 2.0,
+            "max_delay_s": 30.0,
+            "jitter": true,
+            "attempt_budget": 3,
+            "request_timeout_s": 60.0,
+            "on_give_up": "degrade"
+        }
+    }
+}

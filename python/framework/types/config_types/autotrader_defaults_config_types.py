@@ -16,6 +16,7 @@ from python.framework.types.config_types.performance_tracking_config_types impor
     AutoTraderPerformanceTrackingConfig,
 )
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
+from python.framework.types.config_types.verification_config_types import VerificationConfig
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 
@@ -78,6 +79,8 @@ class AutotraderExecutionDefaults(StrictConfigModel):
     venue_read_settle_seconds: float = 5.0
     unresolved_resolution: UnresolvedResolutionDefaults = UnresolvedResolutionDefaults()
     performance_tracking: AutoTraderPerformanceTrackingConfig = AutoTraderPerformanceTrackingConfig()
+    # Switches that change no result by design; turned off only to compare (#653)
+    verification: VerificationConfig = VerificationConfig()
 
 
 class ClippingMonitorDefaults(StrictConfigModel):
@@ -205,6 +208,16 @@ class StateFramesDefaults(StrictConfigModel):
                 f'state_frames.cadence_timeframe {value!r} is not a timeframe; the recording '
                 f'needs one of {known}')
         return value
+
+
+class IndicatorSeriesDefaults(StrictConfigModel):
+    """
+    The indicator series a run records (#379) — each drawing worker's outputs, one value per closed
+    bar of its timeframe, into one stream per worker instance, so the run's chart can show them as
+    indicator panes. It reads what the workers computed anyway and changes nothing they compute.
+    Off unless a profile or a scenario asks.
+    """
+    enabled: bool = False
 
 
 class ColdStartDefaults(StrictConfigModel):
@@ -527,6 +540,7 @@ class AutotraderDefaultsConfig(StrictConfigModel):
     api_monitor: ApiMonitorConfig = ApiMonitorConfig()
     state_persistence: StatePersistenceDefaults = StatePersistenceDefaults()
     state_frames: StateFramesDefaults = StateFramesDefaults()
+    indicator_series: IndicatorSeriesDefaults = IndicatorSeriesDefaults()
     cold_start: ColdStartDefaults = ColdStartDefaults()
     session_end: SessionEndDefaults = SessionEndDefaults()
     shutdown: ShutdownDefaults = ShutdownDefaults()

@@ -9,6 +9,11 @@ import pytest
 
 from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.exceptions.store_errors import LedgerRowUnreadableError
+from python.framework.reporting.aggregation.aggregation_fold import aggregate_ledger_rows
+from python.framework.reporting.aggregation.figure_catalog import (
+    COLUMN_NULL_MEANING,
+    COLUMN_REDUCTION,
+)
 from python.framework.reporting.builders.booking_period_builder import (
     PeriodSnapshot,
     derive_booking_period,
@@ -17,23 +22,17 @@ from python.framework.reporting.builders.deployment_history_builder import (
     build_deployment_histories,
     deployment_code_summary,
 )
-from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
 from python.framework.reporting.store.run_results_ledger import (
-    COLUMN_NULL_MEANING,
-    COLUMN_REDUCTION,
     LEDGER_COLUMNS,
     RUN_END_COLUMNS,
     RunResultsLedger,
 )
+from python.framework.types.aggregation_types import FigureKind, Reduction
 from python.framework.types.api.report_types import RunResultRow, RunSummary
 from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_origin_types import CodeStand, RepositoryStand
 from python.framework.types.run_outcome_types import RunOutcome
-from python.framework.types.run_results_types import (
-    FigureKind,
-    PeriodCloseReason,
-    Reduction,
-)
+from python.framework.types.run_results_types import PeriodCloseReason
 from python.framework.types.trading_env_types.trading_env_stats_types import (
     EXECUTION_COUNT_FIELDS,
     ExecutionStats,
@@ -222,6 +221,57 @@ def test_the_figureless_error_row_writes_no_figure(tmp_ledger, make_provenance):
                    'total_trades'):
         assert pd.isna(stored[column]), f'{column} holds {stored[column]!r}, a figure nobody measured'
     assert tmp_ledger.read_rows()[0].account_max_drawdown is None
+
+
+def _is_numeric(annotation) -> bool:
+    """
+    Whether a row field is typed as a number, bare or as `X | None`.
+
+    Args:
+        annotation: The field's annotation
+
+    Returns:
+        True when int or float is among its types
+    """
+    return any(arg in (int, float) for arg in (get_args(annotation) or (annotation,)))
+
+
+def test_a_run_that_measured_nothing_reads_back_no_figure_at_all(tmp_ledger, make_provenance):
+    """
+    What the writer left empty stays empty on the way back (#646). Some figures default to a
+    number, and a P&L of 0.0 on a failed start reads like a session that traded and broke even.
+    Held over every numeric figure column, so a new one typed as a bare number cannot read back as
+    its default on this row.
+    """
+    tmp_ledger.append(RunSummary(run_id=_RUN_ID, currencies=[]), make_provenance(run_id='r1'))
+
+    row = tmp_ledger.read_rows()[0]
+    figures = [column for column in LEDGER_COLUMNS
+               if COLUMN_REDUCTION[column].figure_kind() is not FigureKind.DESCRIPTION
+               and _is_numeric(RunResultRow.model_fields[column].annotation)]
+    assert figures, 'no numeric figure column found'
+    held = {column: getattr(row, column) for column in figures if getattr(row, column) is not None}
+    assert not held, f'a run that measured nothing reads figures back: {held}'
+
+
+def test_an_older_error_row_reads_its_stored_zeros_as_nothing(tmp_path, tmp_ledger):
+    """
+    The writer before the figureless error row stored a literal zero in every figure column. A
+    run that measured nothing reads back without a figure either way (#646).
+    """
+    old = pd.DataFrame([{
+        'param_hash': 'old', 'run_id': 'old', 'run_timestamp': '2026-01-01T00:00:00+00:00',
+        'scenario_set_name': 's__old', 'status': 'error', 'error': 'boom', 'currency': '',
+        'net_pnl': 0.0, 'win_rate': 0.0, 'total_fees': 0.0, 'total_trades': 0,
+        'account_max_drawdown': 0.0, 'final_equity': 0.0}])
+    (tmp_path / 'run_results').mkdir(parents=True, exist_ok=True)
+    old.to_parquet(tmp_path / 'run_results' / 's__old_old.parquet', index=False)
+
+    row = tmp_ledger.read_rows()[0]
+    assert row.status == 'error'
+    for field in ('net_pnl', 'win_rate', 'total_fees', 'total_trades', 'account_max_drawdown',
+                  'final_equity'):
+        assert getattr(row, field) is None, f'{field} reads {getattr(row, field)!r}'
 
 
 def test_read_handles_schema_evolution(tmp_path, tmp_ledger, make_run_summary, make_provenance):

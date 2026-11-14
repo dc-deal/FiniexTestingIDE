@@ -108,6 +108,10 @@
       },
       "performance_tracking": {
         "worker_decision_tracking": true
+      },
+      "verification": {
+        "_comment": "Switches that change no result by design (#653): portfolio_cache true marks open positions lazily, only when something asks; false keeps every position current at every event, the reference a run compares the lazy marking against. Turned off only to compare.",
+        "portfolio_cache": true
       }
     },
     "clipping_monitor": {
@@ -172,6 +176,10 @@
       "_comment": "What a session held and decided, moment by moment (#579 part A), in io/state_frames.jsonl: one frame per period of cadence_timeframe on the canonical clock (a timeframe such as M1 or M5, on the grid the bars open their periods on), at a closed bar, at an order, and once at the end. About 65-130 MB over thirty days at M1.",
       "enabled": true,
       "cadence_timeframe": "M1"
+    },
+    "indicator_series": {
+      "_comment": "Each drawing worker's outputs, one value per closed bar of its timeframe (#379), in io/indicator_series_{worker}.jsonl, for the run's chart. Reads what the workers computed anyway and changes nothing they compute.",
+      "enabled": false
     },
     "cold_start": {
       "enabled": true,
@@ -243,7 +251,20 @@
         },
         "strict_parameter_validation": true,
         "tick_processing_budget_ms": 0.0,
-        "heartbeat_interval_ms": 1000
+        "heartbeat_interval_ms": 1000,
+        "state_frames": {
+          "_comment": "A backtest scenario's state frames (#579 part B item 3), in io/state_frames_{scenario}.jsonl: off unless a scenario asks; a backtest of a live session's window (#512) switches them on with the session's cadence.",
+          "enabled": false,
+          "cadence_timeframe": "M1"
+        },
+        "indicator_series": {
+          "_comment": "A backtest scenario's indicator series (#379), in io/indicator_series_{scenario}_{worker}.jsonl: each drawing worker's outputs, one value per closed bar; off unless a scenario asks.",
+          "enabled": false
+        },
+        "verification": {
+          "_comment": "Switches that change no result by design (#653): portfolio_cache true marks open positions lazily, only when something asks; false keeps every position current at every event, the reference a run compares the lazy marking against. Turned off only to compare.",
+          "portfolio_cache": true
+        }
       }
     },
     "default_trade_simulator_config": {

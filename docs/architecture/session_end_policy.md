@@ -245,9 +245,10 @@ wait for it would only run out, and the cleanup books it unaccounted with an ERR
 **And once more after the session-end event.** A strategy may close on its way out, from
 `on_session_end`. Such a close is waited for the same way, so its fill is booked before the cleanup,
 and both waits keep to one bound: the second goes on from the time the first spent, and does not
-run at all once the first ran out, because the worker stopped with it. The logic does not hear what
-this second wait settles: the session-end event stays the last thing it is told. An open and its
-close carry the same id, so the stop tells its orders apart by id and action.
+run at all once the first ran out, because the worker stopped with it. The logic hears what this
+second wait settled, and how the bound ended what it did not, in `on_session_end_order_outcome`, once
+the wait is over (#642); a backtest settles such an order at its last quote the same way. An open and
+its close carry the same id, so the stop tells its orders apart by id and action.
 
 ### One wait pass
 
@@ -302,6 +303,13 @@ rather than counted as open at the venue.
 again after it, because a fill the cleanup found, on a read after a refused cancel, moved the book.
 **At margin the carry-over holds no book:** such a fill reaches the report and not the next session,
 which reads its positions from the venue (#209).
+
+A third write closes the session, once the results are collected. Three of the carried figures are
+not final before that: the last booking period is sealed only there, the run-end equity sample can
+deepen the drawdown, and the positions are marked once more, which can deepen their excursion
+extrema. The closing write carries the period floor, the drawdown curve and, under the same gate as
+the first write, the open book again (#537, #497, #542). A figure that a later step of the end can
+still move is written after that step, never only before it.
 
 Under a declared kill every venue call of the cleanup, and each part of the end read, asks the
 budget first. The read at the START is untouched: a session that has not begun has no kill to fit

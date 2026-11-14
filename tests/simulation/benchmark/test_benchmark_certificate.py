@@ -527,6 +527,27 @@ class TestConfigProvenance:
             f'Those must be counted in unnamed_files instead.')
 
 
+class TestFailedMetricsMessage:
+    """The message of a FAILED certificate names every failed metric, whatever its kind."""
+
+    def test_a_failed_limit_metric_is_named_against_its_limit(self):
+        """
+        A limit metric — the throughput spread, the summary ceiling — carries no deviation, and
+        formatting the missing one ended the message in a TypeError instead of naming the figure.
+        """
+        report = {'metrics': [
+            {'name': 'throughput_spread_percent', 'measured': 18.7, 'reference': None,
+             'deviation_percent': None, 'tolerance_percent': 15.0, 'status': 'FAILED'},
+            {'name': 'ticks_per_second', 'measured': 41000.0, 'reference': 50000.0,
+             'deviation_percent': -18.0, 'tolerance_percent': 10.0, 'status': 'FAILED'},
+        ]}
+
+        message = _format_failed_metrics(report)
+
+        assert 'throughput_spread_percent: 18.7 (limit: 15.0)' in message
+        assert 'ticks_per_second: 41000.0 (baseline: 50000.0, deviation: -18.0%' in message
+
+
 def _spread_percent(values: list) -> Optional[float]:
     """
     Spread of a run series as a percentage of its smallest value.
@@ -557,6 +578,11 @@ def _format_failed_metrics(report: Dict[str, Any]) -> str:
 
     lines = []
     for m in failed:
+        if m['deviation_percent'] is None:
+            # A limit metric has no baseline to deviate from: it fails by passing its limit,
+            # so it is named against that limit.
+            lines.append(f"   - {m['name']}: {m['measured']} (limit: {m['tolerance_percent']})")
+            continue
         lines.append(
             f"   - {m['name']}: {m['measured']} "
             f"(baseline: {m['reference']}, "

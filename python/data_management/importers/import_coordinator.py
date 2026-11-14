@@ -8,6 +8,7 @@ every step with its count and an estimate from the start. Every line the import 
 to its own file, logs/imports/import_<import_id>.log, which the summary names at the end.
 """
 
+import json
 import queue
 import re
 import sys
@@ -21,6 +22,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from python.configuration.app_config_manager import AppConfigManager
+from python.configuration.data_collector_config_manager import DataCollectorConfigManager
 from python.configuration.import_config_manager import ImportConfigManager
 from python.data_management.importers.bar_importer import (
     BarImporter,
@@ -30,11 +32,15 @@ from python.data_management.importers.bar_importer import (
 from python.data_management.importers.import_progress_tracker import ImportProgressTracker
 from python.data_management.importers.signal_data_importer import SignalDataImporter
 from python.data_management.importers.tick_data_importer import TickDataImporter
+from python.data_management.importers.tick_inbox_conveyor import file_sha256
+from python.data_management.importers.tick_package_client import TickPackageClient, parse_manifest
+from python.data_management.importers.tick_zip_inbox import TickZipInbox, manifest_companion
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.activities.activity_registry import ActivityRegistry
 from python.framework.constants.run_layout_constants import IMPORT_LOG_SUBDIR
+from python.framework.exceptions.data_quality_errors import TickZipUnpackException
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.store.import_timings_store import ImportTimingsStore
 from python.framework.types.activity_registry_types import ActivityKind
@@ -48,8 +54,30 @@ from python.framework.types.import_types.import_progress_types import (
     InboxFile,
     InboxScan,
 )
+from python.framework.types.import_types.tick_inbox_types import (
+    InboxDisposition,
+    TickImportOutcome,
+    TickImportResult,
+    TickZipContent,
+    TickZipMember,
+    TickZipSettlement,
+)
+from python.framework.types.import_types.tick_index_types import (
+    TickIndexMethod,
+    TickIndexRebuildReason,
+    TickIndexRun,
+)
+from python.framework.types.import_types.tick_package_types import (
+    TickPackageFetch,
+    TickPackageFetchOutcome,
+    TickPackageListing,
+    TickPackageManifest,
+    TickPackageState,
+    TickReceiptOutcome,
+)
 from python.framework.types.log_level import LogLevel
 from python.framework.types.run_origin_types import RunChannel
+from python.framework.utils.file_utils import create_directory
 from python.framework.utils.interrupt_utils import sigterm_as_interrupt
 from python.framework.utils.run_id_utils import mint_run_id
 from python.framework.utils.time_utils import format_duration
@@ -57,6 +85,15 @@ from python.system.ui.import_live_display import ImportLiveDisplay
 from python.system.ui.ui_render_utils import BYTES_PER_MB, format_size
 
 vLog = get_global_logger()
+
+# Why a build of the tick index read every file, in words for the screen and the summary
+_INDEX_REBUILD_REASON_TEXTS: Dict[TickIndexRebuildReason, str] = {
+    TickIndexRebuildReason.ASKED_FOR: 'asked for',
+    TickIndexRebuildReason.NO_INDEX: 'no index yet',
+    TickIndexRebuildReason.OLDER_SCHEMA: 'the index was written under an older schema',
+    TickIndexRebuildReason.NO_FILE_IDENTITIES: 'the index predates the file identities',
+    TickIndexRebuildReason.NEWER_FILES: 'tick files newer than the index',
+}
 
 # The collector writes its metadata block first; broker_type sits well inside this many bytes.
 _HEAD_BYTES = 8192
@@ -86,6 +123,8 @@ def import_paths_from_config() -> ImportPaths:
         tick_source=Path(import_config.get_data_raw_path()),
         tick_target=Path(import_config.get_import_output_path()),
         tick_finished=Path(import_config.get_data_finished_path()) if move_files else None,
+        tick_unpacking=Path(import_config.get_data_unpacking_path()),
+        tick_refused=Path(import_config.get_data_refused_path()) if move_files else None,
         signal_source=Path(import_config.get_signal_data_raw_path()),
         signal_target=Path(import_config.get_signal_import_output_path()),
         signal_finished=(Path(import_config.get_signal_data_finished_path())
@@ -93,6 +132,17 @@ def import_paths_from_config() -> ImportPaths:
         log_dir=Path(file_logging.global_log_dir) / IMPORT_LOG_SUBDIR,
         timings_file=Path(import_config.get_import_timings_path()),
     )
+
+
+def package_client_from_config() -> Optional[TickPackageClient]:
+    """
+    The client of the data collector's package service, from data_collector_config.json.
+
+    Returns:
+        The client, None when no address is configured — nothing is fetched then
+    """
+    source = DataCollectorConfigManager().resolve_package_source()
+    return TickPackageClient(source) if source is not None else None
 
 
 class ImportCoordinator:
@@ -106,6 +156,9 @@ class ImportCoordinator:
         include_finished: Also re-read the finished signal archive
         show_display: Ask for the live screen; it still stays off when the config switches it
             off or stdout is not a terminal
+        package_client: The data collector's package service, None when nothing is fetched
+        no_fetch_reason: Why nothing is fetched when package_client is None, shown on the
+            skipped step
     """
 
     def __init__(
@@ -115,7 +168,9 @@ class ImportCoordinator:
         only: Optional[ImportSection] = None,
         include_finished: bool = False,
         show_display: bool = True,
-        channel: RunChannel = RunChannel.DIRECT
+        channel: RunChannel = RunChannel.DIRECT,
+        package_client: Optional[TickPackageClient] = None,
+        no_fetch_reason: str = 'no package source configured',
     ):
         self._paths = paths
         # How the import was started, as its entry point declares it — for its entry in the list
@@ -138,6 +193,13 @@ class ImportCoordinator:
         self._writes_production = is_production_archive(paths.tick_target)
 
         self._tick_importer: Optional[TickDataImporter] = None
+        self._zip_inbox: Optional[TickZipInbox] = None
+        # Each zip of the inbox once the import is through with it, refused ones included
+        self._zip_settlements: List[TickZipSettlement] = []
+        # The zips refused or kept in the inbox, counted like the importers' own errors
+        self._zip_errors: List[str] = []
+        # How the tick index was brought up to date — update or full rebuild — for the summary
+        self._tick_index_run: Optional[TickIndexRun] = None
         self._signal_importer: Optional[SignalDataImporter] = None
         self._bar_importer: Optional[BarImporter] = None
         self._tracker: Optional[ImportProgressTracker] = None
@@ -149,6 +211,16 @@ class ImportCoordinator:
         self._issues_seen: Dict[str, int] = {}
         # The signal files with the root each was found under, as the importer needs them
         self._signal_files: List[Tuple[Path, Path]] = []
+
+        # The collector's packages: what the fetch did with each, their manifests by zip name,
+        # how each receipt ended, and what the exchange gave to report
+        self._package_client = package_client
+        self._no_fetch_reason = no_fetch_reason
+        self._package_fetches: List[TickPackageFetch] = []
+        self._package_manifests: Dict[str, TickPackageManifest] = {}
+        self._receipts: Dict[str, Tuple[TickReceiptOutcome, Optional[str]]] = {}
+        self._package_warnings: List[str] = []
+        self._package_errors: List[str] = []
 
     def get_log_path(self) -> Path:
         """
@@ -257,12 +329,22 @@ class ImportCoordinator:
             None
         """
         tracker = self._tracker
+        wants_ticks = self._only in (None, ImportSection.TICKS)
+        wants_signals = self._only in (None, ImportSection.SIGNALS)
+
+        # The collector's packages land in the tick inbox before it is scanned, so the fetch
+        # runs ahead of the plan, logged line by line; the screen shows it done once it opens
+        if wants_ticks:
+            tracker.add_step(ImportStepId.PACKAGES_FETCH, ImportSection.INBOXES,
+                             'Fetch packages', counter_unit='packages')
+            if self._package_client is None:
+                tracker.skip_step(ImportStepId.PACKAGES_FETCH, self._no_fetch_reason)
+            else:
+                self._run_fetch_step()
+
         tracker.add_step(ImportStepId.SCAN, ImportSection.INBOXES, 'Scan import inboxes',
                          counter_unit='files')
         tracker.start_step(ImportStepId.SCAN)
-
-        wants_ticks = self._only in (None, ImportSection.TICKS)
-        wants_signals = self._only in (None, ImportSection.SIGNALS)
         renders_bars = wants_ticks and self._import_config.get_auto_render_bars()
 
         if wants_ticks:
@@ -274,11 +356,23 @@ class ImportCoordinator:
                 finished_dir=(str(self._paths.tick_finished)
                               if self._paths.tick_finished is not None else None),
                 auto_render_bars=False,
+                refused_dir=(str(self._paths.tick_refused)
+                             if self._paths.tick_refused is not None else None),
             )
+            self._zip_inbox = TickZipInbox(
+                inbox_dir=self._paths.tick_source,
+                unpacking_dir=self._paths.tick_unpacking,
+                finished_dir=self._paths.tick_finished,
+                refused_dir=self._paths.tick_refused,
+            )
+            # Its own step, timed by the zips' size: unpacking a large zip takes long, and
+            # inside the import step it would distort that step's measured rate
+            tracker.add_step(ImportStepId.TICKS_UNPACK, ImportSection.TICKS,
+                             'Unpack zips', counter_unit='files')
             tracker.add_step(ImportStepId.TICKS_IMPORT, ImportSection.TICKS,
                              'Import tick files', counter_unit='files')
             tracker.add_step(ImportStepId.TICKS_INDEX, ImportSection.TICKS,
-                             'Rebuild tick index', counter_unit='files')
+                             'Tick index', counter_unit='files')
             tracker.add_step(ImportStepId.TICKS_ORDER, ImportSection.TICKS,
                              'Check archive order')
             if renders_bars:
@@ -306,6 +400,13 @@ class ImportCoordinator:
             # an import scoped elsewhere says so instead of leaving the step out
             if not self._writes_production:
                 tracker.skip_step(ImportStepId.CACHES, 'not the production archive')
+        if wants_ticks:
+            tracker.add_step(ImportStepId.PACKAGES_RECEIPT, ImportSection.SHARED,
+                             'Acknowledge packages', counter_unit='packages')
+            if self._package_client is None:
+                tracker.skip_step(ImportStepId.PACKAGES_RECEIPT, self._no_fetch_reason)
+            elif not self._receipts_due():
+                tracker.skip_step(ImportStepId.PACKAGES_RECEIPT, 'no package to acknowledge')
         tracker.publish(force=True)
 
         scan = self._scan_inboxes()
@@ -325,6 +426,205 @@ class ImportCoordinator:
             self._plan_signal_quantities(scan, signal_bytes)
         tracker.publish(force=True)
 
+    def _run_fetch_step(self) -> None:
+        """
+        Fetch the collector's packages that wait for our receipt into the tick inbox, each proven
+        by its hash before it counts as arrived. The service failing stops the fetch, never the
+        import: what lies in the inbox is imported all the same.
+
+        Returns:
+            None
+        """
+        tracker = self._tracker
+        tracker.start_step(ImportStepId.PACKAGES_FETCH)
+        listings: Optional[List[TickPackageListing]]
+        try:
+            listings = self._package_client.list_packages()
+        except (KeyError, TypeError, ValueError) as error:
+            listings = None
+            self._count_package_error(f'PACKAGES: the package list could not be read: {error}')
+        if listings is None:
+            if not self._package_errors:
+                self._count_package_error(
+                    'PACKAGES: the package service did not answer — nothing fetched; the import '
+                    'goes on with what lies in the inbox')
+            tracker.finish_step(ImportStepId.PACKAGES_FETCH, ImportStepStatus.FAILED)
+            return
+
+        ready = [listing for listing in listings if listing.state is TickPackageState.READY]
+        tracker.set_quantity(ImportStepId.PACKAGES_FETCH, ImportRateUnit.MB,
+                             sum(listing.size_bytes for listing in ready) / BYTES_PER_MB)
+        tracker.set_total(ImportStepId.PACKAGES_FETCH, len(ready))
+        for done, listing in enumerate(ready):
+            tracker.advance(ImportStepId.PACKAGES_FETCH, done,
+                            current_item=f'{listing.package_id} '
+                                         f'({format_size(listing.size_bytes)})')
+            self._package_fetches.append(self._fetch_package(listing))
+            self._update_counters()
+        tracker.advance(ImportStepId.PACKAGES_FETCH, len(ready))
+        tracker.set_detail(ImportStepId.PACKAGES_FETCH, _fetch_counts(self._package_fetches)
+                           or 'nothing waits')
+        tracker.finish_step(ImportStepId.PACKAGES_FETCH, _status_after(not any(
+            fetch.outcome is TickPackageFetchOutcome.FAILED for fetch in self._package_fetches)))
+
+    def _fetch_package(self, listing: TickPackageListing) -> TickPackageFetch:
+        """
+        Fetch one package into the inbox, unless the finished or the refused directory holds its
+        zip already. A download that broke off is resumed by the next attempt or the next import.
+
+        Args:
+            listing: The package as listed
+
+        Returns:
+            What the fetch did with it
+        """
+        try:
+            read = self._package_client.read_manifest(listing.package_id)
+        except (KeyError, TypeError, ValueError) as error:
+            return self._fetch_failed(listing, f'its manifest could not be read: {error}')
+        if read is None:
+            return self._fetch_failed(listing, 'the package service did not answer')
+        manifest, served = read
+        zip_name = manifest.zip_name
+        if Path(zip_name).name != zip_name or not zip_name.endswith('.zip'):
+            return self._fetch_failed(listing, f"its zip is named '{zip_name}', not a plain "
+                                               'zip file name')
+        if manifest.zip_sha256 != listing.sha256:
+            return self._fetch_failed(listing, 'its manifest and the list name different zips')
+
+        finished = self._paths.tick_finished
+        refused = self._paths.tick_refused
+        if (finished is not None and (finished / zip_name).exists()
+                and file_sha256(finished / zip_name) == listing.sha256):
+            self._package_manifests[zip_name] = manifest
+            return TickPackageFetch(listing=listing, manifest=manifest,
+                                    outcome=TickPackageFetchOutcome.ALREADY_HERE)
+        if refused is not None and (refused / zip_name).exists():
+            self._count_package_warning(
+                f'PACKAGE {listing.package_id} NOT FETCHED: its zip lies in {refused} from an '
+                'earlier import — it is not acknowledged until somebody has looked at it')
+            return TickPackageFetch(listing=listing, manifest=manifest,
+                                    outcome=TickPackageFetchOutcome.REFUSED_BEFORE,
+                                    detail=f'its zip lies in {refused}')
+
+        inbox = create_directory(self._paths.tick_source,
+                                 holds='the files waiting for their import')
+        target = inbox / zip_name
+        if not (target.exists() and file_sha256(target) == listing.sha256):
+            part = inbox / f'{zip_name}.part'
+            if part.exists() and part.stat().st_size >= listing.size_bytes:
+                if file_sha256(part) != listing.sha256:
+                    part.unlink()
+            if not part.exists() or part.stat().st_size < listing.size_bytes:
+                if not self._package_client.download_zip(listing.package_id, part):
+                    return self._fetch_failed(
+                        listing, 'the download did not finish — what arrived is kept and the '
+                                 'next import resumes it')
+            if file_sha256(part) != listing.sha256:
+                part.unlink()
+                return self._fetch_failed(listing, 'what arrived does not match the zip\'s '
+                                                   'hash — removed')
+            part.replace(target)
+        manifest_companion(target).write_text(json.dumps(served, indent=2), encoding='utf-8')
+        self._package_manifests[zip_name] = manifest
+        vLog.info(f'📦 Fetched {listing.package_id}: {zip_name} '
+                  f'({format_size(listing.size_bytes)}), its hash proven')
+        if manifest.held_for_next:
+            vLog.info(f'   {len(manifest.held_for_next)} file(s) reach past its cutoff and come '
+                      'with the next package')
+        for excluded in manifest.excluded:
+            self._count_package_warning(f'PACKAGE {listing.package_id} LEFT OUT {excluded}')
+        return TickPackageFetch(listing=listing, manifest=manifest,
+                                outcome=TickPackageFetchOutcome.FETCHED)
+
+    def _fetch_failed(self, listing: TickPackageListing, detail: str) -> TickPackageFetch:
+        """
+        Count a package the fetch could not bring in.
+
+        Args:
+            listing: The package
+            detail: Why
+
+        Returns:
+            Its failed fetch
+        """
+        self._count_package_error(f'PACKAGE {listing.package_id} NOT FETCHED: {detail}')
+        return TickPackageFetch(listing=listing, outcome=TickPackageFetchOutcome.FAILED,
+                                detail=detail)
+
+    def _receipts_due(self) -> bool:
+        """
+        Whether any package may need its receipt once the import is through.
+
+        Returns:
+            True when a package was fetched or its zip was found in the finished directory
+        """
+        return any(fetch.outcome in (TickPackageFetchOutcome.FETCHED,
+                                     TickPackageFetchOutcome.ALREADY_HERE)
+                   for fetch in self._package_fetches)
+
+    def _manifest_for(self, zip_path: Path) -> Optional[TickPackageManifest]:
+        """
+        The package manifest a zip came with: the one the fetch read, or the one beside it in the
+        inbox when the package was carried in by hand.
+
+        Args:
+            zip_path: The zip
+
+        Returns:
+            Its manifest, None for a zip that came without one
+        """
+        manifest = self._package_manifests.get(zip_path.name)
+        if manifest is not None:
+            return manifest
+        companion = manifest_companion(zip_path)
+        if not companion.exists():
+            return None
+        manifest = parse_manifest(json.loads(companion.read_text(encoding='utf-8')))
+        self._package_manifests[zip_path.name] = manifest
+        return manifest
+
+    def _manifest_disagreement(self, content: TickZipContent) -> Optional[str]:
+        """
+        Whether a zip's files differ from the ones its package manifest names.
+
+        Args:
+            content: The zip's content
+
+        Returns:
+            How they differ, None when they agree or the zip came without a manifest
+        """
+        try:
+            manifest = self._manifest_for(content.zip_path)
+        except (KeyError, TypeError, ValueError) as error:
+            return f'the manifest beside it cannot be read: {error}'
+        if manifest is None:
+            return None
+        names = {member.name for member in content.members}
+        missing = sorted(set(manifest.member_sha256) - names)
+        extra = sorted(names - set(manifest.member_sha256))
+        if not missing and not extra:
+            return None
+        return (f'its files differ from its package manifest — missing: '
+                f"{', '.join(missing) or 'none'}; not named: {', '.join(extra) or 'none'}")
+
+    def _unpack_checked(self, member: TickZipMember) -> Path:
+        """
+        Unpack one member, and hold it to its package manifest's hash where the zip has one.
+
+        Args:
+            member: The member
+
+        Returns:
+            The unpacked file
+        """
+        path, digest = self._zip_inbox.unpack_member(member)
+        manifest = self._manifest_for(member.zip_path)
+        if manifest is not None and manifest.member_sha256.get(member.name) != digest:
+            raise TickZipUnpackException(
+                f"'{member.name}' does not match the hash its package manifest names")
+        return path
+
     def _scan_inboxes(self) -> InboxScan:
         """
         List both inboxes: every file's size, and for a tick file its broker from the metadata
@@ -340,11 +640,56 @@ class ImportCoordinator:
                 scan.tick_files.append(InboxFile(
                     path=path, size_bytes=path.stat().st_size,
                     broker_type=_read_tick_broker_type(path)))
+            self._scan_zips(scan)
         if self._signal_importer is not None:
             self._signal_files = self._signal_importer.collect_files()
             for _, path in self._signal_files:
                 scan.signal_files.append(InboxFile(path=path, size_bytes=path.stat().st_size))
         return scan
+
+    def _scan_zips(self, scan: InboxScan) -> None:
+        """
+        List the zips of the tick inbox from their central directories. A zip refused as a
+        whole is settled here, before anything is written; the members of every other zip
+        join the tick files, each with its size unpacked and its broker from its head.
+
+        Args:
+            scan: The scan, its loose tick files already listed
+
+        Returns:
+            None
+        """
+        taken_names = {entry.path.name for entry in scan.tick_files}
+        for zip_path in self._zip_inbox.collect_zips():
+            content = self._zip_inbox.read_content(zip_path, taken_names)
+            if content.refusal is None:
+                content.refusal = self._manifest_disagreement(content)
+            if content.refusal is not None:
+                self._settle_refused_zip(content)
+                continue
+            scan.tick_zips.append(content)
+            for member in content.members:
+                taken_names.add(member.name)
+                scan.tick_files.append(InboxFile(
+                    path=zip_path, size_bytes=member.size_bytes,
+                    broker_type=_broker_type_in_head(
+                        self._zip_inbox.read_member_head(member, _HEAD_BYTES)),
+                    zip_member=member))
+
+    def _settle_refused_zip(self, content: TickZipContent) -> None:
+        """
+        Move a zip refused as a whole to the refused directory, before anything of it is
+        written, and report it.
+
+        Args:
+            content: The zip's content, with its refusal
+
+        Returns:
+            None
+        """
+        settlement = self._zip_inbox.refuse(content)
+        self._zip_settlements.append(settlement)
+        self._report_settlement(settlement)
 
     def _show_scan_result(self, scan: InboxScan) -> None:
         """
@@ -360,12 +705,17 @@ class ImportCoordinator:
         for entry in scan.tick_files:
             per_broker[entry.broker_type or '?'] = per_broker.get(entry.broker_type or '?', 0) + 1
         parts = [f'{broker} {count}' for broker, count in sorted(per_broker.items())]
+        if scan.tick_zips:
+            members = sum(len(content.members) for content in scan.tick_zips)
+            parts.append(f'{len(scan.tick_zips)} zip(s), {members} of the files inside')
         if scan.signal_files:
             parts.append(f'signals {len(scan.signal_files)}')
         self._tracker.set_detail(ImportStepId.SCAN, ' · '.join(parts) or 'both inboxes empty')
 
         if self._tick_importer is not None and not scan.tick_files:
             self._skip_section(ImportSection.TICKS, 'inbox empty')
+        elif self._tick_importer is not None and not scan.tick_zips:
+            self._tracker.skip_step(ImportStepId.TICKS_UNPACK, 'no zip in the inbox')
         if self._signal_importer is not None and not scan.signal_files:
             self._skip_section(ImportSection.SIGNALS, 'inbox empty')
         if not scan.tick_files and self._tracker.is_pending(ImportStepId.CACHES):
@@ -398,13 +748,30 @@ class ImportCoordinator:
         """
         tracker = self._tracker
         target = self._paths.tick_target
+        if scan.tick_zips:
+            # By the zips' own size, as they lie in the inbox: what the unpacking reads
+            zip_bytes = sum(content.zip_path.stat().st_size for content in scan.tick_zips)
+            tracker.set_quantity(ImportStepId.TICKS_UNPACK, ImportRateUnit.MB,
+                                 zip_bytes / BYTES_PER_MB)
+            tracker.set_total(ImportStepId.TICKS_UNPACK,
+                              sum(len(content.members) for content in scan.tick_zips))
         tracker.set_quantity(ImportStepId.TICKS_IMPORT, ImportRateUnit.MB,
                              tick_bytes / BYTES_PER_MB)
         tracker.set_total(ImportStepId.TICKS_IMPORT, len(scan.tick_files))
 
         tick_files = _index_row_count(target / TickIndexManager.INDEX_FILE_PARQUET)
-        tracker.set_quantity(ImportStepId.TICKS_INDEX, ImportRateUnit.FILE,
-                             tick_files + len(scan.tick_files))
+        rebuild_reason = TickIndexManager(data_dir=str(target)).get_full_rebuild_reason()
+        if rebuild_reason is None:
+            # An update reads in full only the files this import writes; checking the others is
+            # one stat each, run in parallel, and is left out of the quantity
+            tracker.set_quantity(ImportStepId.TICKS_INDEX, ImportRateUnit.IMPORTED_FILE,
+                                 len(scan.tick_files))
+            tracker.set_detail(ImportStepId.TICKS_INDEX, 'update — only the files that changed')
+        else:
+            tracker.set_quantity(ImportStepId.TICKS_INDEX, ImportRateUnit.FILE,
+                                 tick_files + len(scan.tick_files))
+            tracker.set_detail(ImportStepId.TICKS_INDEX,
+                               f'full rebuild — {_INDEX_REBUILD_REASON_TEXTS[rebuild_reason]}')
         tracker.set_quantity(ImportStepId.TICKS_ORDER, ImportRateUnit.FILE,
                              tick_files + len(scan.tick_files))
 
@@ -470,6 +837,8 @@ class ImportCoordinator:
         if (self._tracker.is_pending(ImportStepId.CACHES)
                 and self._bar_importer is not None):
             self._run_cache_step()
+        if self._tracker.is_pending(ImportStepId.PACKAGES_RECEIPT):
+            self._run_receipt_step()
 
     def _run_tick_steps(self) -> None:
         """
@@ -480,25 +849,40 @@ class ImportCoordinator:
         """
         tracker = self._tracker
         importer = self._tick_importer
-        files = self._scan.tick_files
+        unpacked = self._run_unpack_step()
+        # A zip refused while unpacking takes its members out of the import
+        files = [entry for entry in self._scan.tick_files
+                 if entry.zip_member is None or entry.zip_member in unpacked]
+        zip_results: Dict[Path, Dict[str, TickImportResult]] = {}
 
         tracker.start_step(ImportStepId.TICKS_IMPORT, total=len(files))
         importer.log_header(len(files))
         for done, entry in enumerate(files):
+            name = entry.path.name if entry.zip_member is None else entry.zip_member.name
             tracker.advance(ImportStepId.TICKS_IMPORT, done,
-                            current_item=f'{entry.broker_type or "?"}/{entry.path.name} '
+                            current_item=f'{entry.broker_type or "?"}/{name} '
                                          f'({format_size(entry.size_bytes)})')
-            importer.import_file(entry.path)
+            if entry.zip_member is None:
+                importer.import_file(entry.path)
+            else:
+                member = entry.zip_member
+                zip_results.setdefault(member.zip_path, {})[member.name] = \
+                    self._import_zip_member(member, unpacked[member])
             self._update_counters()
         tracker.advance(ImportStepId.TICKS_IMPORT, len(files))
         tracker.finish_step(ImportStepId.TICKS_IMPORT)
+        self._settle_zips(zip_results)
 
         tracker.start_step(ImportStepId.TICKS_INDEX)
         errors_before = len(importer.errors)
-        index_manager = importer.rebuild_parquet_index(
+        index_manager = importer.update_parquet_index(
             on_file_scanned=lambda done, total: tracker.advance(
                 ImportStepId.TICKS_INDEX, done, total))
         self._update_counters()
+        if index_manager is not None:
+            self._tick_index_run = index_manager.get_last_run()
+        if self._tick_index_run is not None:
+            tracker.set_detail(ImportStepId.TICKS_INDEX, _index_run_phrase(self._tick_index_run))
         # A file the scan could not read fails the step, while the index it built — without
         # that file — still serves the order check and the render
         tracker.finish_step(ImportStepId.TICKS_INDEX, _status_after(
@@ -521,6 +905,260 @@ class ImportCoordinator:
                 tracker.skip_step(ImportStepId.CACHES, 'no bars rendered')
             return
         self._run_render_steps(index_manager)
+
+    def _run_unpack_step(self) -> Dict[TickZipMember, Path]:
+        """
+        Unpack the members of every zip in the inbox into its own folder, ahead of the import —
+        a step of its own, timed by the zips' size. A zip one of whose members cannot be
+        unpacked is refused as a whole; one that does not fit on the disk, or whose unpacking
+        the file system refuses, stays in the inbox for the next import.
+
+        Returns:
+            Each unpacked member's file, by member
+        """
+        unpacked: Dict[TickZipMember, Path] = {}
+        if not self._scan.tick_zips:
+            return unpacked
+        tracker = self._tracker
+        total = sum(len(content.members) for content in self._scan.tick_zips)
+        tracker.start_step(ImportStepId.TICKS_UNPACK, total=total)
+        done = 0
+        all_unpacked = True
+        for content in self._scan.tick_zips:
+            self._zip_inbox.clear_unpacking_folder(content.zip_path)
+            settlement: Optional[TickZipSettlement] = None
+            shortage = self._zip_inbox.get_disk_shortage(content)
+            zip_unpacked: Dict[TickZipMember, Path] = {}
+            if shortage is not None:
+                settlement = self._zip_inbox.keep(content.zip_path, shortage)
+            else:
+                try:
+                    for member in content.members:
+                        tracker.advance(
+                            ImportStepId.TICKS_UNPACK, done + len(zip_unpacked),
+                            current_item=f'{content.zip_path.name}/{member.name} '
+                                         f'({format_size(member.size_bytes)})')
+                        zip_unpacked[member] = self._unpack_checked(member)
+                except TickZipUnpackException as error:
+                    settlement = self._zip_inbox.refuse(
+                        TickZipContent(zip_path=content.zip_path, refusal=str(error)))
+                except OSError as error:
+                    settlement = self._zip_inbox.keep(
+                        content.zip_path, f'the file system refused the unpacking: {error}')
+            done += len(content.members)
+            if settlement is not None:
+                all_unpacked = False
+                self._zip_settlements.append(settlement)
+                self._report_settlement(settlement)
+            else:
+                unpacked.update(zip_unpacked)
+            self._update_counters()
+        tracker.advance(ImportStepId.TICKS_UNPACK, total)
+        # A zip left out ends the step FAILED: its time covered less than the whole work
+        tracker.finish_step(ImportStepId.TICKS_UNPACK, _status_after(all_unpacked))
+        return unpacked
+
+    def _import_zip_member(self, member: TickZipMember, unpacked: Path) -> TickImportResult:
+        """
+        Import one unpacked member. Its copy goes at once when the archive took it; the copy of
+        a member refused or failed on waits for the zip's settlement.
+
+        Args:
+            member: The member
+            unpacked: Its unpacked file
+
+        Returns:
+            How its import ended
+        """
+        result = self._tick_importer.import_file_result(unpacked, archived_in=member.zip_path)
+        if result.outcome.is_taken():
+            unpacked.unlink(missing_ok=True)
+        return result
+
+    def _settle_zips(self, zip_results: Dict[Path, Dict[str, TickImportResult]]) -> None:
+        """
+        Move each zip that went through the import out of the inbox, and report it.
+
+        Args:
+            zip_results: Each zip's member results, by zip — only zips that reached the import
+
+        Returns:
+            None
+        """
+        for content in self._scan.tick_zips:
+            results = zip_results.get(content.zip_path)
+            if results is None:
+                continue
+            settlement = self._zip_inbox.settle(content.zip_path, results)
+            self._zip_settlements.append(settlement)
+            self._report_settlement(settlement)
+        self._update_counters()
+
+    def _report_settlement(self, settlement: TickZipSettlement) -> None:
+        """
+        Log where a zip went. Each member's own outcome is counted by the importer already — a
+        refused or failed file as an error, a duplicate as a warning — so the zip adds an error
+        of its own only where nothing else names the cause: a zip refused as a whole, one that
+        stayed in the inbox, a file that could not be moved.
+
+        Args:
+            settlement: The zip's settlement
+
+        Returns:
+            None
+        """
+        name = settlement.zip_path.name
+        move = settlement.move
+        if move.disposition is InboxDisposition.MOVED_TO_FINISHED:
+            vLog.info(f'📦 {name}: {_member_counts(settlement)} → moved to {move.destination}')
+        elif move.disposition is InboxDisposition.ALREADY_THERE:
+            vLog.info(f'📦 {name}: {_member_counts(settlement)} → an identical {name} lies in '
+                      f'{move.destination}; the inbox copy was removed')
+        elif move.disposition is InboxDisposition.MOVED_TO_REFUSED:
+            message = f'ZIP REFUSED {name} → moved to {move.destination}: {settlement.reason}'
+            if settlement.results:
+                # Nothing in it got into the archive; each file's own error is counted
+                vLog.warning(message)
+            else:
+                self._count_zip_error(message)
+        elif move.destination is None and settlement.results:
+            vLog.info(f'📦 {name}: {move.detail}')
+        else:
+            self._count_zip_error(f'ZIP KEPT IN THE INBOX {name}: {settlement.reason}')
+
+        for member, member_move in settlement.member_moves.items():
+            if member_move.disposition is InboxDisposition.KEPT_IN_INBOX:
+                folder = self._zip_inbox.get_unpacking_folder(settlement.zip_path)
+                self._count_zip_error(f'KEPT IN {folder} {member}: {member_move.detail}')
+            else:
+                vLog.info(f'   → {member} moved to {member_move.destination}, the reason '
+                          'beside it')
+
+    def _refused_names(self) -> List[str]:
+        """
+        Everything this import moved to the refused directory: loose files, zips, and the
+        files of a zip refused on their own.
+
+        Returns:
+            Their names, loose files first
+        """
+        names = self._tick_importer.get_refused_files() if self._tick_importer is not None else []
+        for settlement in self._zip_settlements:
+            if settlement.move.disposition is InboxDisposition.MOVED_TO_REFUSED:
+                names.append(settlement.zip_path.name)
+            names.extend(member for member, move in settlement.member_moves.items()
+                         if move.disposition is InboxDisposition.MOVED_TO_REFUSED)
+        return names
+
+    def _count_zip_error(self, message: str) -> None:
+        """
+        Log a zip's error and count it with the import's errors.
+
+        Args:
+            message: The error
+
+        Returns:
+            None
+        """
+        vLog.error(message)
+        self._zip_errors.append(message)
+
+    def _run_receipt_step(self) -> None:
+        """
+        Acknowledge each fetched package whose zip now lies in the finished directory, with the
+        hash of the zip we hold. A zip elsewhere is not acknowledged: it stays waiting at the
+        collector, which reports it overdue after a while.
+
+        Returns:
+            None
+        """
+        tracker = self._tracker
+        due = [fetch for fetch in self._package_fetches
+               if fetch.manifest is not None and fetch.outcome in (
+                   TickPackageFetchOutcome.FETCHED, TickPackageFetchOutcome.ALREADY_HERE)]
+        tracker.start_step(ImportStepId.PACKAGES_RECEIPT, total=len(due))
+        failed = False
+        for done, fetch in enumerate(due):
+            package_id = fetch.listing.package_id
+            tracker.advance(ImportStepId.PACKAGES_RECEIPT, done, current_item=package_id)
+            held = (self._paths.tick_finished / fetch.manifest.zip_name
+                    if self._paths.tick_finished is not None else None)
+            if held is None or not held.exists():
+                self._count_package_warning(
+                    f'PACKAGE {package_id} NOT ACKNOWLEDGED: its zip did not reach the finished '
+                    'directory — see the zip\'s line in the summary')
+                continue
+            digest = file_sha256(held)
+            if digest != fetch.listing.sha256:
+                failed = True
+                self._count_package_error(
+                    f'PACKAGE {package_id} NOT ACKNOWLEDGED: {held} is not that package\'s zip')
+                continue
+            outcome, words = self._package_client.send_receipt(
+                package_id, digest, self._receipt_note(fetch))
+            self._receipts[package_id] = (outcome, words)
+            if outcome in (TickReceiptOutcome.ACKNOWLEDGED,
+                           TickReceiptOutcome.ALREADY_ACKNOWLEDGED):
+                vLog.info(f'📦 Acknowledged {package_id}')
+            elif outcome is TickReceiptOutcome.UNRESOLVED:
+                self._count_package_warning(
+                    f'PACKAGE {package_id} RECEIPT UNRESOLVED: no answer, and reading it back '
+                    'showed no receipt — the next import sends it again')
+            else:
+                failed = True
+                self._count_package_error(
+                    f'PACKAGE {package_id} RECEIPT {outcome.value.upper()}: {words}')
+            self._update_counters()
+        tracker.advance(ImportStepId.PACKAGES_RECEIPT, len(due))
+        tracker.finish_step(ImportStepId.PACKAGES_RECEIPT, _status_after(not failed))
+
+    def _receipt_note(self, fetch: TickPackageFetch) -> str:
+        """
+        What the import did with a package, for its receipt.
+
+        Args:
+            fetch: The package's fetch
+
+        Returns:
+            The note
+        """
+        zip_name = fetch.manifest.zip_name
+        settlement = next((settlement for settlement in self._zip_settlements
+                           if settlement.zip_path.name == zip_name), None)
+        if settlement is None:
+            return 'imported by an earlier import'
+        note = _member_counts(settlement)
+        refused = [name for name, result in settlement.results.items()
+                   if not result.outcome.is_taken()]
+        if refused:
+            note += ' — refused: ' + ', '.join(refused)
+        return note
+
+    def _count_package_warning(self, message: str) -> None:
+        """
+        Log a warning of the package exchange and count it.
+
+        Args:
+            message: The warning
+
+        Returns:
+            None
+        """
+        vLog.warning(message)
+        self._package_warnings.append(message)
+
+    def _count_package_error(self, message: str) -> None:
+        """
+        Log an error of the package exchange and count it.
+
+        Args:
+            message: The error
+
+        Returns:
+            None
+        """
+        vLog.error(message)
+        self._package_errors.append(message)
 
     def _run_render_steps(self, index_manager: Optional[TickIndexManager]) -> None:
         """
@@ -623,7 +1261,7 @@ class ImportCoordinator:
         Returns:
             Warning texts, ticks first
         """
-        warnings: List[str] = []
+        warnings: List[str] = list(self._package_warnings)
         if self._tick_importer is not None:
             warnings.extend(self._tick_importer.warnings)
         if self._bar_importer is not None:
@@ -639,9 +1277,10 @@ class ImportCoordinator:
         Returns:
             Error texts, ticks first
         """
-        errors: List[str] = []
+        errors: List[str] = list(self._package_errors)
         if self._tick_importer is not None:
             errors.extend(self._tick_importer.errors)
+        errors.extend(self._zip_errors)
         if self._bar_importer is not None:
             errors.extend(self._bar_importer.errors)
         if self._signal_importer is not None:
@@ -689,12 +1328,17 @@ class ImportCoordinator:
         Returns:
             (name, level, entries) per list
         """
-        lists: List[Tuple[str, LogLevel, List[str]]] = []
+        lists: List[Tuple[str, LogLevel, List[str]]] = [
+            ('packages.warnings', LogLevel.WARNING, self._package_warnings),
+            ('packages.errors', LogLevel.ERROR, self._package_errors),
+        ]
         for name, importer in (('ticks', self._tick_importer), ('bars', self._bar_importer),
                                ('signals', self._signal_importer)):
             if importer is not None:
                 lists.append((f'{name}.warnings', LogLevel.WARNING, importer.warnings))
                 lists.append((f'{name}.errors', LogLevel.ERROR, importer.errors))
+            if name == 'ticks':
+                lists.append(('zips.errors', LogLevel.ERROR, self._zip_errors))
         return lists
 
     def _print_summary(self, outcome: ImportOutcome) -> None:
@@ -712,6 +1356,13 @@ class ImportCoordinator:
         vLog.info(f'IMPORT SUMMARY — {self._import_id} · {outcome.value} · '
                   f'{format_duration(elapsed)}')
         vLog.info('=' * 80)
+        if self._package_fetches:
+            vLog.info(f'📦 Packages: {_fetch_counts(self._package_fetches)}')
+        acknowledged = [package_id for package_id, (outcome, _) in self._receipts.items()
+                        if outcome in (TickReceiptOutcome.ACKNOWLEDGED,
+                                       TickReceiptOutcome.ALREADY_ACKNOWLEDGED)]
+        if acknowledged:
+            vLog.info(f'✅ Acknowledged: {", ".join(acknowledged)}')
         if self._tick_importer is not None:
             vLog.info(f'✅ Ticks:   {self._tick_importer.processed_files} file(s) processed · '
                       f'{self._tick_importer.total_ticks:,} ticks')
@@ -720,6 +1371,16 @@ class ImportCoordinator:
                     f'{offset}h × {count} file(s)'
                     for offset, count in sorted(offset_counts.items()))
                 vLog.info(f'✅ UTC offsets applied: {broker_type}: {counts_str}')
+        if self._tick_index_run is not None:
+            vLog.info(f'📚 Tick index: {_index_run_phrase(self._tick_index_run)} · '
+                      f'{format_duration(self._tick_index_run.elapsed_s)}')
+        for settlement in self._zip_settlements:
+            vLog.info(_settlement_line(settlement))
+        refused = self._refused_names()
+        if refused:
+            vLog.info(f'❌ Refused: {len(refused)} file(s) moved to {self._paths.tick_refused}, '
+                      'each with its reason beside it — back into the inbox by hand once fixed: '
+                      + ', '.join(refused))
         if self._bar_importer is not None:
             vLog.info(f'✅ Bars:    {self._bar_importer.processed_symbols} symbol(s) · '
                       f'{self._bar_importer.total_bars_rendered:,} bars')
@@ -807,11 +1468,110 @@ def _read_tick_broker_type(path: Path) -> Optional[str]:
     """
     try:
         with open(path, 'rb') as stream:
-            head = stream.read(_HEAD_BYTES).decode('utf-8', errors='replace')
+            head = stream.read(_HEAD_BYTES)
     except OSError:
         return None
-    match = _BROKER_TYPE_PATTERN.search(head)
+    return _broker_type_in_head(head)
+
+
+def _broker_type_in_head(head: bytes) -> Optional[str]:
+    """
+    The broker type from the first bytes of a collector file — a loose one or a zip member.
+
+    Args:
+        head: The file's first bytes
+
+    Returns:
+        The broker type, None when the head does not show it
+    """
+    match = _BROKER_TYPE_PATTERN.search(head.decode('utf-8', errors='replace'))
     return match.group(1) if match else None
+
+
+def _index_run_phrase(run: TickIndexRun) -> str:
+    """
+    How the tick index was built, as one phrase: the method, for a full rebuild its reason, and
+    what it read.
+
+    Args:
+        run: The build
+
+    Returns:
+        The phrase
+    """
+    if run.method is TickIndexMethod.UPDATE:
+        return (f'update — {run.scanned:,} scanned · {_count_or_dash(run.unchanged)} unchanged · '
+                f'{_count_or_dash(run.gone)} gone')
+    reason = (_INDEX_REBUILD_REASON_TEXTS[run.rebuild_reason] if run.rebuild_reason is not None
+              else 'reason not recorded')
+    return f'full rebuild ({reason}) — {run.scanned:,} scanned'
+
+
+def _count_or_dash(value: Optional[int]) -> str:
+    """
+    A count with thousands separators, or a dash where none was measured.
+
+    Args:
+        value: The count, or None
+
+    Returns:
+        The text
+    """
+    return '—' if value is None else f'{value:,}'
+
+
+def _fetch_counts(fetches: List[TickPackageFetch]) -> str:
+    """
+    What the fetch did, as one phrase.
+
+    Args:
+        fetches: Each listed package's fetch
+
+    Returns:
+        The phrase, e.g. "2 fetched · 1 already here", empty when nothing was listed
+    """
+    counts = [f'{sum(1 for fetch in fetches if fetch.outcome is outcome)} '
+              f'{outcome.value.replace("_", " ")}'
+              for outcome in TickPackageFetchOutcome
+              if any(fetch.outcome is outcome for fetch in fetches)]
+    return ' · '.join(counts)
+
+
+def _member_counts(settlement: TickZipSettlement) -> str:
+    """
+    How a zip's members' imports ended, as one phrase.
+
+    Args:
+        settlement: The zip's settlement
+
+    Returns:
+        The phrase, e.g. "412 imported · 3 already archived"
+    """
+    counts = [f'{settlement.count(outcome)} {outcome.value.replace("_", " ")}'
+              for outcome in TickImportOutcome if settlement.count(outcome)]
+    return ' · '.join(counts) if counts else 'refused before its import'
+
+
+def _settlement_line(settlement: TickZipSettlement) -> str:
+    """
+    One summary line for a zip of the inbox: how its files' imports ended and where it went.
+
+    Args:
+        settlement: The zip's settlement
+
+    Returns:
+        The line
+    """
+    move = settlement.move
+    if move.disposition is InboxDisposition.MOVED_TO_FINISHED:
+        where, icon = f'moved to {move.destination}', '✅'
+    elif move.disposition is InboxDisposition.ALREADY_THERE:
+        where, icon = f'an identical copy lies in {move.destination}, the inbox copy removed', '✅'
+    elif move.disposition is InboxDisposition.MOVED_TO_REFUSED:
+        where, icon = f'refused, moved to {move.destination} — {settlement.reason}', '❌'
+    else:
+        where, icon = f'stays in the inbox — {settlement.reason}', '⚠️ '
+    return f'{icon} Zip {settlement.zip_path.name}: {_member_counts(settlement)} → {where}'
 
 
 def _index_row_count(index_file: Path) -> int:

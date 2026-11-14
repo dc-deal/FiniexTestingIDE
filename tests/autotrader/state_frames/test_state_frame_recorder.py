@@ -14,9 +14,8 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from python.framework.autotrader.run_record.state_frame_recorder import StateFrameRecorder
+from python.framework.process.state_frame_recorder import StateFrameRecorder
 from python.framework.reporting.io.run_stream_appender import RunStreamAppender
-from python.framework.types.autotrader_types.autotrader_display_types import SafetyState
 from python.framework.types.config_types.autotrader_defaults_config_types import StateFramesDefaults
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
@@ -37,12 +36,15 @@ class _Session:
         self.memory_reads = 0
         self.monotonic = 0.0
         self.priced = priced
+        # What the frame asked the account for — a backtest's frame may re-mark nothing
+        self.remarks = 0
+        self.valuations = 0
         self.executor = SimpleNamespace(
             get_current_time_if_set=lambda: self.now,
             portfolio=SimpleNamespace(
-                ensure_positions_updated=lambda: None, balance=248.10,
+                ensure_positions_updated=self._remark, balance=248.10,
                 get_balances=lambda: {'USD': 248.10, 'ETH': 0.1},
-                get_account_value=lambda: 489.35),
+                get_account_value=self._value),
             get_current_price=self._price,
             get_open_positions=lambda: [],
             get_active_orders_snapshot=lambda: ActiveOrdersSnapshot(),
@@ -60,6 +62,13 @@ class _Session:
         self.bars = SimpleNamespace(get_bar_history=lambda symbol, timeframe: [
             SimpleNamespace(timestamp='2026-11-03T09:55:00+00:00')])
 
+    def _remark(self) -> None:
+        self.remarks += 1
+
+    def _value(self) -> float:
+        self.valuations += 1
+        return 489.35
+
     def _price(self, symbol):
         if not self.priced:
             raise ValueError('no tick yet')
@@ -69,14 +78,17 @@ class _Session:
         self.memory_reads += 1
         return OwnProcessMemory(rss_bytes=431225856, private_bytes=388235264)
 
-    def recorder(self, path: Path, logger=None, replayed=False, reconciler=None, cadence='M1'):
+    def recorder(self, path: Path, logger=None, replayed=False, reconciler=None, cadence='M1',
+                 refresh_positions=True):
         appender = RunStreamAppender(path, 'state_frames', 1, 'my_run', logger,
                                      stops='The state is no longer recorded')
         return StateFrameRecorder(
-            appender, cadence, SimpleNamespace(symbol='ETHUSD'), self.executor, self.orchestrator,
-            self.bars, TradingModel.SPOT, reconciler, replayed, logger or RecordingLogger(),
+            appender, cadence, 'ETHUSD', self.executor, self.orchestrator,
+            self.bars, TradingModel.SPOT, replayed, logger or RecordingLogger(),
+            reconcile_state=reconciler.get_last_verdict if reconciler is not None else None,
             wall_clock=lambda: datetime(2026, 11, 3, 10, 1, tzinfo=timezone.utc),
-            memory_reader=self.read_memory, monotonic_clock=lambda: self.monotonic)
+            memory_reader=self.read_memory, monotonic_clock=lambda: self.monotonic,
+            refresh_positions=refresh_positions)
 
 
 def _frames(path: Path):
@@ -88,8 +100,7 @@ def _decision(action=DecisionLogicAction.FLAT):
 
 
 def _pass(recorder, on_tick=True, closed=frozenset(), order=None, ticks=1):
-    recorder.on_pass(ticks, _decision(), SafetyState(), on_tick=on_tick,
-                     closed_timeframes=closed, order=order)
+    recorder.on_pass(ticks, _decision(), on_tick=on_tick, closed_timeframes=closed, order=order)
 
 
 class TestTheCadence:
@@ -115,16 +126,6 @@ class TestTheCadence:
             _pass(recorder)
         assert [f['cadence_slot'] for f in _frames(path)] == [
             '2026-11-03T10:00:00Z', '2026-11-03T10:05:00Z', '2026-11-03T10:10:00Z']
-
-    def test_a_clock_that_steps_back_begins_the_grid_again_without_a_frame(self, tmp_path):
-        session, path = _Session(), tmp_path / 'frames.jsonl'
-        recorder = session.recorder(path)
-        _pass(recorder)
-        session.now = _T0 - timedelta(days=200)           # a replay's tick after a wall-clock heartbeat
-        _pass(recorder)
-        session.now = _T0 - timedelta(days=200) + timedelta(seconds=10)
-        _pass(recorder)
-        assert len(_frames(path)) == 1
 
     def test_a_replays_heartbeat_does_not_drive_the_cadence(self, tmp_path):
         session, path = _Session(), tmp_path / 'frames.jsonl'
@@ -259,7 +260,7 @@ class TestTheMemory:
             session.monotonic = 59.7 * slot               # two frames a little under one interval apart
             _pass(recorder)
         _pass(recorder, closed=frozenset({'M5'}))         # an event frame in the same slot
-        recorder.write_shutdown(4, _decision(), SafetyState())
+        recorder.write_shutdown(4, _decision())
         frames = _frames(path)
         assert len(frames) == 5
         assert all('process_memory' in f for f in frames)
@@ -275,7 +276,7 @@ class TestTheMemory:
         session.now += timedelta(seconds=60)
         session.monotonic = 61.0
         _pass(recorder)                                   # read again
-        recorder.write_shutdown(3, _decision(), SafetyState())   # always read
+        recorder.write_shutdown(3, _decision())   # always read
         frames = _frames(path)
         assert [('process_memory' in f) for f in frames] == [True, False, True, True]
         assert frames[0]['process_memory'] == {'rss_bytes': 431225856, 'private_bytes': 388235264}
@@ -296,7 +297,7 @@ class TestAFrameThatCannotBeBuilt:
         session.executor.get_active_orders_snapshot = broken
         session.now += timedelta(seconds=60)
         _pass(recorder)
-        recorder.write_shutdown(3, _decision(), SafetyState())
+        recorder.write_shutdown(3, _decision())
         assert [f['written_for'] for f in _frames(path)] == ['cadence', 'shutdown']
         assert logger.text_at('error').count('could not be built') == 1
         assert '2 state frame(s) could not be built' in logger.text_at('warning')
@@ -309,7 +310,7 @@ class TestAFrameThatCannotBeBuilt:
         for second in range(0, 25, 5):                    # five passes inside one slot
             session.now = _T0 + timedelta(seconds=second)
             _pass(recorder, ticks=second)
-        recorder.write_shutdown(5, _decision(), SafetyState())
+        recorder.write_shutdown(5, _decision())
         assert '2 state frame(s) could not be built' in logger.text_at('warning'), \
             'one attempt for the slot, one for the end — not one per pass'
 
@@ -319,10 +320,52 @@ class TestTheEnd:
     def test_the_last_frame_is_written_and_the_stream_closed(self, tmp_path):
         session, path = _Session(), tmp_path / 'frames.jsonl'
         recorder = session.recorder(path)
-        recorder.write_shutdown(0, None, SafetyState())
+        recorder.write_shutdown(0, None)
         session.now += timedelta(seconds=60)
         _pass(recorder)
         frames = _frames(path)
         assert [f['written_for'] for f in frames] == ['shutdown']
         assert 'decision_action' not in frames[0], 'no pass ran a decision'
         assert recorder.get_frames_written() == 1
+
+
+class TestABacktestFrameChangesNothing:
+    """A backtest's frame re-marks no position and values the account on a tick pass only (#512)."""
+
+    def test_a_session_frame_remarks_and_values_on_every_pass(self, tmp_path):
+        session = _Session()
+        recorder = session.recorder(tmp_path / 'frames.jsonl')
+        _pass(recorder, on_tick=True)
+        session.now = session.now + timedelta(minutes=1)
+        _pass(recorder, on_tick=False)
+        assert (session.remarks, session.valuations) == (2, 2)
+
+    def test_a_backtest_tick_frame_values_and_remarks_nothing(self, tmp_path):
+        session = _Session()
+        path = tmp_path / 'frames.jsonl'
+        recorder = session.recorder(path, refresh_positions=False)
+        _pass(recorder, on_tick=True)
+        recorder.close()
+        assert session.remarks == 0
+        assert session.valuations == 1
+        assert _frames(path)[0]['equity'] == 489.35
+
+    def test_a_backtest_heartbeat_frame_carries_no_equity(self, tmp_path):
+        """A heartbeat may follow a fill no tick has valued yet; valuing it would mark the position."""
+        session = _Session()
+        path = tmp_path / 'frames.jsonl'
+        recorder = session.recorder(path, refresh_positions=False)
+        _pass(recorder, on_tick=False)
+        recorder.close()
+        assert (session.remarks, session.valuations) == (0, 0)
+        frames = _frames(path)
+        assert frames and frames[0].get('equity') is None
+
+    def test_a_backtest_s_last_frame_is_valued(self, tmp_path):
+        session = _Session()
+        path = tmp_path / 'frames.jsonl'
+        recorder = session.recorder(path, refresh_positions=False)
+        recorder.write_shutdown(3, _decision())
+        assert session.remarks == 0
+        assert _frames(path)[0]['equity'] == 489.35
+

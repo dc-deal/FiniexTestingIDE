@@ -20,6 +20,8 @@ from pydantic import BaseModel, ValidationError
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.constants.run_layout_constants import (
+    INDICATOR_SERIES_SCHEMA_VERSION,
+    INDICATOR_SERIES_STREAM,
     STATE_FRAMES_SCHEMA_VERSION,
     STATE_FRAMES_STREAM,
 )
@@ -45,6 +47,8 @@ from python.framework.reporting.store.served_run_header import served_run_header
 from python.framework.store.entry_members.run_entry_reader import RunEntryReader
 from python.framework.store.run_config_store import RunConfigStore
 from python.framework.types.api.recorded_stream_types import (
+    IndicatorSeriesPage,
+    IndicatorSeriesStreamOverview,
     RecordedStateFrame,
     StateFramePage,
     StateFrameStreamOverview,
@@ -61,6 +65,10 @@ from python.framework.types.api.report_types import (
 from python.framework.types.api.state_frame_types import (
     StateFrame,
     StateFrameStreamEnds,
+)
+from python.framework.types.chart_types.indicator_series_entry_types import (
+    IndicatorSeriesRecord,
+    IndicatorSeriesStreamHeader,
 )
 from python.framework.types.run_stream_types import RunStreamEnds, StreamTimeWindow
 from python.framework.types.store_member_types import RunEntryMemberId
@@ -299,6 +307,121 @@ class ReportStore:
         return StateFramePage(unit_name=unit_name, frames=frames, matched=page.matched,
                               truncated=page.truncated, next_time=page.next_time,
                               newest_time=page.newest_time)
+
+    def get_indicator_series_workers(self, run_id: str) -> List[str]:
+        """
+        The worker instances a session records an indicator series for (#379), sorted.
+
+        Args:
+            run_id: The run's identity
+
+        Returns:
+            Their names; empty when the run records none or is unknown
+        """
+        directory = self._reader.directory(run_id)
+        if directory is None:
+            return []
+        return sorted(names['worker'] for names in
+                      directory.names_of_files(RunEntryMemberId.INDICATOR_SERIES))
+
+    def get_indicator_series_overview(self, run_id: str,
+                                      worker: str) -> Optional[IndicatorSeriesStreamOverview]:
+        """
+        One worker's indicator series stream by its trading days, read without its records (#379).
+        A header naming another stream or a schema this reader does not know, and records without
+        a header, make the stream unreadable rather than half-read.
+
+        Args:
+            run_id: The run's identity
+            worker: The worker instance
+
+        Returns:
+            The overview, or None when the run records no series for that worker
+        """
+        overview = self._reader.read_stream_overview(
+            run_id, RunEntryMemberId.INDICATOR_SERIES, worker=worker)
+        if overview is None:
+            return None
+        header = self._indicator_series_header_of(
+            run_id, worker, overview.ends.header, overview.ends.last is not None)
+        return IndicatorSeriesStreamOverview(header=header, days=overview.days,
+                                             truncated_tail=overview.ends.truncated_tail)
+
+    def get_indicator_series_page(self, run_id: str, worker: str, window: StreamTimeWindow,
+                                  limit: int) -> Optional[IndicatorSeriesPage]:
+        """
+        One page of a worker's indicator series within a time window (#379). Unreadable on the
+        same terms as its overview, and a bar that does not fit the model makes it unreadable too.
+
+        Args:
+            run_id: The run's identity
+            worker: The worker instance
+            window: The stretch to read
+            limit: The most bars the page holds, at least one
+
+        Returns:
+            The page, or None when the run records no series for that worker
+        """
+        page = self._reader.read_stream_page(
+            run_id, RunEntryMemberId.INDICATOR_SERIES, window, limit, worker=worker)
+        if page is None:
+            return None
+        header = self._indicator_series_header_of(run_id, worker, page.header, bool(page.records))
+        try:
+            records = [IndicatorSeriesRecord.model_validate(record) for record in page.records]
+        except ValidationError as e:
+            path = self._indicator_series_path(run_id, worker)
+            raise ReportArtifactUnreadableError(path.name, str(path), str(e)) from e
+        return IndicatorSeriesPage(header=header, records=records, matched=page.matched,
+                                   truncated=page.truncated, next_time=page.next_time,
+                                   newest_time=page.newest_time)
+
+    def _indicator_series_header_of(self, run_id: str, worker: str,
+                                    header: Optional[Dict[str, Any]],
+                                    has_records: bool) -> Optional[IndicatorSeriesStreamHeader]:
+        """
+        What an indicator series stream's header says, held to its model.
+
+        Args:
+            run_id: The run's identity
+            worker: The worker instance, for the message
+            header: Its header line, None when none was read
+            has_records: Whether the stream holds a record
+
+        Returns:
+            The header, or None while the stream is opened and its header not yet on the disk
+        """
+        path = self._indicator_series_path(run_id, worker)
+        if header is None:
+            if has_records:
+                raise ReportArtifactUnreadableError(
+                    path.name, str(path), 'records without a header line')
+            return None
+        if (header.get('stream') != INDICATOR_SERIES_STREAM
+                or header.get('schema_version') != INDICATOR_SERIES_SCHEMA_VERSION):
+            raise ReportArtifactUnreadableError(
+                path.name, str(path),
+                f"a header naming stream {header.get('stream')!r}, schema "
+                f"{header.get('schema_version')!r}; this reader reads {INDICATOR_SERIES_STREAM!r}, "
+                f'schema {INDICATOR_SERIES_SCHEMA_VERSION}')
+        try:
+            return IndicatorSeriesStreamHeader.model_validate(header)
+        except ValidationError as e:
+            raise ReportArtifactUnreadableError(path.name, str(path), str(e)) from e
+
+    def _indicator_series_path(self, run_id: str, worker: str) -> Path:
+        """
+        Where a worker's indicator series stream is written, for the message that it cannot be read.
+
+        Args:
+            run_id: The run's identity
+            worker: The worker instance
+
+        Returns:
+            The stream's file
+        """
+        return self._reader.directory(run_id).path_of(RunEntryMemberId.INDICATOR_SERIES,
+                                                      worker=worker)
 
     def _state_frame_ends_of(self, run_id: str, ends: RunStreamEnds) -> StateFrameStreamEnds:
         """

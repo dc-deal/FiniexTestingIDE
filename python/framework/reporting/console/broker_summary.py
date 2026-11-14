@@ -70,8 +70,8 @@ class BrokerSummary(AbstractBatchSummarySection):
 
         # Scenarios as bullet points (collapsed to count in compact mode)
         if unit.scenarios:
-            if compact and len(unit.scenarios) > threshold:
-                print(f'{indent}Scenarios: {len(unit.scenarios)} scenarios — see log for full list')
+            if compact and unit.scenario_count > threshold:
+                print(f'{indent}Scenarios: {unit.scenario_count} scenarios — see log for full list')
             else:
                 print(f'{indent}Scenarios:')
                 for scenario in unit.scenarios:

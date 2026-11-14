@@ -20,6 +20,7 @@ from typing import Dict, List, Optional, Set, Type
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.types.decision_event_types import (
     DecisionEvent,
     DecisionEventType,
@@ -30,10 +31,12 @@ from python.framework.types.decision_event_types import (
     PartialCloseEvent,
     PositionClosedEvent,
     SessionEndEvent,
+    SessionEndOrderOutcomeEvent,
     SessionEndSeverity,
 )
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.types.trading_env_types.order_types import (
+    OrderAction,
     OrderDirection,
     OrderResult,
     OrderStatus,
@@ -48,7 +51,19 @@ _EVENT_TYPE_BY_CLASS: Dict[Type[DecisionEvent], DecisionEventType] = {
     PartialCloseEvent: DecisionEventType.PARTIAL_CLOSE,
     PositionClosedEvent: DecisionEventType.POSITION_CLOSED,
     SessionEndEvent: DecisionEventType.SESSION_END,
+    SessionEndOrderOutcomeEvent: DecisionEventType.SESSION_END_ORDER_OUTCOME,
 }
+
+# The events that report how one order ended — after the session-end event, each is reported
+# as that order's session-end outcome instead (#642)
+_ORDER_ENDINGS = (
+    OrderFilledEvent,
+    OrderRejectedEvent,
+    OrderUnaccountedEvent,
+    OrderCancelledEvent,
+    PartialCloseEvent,
+    PositionClosedEvent,
+)
 
 
 class DecisionEventDispatcher:
@@ -82,6 +97,9 @@ class DecisionEventDispatcher:
             type(decision_logic).get_subscribed_events()
         )
         self._buffer: List[DecisionEvent] = []
+        # Set once the session-end event is out: what an order does after it is reported as
+        # that order's session-end outcome
+        self._session_ended = False
 
         executor.add_order_outcome_listener(self._on_order_outcome)
         executor.set_decision_event_sink(self.submit)
@@ -119,9 +137,28 @@ class DecisionEventDispatcher:
         session end) and internally from the order-outcome bridge. Buffering
         only — hooks fire in drain().
 
+        Once the session-end event is out, the ending of an order the strategy sent from its
+        session-end hooks arrives as that order's session-end outcome. The ending of an order sent
+        before — a resting order the cleanup cancels, one a live venue fills meanwhile — is not
+        delivered, as it never was after the session-end event.
+
         Args:
             event: The decision event to buffer
         """
+        if self._session_ended and isinstance(event, _ORDER_ENDINGS):
+            result = event.result
+            if not self._executor.was_sent_after_session_end(result.order_id):
+                return
+            event = SessionEndOrderOutcomeEvent(
+                order_id=result.order_id,
+                # A close is keyed by its position's id, and an ending row of one carries none
+                position_id=(result.position_id if result.position_id is not None
+                             or result.action is not OrderAction.CLOSE else result.order_id),
+                status=result.status,
+                # Already the mask the ending event carried
+                result=result,
+                tick_time=event.tick_time,
+            )
         event_type = _EVENT_TYPE_BY_CLASS[type(event)]
         if event_type not in self._subscribed:
             return
@@ -147,8 +184,11 @@ class DecisionEventDispatcher:
 
         Both pipelines end the same way, so the event is built here rather than in each loop:
         the reason and severity of the request when one was made, otherwise the input ran out.
-        Delivered at once, before teardown and reporting.
+        Delivered at once, before teardown and reporting. The executor starts recording what is
+        sent from here on, so the orders the strategy sends from the event can be settled and
+        reported apart from those already on their way (#642).
         """
+        self._executor.begin_session_end()
         if self._executor.is_session_end_requested():
             end_reason = self._executor.get_session_end_reason()
             end_severity = self._executor.get_session_end_severity()
@@ -160,6 +200,17 @@ class DecisionEventDispatcher:
             severity=end_severity,
             tick_time=self._executor.get_current_time(),
         ))
+        self._session_ended = True
+        self.drain()
+
+    def emit_session_end_orders(self) -> None:
+        """
+        Tell the decision logic how the orders it sent from on_session_end ended (#642).
+
+        Called by both pipelines once those orders are settled — the simulation's settling step,
+        a live stop's second wait — and before the cleanup. The last delivery of a session: an
+        order sent from this hook is withdrawn, never sent.
+        """
         self.drain()
 
     def _on_order_outcome(
@@ -195,7 +246,7 @@ class DecisionEventDispatcher:
                 direction=direction,
                 fill_price=result.executed_price,
                 lots=result.executed_lots,
-                result=result,
+                result=AlgoOrderResult(result),
                 tick_time=tick_time,
             ))
         elif result.status in (OrderStatus.REJECTED, OrderStatus.UNDELIVERED):
@@ -204,7 +255,7 @@ class DecisionEventDispatcher:
                 direction=direction,
                 reason=result.rejection_reason,
                 message=result.rejection_message,
-                result=result,
+                result=AlgoOrderResult(result),
                 tick_time=tick_time,
             ))
         elif result.status is OrderStatus.UNACCOUNTED:
@@ -212,7 +263,7 @@ class DecisionEventDispatcher:
                 order_id=result.order_id,
                 direction=direction,
                 end_reason=result.end_reason,
-                result=result,
+                result=AlgoOrderResult(result),
                 tick_time=tick_time,
             ))
 
@@ -237,3 +288,5 @@ class DecisionEventDispatcher:
             self._decision_logic.on_position_closed(event)
         elif isinstance(event, SessionEndEvent):
             self._decision_logic.on_session_end(event)
+        elif isinstance(event, SessionEndOrderOutcomeEvent):
+            self._decision_logic.on_session_end_order_outcome(event)

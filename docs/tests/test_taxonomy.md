@@ -109,7 +109,11 @@ tests/
 │   ├── connection_ladder/ unit — shared retry decision for every external connection: classification, backoff, jitter, budget, give-up (#473)
 │   ├── config_directory/  unit — every configuration that can start a run: what a file declares, unreadable files as rows, precedence, the per-file cache, run figures from the run index, and the console views over it (#554)
 │   ├── fixture_catalog/   unit + one real production — the runs a consumer pins: the catalog's completeness, the production record and the current fixture, a session sequence's profiles, the report-coverage run carrying every asserted property (#576)
+│   ├── golden_samples/    unit over committed samples — every aggregate frozen from a fixture production, rebuilt through today's code and compared field by field, and the read-time views composed from the frozen rows (#557)
+│   ├── indicator_series/  unit + one real backtest — what a worker draws on a run's chart (#379): each declaration held to the worker's outputs, the value recorded for a closed bar, the orders the same with the recording on and off
 │   ├── indicators/        unit — the shared indicator library: what each name means (Wilder vs EMA vs simple), the scalar/series parity, and the warmup each recursive average needs (#517)
+│   ├── loop_events/       unit — the loop core's event vocabulary and its one timeline (#457): two stamps per event, earliest stamp then submission order, no kind first, one instant per stamp, ticks of one instant as one data slice
+│   ├── loop_pass_order/   integration — what each tick loop calls in each kind of pass, and in which order, spied on the real collaborators: the backtest's tick, clipped tick and ghost pass, the AutoTrader's tick, idle and stop-wait pass (#458)
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
 │   ├── warmup_history/    unit + cross-path — the bars a run starts from: one synthetic stream through the backtest, mock and live
 │   │                      warmup paths, the venue read by period and commit, start invariance, the injection guard, the outcome table (#588)
@@ -142,6 +146,11 @@ tests/
 │   ├── algo_clock_validator/ unit — wall-clock ban, runtime startup validator: AST scan of loaded algos (CORE + user) + batch pre-flight (#359)
 │   ├── discovery_validity/ unit — the three discovery caches compare the config fingerprint they were already writing (#486 finding 57); a config change moves no bar file, so mtime alone kept serving a stale cache
 │   ├── static_analysis/   unit — undefined-name gate (pyflakes) over python/ + tests/; the ruff/vulture backlog tier is measured, not gated
+│   ├── cache_transparency/ unit + integration — nothing an algo sees depends on the portfolio's lazy marking: the observer
+│   │                      probe's record with the cache on and off, a session read at its tick, the read-only algo mask (#653)
+│   ├── divergence_report/ unit + integration — a live session against a backtest of its window: the backtest built from the session's
+│   │                      record — rendered profile, frozen broker document, recorded warmup — every block declared; the live
+│   │                      side's segments, windows and trading days, each day compared or excluded with every cause (#512)
 │   ├── composite/         unit — which accounts may add up: the composite definition and its floor, the key projected from
 │   │                      the rendered configuration, joins and splits, the excluded member, every shipped value classified (#615)
 │   ├── rendered_config/   unit — what a run records it ran with: the one strategy renderer and its portable type key, every shipped

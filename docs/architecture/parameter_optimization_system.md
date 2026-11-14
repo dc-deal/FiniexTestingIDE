@@ -86,7 +86,7 @@ the list. See the `None`-never-a-sentinel rule in
 
 The rule cuts both ways, and this is the part to remember before widening a KPI: a field widened to
 optional drops out of the rankable set unless the ledger declares its empty cell *unmeasured*
-(`COLUMN_NULL_MEANING`). `expectancy` is declared so: a run whose trades have no R, as with a logic
+(its `null_meaning` in the figure catalog). `expectancy` is declared so: a run whose trades have no R, as with a logic
 keeping its own exits, is left out of the ranking and counted in `unranked`, so a sweep over such a
 logic ranks nothing by it. That is why `net_pnl` is the default. An R for own exits is #618's.
 

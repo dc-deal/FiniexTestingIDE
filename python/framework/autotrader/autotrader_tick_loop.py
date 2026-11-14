@@ -34,7 +34,6 @@ from python.framework.autotrader.operator_alerts.operator_alerts_setup import (
 from python.framework.autotrader.operator_alerts.signal_staleness_alerter import (
     SignalStalenessAlerter,
 )
-from python.framework.autotrader.run_record.state_frame_recorder import StateFrameRecorder
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.safety.safety_circuit_breaker import SafetyCircuitBreaker
 from python.framework.autotrader.session_log_rotator import SessionLogRotator
@@ -44,14 +43,14 @@ from python.framework.autotrader.tick_sources.abstract_tick_source import Abstra
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.loop.blocks.algo_compute_block import execute_algo_path
+from python.framework.loop.blocks.algo_heartbeat_block import run_ghost_pass
+from python.framework.loop.blocks.bar_render_block import render_bars_for_tick
 from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.persistence.position_book_watcher import PositionBookWatcher
+from python.framework.process.indicator_series_recorder import IndicatorSeriesRecorder
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
-from python.framework.process.tick_pipeline_core import (
-    execute_algo_path,
-    render_bars_for_tick,
-    run_ghost_pass,
-)
+from python.framework.process.state_frame_recorder import StateFrameRecorder
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.booking_period_recorder import (
     BookingPeriodRecorder,
@@ -63,6 +62,7 @@ from python.framework.signal_data.transport.abstract_signal_transport import (
 from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.stress_test.stale_data_stress_driver import StaleDataStressDriver
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.live.drift_auditor import DriftAuditor
 from python.framework.trading_env.live.reconciler import Reconciler
@@ -85,7 +85,6 @@ from python.framework.types.persistence_types import BaselineQuantities
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
 from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
-from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.utils.trading_day_anchor import boundary_opening
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
@@ -116,6 +115,8 @@ class AutotraderTickLoop:
             loop progress on every pass and reports its symptoms through them; off by default
         state_frames: Records what the session holds and decides, moment by moment (#579 part A)
             — asked at the end of every pass; None when the profile records no frames
+        indicator_series: Records each drawing worker's value per closed bar (#379) — asked
+            beside the state frame after every tick pass; None when the profile records none
         book_sealed_periods: Writes the booking periods sealed so far into the results ledger,
             called at each trading day's seal (#476); None writes nothing before the session ends
         seal_streams: Seals the session's streams into day records at a trading day's boundary
@@ -157,6 +158,7 @@ class AutotraderTickLoop:
         stale_stress_driver: Optional[StaleDataStressDriver] = None,
         operator_alerts: Optional[OperatorAlerts] = None,
         state_frames: Optional[StateFrameRecorder] = None,
+        indicator_series: Optional[IndicatorSeriesRecorder] = None,
         book_sealed_periods: Optional[Callable[[List[BookingPeriod]], None]] = None,
         seal_streams: Optional[Callable[[date, date], None]] = None,
         open_stop_budget: Optional[Callable[[], StopBudget]] = None,
@@ -217,6 +219,7 @@ class AutotraderTickLoop:
         self._api_monitor = api_monitor
         self._state_store = state_store
         self._state_frames = state_frames
+        self._indicator_series = indicator_series
         self._risk_baseline = risk_baseline
         # #355 — the open book is written when it CHANGES, in two classes. A STRUCTURAL
         # change (a position opens, closes, is partially closed) is written at once: it cannot
@@ -264,6 +267,11 @@ class AutotraderTickLoop:
         # (and how often it acts), reported once at session end.
         self._ghost_pass_count: int = 0
         self._ghost_action_count: int = 0
+
+        # #636: the session's tick counts, mirrored where they change. `run` keeps them in locals
+        # for the hot path and returns them; these survive an exception that leaves the loop.
+        self._ticks_processed: int = 0
+        self._ticks_clipped: int = 0
 
         # #436: market-data staleness contract — no real tick for this many wall
         # seconds → session-level stale (pot warning + on_market_data_stale +
@@ -424,7 +432,7 @@ class AutotraderTickLoop:
             # the session-end event's stamp, the disturbance episodes the shutdown collects.
             # Set it the way an idle pass does, so a stop during the start ends cleanly.
             if self._executor.get_current_time_if_set() is None:
-                self._executor.set_current_time(datetime.now(timezone.utc))
+                self._executor.set_current_time(self._idle_pass_time())
 
         while self._running:
             # #235: one stamp per pass, tick or heartbeat — a pass that hangs stamps no more,
@@ -439,10 +447,11 @@ class AutotraderTickLoop:
                     self._logger.info(
                         '📭 Tick source exhausted — ending session')
                     break
-                # #360: timer event. Inject the wall-clock so the canonical clock
-                # advances during idle (phase/op timeouts track real elapsed time),
-                # then run the side-effect-free cadence — no tick state mutation.
-                self._executor.set_current_time(datetime.now(timezone.utc))
+                # #360: timer event. The canonical clock advances during idle (phase/op
+                # timeouts track real elapsed time) — live by the wall clock, a replay by its
+                # own time, which the tick source answers (#616) — then run the side-effect-free
+                # cadence — no tick state mutation.
+                self._executor.set_current_time(self._idle_pass_time())
                 self._pass_day_boundary_off_tick()
                 # #320 + #360: drain async responses + check timeouts + re-poll
                 # active orders (the fill/cancel-confirm query now fires during idle).
@@ -474,9 +483,10 @@ class AutotraderTickLoop:
                 # #579: the cadence runs on a quiet feed too — a live session's clock is the
                 # wall clock here — and an order a ghost pass sent is a moment of its own
                 if self._state_frames is not None:
+                    safety = self._safety.get_display_state()
                     self._state_frames.on_pass(
-                        ticks_processed, self._last_real_decision,
-                        self._safety.get_display_state(), on_tick=False, order=ghost_order)
+                        ticks_processed, self._last_real_decision, on_tick=False, order=ghost_order,
+                        safety_blocked=safety.blocked, safety_drawdown_pct=safety.drawdown_pct)
                 if self._executor.is_session_end_requested():
                     self._logger.info(
                         f'🛑 Session end requested: {self._executor.get_session_end_reason()}')
@@ -502,6 +512,7 @@ class AutotraderTickLoop:
                 prev_msc = current_msc
 
             ticks_processed += 1
+            self._ticks_processed = ticks_processed
 
             # #141 Part 2a: fold in whatever the signal transport received since the last
             # pass, BEFORE the workers run — the existing should_refresh picks a new snapshot
@@ -577,7 +588,8 @@ class AutotraderTickLoop:
             # #579: read before the algo pass below consumes them — a state frame names the bar
             # the decision just saw close
             closed_timeframes = (self._bar_controller.get_pending_closed_timeframes()
-                                 if self._state_frames is not None else frozenset())
+                                 if self._state_frames is not None
+                                 or self._indicator_series is not None else frozenset())
 
             # === 3+4. Bar History + Worker Processing + Decision (shared core, #303) ===
             decision = execute_algo_path(
@@ -606,7 +618,7 @@ class AutotraderTickLoop:
                 # series was otherwise written only when a position CLOSED, which measures
                 # the largest decline across closed trades rather than the largest decline
                 # of the equity curve. Two different measures; only the second is what the
-                # word means. (#366 will add the sim's own per-tick pass — it rides this
+                # word means. (#515 will add the stop-out pass — it rides this
                 # same seam rather than opening a second one.)
                 self._executor.portfolio.sample_equity(safety_value)
 
@@ -670,6 +682,7 @@ class AutotraderTickLoop:
                     f'queue_depth_max={report.interval_max_queue_depth}'
                 )
                 ticks_clipped += report.interval_clipped
+                self._ticks_clipped = ticks_clipped
 
             # === 8. Display Stats ===
             if self._display_queue is not None:
@@ -687,14 +700,21 @@ class AutotraderTickLoop:
             # === 9. State Frame (#579 part A) — on its cadence, at a closed bar, at an order ===
             # After the timing above: recording is not the algo being slow
             if self._state_frames is not None:
+                safety = self._safety.get_display_state()
                 self._state_frames.on_pass(
-                    ticks_processed, decision, self._safety.get_display_state(), on_tick=True,
-                    closed_timeframes=closed_timeframes, order=order_result)
+                    ticks_processed, decision, on_tick=True,
+                    closed_timeframes=closed_timeframes, order=order_result,
+                    safety_blocked=safety.blocked, safety_drawdown_pct=safety.drawdown_pct)
+            # #379: each drawing worker's value for a bar that closed, in the same place
+            if self._indicator_series is not None:
+                self._indicator_series.on_pass(closed_timeframes, current_bars)
 
             # Track last valid tick/decision for the final shutdown snapshot
             # and heartbeat pulse frames (#320).
             self._last_real_tick = tick
             self._last_real_decision = decision
+            # Read back only as an age (the staleness flip, the display): a step of the wall clock
+            # lands in it — it belongs on the monotonic clock (#549)
             self._last_real_tick_wall_time = time.time()
 
         # #630: a normal stop waits here for the orders on their way — the last moment a hook can
@@ -706,10 +726,14 @@ class AutotraderTickLoop:
         if self._decision_event_dispatcher is not None:
             self._decision_event_dispatcher.emit_session_end()
             # An order the logic sent from the session-end event is waited for as well, so
-            # its fill is booked before the cleanup. The logic does not hear what this wait
-            # settles: the session-end event stays the last thing it is told.
+            # its fill is booked before the cleanup, and the logic hears how it ended (#642)
             if not self._order_wait_ran_out:
                 self._wait_for_orders(ticks_processed, after_session_end=True)
+            # The session is over: what the logic sends from the outcome hook is held back and
+            # withdrawn, never sent — the simulation's settle, emit and withdraw, in a session
+            self._executor.hold_new_orders()
+            self._decision_event_dispatcher.emit_session_end_orders()
+            self._executor.withdraw_unsent_orders()
 
         # Final display snapshot — ensures the last rendered frame reflects
         # the terminal pipeline state regardless of display refresh timing.
@@ -785,9 +809,10 @@ class AutotraderTickLoop:
         settings = self._config.shutdown
         stop_budget = self._open_stop_budget()
         still_to_come_s = settings.bounded_waits_s()
-        # Never the wall clock here, unlike the idle pass: a replayed session's clock stands on its
-        # last tick, and an idle pass's reading would seal one booking period per day up to today.
-        # The last event plus the time elapsed is the same thing in a live session, near enough.
+        # Never the wall clock here: a replayed session's clock stands on its last tick, and a
+        # wall-clock reading would seal one booking period per day up to today. The last event
+        # plus the time elapsed is the same thing in a live session, near enough — and what a
+        # replay's idle pass reckons too (#616).
         last_event = self._executor.get_current_time()
         run_began = time.monotonic()
         spent_before_s = self._order_wait_spent_s
@@ -840,6 +865,18 @@ class AutotraderTickLoop:
         if hear:
             self._drain_decision_events()
         self._persist_carry_over_if_needed(ticks_processed)
+
+    def _idle_pass_time(self) -> datetime:
+        """
+        The canonical clock for a pass with no tick: the tick source's own time (#616).
+
+        Returns:
+            The source's answer — the wall clock live, the replay's time in a mock — or the wall
+            clock when the loop runs without a source
+        """
+        if self._tick_source is None:
+            return datetime.now(timezone.utc)
+        return self._tick_source.get_idle_pass_time()
 
     def _pass_day_boundary_off_tick(self) -> None:
         """
@@ -954,8 +991,10 @@ class AutotraderTickLoop:
         """
         if self._state_frames is None:
             return
+        safety = self._safety.get_display_state()
         self._state_frames.write_shutdown(
-            ticks_processed, self._last_real_decision, self._safety.get_display_state())
+            ticks_processed, self._last_real_decision,
+            safety_blocked=safety.blocked, safety_drawdown_pct=safety.drawdown_pct)
 
     def _drain_signal_inbox(self, off_tick: bool) -> None:
         """
@@ -993,7 +1032,7 @@ class AutotraderTickLoop:
         if self._decision_event_dispatcher is not None:
             self._decision_event_dispatcher.drain()
 
-    def _record_rejection(self, order_result: Optional[OrderResult], decision: Decision) -> None:
+    def _record_rejection(self, order_result: Optional[AlgoOrderResult], decision: Decision) -> None:
         """
         Record a rejected order into the rolling rejection buffer (display + count).
 
@@ -1147,7 +1186,7 @@ class AutotraderTickLoop:
 
         return ticks_processed - self._last_book_drift_tick >= self._book_drift_interval_ticks
 
-    def _run_decision_heartbeat(self, ticks_processed: int) -> Optional[OrderResult]:
+    def _run_decision_heartbeat(self, ticks_processed: int) -> Optional[AlgoOrderResult]:
         """
         #360 ghost-pass: run an opt-in decision between ticks without a synthetic tick.
 
@@ -1238,6 +1277,8 @@ class AutotraderTickLoop:
             # hears when it outlasts the threshold (#235)
             self._alert_on_missing_first_tick()
             return
+        # An age from two wall readings decides the flip — a step of the clock can call a healthy
+        # feed stale or keep a dead one fresh (#549)
         seconds_since = time.time() - self._last_real_tick_wall_time
         if seconds_since <= self._market_data_stale_after_s:
             return
@@ -1389,6 +1430,16 @@ class AutotraderTickLoop:
             (first, last) tick timestamps; (None, None) before the first tick
         """
         return self._first_tick_time, self._last_tick_time
+
+    def get_tick_counts(self) -> Tuple[int, int]:
+        """
+        The ticks this session processed and clipped so far — readable after an exception ended
+        the loop, whose counts `run`'s return value cannot carry out (#636).
+
+        Returns:
+            (ticks_processed, ticks_clipped)
+        """
+        return self._ticks_processed, self._ticks_clipped
 
     def get_market_data_tick_stats(self) -> MarketDataTickStats:
         """

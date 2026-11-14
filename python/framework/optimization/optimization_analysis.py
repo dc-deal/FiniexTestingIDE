@@ -9,14 +9,21 @@ most). The sensitivity is OFAT — it ignores interactions and makes no signific
 """
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Dict, List, Optional, get_args
 
-from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
-from python.framework.reporting.store.run_results_ledger import COLUMN_NULL_MEANING
-from python.framework.types.api.report_types import RunResultRow, SweepSummary
-from python.framework.types.data_origin_types import joined_distinct
-from python.framework.types.run_results_types import NullMeaning
+from python.framework.reporting.aggregation.aggregation_fold import (
+    aggregate_ledger_rows,
+    fold_rows,
+)
+from python.framework.reporting.aggregation.figure_catalog import COLUMN_NULL_MEANING
+from python.framework.reporting.aggregation.tables.sweep_figure_table import SWEEP_SUMMARY_TABLE
+from python.framework.types.aggregation_types import NullMeaning
+from python.framework.types.api.report_types import (
+    RunResultRow,
+    SweepDetailResponse,
+    SweepListResponse,
+    SweepSummary,
+)
 
 # What may be empty on a row and still order a ranking: a figure that was only not MEASURED for
 # some runs — they are left out, and `unranked_count` says how many. A figure that can be
@@ -37,6 +44,52 @@ class ParamSensitivity:
     level_means: Dict[str, float]   # level value (as string) → mean objective at that level
 
 
+def compose_sweep_list(rows: List[RunResultRow]) -> SweepListResponse:
+    """
+    Every recorded parameter sweep, newest first — the sweep list's answer.
+
+    Composed here rather than in the route, so the answer can be rebuilt from frozen rows: the
+    golden samples of #557 do exactly that.
+
+    Args:
+        rows: Every ledger row
+
+    Returns:
+        The SweepListResponse (empty list when no sweep has been recorded yet)
+    """
+    # summarize_sweeps orders chronologically (sweep_id is timestamp-based); newest first is
+    # what a picker wants, and it matches the run index's ordering.
+    sweeps = list(reversed(summarize_sweeps(rows)))
+    return SweepListResponse(sweeps=sweeps, count=len(sweeps))
+
+
+def compose_sweep_detail(sweep_id: str, rows: List[RunResultRow]) -> Optional[SweepDetailResponse]:
+    """
+    One sweep's combinations, ranked by the objective the sweep declared.
+
+    Args:
+        sweep_id: The sweep's id
+        rows: The ledger rows of this sweep
+
+    Returns:
+        The ranked combinations, best first within each account currency; None when no row
+        names the sweep
+    """
+    if not rows:
+        return None
+
+    # The spec's own objective and direction were recorded with the runs — ranking by anything
+    # else here would answer a question the sweep did not ask.
+    head = rows[0]
+    objective = head.sweep_objective or 'net_pnl'
+    maximize = head.sweep_maximize if head.sweep_maximize is not None else True
+    combinations = rank_per_currency(rows, objective, maximize=maximize)
+    return SweepDetailResponse(
+        sweep_id=sweep_id, objective=objective, maximize=maximize,
+        combinations=combinations, count=len(combinations),
+        unranked=unranked_count(rows, objective))
+
+
 def summarize_sweeps(rows: List[RunResultRow]) -> List[SweepSummary]:
     """
     Group ledger rows by sweep and summarize each — for the sweep list view.
@@ -47,35 +100,10 @@ def summarize_sweeps(rows: List[RunResultRow]) -> List[SweepSummary]:
     Returns:
         One SweepSummary per sweep, ordered by sweep_id (timestamp-based → chronological)
     """
-    groups: Dict[str, List[RunResultRow]] = {}
-    for row in rows:
-        if row.sweep_id:
-            groups.setdefault(row.sweep_id, []).append(row)
-
-    summaries: List[SweepSummary] = []
-    for sweep_id, group in groups.items():
-        stamps = sorted(datetime.fromisoformat(r.run_timestamp) for r in group if r.run_timestamp)
-        run_ids = {r.run_id for r in group}
-        error_ids = {r.run_id for r in group if r.status == 'error'}
-        head = group[0]
-        summaries.append(SweepSummary(
-            sweep_id=sweep_id,
-            started=stamps[0] if stamps else None,
-            duration_s=(stamps[-1] - stamps[0]).total_seconds() if len(stamps) > 1 else 0.0,
-            run_count=len(run_ids),
-            ok_count=len(run_ids) - len(error_ids),
-            error_count=len(error_ids),
-            decision_logic_type=head.decision_logic_type,
-            decision_version=head.decision_version,
-            base_config=head.scenario_set_name.split('__', 1)[0],
-            symbols=head.symbols,
-            objective=head.sweep_objective or '',
-            maximize=head.sweep_maximize if head.sweep_maximize is not None else True,
-            features_beyond_venue=joined_distinct(
-                [name for r in group for name in r.features_beyond_venue.split(',') if name]),
-        ))
-
-    return sorted(summaries, key=lambda s: s.sweep_id)
+    # Counts of distinct runs, the description of the first row — declared in the sweep summary's
+    # fold table, which orders the sweeps by their id.
+    return [SweepSummary(**figures) for figures in fold_rows(
+        [row for row in rows if row.sweep_id], SWEEP_SUMMARY_TABLE)]
 
 
 @dataclass

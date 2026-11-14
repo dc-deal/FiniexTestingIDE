@@ -25,6 +25,7 @@ from python.framework.types.api.report_types import (
     TradeHistoryReport,
     WarningsErrorsReport,
 )
+from python.framework.types.api.recorded_stream_types import UnitRecordedStreams
 from python.framework.types.api.state_frame_types import LatestStateFramesResponse
 
 
@@ -84,6 +85,8 @@ class FixtureEvidence:
         deployment_periods: Deployment id → its booking periods
         sweeps: Sweep id → its detail
         latest_state_frames: Run id → its latest state frames, as the check-in route answers
+        recorded_streams: Run id → its unit's timeline of recorded streams, as the timeline route
+            answers
     """
     runs: List[RunInfo] = field(default_factory=list)
     order_history: Dict[str, OrderHistoryReport] = field(default_factory=dict)
@@ -96,6 +99,7 @@ class FixtureEvidence:
     deployment_periods: Dict[str, DeploymentBookingPeriodsResponse] = field(default_factory=dict)
     sweeps: Dict[str, SweepDetailResponse] = field(default_factory=dict)
     latest_state_frames: Dict[str, LatestStateFramesResponse] = field(default_factory=dict)
+    recorded_streams: Dict[str, UnitRecordedStreams] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

@@ -4,7 +4,7 @@ Reusable test classes for SL/TP trigger detection, limit order fills, and modifi
 
 Validates:
 - TP trigger: close_reason=TP_TRIGGERED, exit_price=take_profit
-- SL trigger: close_reason=SL_TRIGGERED, exit_price=stop_loss
+- SL trigger: close_reason=SL_TRIGGERED, exit_price=the breaching tick's market (#629)
 - TradeRecord carries correct SL/TP levels
 - Execution stats track sl_tp_triggered count
 - Modify: modified TP triggers instead of original
@@ -118,12 +118,17 @@ class TestLongSlTrigger:
             f'Expected LONG, got {trade.direction}'
         )
 
-    def test_exit_price_equals_sl(self, long_sl_trade_history: List[TradeRecord]):
-        """Exit price should equal stop loss level (deterministic fill)."""
+    def test_exit_price_is_the_breaching_ticks_market(self, long_sl_trade_history: List[TradeRecord]):
+        """A stop fills at the market of the tick that breached it, never above its level (#629).
+
+        The exact price — that tick's bid — is pinned where the tick is built by hand
+        (test_order_features); here the scenario's data decides it.
+        """
         trade = long_sl_trade_history[0]
-        assert trade.exit_price == trade.stop_loss, (
-            f'Exit price {trade.exit_price} != stop_loss {trade.stop_loss}'
+        assert trade.exit_price <= trade.stop_loss, (
+            f'Exit price {trade.exit_price} above stop_loss {trade.stop_loss}'
         )
+        assert trade.exit_level == trade.stop_loss
 
     def test_sl_level_matches_config(self, long_sl_trade_history: List[TradeRecord], long_sl_expected: ScenarioExpectedValues):
         """Stop loss on TradeRecord should match configured level."""
@@ -221,12 +226,17 @@ class TestShortSlTrigger:
             f'Expected SHORT, got {trade.direction}'
         )
 
-    def test_exit_price_equals_sl(self, short_sl_trade_history: List[TradeRecord]):
-        """Exit price should equal stop loss level (deterministic fill)."""
+    def test_exit_price_is_the_breaching_ticks_market(self, short_sl_trade_history: List[TradeRecord]):
+        """A stop fills at the market of the tick that breached it, never below its level (#629).
+
+        The exact price — that tick's ask — is pinned where the tick is built by hand
+        (test_order_features); here the scenario's data decides it.
+        """
         trade = short_sl_trade_history[0]
-        assert trade.exit_price == trade.stop_loss, (
-            f'Exit price {trade.exit_price} != stop_loss {trade.stop_loss}'
+        assert trade.exit_price >= trade.stop_loss, (
+            f'Exit price {trade.exit_price} below stop_loss {trade.stop_loss}'
         )
+        assert trade.exit_level == trade.stop_loss
 
     def test_sl_level_matches_config(self, short_sl_trade_history: List[TradeRecord], short_sl_expected: ScenarioExpectedValues):
         """Stop loss on TradeRecord should match configured level."""
@@ -424,12 +434,13 @@ class TestLimitFillThenSl:
             f'Expected SL_TRIGGERED, got {trade.close_reason}'
         )
 
-    def test_exit_price_equals_sl(self, limit_sl_trade_history: List[TradeRecord], limit_sl_expected: ScenarioExpectedValues):
-        """Exit price should equal stop loss level."""
+    def test_exit_price_is_the_breaching_ticks_market(self, limit_sl_trade_history: List[TradeRecord], limit_sl_expected: ScenarioExpectedValues):
+        """The stop fills at the market of the tick that breached it, never above its level (#629)."""
         trade = limit_sl_trade_history[0]
-        assert trade.exit_price == limit_sl_expected.stop_loss, (
-            f'Expected exit_price={limit_sl_expected.stop_loss}, got {trade.exit_price}'
+        assert trade.exit_price <= limit_sl_expected.stop_loss, (
+            f'Exit price {trade.exit_price} above stop_loss {limit_sl_expected.stop_loss}'
         )
+        assert trade.exit_level == limit_sl_expected.stop_loss
 
     def test_negative_pnl(self, limit_sl_trade_history: List[TradeRecord]):
         """LONG closed at SL below entry should have negative gross P&L."""

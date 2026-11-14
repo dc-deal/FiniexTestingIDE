@@ -114,9 +114,17 @@ Two lists sit beside them, and each leaves fields unset on purpose:
   was *the* bottleneck), `total_scenarios`, the `pct` between them, and the `status` above. Most
   frequent first.
 
-The clipping roll-up — `clipping_total_ticks`, `clipping_total_kept`, `clipping_total_clipped` and
-the distinct `clipping_budgets` across the units — is only meaningful when `budget_active` is
-true.
+The clipping roll-up — `clipping_total_ticks`, `clipping_total_kept`, `clipping_total_clipped`,
+the distinct `clipping_budgets` across the units with `clipping_budget_count`, and
+`clipping_rate_pct`, the clipped ticks over the clipping total — is only meaningful when
+`budget_active` is true.
+
+The slowest profiled unit by its summed operation time: `slowest_profiled_unit` and
+`slowest_profiled_unit_ms` — of equals the first — beside `profiled_unit_mean_ms`, the units'
+mean, and `slowest_profiled_unit_deviation_pct`, how far above that mean it lies. Null where no
+unit was profiled, the deviation also where the mean is not above zero, and all four on a run
+recorded before contract 52. (The slowest unit by its algo time per tick is a different figure,
+on [workers and decisions](/api/v1/docs/worker-decision).)
 
 ## `scenarios_over_p5` is a count, not a verdict
 
@@ -128,6 +136,20 @@ surfaces as one; this number is the input, not the conclusion.
 
 ## `warmup_phases`
 
-One entry per warmup phase, with its `name` and its measured `duration_s`. These belong to the
-run, not to any unit: they sit outside the tick-loop figures above and are not part of any unit's
-`total_ms`.
+One entry per warmup phase, with its `name`, its measured `duration_s` and `pct`, its share of the
+whole warmup — null on a run recorded before contract 52. These belong to the run, not to any
+unit: they sit outside the tick-loop figures above and are not part of any unit's `total_ms`.
+Beside them, `warmup_total_s` is the whole warmup and `warmup_slowest_phase`, `warmup_slowest_s`
+and `warmup_slowest_pct` its slowest phase — of equals the first; null without a phase. Those
+four are read from the phases, so an older run answers them too.
+
+## `worker_decision_breakdowns`
+
+Null on a run recorded before contract 52. Otherwise one row per unit that both tracking layers
+measured — the tick-loop profiling and the
+[workers and decisions](/api/v1/docs/worker-decision) statistics: where its `worker_decision`
+operation time went. `total_time_ms` is that operation's total, `worker_execution_ms` its workers'
+time, `decision_logic_ms` the decision logic's (0.0 where the decisions were not tracked), and
+`coordination_overhead_ms` what the two leave, never below zero — each with its share of the total
+(`worker_execution_pct`, `decision_logic_pct`, `coordination_overhead_pct`). Whether the overhead
+is too high is decided in [warnings and errors](/api/v1/docs/warnings-errors).

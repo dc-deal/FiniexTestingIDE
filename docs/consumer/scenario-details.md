@@ -140,6 +140,13 @@ decided. They are **null when nothing counted them**: the decision tracker is of
 backtest, because counting sits on the hot path. A `0` is a count; null is the absence of one. See
 [nulls](/api/v1/docs/nulls).
 
+`non_flat_signals` is the decisions that asked to buy or sell — the buy and the sell signals
+together — and `non_flat_signal_pct` and `trades_requested_pct` give it and `trades_requested` per
+tick processed, in percent; `0.0` over no tick, null where the decisions were not counted. On the
+report, `scenario_count`, `failed_scenario_count` (a status other than `success`) and
+`completed_scenario_count` count the rows — every scenario that ran, a failed one included, unlike
+the run summary's `unit_count`, which counts the units that produced figures.
+
 Which state a unit was in is stated outright, as `worker_decision_tracked` on
 [workers and decisions](/api/v1/docs/worker-decision). That is the field to branch on.
 

@@ -7,7 +7,7 @@ filtering pre-applied so the frontend renders, not derives.
 """
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Query, Request
 
@@ -89,6 +89,9 @@ from python.framework.types.api.report_types import (
     WorkerDecisionReport,
 )
 from python.framework.types.api.state_frame_types import LatestStateFramesResponse, StateFrameCause
+from python.framework.types.chart_types.indicator_series_entry_types import (
+    IndicatorSeriesStreamHeader,
+)
 from python.framework.types.run_stream_types import StreamTimeWindow
 from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.time_utils import ensure_utc_aware
@@ -333,12 +336,18 @@ def get_unit_recorded_streams(run_id: str, unit_name: str,
     run = next((info for info in store.list_runs() if info.run_id == run_id), None)
     if run is None:
         raise api_error(RUN_NOT_FOUND, run_id=run_id)
-    overview = store.get_state_frame_overview(run_id)
-    if overview is None:
+    frames = store.get_state_frame_overview(run_id)
+    series = [(worker, store.get_indicator_series_overview(run_id, worker))
+              for worker in store.get_indicator_series_workers(run_id)]
+    series = [(worker, overview) for worker, overview in series if overview is not None]
+    if frames is None and not series:
         raise api_error(STREAMS_NOT_RECORDED, run_id=run_id)
-    _require_unit(run_id, unit_name, overview.ends.unit_name)
+    _require_unit(run_id, unit_name, _recorded_unit(
+        frames.ends.unit_name if frames is not None else None,
+        [overview.header for _, overview in series]))
     return describe_unit_recorded_streams(
-        overview, run, request.app.state.state_frames_thresholds, datetime.now(timezone.utc))
+        frames, series, unit_name, run, request.app.state.state_frames_thresholds,
+        datetime.now(timezone.utc))
 
 
 @router.get(f'/reports/runs/{{run_id}}/{UNIT_RECORDED_STREAMS_WINDOW_ROUTE}',
@@ -378,12 +387,34 @@ def get_unit_recorded_streams_window(
     store = ReportStore()
     if not any(info.run_id == run_id for info in store.list_runs()):
         raise api_error(RUN_NOT_FOUND, run_id=run_id)
-    page = store.get_state_frame_page(run_id, StreamTimeWindow(since=since, until=until), limit)
-    if page is None:
+    window = StreamTimeWindow(since=since, until=until)
+    frames = store.get_state_frame_page(run_id, window, limit)
+    series = [(worker, store.get_indicator_series_page(run_id, worker, window, limit))
+              for worker in store.get_indicator_series_workers(run_id)]
+    series = [(worker, page) for worker, page in series if page is not None]
+    if frames is None and not series:
         raise api_error(STREAMS_NOT_RECORDED, run_id=run_id)
-    _require_unit(run_id, unit_name, page.unit_name)
+    _require_unit(run_id, unit_name, _recorded_unit(
+        frames.unit_name if frames is not None else None, [page.header for _, page in series]))
     return describe_recorded_streams_window(
-        page, run_id, since, until, limit, datetime.now(timezone.utc))
+        frames, series, run_id, unit_name, since, until, limit, datetime.now(timezone.utc))
+
+
+def _recorded_unit(frames_unit: Optional[str],
+                   series_headers: List[Optional[IndicatorSeriesStreamHeader]]) -> Optional[str]:
+    """
+    The unit a run's streams name — its state frames' first, else an indicator series'.
+
+    Args:
+        frames_unit: The unit the state frames name, None when there are none or no header yet
+        series_headers: The indicator series streams' headers, None where not yet written
+
+    Returns:
+        The unit, or None when no stream has written its header yet
+    """
+    if frames_unit is not None:
+        return frames_unit
+    return next((header.unit_name for header in series_headers if header is not None), None)
 
 
 def _require_unit(run_id: str, unit_name: str, recorded_unit: Optional[str]) -> None:

@@ -32,9 +32,11 @@ Data Flow:
 4. DeterministicProbe extracts metadata for ProbeMetadata
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from python.framework.types.market_types.market_data_types import Bar, TickData
+from python.framework.trading_env.algo_masks.algo_bar import AlgoBar
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
+from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
 from python.framework.workers.abstract_indicator_worker import AbstractIndicatorWorker
@@ -156,7 +158,7 @@ class SampleProbeWorker(AbstractIndicatorWorker):
         """LIVE — intra-bar, recompute per tick (#420). BAR_CLOSE is a per-instance opt-in."""
         return ComputeBasis.LIVE
 
-    def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
+    def should_recompute(self, tick: AlgoTick, bar_updated: bool) -> bool:
         """
         Always recompute to check for snapshot triggers.
 
@@ -167,9 +169,9 @@ class SampleProbeWorker(AbstractIndicatorWorker):
 
     def compute(
         self,
-        tick: TickData,
-        bar_history: Dict[str, List[Bar]],
-        current_bars: Dict[str, Bar],
+        tick: AlgoTick,
+        bar_history: Mapping[str, Tuple[Bar, ...]],
+        current_bars: Mapping[str, AlgoBar],
     ) -> WorkerResult:
         """
         Validate warmup and capture bar snapshots.
@@ -227,7 +229,7 @@ class SampleProbeWorker(AbstractIndicatorWorker):
             'tick_count': self.tick_count,
         })
 
-    def _validate_warmup(self, bar_history: Dict[str, List[Bar]]) -> Dict[str, Dict]:
+    def _validate_warmup(self, bar_history: Mapping[str, Tuple[Bar, ...]]) -> Dict[str, Dict]:
         """
         Validate warmup bar counts against configured requirements.
 
@@ -267,8 +269,8 @@ class SampleProbeWorker(AbstractIndicatorWorker):
     def _capture_snapshot(
         self,
         check: Dict[str, Any],
-        bar_history: Dict[str, List[Bar]],
-        current_bars: Dict[str, Bar]
+        bar_history: Mapping[str, Tuple[Bar, ...]],
+        current_bars: Mapping[str, AlgoBar]
     ) -> None:
         """
         Capture bar snapshot at specific tick.

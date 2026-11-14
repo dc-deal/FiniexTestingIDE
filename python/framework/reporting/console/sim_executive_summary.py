@@ -12,9 +12,6 @@ Provides comprehensive summary:
 - System resources
 """
 
-from typing import Dict, List, Optional
-
-from python.configuration.app_config_manager import AppConfigManager
 from python.framework.constants.currency_constants import (
     format_currency_cost,
     format_currency_signed,
@@ -29,15 +26,27 @@ from python.framework.reporting.console.portfolio_summary import SPREAD_NOT_MEAS
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
     AggregatedPortfolioRow,
+    PerformanceTracking,
     ProfilingReport,
     RunMetaReport,
     RunSummary,
     ScenarioDetailsReport,
     WarningsErrorsReport,
 )
-from python.framework.types.scenario_types.window_set_types import WindowSet
+from python.framework.types.rendering_types import BatchStatus
 from python.framework.utils.console_renderer import ConsoleRenderer
-from python.framework.utils.machine_resources_reader import MachineResourcesReader
+
+
+# The line each tracking class prints — nothing when both layers carried data
+_TRACKING_LINE = {
+    PerformanceTracking.BOTH_ON: '',
+    PerformanceTracking.ALL_OFF: ('⚠️  All performance tracking OFF '
+                                  '(no per-component or operation-level diagnostics)'),
+    PerformanceTracking.WORKER_OFF: ('⚠️  Worker tracking OFF '
+                                     '(per-worker / decision breakdowns unavailable)'),
+    PerformanceTracking.PROFILING_OFF: ('⚠️  Tick-loop profiling OFF '
+                                        '(operation hotspot analysis unavailable)'),
+}
 
 
 class SimExecutiveSummary(AbstractBatchSummarySection):
@@ -52,35 +61,31 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
 
     def __init__(
         self,
-        app_config: AppConfigManager,
         run_summary: RunSummary,
         run_meta_report: RunMetaReport,
         profiling_report: ProfilingReport,
         scenario_details_report: ScenarioDetailsReport,
         warnings_errors_report: WarningsErrorsReport,
         aggregated_report: AggregatedPortfolioReport,
-        generator_profiles: Optional[List[WindowSet]] = None
     ):
         """
         Initialize executive summary.
 
         Args:
-            app_config: Application configuration
             run_summary: Cross-section run KPIs (the model-fed headline source)
-            run_meta_report: Run-level meta (scenario identity + timing split) — the run-level
-                values read from the model instead of the raw batch summary
+            run_meta_report: Run-level meta — timing, parallelism, the machine, the throughput
+            profiling_report: Profiling — the warmup, the clipping roll-up, the slowest scenario
+            scenario_details_report: Scenario details — the data-broker roll-up
             warnings_errors_report: Warnings/errors model — the failed-scenario headline reads its
                 outcome (no inline re-scan of process results, #395)
-            generator_profiles: Generator profiles for Profile Run source info (None for normal runs)
+            aggregated_report: The per-currency aggregated portfolio
         """
-        self._app_config = app_config
         self._run_summary = run_summary
         self._run_meta = run_meta_report
         self._profiling = profiling_report
         self._scenario_details = scenario_details_report
         self._outcome = warnings_errors_report.outcome
         self._aggregated_report = aggregated_report
-        self._generator_profiles = generator_profiles
 
     def render(self, renderer: ConsoleRenderer):
         """
@@ -116,10 +121,8 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         renderer.print_separator(width=68)
         print(f'Scenarios:          {summary.unit_count}')
 
-        exec_rate = (summary.orders_executed / summary.orders_submitted *
-                     100) if summary.orders_submitted > 0 else 0.0
         orders_line = (f'Orders:             {summary.orders_executed}/{summary.orders_submitted} '
-                       f'executed ({exec_rate:.1f}%)')
+                       f'executed ({summary.execution_rate_pct:.1f}%)')
         endings = order_endings_text(summary, renderer)
         if endings:
             orders_line += f' | {endings}'
@@ -153,28 +156,26 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         """Render execution results section."""
         total_scenarios = self._run_meta.scenario_count
         # Failure truth from the warnings/errors model (no inline re-scan, #395)
-        failed = self._outcome.failed_count
-        successful = total_scenarios - failed
-        success_rate = (successful / total_scenarios *
-                        100) if total_scenarios > 0 else 0
+        outcome = self._outcome
+        failed = outcome.failed_count
 
         # Get timing breakdown (run-level, from the meta model)
         batch_time = self._run_meta.execution_time_s
         warmup_time = self._run_meta.warmup_time_s
         tickrun_time = self._run_meta.tickrun_time_s
 
-        # Get execution config
-        parallel = self._app_config.get_default_parallel_scenarios()
-        max_workers = self._app_config.get_default_max_parallel_scenarios()
+        # The parallelism the batch ran with, as the run meta recorded it
+        parallel = self._run_meta.parallel_scenarios
+        max_workers = self._run_meta.max_parallel_scenarios
 
-        # Calculate status
-        if failed == 0:
+        # The status the outcome's counts describe
+        if outcome.batch_status is BatchStatus.SUCCESS:
             status_str = renderer.green('✅ Complete Success')
-        elif successful == 0:
+        elif outcome.batch_status is BatchStatus.FAILED:
             status_str = renderer.red('❌ Complete Failure')
         else:
             status_str = renderer.yellow(
-                f'⚠️ Partial ({successful}/{total_scenarios})')
+                f'⚠️ Partial ({outcome.succeeded_count}/{outcome.total_units})')
 
         # Count disabled scenarios (run-level, from the meta model)
         disabled = self._run_meta.disabled_count
@@ -185,7 +186,8 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         print(f'Scenarios:          {total_scenarios} executed' +
               (f' ({disabled} disabled)' if disabled > 0 else ''))
         print(
-            f'Success Rate:       {success_rate:.1f}% ({successful}/{total_scenarios} successful)')
+            f'Success Rate:       {outcome.success_rate_pct:.1f}% '
+            f'({outcome.succeeded_count}/{outcome.total_units} successful)')
         print(f'Status:             {status_str}')
 
         # Show first failed scenario details (from the model outcome)
@@ -219,10 +221,10 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         print(f'Mode:               {mode_str}')
 
         # Source line (Profile Run vs Scenario Set)
-        if self._generator_profiles:
-            modes = sorted(set(ws.mode for ws in self._generator_profiles))
-            mode_str = ', '.join(modes)
-            print(f'Source:             Profile Run ({len(self._generator_profiles)} profile(s), {mode_str})')
+        if self._run_meta.generator_profile_count:
+            mode_str = ', '.join(self._run_meta.generator_profile_modes)
+            print(f'Source:             Profile Run ({self._run_meta.generator_profile_count} '
+                  f'profile(s), {mode_str})')
         else:
             print('Source:             Scenario Set')
 
@@ -270,21 +272,19 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         Args:
             renderer: Console renderer
         """
-        scenario_name = self._outcome.first_failure_name
-        total_failed = self._outcome.failed_count
-        error_msg = self._outcome.first_failure_error or 'No error message available'
+        outcome = self._outcome
+        scenario_name = outcome.first_failure_name
 
-        # Extract first meaningful error line
-        lines = [line.strip()
-                 for line in error_msg.split('\n') if line.strip()]
-        error_lines = [
-            line for line in lines
-            if not (line.startswith("Scenario '") and 'failed validation:' in line)
-        ]
-
-        first_error = error_lines[0] if error_lines else 'Unknown error'
-        remaining_errors = len(error_lines) - 1
-        remaining_scenarios = total_failed - 1
+        # The first message line that says something, as the outcome splits it
+        messages = outcome.first_failure_messages
+        if messages:
+            first_error = messages[0]
+        elif outcome.first_failure_error:
+            first_error = 'Unknown error'
+        else:
+            first_error = 'No error message available'
+        remaining_errors = outcome.first_failure_more_messages
+        remaining_scenarios = outcome.other_failed_count
 
         # Truncate error if too long
         max_len = 80
@@ -301,38 +301,28 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         print(f"{renderer.red('Error:              ')}{first_error}{error_suffix}")
 
     def _render_time_performance(self, renderer: ConsoleRenderer):
-        """Render in-time and real-time performance sections."""
-        # Calculate in-time statsf
-        in_time_stats = self._calculate_in_time_stats()
-
-        # Calculate real-time stats using ONLY tick run time
+        """Render in-time and real-time performance sections — every figure from the run meta."""
+        meta = self._run_meta
         agg = self._profiling.aggregate
-        # Algo ticks (non-clipped, coordination) — what the algo path actually processed
-        algo_ticks = sum(u.ticks_processed for u in self._scenario_details.units)
-
-        # Total ticks (including clipped) — what the loop actually iterated (0 = no clipping)
-        ticks_total = agg.clipping_total_ticks
-        # Fall back to algo_ticks when no clipping active (ticks_total=0)
-        loop_ticks = ticks_total if ticks_total > 0 else algo_ticks
-        has_clipping = ticks_total > 0 and ticks_total != algo_ticks
-
-        # Use tick run time (excludes warmup)
-        tickrun_time = self._run_meta.tickrun_time_s
-        ticks_per_second = loop_ticks / tickrun_time if tickrun_time > 0 else 0
-        speedup = (in_time_stats['processed_hours'] * 3600) / \
-            tickrun_time if tickrun_time > 0 else 0
+        # The market time in hours: covered once, and processed summed over the scenarios
+        covered = (self._run_summary.tick_timespan_seconds or 0.0) / 3600
+        processed_hours = (self._run_summary.tick_timespan_total_seconds or 0.0) / 3600
+        # The algo path's ticks, and what the loop iterated (the clipping total where a budget
+        # clipped, the algo ticks otherwise)
+        algo_ticks = meta.total_ticks_processed
+        loop_ticks = meta.loop_ticks
+        tickrun_time = meta.tickrun_time_s
 
         # Render IN-TIME section — the MEASURED tick timespan, never the declared windows: a
         # stretch two scenarios share is covered once and processed twice, and both are true.
         renderer.print_bold('IN-TIME PERFORMANCE (tick timespan)')
         renderer.print_separator(width=68)
-        covered = in_time_stats['covered_hours']
         print(f'Covered:            {covered:.1f} hours ({covered / 24:.1f} days, overlap once)')
         print(
-            f"Processed:          {in_time_stats['processed_hours']:.1f} hours "
+            f"Processed:          {processed_hours:.1f} hours "
             f"({self._run_summary.unit_count} scenarios summed, "
-            f"avg {in_time_stats['avg_hours']:.2f} h)")
-        if has_clipping:
+            f"avg {meta.avg_hours_per_unit:.2f} h)")
+        if meta.has_clipping:
             print(f'Ticks Processed:    {loop_ticks:,} total ({algo_ticks:,} algo)')
         else:
             print(f'Ticks Processed:    {algo_ticks:,} total')
@@ -340,39 +330,37 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         # Tick budget one-liner (only when clipping was active)
         if agg.budget_active:
             total_clipped = agg.clipping_total_clipped
-            total_original = agg.clipping_total_ticks
             budget_str = '/'.join(f'{b}ms' for b in agg.clipping_budgets)
             if total_clipped > 0:
-                rate = total_clipped / total_original * 100 if total_original > 0 else 0
                 print(
                     f'Tick Budget:        {budget_str} '
-                    f'({total_clipped:,} clipped = {rate:.1f}%)')
+                    f'({total_clipped:,} clipped = {agg.clipping_rate_pct:.1f}%)')
             else:
                 print(f'Tick Budget:        {budget_str} (no ticks clipped)')
 
         print(
-            f"Ticks/Hour:         {in_time_stats['ticks_per_hour']:,.0f} (market density)")
+            f'Ticks/Hour:         {meta.ticks_per_hour:,.0f} (market density)')
 
         print()
 
         # Render REAL-TIME section (tick processing speed)
         renderer.print_bold('REAL-TIME PERFORMANCE (Tick Processing Speed)')
         renderer.print_separator(width=68)
-        pickle_time = self._run_meta.pickle_time_s
-        pickle_mb = self._run_meta.pickle_sample_mb
+        pickle_time = meta.pickle_time_s
+        pickle_mb = meta.pickle_sample_mb
         if pickle_time > 0.0:
-            execution_time = tickrun_time - pickle_time
             mb_str = f' ~{pickle_mb:.1f} MB/scenario' if pickle_mb > 0.0 else ''
             print(
                 f'Tick Run Time:      {tickrun_time:.1f} seconds '
-                f'(pickle: {pickle_time:.1f}s{mb_str} | execution: {execution_time:.1f}s)'
+                f'(pickle: {pickle_time:.1f}s{mb_str} | '
+                f'execution: {meta.tickrun_execution_time_s:.1f}s)'
             )
         else:
             print(f'Tick Run Time:      {tickrun_time:.1f} seconds')
         print(
-            f'Ticks/Second:       {ticks_per_second:,.0f} (processing rate)')
+            f'Ticks/Second:       {meta.ticks_per_second:,.0f} (processing rate)')
         print(
-            f"Speedup:            {speedup:,.0f}x ({in_time_stats['processed_hours']:.0f} hours → {tickrun_time:.0f} seconds)")
+            f'Speedup:            {meta.speedup:,.0f}x ({processed_hours:.0f} hours → {tickrun_time:.0f} seconds)')
 
     def _render_portfolio_performance(self, renderer: ConsoleRenderer):
         """Render aggregated portfolio performance from the model (#397)."""
@@ -553,17 +541,15 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
 
         # Totals
         print('')
-        if row.spot_has_base_holdings and row.spot_total_est_initial > 0:
-            total_pnl = row.spot_total_est_current - row.spot_total_est_initial
-            total_pnl_pct = (total_pnl / row.spot_total_est_initial * 100)
+        if row.spot_total_est_pnl is not None:
             print(f'Est. Portfolio:     {format_currency_signed(row.spot_total_est_current, currency)}')
-            print(f'Total P&L:          {renderer.pnl(total_pnl, currency)} ({total_pnl_pct:+.2f}%)')
+            print(f'Total P&L:          {renderer.pnl(row.spot_total_est_pnl, currency)} '
+                  f'({row.spot_total_est_pnl_pct:+.2f}%)')
         else:
-            # Simple P&L when no base holdings (same as margin)
-            pnl = row.final_balance - row.initial_balance
-            pnl_pct = (pnl / row.initial_balance * 100) if row.initial_balance > 0 else 0
+            # The balance P&L when nothing at spot could be valued (same as margin)
             print(f'Final Balance:      {format_currency_signed(row.final_balance, currency)}')
-            print(f'Total P&L:          {renderer.pnl(pnl, currency)} ({pnl_pct:+.2f}%)')
+            print(f'Total P&L:          {renderer.pnl(row.balance_pnl, currency)} '
+                  f'({row.balance_pnl_pct:+.2f}%)')
 
         # Trade stats
         if h.total_trades > 0:
@@ -653,22 +639,9 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             layer is off, empty string when both layers are on (default case
             — no friction).
         """
-        layer_a_on = self._run_meta.worker_tracking_on
-        layer_b_on = self._run_meta.profiling_tracking_on
-
-        if layer_a_on and layer_b_on:
+        msg = _TRACKING_LINE[self._run_meta.performance_tracking]
+        if not msg:
             return ''
-
-        if not layer_a_on and not layer_b_on:
-            msg = ('⚠️  All performance tracking OFF '
-                   '(no per-component or operation-level diagnostics)')
-        elif not layer_a_on:
-            msg = ('⚠️  Worker tracking OFF '
-                   '(per-worker / decision breakdowns unavailable)')
-        else:
-            msg = ('⚠️  Tick-loop profiling OFF '
-                   '(operation hotspot analysis unavailable)')
-
         return f'Tracking:           {renderer.yellow(msg)}'
 
     def _format_warmup_hotspot(self, renderer: ConsoleRenderer) -> str:
@@ -683,93 +656,56 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
         Returns:
             Formatted one-liner string, or empty string if no data
         """
-        phases = self._profiling.warmup_phases
-        if not phases:
+        profiling = self._profiling
+        if not profiling.warmup_phases or profiling.warmup_total_s <= 0:
             return ''
 
-        total_warmup = sum(p.duration_s for p in phases)
-        if total_warmup <= 0:
-            return ''
-
-        slowest = max(phases, key=lambda p: p.duration_s)
-        pct = slowest.duration_s / total_warmup * 100
         phase_part = renderer.yellow(
-            f'Phase [{slowest.name}]  {slowest.duration_s:.1f}s ({pct:.1f}%)'
+            f'Phase [{profiling.warmup_slowest_phase}]  {profiling.warmup_slowest_s:.1f}s '
+            f'({profiling.warmup_slowest_pct:.1f}%)'
         )
 
         # Slowest scenario deviation (only when >1 scenario and profiling data present)
-        scenario_part = self._format_slowest_scenario_deviation(renderer)
+        scenario_part = self._format_slowest_scenario_deviation()
         if scenario_part:
             return f'{phase_part}  |  {scenario_part}'
         return phase_part
 
-    def _format_slowest_scenario_deviation(self, renderer: ConsoleRenderer) -> str:
+    def _format_slowest_scenario_deviation(self) -> str:
         """
         Build slowest scenario deviation string vs. average.
 
-        Uses sum of profiling profile_times per scenario as proxy for compute cost.
-        Only shown when deviation > 15% and more than 1 scenario present.
-
-        Args:
-            renderer: Console renderer for color formatting
+        Uses sum of profiling profile_times per scenario as proxy for compute cost. Shown whenever
+        more than one scenario was profiled and the mean is above zero — a measurement; there is
+        deliberately no "too slow" threshold (validators/shared_advisory_checks.py).
 
         Returns:
             Formatted deviation string, or empty string
         """
         # Per-scenario compute cost = the unit's summed operation time (profiling model).
         # The model only carries units where tick-loop profiling was on — same filter as before.
-        units = self._profiling.units
-        if len(units) < 2:
+        if len(self._profiling.units) < 2:
             return ''
 
-        scenario_times = [(u.name, u.total_ms) for u in units]
-
-        avg_ms = sum(t for _, t in scenario_times) / len(scenario_times)
-        if avg_ms <= 0:
+        agg = self._profiling.aggregate
+        deviation_pct = agg.slowest_profiled_unit_deviation_pct
+        if deviation_pct is None:
             return ''
 
-        slowest_name, slowest_ms = max(scenario_times, key=lambda x: x[1])
-        deviation_pct = (slowest_ms - avg_ms) / avg_ms * 100
-
-        if deviation_pct < 15.0:
-            return ''
-
-        return renderer.yellow(f'Slowest Scenario: {slowest_name}  +{deviation_pct:.0f}% vs avg')
+        # Plain, not yellow: a measurement, which no threshold turns into a warning
+        return f'Slowest Scenario: {agg.slowest_profiled_unit}  +{deviation_pct:.0f}% vs avg'
 
     def _render_system_resources(self, renderer: ConsoleRenderer):
         """Render system resources section."""
-        # Through the one reader every display uses: the processors and the memory that bind
-        machine = MachineResourcesReader().read()
-        ram_total_gb = machine.memory.limit_bytes / (1024**3)
-        ram_available_gb = (machine.memory.limit_bytes - machine.memory.used_bytes) / (1024**3)
-
+        # The processors and the memory that bind, as the run meta read them when it was derived
+        meta = self._run_meta
         renderer.print_bold('SYSTEM RESOURCES')
         renderer.print_separator(width=68)
-        print(f'CPU Cores:          {machine.cpu.count:g}')
+        if meta.machine_cpu_count is None or meta.machine_memory_limit_bytes is None:
+            print('Machine:            not recorded')
+            return
+        ram_total_gb = meta.machine_memory_limit_bytes / (1024**3)
+        ram_available_gb = meta.machine_memory_available_bytes / (1024**3)
+        print(f'CPU Cores:          {meta.machine_cpu_count:g}')
         print(
             f'RAM:                {ram_available_gb:.1f} GB available / {ram_total_gb:.1f} GB total')
-
-    def _calculate_in_time_stats(self) -> Dict[str, float]:
-        """
-        Calculate in-time statistics from the run-summary + profiling models.
-
-        Returns:
-            Dict with covered_hours, processed_hours, avg_hours, ticks_per_hour
-        """
-        summary = self._run_summary
-        covered_hours = (summary.tick_timespan_seconds or 0.0) / 3600
-        total_hours = (summary.tick_timespan_total_seconds or 0.0) / 3600
-
-        # Ticks per hour (market density = all ticks incl. clipped; fall back to the
-        # coordination ticks when no clipping was active)
-        ticks_total = self._profiling.aggregate.clipping_total_ticks
-        if ticks_total == 0:
-            ticks_total = sum(u.ticks_processed for u in self._scenario_details.units)
-        ticks_per_hour = ticks_total / total_hours if total_hours > 0 else 0
-
-        return {
-            'covered_hours': covered_hours,
-            'processed_hours': total_hours,
-            'avg_hours': total_hours / summary.unit_count if summary.unit_count else 0.0,
-            'ticks_per_hour': ticks_per_hour
-        }

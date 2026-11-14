@@ -28,6 +28,9 @@ Strategy in one paragraph:
   backtest. No venue holds them — which is what makes the logic run on a venue whose
   API takes no stop for a position — so a position is unprotected while this process
   is not running.
+- With `close_at_session_end` it closes what it holds on its way out, from the session-end
+  event, and hears how each close ended (#642) — a backtest at its data end, a session through
+  its stop's second wait, which runs on a requested stop.
 
 Multi-position note: the backtest engine runs ONE symbol per scenario today
 (portfolio multi-symbol is #369 / V1.5), so multi-position here means several
@@ -36,29 +39,34 @@ trailing stop / partial close.
 """
 
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.own_exit_levels import OwnExitLevels
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
 )
 from python.framework.types.component_metadata_types import ComponentMetadata
+from python.framework.types.decision_event_types import (
+    DecisionEventType,
+    SessionEndEvent,
+    SessionEndOrderOutcomeEvent,
+)
 from python.framework.types.decision_logic_types import (
     AwarenessLevel,
     Decision,
     DecisionLogicAction,
 )
-from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderFeature,
-    OrderResult,
     OrderSide,
     OrderType,
 )
@@ -119,6 +127,7 @@ class TrendChannelReference(AbstractDecisionLogic):
         self.lot_size = self.params.get('lot_size')
         self.min_entry_capital = self.params.get('min_entry_capital')
         self.write_strategy_files = self.params.get('write_strategy_files')
+        self.close_at_session_end = self.params.get('close_at_session_end')
 
         # ============================================
         # Per-tick worker read (stashed for the execution pass)
@@ -217,6 +226,12 @@ class TrendChannelReference(AbstractDecisionLogic):
                 description='Keep the last submitted setup in the run as the strategy file '
                             'strategy_files/last_setup.json'
             ),
+            'close_at_session_end': InputParamDef(
+                param_type=bool, default=False,
+                description='Close every open position from the session-end event, so the run '
+                            'ends flat — a backtest at its data end, a session on a requested '
+                            'stop (#642)'
+            ),
         }
 
     @classmethod
@@ -274,10 +289,50 @@ class TrendChannelReference(AbstractDecisionLogic):
     def get_metadata(cls) -> ComponentMetadata:
         """Didactic CORE reference logic — teaching example, no profitability claim."""
         return ComponentMetadata(
-            version='1.6.0',
+            version='1.7.0',
             doc_link='docs/user_guides/trend_channel_reference_guide.md',
             recommended_markets=('forex',),
         )
+
+    @classmethod
+    def get_subscribed_events(cls) -> Set[DecisionEventType]:
+        """
+        The session's end and how the orders sent on the way out ended.
+
+        Returns:
+            The two event types the session-end close needs
+        """
+        return {DecisionEventType.SESSION_END, DecisionEventType.SESSION_END_ORDER_OUTCOME}
+
+    def on_session_end(self, event: SessionEndEvent) -> None:
+        """
+        Close what is held, when configured to end flat (#642).
+
+        Both pipelines settle such a close — a backtest at its last quote, a session through the
+        stop's second wait — and report how it ended to on_session_end_order_outcome.
+
+        Args:
+            event: Session-end detail (reason, severity)
+        """
+        if not self.close_at_session_end:
+            return
+        for position in self.trading_api.get_open_positions():
+            result = self.trading_api.close_position(position.position_id)
+            if result.is_refused:
+                self.logger.warning(
+                    f'Session-end close of {position.position_id} refused: '
+                    f'{result.rejection_message}')
+
+    def on_session_end_order_outcome(self, event: SessionEndOrderOutcomeEvent) -> None:
+        """
+        Say how a close sent on the way out ended.
+
+        Args:
+            event: The order, how it ended, and its booked row
+        """
+        self.emit_event(
+            f'Session-end order {event.order_id}: {event.status.value}',
+            AwarenessLevel.NOTICE, 'session_end_order')
 
     def on_market_data_stale(self, status: MarketDataStatus) -> None:
         """
@@ -455,7 +510,7 @@ class TrendChannelReference(AbstractDecisionLogic):
 
     def compute_tick(
         self,
-        tick: TickData,
+        tick: AlgoTick,
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         """
@@ -536,8 +591,8 @@ class TrendChannelReference(AbstractDecisionLogic):
     def _execute_decision_impl(
         self,
         decision: Decision,
-        tick: TickData
-    ) -> Optional[OrderResult]:
+        tick: AlgoTick
+    ) -> Optional[AlgoOrderResult]:
         """
         Manage open positions + resting entries, then place a new entry if armed.
 
@@ -552,7 +607,7 @@ class TrendChannelReference(AbstractDecisionLogic):
             tick: Current tick data
 
         Returns:
-            OrderResult if a new entry order was submitted, None otherwise
+            AlgoOrderResult if a new entry order was submitted, None otherwise
         """
         if not self.trading_api:
             self.logger.warning('Trading API not available - cannot execute')
@@ -632,8 +687,8 @@ class TrendChannelReference(AbstractDecisionLogic):
     def _try_open_entry(
         self,
         decision: Decision,
-        tick: TickData
-    ) -> Optional[OrderResult]:
+        tick: AlgoTick
+    ) -> Optional[AlgoOrderResult]:
         """
         Place a resting LIMIT/STOP entry if capacity and entry capital allow.
 
@@ -645,7 +700,7 @@ class TrendChannelReference(AbstractDecisionLogic):
             tick: Current tick data
 
         Returns:
-            OrderResult if an entry was submitted, None otherwise
+            AlgoOrderResult if an entry was submitted, None otherwise
         """
         symbol = tick.symbol
 
@@ -724,7 +779,7 @@ class TrendChannelReference(AbstractDecisionLogic):
     # Open-position management — partial close + trailing
     # ============================================
 
-    def _manage_open_positions(self, tick: TickData) -> None:
+    def _manage_open_positions(self, tick: AlgoTick) -> None:
         """
         Run the partial-close rung and the always-on trailing stop per position.
 
@@ -745,7 +800,7 @@ class TrendChannelReference(AbstractDecisionLogic):
             self._maybe_partial_close(pos, tick)
             self._maybe_trail(pos, tick)
 
-    def _maybe_partial_close(self, pos, tick: TickData) -> None:
+    def _maybe_partial_close(self, pos, tick: AlgoTick) -> None:
         """
         Close `partial_fraction` of the original lots once the R rung is reached.
 
@@ -788,7 +843,7 @@ class TrendChannelReference(AbstractDecisionLogic):
             AwarenessLevel.NOTICE, 'partial_close',
         )
 
-    def _maybe_trail(self, pos, tick: TickData) -> None:
+    def _maybe_trail(self, pos, tick: AlgoTick) -> None:
         """
         Ratchet the stop loss toward price in the profit direction (never backward).
 
@@ -820,16 +875,13 @@ class TrendChannelReference(AbstractDecisionLogic):
             if stop is None or new_sl < stop - epsilon:
                 self._exits.move_stop(pid, pos.direction, new_sl)
 
-    def _mark_price(self, pos, tick: TickData) -> float:
+    def _mark_price(self, pos, tick: AlgoTick) -> float:
         """
         The price this position would be closed at right now, read from THIS tick.
 
-        Read from the tick rather than from `pos.current_price`, and that is the point:
-        `PortfolioManager.get_open_positions()` hands out positions WITHOUT marking them —
-        its own docstring says the values may be stale — so a decision reading the marked
-        price got whatever the last unrelated caller happened to leave there. The behaviour
-        of the strategy then depended on who else asked for a mark-to-market that tick,
-        which is a reproducibility leak, not a stale number (#497).
+        Read from the tick: it is the quote this pass decides on. A position's `current_price`
+        agrees with it, because an algo receives an `AlgoPosition`, which computes that price from
+        the latest quote when read (#653).
 
         Closing a LONG sells into the bid and closing a SHORT buys the ask — the same
         convention `Position.update_current_price` marks with, so the R measured here and
@@ -847,7 +899,7 @@ class TrendChannelReference(AbstractDecisionLogic):
                    else OrderDirection.LONG)
         return taken_price(closing, tick.bid, tick.ask)
 
-    def _current_r(self, pos, tick: TickData) -> float:
+    def _current_r(self, pos, tick: AlgoTick) -> float:
         """
         Current R-multiple of an open position (favourable move / initial risk).
 
@@ -872,7 +924,7 @@ class TrendChannelReference(AbstractDecisionLogic):
     # Resting-entry management — fill / cancel / re-price
     # ============================================
 
-    def _manage_resting_entries(self, tick: TickData) -> None:
+    def _manage_resting_entries(self, tick: AlgoTick) -> None:
         """
         Promote filled entries, drop ended ones, cancel on gate-flip, re-price on band drift.
 
@@ -1009,7 +1061,7 @@ class TrendChannelReference(AbstractDecisionLogic):
         self,
         side: OrderSide,
         decision: Decision,
-        tick: TickData,
+        tick: AlgoTick,
     ) -> None:
         """
         Append one row to the setup-funnel diagnostics CSV per submitted entry.
@@ -1035,7 +1087,7 @@ class TrendChannelReference(AbstractDecisionLogic):
             'band_width': round(decision.outputs['band_width'], 5),
         })
 
-    def _keep_last_setup(self, side: OrderSide, decision: Decision, tick: TickData) -> None:
+    def _keep_last_setup(self, side: OrderSide, decision: Decision, tick: AlgoTick) -> None:
         """
         Keep the last submitted setup as a file of the strategy's own, replaced on every entry —
         a write at a decision moment, never per tick.
@@ -1062,7 +1114,7 @@ class TrendChannelReference(AbstractDecisionLogic):
     # Helpers
     # ============================================
 
-    def _flat(self, tick: TickData, reason: str) -> Decision:
+    def _flat(self, tick: AlgoTick, reason: str) -> Decision:
         """
         Build a FLAT decision with the standard output payload.
 

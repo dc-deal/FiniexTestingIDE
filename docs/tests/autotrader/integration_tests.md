@@ -4,6 +4,23 @@
 
 End-to-end validation of AutoTrader mock sessions and unit testing of AutoTrader components.
 
+## Both account models
+
+The tick loop is one for both account models, and the money paths branch inside it, so a margin
+defect hides behind a green spot suite. Where a whole session runs on a margin account:
+
+| Test | Profile | What runs at margin |
+|---|---|---|
+| `test_partial_close_live_pipeline.py` | `partial_close_lifecycle.json` (MT5 USDJPY) | warmup, a worker, partial closes, entry and exit trades, the event stream |
+| `test_event_channel_live_pipeline.py` | `event_channel_lifecycle.json` (MT5 USDJPY) | the decision event channel end to end |
+| `session_end/test_stop_waits_for_orders.py` | `session_stop_awaited_order_margin.json` (MT5 USDJPY) | a stop that waits for its order |
+| `safety/test_margin_safety_integration.py` | `margin_safety_test.json` (MT5 EURUSD) | the safety breaker on margin equity |
+
+The live executor suite builds its portfolio at margin unless a test asks for spot
+(`MockOrderExecution(spot_mode=True)`), and the money paths that differ are run in both
+(`[margin, spot]` in [live_executor_tests.md](live_executor_tests.md)). A margin session's whole
+report is also frozen as a golden sample (the fixture catalog's `mock_session_margin`).
+
 ## Test Files
 
 ### test_autotrader_mock_session.py
@@ -131,6 +148,7 @@ recovered", both staleness contracts in ONE fast session driven by the
 |------|-------------------|
 | `test_session_completes_normally` | Normal shutdown, 3000 ticks, empty error pot despite the outage |
 | `test_stale_episode_reaches_the_pot_with_span` | Exactly one flip warning + one recovery line with the from–to span (the v0 stale protocol) |
+| `test_the_pause_keeps_the_session_on_the_replay_s_day` | The freeze is a pause in real time inside a replay of 2026-04-27 (#616): the session seals exactly one booking period, its end, and it opens and closes on the replay's day — before the replay's own time, an idle pass read the wall clock and the session sealed a period for every day up to the day it ran |
 | `test_decision_hook_fired_once` | `on_market_data_stale` edge-dispatched exactly once per episode |
 | `test_guard_blocked_the_stale_entry` | The probe's deliberate ghost-pass entry was refused by the guard (`STALE_MARKET_DATA` floor) and counted as a denial — nothing was sent |
 | `test_signal_side_fired_too` | `on_signal_stale` fired once (aged archive) — both contracts in one session |

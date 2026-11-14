@@ -139,6 +139,20 @@ anything, and these tests hold it to what construction then produces.
 | `test_the_rendered_strategy_matches_the_constructed_components` | Over EVERY shipped mock profile: what the renderer records equals what `create_logic` / `create_workers_from_config` build — both go through the factories' one helper, and this is what notices a drift |
 | `test_a_parameter_that_moved_after_rendering_refuses_the_session` · `test_a_worker_the_record_does_not_name_refuses_the_session` | The startup check refuses, naming the parameter or the worker set — a record that misstates a real-money session is worse than none |
 
+### `test_config_registration_warning.py`
+
+The session registers its profile and freezes its rendered configuration in the run-config
+store before its header goes down. Both stay non-fatal, so a store that cannot be written costs
+the run its join keys and never its trading — but an empty id read afterwards cannot tell a
+failed store from one never asked, so the failure is said in the session's log at once.
+
+| Test | What it verifies |
+|---|---|
+| `test_a_profile_the_store_cannot_register_is_reported_with_its_cause` | An empty `config_id` comes with one warning naming the profile, the error and what is missing |
+| `test_a_rendered_configuration_the_store_cannot_freeze_is_reported_with_its_cause` | The same for `rendered_config_id`, the identity a backtest of the session's window reads |
+| `test_a_registration_that_succeeds_says_nothing` | A working store returns its ids and logs nothing |
+| `test_nothing_to_register_is_not_a_failure` | No profile path or no rendered document returns an empty id without a warning |
+
 ### `test_uncommitted_code_guard.py` (#551)
 
 A session whose EFFECTIVE `dry_run` resolves to false refuses to start while any repository it

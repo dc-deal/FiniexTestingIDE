@@ -1,0 +1,27 @@
+{
+  "run_id": "20261110_143714_cda3c190",
+  "units": [
+    {
+      "name": "tp_triggered_test",
+      "symbol": "BTCUSD",
+      "total_submitted": 2,
+      "total_accepted": 2,
+      "total_rejected": 0,
+      "total_never_confirmed": 0,
+      "total_expired": 0,
+      "avg_in_flight_ms": 1.2278610010980628,
+      "min_in_flight_ms": 1.0692030009522568,
+      "max_in_flight_ms": 1.3865190012438688,
+      "in_flight_count": 2,
+      "never_confirmed_orders": [],
+      "active_limit_orders": [],
+      "active_stop_orders": [],
+      "active_limit_count": 0,
+      "active_stop_count": 0,
+      "active_order_count": 0
+    }
+  ],
+  "key": [
+    "name"
+  ]
+}

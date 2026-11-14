@@ -155,6 +155,17 @@ class TestExtractRefuses:
         assert 'could not be attributed' in capsys.readouterr().out
         assert list(tree.raw_dir.iterdir()) == [stray]
 
+    def test_a_selected_member_refused_by_an_earlier_import(self, tree, capsys):
+        """Its old refusal would read as one of this re-import in verify."""
+        build_standard_archive(tree)
+        refused = tree.refused_dir / sorted(WINTER_MT5)[0]
+        refused.write_bytes(b'{}')
+
+        assert tree.build_tool().extract(WINTER_SCOPE) == 1
+
+        assert 'from an earlier refusal' in capsys.readouterr().out
+        assert not list(tree.raw_dir.glob('*_ticks.json'))
+
     def test_a_partial_extraction_left_in_the_inbox(self, tree):
         """A '.part' is an extraction that was interrupted."""
         build_standard_archive(tree)

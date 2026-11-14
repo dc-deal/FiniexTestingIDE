@@ -16,6 +16,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from python.framework.types.api.recording_state_types import RecordingState
 from python.framework.types.api.state_frame_types import StateFrame, StateFrameStreamEnds
+from python.framework.types.chart_types.indicator_series_entry_types import (
+    IndicatorSeriesEntry,
+    IndicatorSeriesRecord,
+    IndicatorSeriesStreamHeader,
+)
 from python.framework.types.run_stream_types import RecordedStreamKind, StreamDayIndexRow
 
 
@@ -86,7 +91,8 @@ class RecordedStateFrame(StateFrame):
 class RecordedStreamsWindow(BaseModel):
     """
     A unit's records within a time window, oldest first, at most `limit` of them unless one
-    millisecond holds more (#580).
+    millisecond holds more (#580) — the records of all its streams, merged by their time, so one
+    page and one `next_from` serve them all (#379).
 
     `matched` counts the window's records before the limit, `returned` the ones served. A page
     never ends inside a millisecond, so a millisecond holding more records than `limit` is served
@@ -105,6 +111,8 @@ class RecordedStreamsWindow(BaseModel):
         next_from: Where the records left out begin, or None
         keys: What makes one row of each list unique
         state_frames: The unit's state frames in the window, oldest first
+        indicator_series: Every series the unit records, its values in the window — one entry per
+            layer, its bars oldest first; an entry with no bar in the window is served empty
     """
     run_id: str
     unit_name: str
@@ -115,8 +123,9 @@ class RecordedStreamsWindow(BaseModel):
     limit: int
     truncated: bool
     next_from: Optional[datetime] = None
-    keys: Dict[str, List[str]] = {'state_frames': ['record_no']}
-    state_frames: List[RecordedStateFrame]
+    keys: Dict[str, List[str]] = {'state_frames': ['record_no'], 'indicator_series': ['layer']}
+    state_frames: List[RecordedStateFrame] = []
+    indicator_series: List[IndicatorSeriesEntry] = []
 
 
 @dataclass(frozen=True)
@@ -149,6 +158,43 @@ class StateFramePage:
     """
     unit_name: Optional[str]
     frames: List[RecordedStateFrame]
+    matched: int
+    truncated: bool
+    next_time: Optional[datetime]
+    newest_time: Optional[datetime]
+
+
+@dataclass(frozen=True)
+class IndicatorSeriesStreamOverview:
+    """
+    One indicator series stream by its trading days, read without its records — a row of a unit's
+    timeline (#379).
+
+    Args:
+        header: Its header, None while the stream is opened and its header not yet on the disk
+        days: One row per trading day, oldest first
+        truncated_tail: Whether a last line cut off mid-write was left out
+    """
+    header: Optional[IndicatorSeriesStreamHeader]
+    days: List[StreamDayIndexRow]
+    truncated_tail: bool
+
+
+@dataclass(frozen=True)
+class IndicatorSeriesPage:
+    """
+    One page of an indicator series stream within a time window (#379).
+
+    Args:
+        header: Its header, None while the stream is opened and its header not yet on the disk
+        records: The page's bars, oldest first
+        matched: How many bars the window holds
+        truncated: Whether the page left bars out
+        next_time: Where the bars left out begin, or None
+        newest_time: The opening instant of the stream's newest bar, None when it holds none
+    """
+    header: Optional[IndicatorSeriesStreamHeader]
+    records: List[IndicatorSeriesRecord]
     matched: int
     truncated: bool
     next_time: Optional[datetime]

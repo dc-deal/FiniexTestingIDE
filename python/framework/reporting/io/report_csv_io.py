@@ -38,7 +38,10 @@ def write_trade_history_csv(report: TradeHistoryReport, writer: RunEntryWriter) 
     # Flat aggregate table: the nested per-fill executions (#393) are JSON-only —
     # they do not flatten into a single CSV row (same rule as the portfolio model).
     nested = {'entry_executions', 'exit_executions'}
-    columns = ['run_id'] + [k for k in TradeHistoryRow.model_fields if k not in nested]
+    # A computed field is a column like a stored one — the same table as the JSON / API model
+    columns = ['run_id'] + [k for k in (*TradeHistoryRow.model_fields,
+                                        *TradeHistoryRow.model_computed_fields)
+                            if k not in nested]
     # JSON mode: an enum is written as its value (`partial`, not `CloseType.PARTIAL`)
     return writer.write_table(
         RunEntryMemberId.TRADE_HISTORY_CSV, columns,

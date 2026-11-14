@@ -28,6 +28,7 @@ from python.framework.types.live_types.reconciliation_types import ReconcileStat
 # re-derived from — and the safety report's job is to surface exactly that record. A parallel
 # row type would be a hand-maintained copy of it, and a copy is what silently drops a field.
 from python.framework.types.persistence_types import RiskBaseline
+from python.framework.types.rendering_types import BatchStatus
 from python.framework.types.run_kind_types import OrdersTo, TicksFrom
 from python.framework.types.run_origin_types import CodeIdentity, CodeStand, RunChannel, RunOrigin
 from python.framework.types.run_outcome_types import RunOutcome
@@ -50,6 +51,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
     RejectionReason,
 )
+from python.framework.utils.trading_math.order_math import execution_rate_pct
 
 # WHAT MAKES ONE ROW of each deployment view unique. Declared once, read by the response model
 # below AND by the fold that produces the rows (`deployment_history_builder` passes SESSION_KEY
@@ -138,7 +140,9 @@ class TradeHistoryRow(BaseModel):
     r_multiple: float | None = None  # net_pnl / initial_risk; None when no stop loss
     # Full projection (#393) — lets the console audit table render purely from the model
     scenario_name: str = ''     # owning run unit (sim: scenario; live: session) → grouping
-    entry_tick_index: int = 0   # chronological sort key within a unit
+    # The chronological sort key within a unit; None for a position a session restored at boot,
+    # which opened in another session's numbering
+    entry_tick_index: Optional[int] = None
     exit_tick_index: int = 0
     entry_type: str = ''        # 'market' | 'limit' | 'stop' | 'stop_limit'
     stop_loss: float | None = None
@@ -166,6 +170,25 @@ class TradeHistoryRow(BaseModel):
     close_type: CloseType | None = None
     position_closes: int | None = None
     entry_lots: float | None = None
+
+    @computed_field
+    @property
+    def duration_ticks(self) -> Optional[int]:
+        """
+        How many ticks of its unit the trade was open, from its entry to the tick it closed on.
+
+        Derived rather than stored, so it cannot drift from the two indices it is read from. A
+        position a session restored at boot has no entry index in this session's numbering; a
+        record from before that was so still carries the index of the session that opened it, and
+        an exit before its entry shows that.
+
+        Returns:
+            The exit tick index less the entry tick index; None for a restored position, or where
+            the exit lies before the entry
+        """
+        if self.entry_tick_index is None or self.exit_tick_index < self.entry_tick_index:
+            return None
+        return self.exit_tick_index - self.entry_tick_index
 
 
 class TradeAnalytics(BaseModel):
@@ -202,6 +225,27 @@ class TradeAnalytics(BaseModel):
     # readable at all: a period whose trades average four hours is a different strategy from one
     # whose trades average four days, and net P&L cannot tell them apart.
     avg_trade_duration_s: float = 0.0
+    # The same holding time in the unit's ticks, from each trade's `duration_ticks`. 0 over no
+    # trade, like the seconds above
+    avg_trade_duration_ticks: float = 0.0
+    min_trade_duration_ticks: int = 0
+    max_trade_duration_ticks: int = 0
+    # The group's trades by direction and by outcome. A trade that realised nothing is neither a
+    # winner nor a loser — the rule the portfolio counters and the booking periods share
+    long_trades: int = 0
+    short_trades: int = 0
+    winning_trades: int = 0
+    losing_trades: int = 0
+    # How the group's trades were closed, by `close_reason`; `manual_closes` is every trade the
+    # other three do not name
+    sl_closes: int = 0
+    tp_closes: int = 0
+    scenario_end_closes: int = 0
+    manual_closes: int = 0
+    # Per trade: the group's totals over its trade count; 0.0 over no trade
+    avg_gross_pnl: float = 0.0
+    avg_fees: float = 0.0
+    avg_net_pnl: float = 0.0
     # The longest unbroken run of winners / losers, in REALISATION order.
     #
     # It carries a warning with it: this figure is NOT combinable across groups, and it is the
@@ -314,12 +358,51 @@ class OrderHistoryRow(BaseModel):
     slippage: Optional[float] = None
     slippage_pct: Optional[float] = None
 
+    def failure_label(self) -> str:
+        """
+        What a failed order's row names as its reason.
+
+        Returns:
+            Its rejection reason when refused, its end reason when not — or the status alone,
+            which for an undelivered order is the whole statement
+        """
+        if self.rejection_reason is not None:
+            return self.rejection_reason.value
+        if self.end_reason is not None:
+            return self.end_reason.value
+        return self.status.value
+
+
+class FailedOrdersOfUnit(BaseModel):
+    """How many failed orders of one run unit the order history lists."""
+    scenario_name: str
+    listed: int = 0
+
+
+class FailedOrderReason(BaseModel):
+    """How many listed failed orders share one status and one reason."""
+    status: OrderStatus
+    reason: str             # the row's failure label: rejection reason, end reason or status
+    count: int = 0
+
 
 class OrderHistoryReport(RunScopedReport):
     """The order-history table + light metadata (flat, like trade history)."""
     orders: list[OrderHistoryRow]
     count: int
     symbols: list[str]      # distinct symbols present (filter UX)
+    # The failed orders among `orders` — denied, rejected, undelivered, unaccounted — counted
+    # over the rows listed here. A long session's history keeps only its newest rows, so these
+    # can be fewer than the execution statistics' `orders_failed`, which count every one.
+    # One entry per unit (keyed by `scenario_name`), one per status and reason (keyed by both,
+    # the most frequent first), and their total. A filter counts them again over what it kept.
+    failed_listed: int = 0
+    failed_by_unit: list[FailedOrdersOfUnit] = []
+    failed_by_reason: list[FailedOrderReason] = []
+    # What makes one row of each list unique (§49) — an order row has no key: it is an event, and
+    # its position in the list is its identity
+    keys: dict[str, list[str]] = {
+        'orders': [], 'failed_by_unit': ['scenario_name'], 'failed_by_reason': ['status', 'reason']}
 
 
 class OrderEventRow(BaseModel):
@@ -678,6 +761,19 @@ class PortfolioUnitRow(BaseModel):
     # a scenario has no policy, its data simply ends.
     session_end_policy: str = ''
 
+    @computed_field
+    @property
+    def open_position_count(self) -> int:
+        """
+        How many positions the unit still held when it ended.
+
+        Derived rather than stored, so it cannot drift from the list it counts.
+
+        Returns:
+            The number of open positions
+        """
+        return len(self.open_positions)
+
 
 class PortfolioAggregateRow(BaseModel):
     """Headline P&L rolled up per account currency (no cross-currency summing)."""
@@ -871,6 +967,43 @@ class PendingOrdersUnitRow(BaseModel):
     active_limit_orders: list[ActiveOrderRow] = []
     active_stop_orders: list[ActiveOrderRow] = []
 
+    @computed_field
+    @property
+    def active_limit_count(self) -> int:
+        """
+        How many limit orders were still resting when the unit ended.
+
+        Derived rather than stored, so it cannot drift from the list it counts.
+
+        Returns:
+            The number of active limit orders
+        """
+        return len(self.active_limit_orders)
+
+    @computed_field
+    @property
+    def active_stop_count(self) -> int:
+        """
+        How many stop orders were still resting when the unit ended.
+
+        Derived rather than stored, so it cannot drift from the list it counts.
+
+        Returns:
+            The number of active stop orders
+        """
+        return len(self.active_stop_orders)
+
+    @computed_field
+    @property
+    def active_order_count(self) -> int:
+        """
+        How many orders of either kind were still resting when the unit ended.
+
+        Returns:
+            The active limit and stop orders together
+        """
+        return len(self.active_limit_orders) + len(self.active_stop_orders)
+
 
 class PendingOrdersReport(RunScopedReport):
     """
@@ -942,6 +1075,45 @@ class ScenarioDetailsRow(BaseModel):
     error_type: str = ''
     error_message: str = ''
 
+    @computed_field
+    @property
+    def non_flat_signals(self) -> Optional[int]:
+        """
+        The decisions that asked to buy or sell.
+
+        Returns:
+            The buy and sell signals together; None where the decisions were not counted
+        """
+        if self.buy_signals is None or self.sell_signals is None:
+            return None
+        return self.buy_signals + self.sell_signals
+
+    @computed_field
+    @property
+    def non_flat_signal_pct(self) -> Optional[float]:
+        """
+        The decisions that asked to buy or sell, per tick processed.
+
+        Returns:
+            In percent of the ticks; 0.0 without a tick, None where the decisions were not counted
+        """
+        if self.non_flat_signals is None:
+            return None
+        return (self.non_flat_signals / self.ticks_processed * 100) if self.ticks_processed else 0.0
+
+    @computed_field
+    @property
+    def trades_requested_pct(self) -> Optional[float]:
+        """
+        The trades the decisions requested, per tick processed.
+
+        Returns:
+            In percent of the ticks; 0.0 without a tick, None where the decisions were not counted
+        """
+        if self.trades_requested is None:
+            return None
+        return (self.trades_requested / self.ticks_processed * 100) if self.ticks_processed else 0.0
+
 
 class DataBrokerRow(BaseModel):
     """
@@ -980,6 +1152,39 @@ class ScenarioDetailsReport(RunScopedReport):
     # the key does not separate (their reason says why). `units` is the roster the per-unit
     # figures of `portfolio` join onto, on this key.
     keys: dict[str, list[str]] = {'units': ['name'], 'data_brokers': ['data_broker_type']}
+
+    @computed_field
+    @property
+    def scenario_count(self) -> int:
+        """
+        How many scenarios the report lists, a failed one included.
+
+        Returns:
+            The number of unit rows
+        """
+        return len(self.units)
+
+    @computed_field
+    @property
+    def failed_scenario_count(self) -> int:
+        """
+        How many of them did not end in success.
+
+        Returns:
+            The rows whose status is not `success`
+        """
+        return sum(1 for unit in self.units if unit.status != 'success')
+
+    @computed_field
+    @property
+    def completed_scenario_count(self) -> int:
+        """
+        How many of them ended in success.
+
+        Returns:
+            All rows less the failed ones
+        """
+        return self.scenario_count - self.failed_scenario_count
 
 
 class RunReporting(StrEnum):
@@ -1522,6 +1727,41 @@ class BookingPeriodsReport(RunScopedReport):
     # of several. None when a unit's closing equity was not recorded.
     total_final_equity: float | None = None
 
+    @computed_field
+    @property
+    def period_count(self) -> int:
+        """
+        How many periods the report lists.
+
+        Returns:
+            The number of period rows
+        """
+        return len(self.periods)
+
+    @computed_field
+    @property
+    def period_unit_count(self) -> int:
+        """
+        How many units booked the listed periods.
+
+        Returns:
+            The number of distinct unit names among the periods
+        """
+        return len({row.unit_name for row in self.periods})
+
+    @computed_field
+    @property
+    def reconciliation_difference(self) -> Optional[float]:
+        """
+        How far the periods' total lies from the run's own figure.
+
+        Returns:
+            The periods' net P&L less the run's; None where the run reports no figure
+        """
+        if self.run_net_pnl is None:
+            return None
+        return self.total_net_pnl - self.run_net_pnl
+
 
 class AbsentUnitRow(BaseModel):
     """
@@ -1608,6 +1848,19 @@ class RunSummary(RunScopedReport):
     # What makes one row of each list unique (§49). An absent unit is keyed like every other
     # per-unit row, so it can be matched against the roster in `scenario-details`.
     keys: dict[str, list[str]] = {'currencies': ['currency'], 'units_absent': ['name']}
+
+    @computed_field
+    @property
+    def execution_rate_pct(self) -> float:
+        """
+        The share of the run's handled orders that executed — the aggregated portfolio's formula
+        over the run's counts, read from them wherever the summary is read.
+
+        Returns:
+            Executed over sent plus adopted, in percent; 0.0 when no order was handled
+        """
+        return execution_rate_pct(self.orders_executed, self.orders_submitted, self.orders_adopted)
+
 
 
 class RunResultRow(BaseModel):
@@ -1728,10 +1981,14 @@ class RunResultRow(BaseModel):
     max_consecutive_losses: int | None = None
     currency: str = ''
     # KPIs (the rankable objective fields)
-    net_pnl: float = 0.0
+    # A figure here with a number for its default reads None on the row of a run that measured
+    # nothing — an error row without a currency, whose figures the ledger reader keeps empty
+    # (#646; `COLUMN_NULL_MEANING` names each). The default stays for a fragment written before
+    # the column existed.
+    net_pnl: float | None = 0.0
     expectancy: float | None = None     # None = not measured (no R-defined trade)
     profit_factor: float | None = None  # None = undefined (no losing trade)
-    win_rate: float = 0.0
+    win_rate: float | None = 0.0
     # None where no drawdown was measured — a session whose every sealed day came before its
     # account's first valuation — never a zero, for the reason the block below gives
     account_max_drawdown: float | None = None
@@ -1746,18 +2003,18 @@ class RunResultRow(BaseModel):
     unrealized_pnl: float | None = None
     final_equity: float | None = None
     open_position_count: int | None = None
-    total_fees: float = 0.0
+    total_fees: float | None = 0.0
     # None, never 0.0: 499 fragments on disk predate these two columns, and a fabricated zero
     # would assert "this run won nothing and lost nothing" where the truth is "nobody wrote it
     # down". Same convention as `logic_version` and `signal_fresh_ratio` above.
     gross_profit: float | None = None
     gross_loss: float | None = None
-    total_trades: int = 0
-    winning_trades: int = 0
-    losing_trades: int = 0
+    total_trades: int | None = 0
+    winning_trades: int | None = 0
+    losing_trades: int | None = 0
     avg_win_r: float | None = None
     avg_loss_r: float | None = None
-    r_trade_count: int = 0
+    r_trade_count: int | None = 0
     # In LEDGER_COLUMNS since #389 and missing here for the same reason as the block above —
     # declared on disk, dropped on the way in.
     r_win_count: int | None = None
@@ -1800,6 +2057,19 @@ class RunResultRow(BaseModel):
         if self.deployment_id:
             return 'continuous'
         return 'single_run'
+
+    def measured_nothing(self) -> bool:
+        """
+        Whether this is the row of a run that measured nothing (#646).
+
+        A run that errored after it produced figures keeps them, under its currency; only the row
+        of a run that failed before it measured anything — status 'error' and no currency —
+        holds no figure at all.
+
+        Returns:
+            True for an error row without a currency
+        """
+        return self.status == 'error' and not self.currency
 
 
 class SweepSummary(BaseModel):
@@ -1898,15 +2168,45 @@ class DeploymentCodeChange(BaseModel):
     subject: Optional[str] = None
 
 
+class SessionBookingState(StrEnum):
+    """
+    Whether a deployment session's figures exist, and if not, why — the reason its `net_pnl` and
+    `currency` can be None.
+
+    BOOKED: its ledger rows carry figures
+    FAILED: it failed before it measured anything — its ledger row is an error row without a
+        currency (#646)
+    NOT_BOOKED_YET: no ledger row names it yet — it runs before its first seal, or ended before
+        reaching it (#645)
+    """
+    BOOKED = 'booked'
+    FAILED = 'failed'
+    NOT_BOOKED_YET = 'not_booked_yet'
+
+    def has_booked_figures(self) -> bool:
+        """
+        Whether a session in this state carries booked figures — the line between a deployment's
+        booked rows and the sessions counted beside them.
+
+        Returns:
+            True for BOOKED only
+        """
+        return self is SessionBookingState.BOOKED
+
+
 class DeploymentSessionRow(BaseModel):
     """
     One session of a deployment, as the history reads it (#497).
 
     Args:
-        index: Position in the deployment, 1-based
+        index: Position in its series, 1-based — the sessions of one account currency, or the
+            sessions without booked figures, which follow them oldest first
         run_id: The session's own run identity
         started: Its start, parsed from the run timestamp
-        net_pnl: Realised P&L of that session
+        net_pnl: Realised P&L of that session — None on a session without booked figures, and
+            `booking_state` says why: it failed before it measured anything (#646), or the run
+            index registered it at its start and no ledger row names it yet, because it runs
+            before its first seal or ended before reaching it (#645)
         max_drawdown: The CUMULATIVE account drawdown as of that session — a live row carries
             the running figure against the inherited peak, never that session's own. None where
             the session's rows carry none
@@ -1922,8 +2222,12 @@ class DeploymentSessionRow(BaseModel):
             profile is CALLED and an operator improves that; `deployment_id` is minted per
             deployment. A reader asking *is this the same bot as the row above* has no other
             column to ask, and it is what the carry-over state is filed under. Empty on a
-            profile that declares none
-        currency: The row's account currency
+            profile that declares none, and on a session that has booked nothing yet: the run
+            index does not carry it, only a ledger row does
+        currency: The row's account currency — None on a session without booked figures: a
+            currency is known only from a ledger row that measured something
+        booking_state: Whether the session's figures exist, and if not, why — `booked`, `failed`
+            (it failed before it measured anything) or `not_booked_yet`
         ended: When the row of its close was written, i.e. when it stopped — None while the
             ledger holds no such row: the session is still running or died before its close,
             and its sealed trading days are rows already (#476); also None on a row written
@@ -1931,7 +2235,8 @@ class DeploymentSessionRow(BaseModel):
         ran_hours: How long it ran, None when its end is unknown. Derived from the two
             stamps rather than stored: the row is written as the session closes, so this is
             the session's length plus the seconds its reports took
-        gap_hours: Hours the bot was NOT running before this session, None for the first
+        gap_hours: Hours the bot was NOT running before this session, None for the first of a
+            series and on a session without booked figures, which marks no change either
         gap_between_starts: True when the gap could only be measured from one START to the
             next, because the predecessor's row predates `recorded_at_utc`. That figure
             contains the predecessor's whole runtime and overstates the downtime, so it is
@@ -1950,10 +2255,11 @@ class DeploymentSessionRow(BaseModel):
     index: int
     run_id: str
     started: Optional[datetime]
-    net_pnl: float
+    net_pnl: Optional[float]
     max_drawdown: Optional[float]
     max_drawdown_pct: Optional[float]
-    currency: str
+    currency: Optional[str]
+    booking_state: SessionBookingState
     bot: str = ''
     bot_id: str = ''
     ended: Optional[datetime] = None
@@ -1975,10 +2281,12 @@ class DeploymentCaption(BaseModel):
         session_count: How many sessions it holds: distinct runs, not rows
         first_started: The earliest start any row can name, None when none can
         currencies: The account currencies of its rows, sorted; empty when no row produced a figure
+        bot_id: The bot id the first session that names one names; '' when none does
     """
     session_count: int
     first_started: Optional[datetime] = None
     currencies: list[str] = []
+    bot_id: str = ''
 
 
 class DeploymentComparabilityAdvisory(BaseModel):
@@ -2047,10 +2355,18 @@ class DeploymentSummary(BaseModel):
 
     Args:
         deployment_id: The identity its sessions name
-        sessions: How many sessions it holds
+        sessions: How many sessions the row stands for — on a booked row the sessions in its
+            currency, on the row of a deployment that has booked nothing all of its sessions
+        sessions_without_figures: How many of the deployment's sessions have no booked figures —
+            failed before they measured anything, or not booked yet. They have no currency, so
+            they stand on every row of their deployment as this count rather than in a row of
+            their own; on a deployment that books in two currencies the count repeats on each row
+            and is never added across rows
+        sessions_failed: How many of those failed before they measured anything
         first_started: When the deployment began
         last_started: When its most recent session began
-        net_pnl: Realised P&L summed over its sessions — this one DOES add up
+        net_pnl: Realised P&L summed over its sessions — this one DOES add up. None on the row of
+            the sessions without booked figures (see `currency`)
         max_drawdown: The deepest decline, which is the LARGEST of the rows and never a sum:
             a live row carries the running figure against the inherited peak. None where no
             session carries one
@@ -2059,7 +2375,10 @@ class DeploymentSummary(BaseModel):
         bot: The AutoTrader profile that ran it
         bot_id: Its DECLARED identity — see `DeploymentSessionRow.bot_id`. Two deployments
             sharing one `bot_id` are one bot restarted with `--new-deployment`
-        currency: The account currency the figures are in
+        currency: The account currency the figures are in. None only on the row of a deployment
+            that has booked nothing: its sessions failed before they measured anything (#646) or
+            no ledger row names them yet, and a currency is known only from a ledger row that
+            measured something. Such a row carries no figure at all
         longest_gap_hours: The longest stretch the bot was not running
         changed: True when the sessions did not all run alike: the configuration moved, the code
             moved, or both
@@ -2072,12 +2391,14 @@ class DeploymentSummary(BaseModel):
     """
     deployment_id: str
     sessions: int
+    sessions_without_figures: int
+    sessions_failed: int
     first_started: Optional[datetime]
     last_started: Optional[datetime]
-    net_pnl: float
+    net_pnl: Optional[float]
     max_drawdown: Optional[float]
     max_drawdown_pct: Optional[float]
-    currency: str
+    currency: Optional[str]
     bot: str = ''
     bot_id: str = ''
     longest_gap_hours: Optional[float] = None
@@ -2089,11 +2410,16 @@ class DeploymentSummary(BaseModel):
 
 class DeploymentListResponse(BaseModel):
     """
-    Every recorded deployment, newest first (#539).
+    Every deployment, newest first (#539) — from its first session's start, not from its first
+    sealed day (#645): the run index says which sessions a deployment holds, the ledger what they
+    booked.
 
     One entry per (deployment x account currency), because a P&L column added up over two
     currencies is not a number — the same split the summary rows carry. Which is exactly why
-    `key` names BOTH: a consumer keying on `deployment_id` alone folds two rows into one.
+    `key` names BOTH: a consumer keying on `deployment_id` alone folds two rows into one. The
+    sessions without booked figures — failed before they measured anything, or not booked yet —
+    have no currency: they are counted on the deployment's booked rows, and stand in an entry
+    whose `currency` is None only where the deployment has booked nothing.
     """
     key: list[str] = list(DEPLOYMENT_KEY)
     deployments: list[DeploymentSummary]
@@ -2104,12 +2430,13 @@ class DeploymentDetailResponse(BaseModel):
     """
     One deployment's sessions, oldest first — a life reads forwards.
 
-    `unfinished` is the count of this deployment's runs that never reached their close. The
-    sessions are built from the LEDGER, which holds a session's sealed trading days while it
-    runs and the row of its close only at the end (#476): such a run is in the list without an
-    `ended` when it sealed a day, and absent from it when it died before its first seal. So the
-    two overlap and are never added — and without the count a short list would be a number
-    the reader has no reason to doubt.
+    `unfinished` is the count of this deployment's runs that never reached their close. Which
+    sessions the deployment holds is the run index's answer, and what they booked the LEDGER's,
+    which holds a session's sealed trading days while it runs and the row of its close only at
+    the end (#476): such a run is in the list without an `ended` when it sealed a day, and with no
+    currency and no figures when it sealed none yet (#645). So every run the count names is in
+    the list, and the two are never added — without the count, a session that died would read
+    like one still running.
 
     There is deliberately NO reconciliation line here, and there cannot be one: over many runs
     no single run summary exists to sum against, so the second, independent derivation that
@@ -2168,8 +2495,9 @@ class DeploymentBookingPeriodsResponse(BaseModel):
     out: a missing check read as a passed one is the more expensive mistake.
 
     `sessions_without_periods` is what keeps a short list honest. A session whose ledger row
-    predates the booking journal books nothing, so it contributes no bar — and without the
-    count an incomplete history is indistinguishable from a quiet one.
+    predates the booking journal books nothing, and neither has a session that has not sealed
+    its first trading day yet (#645) — both contribute no bar, and without the count an
+    incomplete history is indistinguishable from a quiet one.
     """
     key: list[str] = list(BOOKING_PERIOD_KEY)
     deployment_id: str
@@ -2180,13 +2508,44 @@ class DeploymentBookingPeriodsResponse(BaseModel):
     sessions_without_periods: int = 0
 
 
+class PerformanceTracking(StrEnum):
+    """
+    Which of a backtest's two performance-tracking layers carried data (#137, #557).
+
+    A description of the run's configuration, not a verdict: worker tracking is off in a default
+    backtest, so most runs report `worker_off`.
+    """
+    BOTH_ON = 'both_on'             # worker statistics and tick-loop profiling
+    WORKER_OFF = 'worker_off'       # tick-loop profiling only
+    PROFILING_OFF = 'profiling_off' # worker statistics only
+    ALL_OFF = 'all_off'             # neither
+
+    @classmethod
+    def of(cls, worker_on: bool, profiling_on: bool) -> 'PerformanceTracking':
+        """
+        The class two layer flags describe.
+
+        Args:
+            worker_on: Whether any scenario carried worker statistics
+            profiling_on: Whether any scenario carried tick-loop profiling
+
+        Returns:
+            The class
+        """
+        if worker_on and profiling_on:
+            return cls.BOTH_ON
+        if not worker_on and not profiling_on:
+            return cls.ALL_OFF
+        return cls.WORKER_OFF if not worker_on else cls.PROFILING_OFF
+
+
 class RunMetaReport(RunScopedReport):
     """
-    Run-level execution facts the orchestrator measures primarily (sim): scenario identity +
-    the wall-clock timing split. These are the run-level values the executive / basic-stats read
-    straight from `BatchExecutionSummary` today — projected once at DERIVE so PRESENT stays
-    model-fed. NOT re-derived facts (status comes from the warnings/errors outcome, ticks from
-    the profiling aggregate) — only the primary measurements live here.
+    Run-level execution facts of a backtest (sim): scenario identity, the wall-clock timing
+    split, the parallelism it ran with and the machine it ran on — projected once at DERIVE so
+    PRESENT stays model-fed. Beside them, the run's throughput: derived from that timing together
+    with the scenario details, the profiling aggregate and the run summary, once all of them
+    exist (#557). The status is the warnings/errors outcome's, never repeated here.
     """
     scenario_count: int = 0     # all scenarios in the run (incl. failed / disabled)
     disabled_count: int = 0
@@ -2202,6 +2561,91 @@ class RunMetaReport(RunScopedReport):
     # #137 performance-tracking layer presence (any scenario): A = worker stats, B = tick-loop profiling
     worker_tracking_on: bool = False
     profiling_tracking_on: bool = False
+    # The parallelism the batch was configured with: whether scenarios ran side by side, and at
+    # most how many at once
+    parallel_scenarios: bool = False
+    max_parallel_scenarios: int = 0
+    # A Profile Run's generator profiles: how many, and their modes, sorted; none otherwise
+    generator_profile_count: int = 0
+    generator_profile_modes: list[str] = []
+    # The machine the run ran on, read once when its report was derived: the processors that
+    # bind (a cgroup quota may be fractional) and the memory limit and its use. None where
+    # nothing was read
+    machine_cpu_count: Optional[float] = None
+    machine_memory_limit_bytes: Optional[int] = None
+    machine_memory_used_bytes: Optional[int] = None
+    # The throughput. The algo path's ticks summed over the scenarios; the ticks the loop
+    # iterated — the clipping total where a tick budget clipped, the algo ticks otherwise —
+    # and whether those two differ
+    total_ticks_processed: int = 0
+    loop_ticks: int = 0
+    has_clipping: bool = False
+    # The loop's ticks per second of tick run; the market time processed over the tick run;
+    # the loop's ticks per hour of market time processed (its density); and the market hours
+    # processed per scenario. 0.0 where the time they divide by is zero
+    ticks_per_second: float = 0.0
+    speedup: float = 0.0
+    ticks_per_hour: float = 0.0
+    avg_hours_per_unit: float = 0.0
+
+    @computed_field
+    @property
+    def performance_tracking(self) -> PerformanceTracking:
+        """
+        Which performance-tracking layers carried data.
+
+        Returns:
+            The class the two layer flags describe
+        """
+        return PerformanceTracking.of(self.worker_tracking_on, self.profiling_tracking_on)
+
+    @computed_field
+    @property
+    def symbol_count(self) -> int:
+        """
+        How many symbols the run's scenarios traded.
+
+        Returns:
+            The number of distinct symbols
+        """
+        return len(self.symbols)
+
+    @computed_field
+    @property
+    def concurrent_scenarios(self) -> int:
+        """
+        How many scenarios ran at once: up to the parallel limit, one when sequential.
+
+        Returns:
+            The smaller of the limit and the scenario count when parallel, else 1
+        """
+        if not self.parallel_scenarios:
+            return 1
+        return min(self.max_parallel_scenarios, self.scenario_count)
+
+    @computed_field
+    @property
+    def tickrun_execution_time_s(self) -> float:
+        """
+        The tick run without the time spent pickling results back.
+
+        Returns:
+            The tick run time less the pickle time
+        """
+        return self.tickrun_time_s - self.pickle_time_s
+
+    @computed_field
+    @property
+    def machine_memory_available_bytes(self) -> Optional[int]:
+        """
+        The memory still free under the limit when the run's report was derived.
+
+        Returns:
+            The limit less what was in use, never below zero; None where nothing was read
+        """
+        if self.machine_memory_limit_bytes is None or self.machine_memory_used_bytes is None:
+            return None
+        return max(self.machine_memory_limit_bytes - self.machine_memory_used_bytes, 0)
 
 
 class BlockSplittingSymbolRow(BaseModel):
@@ -2259,6 +2703,9 @@ class WorkerStatRow(BaseModel):
     # and on the run-level totals, which span several units' tick counts
     compute_ratio_pct: Optional[float] = None   # call_count / the unit's ticks_processed
     ticks_idle: Optional[int] = None            # ticks since the last real compute
+    # On the run-level totals only: the mean of the units' own mean call times — every unit
+    # weighs the same, whatever its calls. Null on a unit's row
+    unit_mean_time_ms: Optional[float] = None
 
 
 class WorkerDecisionUnitRow(BaseModel):
@@ -2296,16 +2743,133 @@ class WorkerDecisionUnitRow(BaseModel):
     # per-worker timing
     workers: list[WorkerStatRow] = []
 
+    # The unit's own sums are computed fields: read from its rows wherever the row is read, so a
+    # record written before they existed answers them too (#557)
+    @computed_field
+    @property
+    def timed_worker_count(self) -> int:
+        """
+        How many workers the unit timed — 0 where it did not track them; the configured count is
+        the scenario details' `worker_count`.
+
+        Returns:
+            The number of worker rows
+        """
+        return len(self.workers)
+
+    @computed_field
+    @property
+    def worker_call_count(self) -> int:
+        """
+        The unit's worker calls together.
+
+        Returns:
+            The workers' calls summed
+        """
+        return sum(worker.call_count for worker in self.workers)
+
+    @computed_field
+    @property
+    def worker_time_ms(self) -> float:
+        """
+        The unit's worker time together.
+
+        Returns:
+            The workers' time summed
+        """
+        return sum(worker.total_time_ms for worker in self.workers)
+
+    @computed_field
+    @property
+    def algo_time_ms(self) -> Optional[float]:
+        """
+        The algo path's own time: the workers and the decision logic.
+
+        Returns:
+            The worker time and the decision time; None where the decisions were not timed
+        """
+        if self.decision_total_time_ms is None:
+            return None
+        return self.worker_time_ms + self.decision_total_time_ms
+
+    @computed_field
+    @property
+    def algo_avg_per_tick_ms(self) -> Optional[float]:
+        """
+        The algo path's own time per tick processed.
+
+        Returns:
+            The algo time over the ticks; 0.0 without a tick, None where it is not timed
+        """
+        if self.algo_time_ms is None:
+            return None
+        return self.algo_time_ms / self.ticks_processed if self.ticks_processed > 0 else 0.0
+
+    @computed_field
+    @property
+    def non_flat_signals(self) -> Optional[int]:
+        """
+        The decisions that asked to buy or sell.
+
+        Returns:
+            The buy and the sell signals together; None where they were not counted
+        """
+        if self.buy_signals is None or self.sell_signals is None:
+            return None
+        return self.buy_signals + self.sell_signals
+
+
+class DecisionTotals(BaseModel):
+    """
+    The decision logic's figures over the units that tracked their decisions (#557).
+
+    The time is the units' times added up; the mean decision is rebuilt from it, and the mean of
+    the units' own means — every unit weighing the same — stands beside it.
+    """
+    total_ticks: int = 0
+    total_decisions: int = 0
+    total_non_flat_signals: int = 0
+    decision_total_time_ms: float = 0.0
+    decision_avg_time_ms: float = 0.0           # total time over the decisions; 0.0 without one
+    decision_unit_mean_time_ms: float = 0.0     # mean of the units' means; 0.0 without a unit
+
+
+class WorkerDecisionBottlenecks(BaseModel):
+    """
+    The slowest performers over the units that tracked their decisions (#557) — measurements,
+    each null where nothing qualifies; whether one deserves a warning is a validator's verdict.
+
+    The slowest unit by its algo time per tick, and the slowest worker and decision logic by the
+    mean of their per-unit mean call times, each counted only above zero and the first among
+    equals; the slowest worker's worst unit beside it. The worst parallel unit is the one whose
+    parallel workers saved the least time — the first among equals, and possibly below zero.
+    """
+    slowest_algo_unit: Optional[str] = None
+    slowest_algo_unit_avg_per_tick_ms: Optional[float] = None
+    slowest_algo_unit_time_ms: Optional[float] = None
+    slowest_worker: Optional[str] = None
+    slowest_worker_mean_ms: Optional[float] = None
+    slowest_worker_worst_unit: Optional[str] = None
+    slowest_worker_worst_unit_ms: Optional[float] = None
+    slowest_decision_logic: Optional[str] = None
+    slowest_decision_logic_mean_ms: Optional[float] = None
+    worst_parallel_unit: Optional[str] = None
+    worst_parallel_time_saved_ms: Optional[float] = None
+
 
 class WorkerDecisionReport(RunScopedReport):
     """
     Per-unit worker + decision stats (#398, unified): one row per scenario/session, plus the
-    per-worker timing totals rolled up across units. The coordination-overhead % breakdown
-    (worker / decision / coordination split) is profiling-derived and stays with the Profiling
-    section — it is NOT part of this report.
+    per-worker timing totals rolled up across units, the decision logic's totals and the slowest
+    performers — the last two over the units that tracked their decisions. The
+    coordination-overhead % breakdown (worker / decision / coordination split) is
+    profiling-derived and stays with the Profiling section — it is NOT part of this report.
     """
     units: list[WorkerDecisionUnitRow]
     worker_totals: list[WorkerStatRow] = []     # per-worker timing summed across units
+    # Null where no unit tracked its decisions — and on a record written before contract 52
+    decision_totals: Optional[DecisionTotals] = None
+    bottlenecks: Optional[WorkerDecisionBottlenecks] = None
 
 
 class ProfilingOperationRow(BaseModel):
@@ -2357,6 +2921,29 @@ class WarmupPhaseRow(BaseModel):
     """One warmup phase (#399, run-level)."""
     name: str
     duration_s: float = 0.0
+    # Share of the whole warmup; 0.0 when it took no time, null on a record written before
+    # contract 52
+    pct: Optional[float] = None
+
+
+class WorkerDecisionBreakdownRow(BaseModel):
+    """
+    Where one unit's `worker_decision` operation time went (#399): its workers, its decision
+    logic, and the coordination between them — the profiled total less the two, never below 0.
+
+    Built where both tracking layers measured the unit: the operation's total from the tick-loop
+    profiling, the workers' and the decision's time from the worker/decision statistics. The
+    shares are of that total; whether the coordination share is too high is a validator's verdict.
+    """
+    name: str
+    total_time_ms: float = 0.0
+    total_ticks: int = 0
+    worker_execution_ms: float = 0.0
+    decision_logic_ms: float = 0.0          # 0.0 where the unit did not track its decisions
+    coordination_overhead_ms: float = 0.0
+    worker_execution_pct: float = 0.0
+    decision_logic_pct: float = 0.0
+    coordination_overhead_pct: float = 0.0
 
 
 class ProfilingBottleneckRow(BaseModel):
@@ -2392,6 +2979,37 @@ class ProfilingAggregate(BaseModel):
     clipping_budgets: list[float] = []          # distinct budget values across scenarios
     avg_operation_times: list[ProfilingOperationRow] = []   # per op, cross-scenario avg (avg_time_ms)
     bottlenecks: list[ProfilingBottleneckRow] = []
+    # The profiled units' summed operation time: its mean, and the slowest unit with its time and
+    # how far above that mean it lies. Null where no unit was profiled, the deviation also where
+    # the mean is not above zero — and all four on a record written before contract 52
+    profiled_unit_mean_ms: Optional[float] = None
+    slowest_profiled_unit: Optional[str] = None
+    slowest_profiled_unit_ms: Optional[float] = None
+    slowest_profiled_unit_deviation_pct: Optional[float] = None
+
+    @computed_field
+    @property
+    def clipping_budget_count(self) -> int:
+        """
+        How many distinct tick budgets the units ran with.
+
+        Returns:
+            The number of distinct budgets
+        """
+        return len(self.clipping_budgets)
+
+    @computed_field
+    @property
+    def clipping_rate_pct(self) -> float:
+        """
+        The share of the clipping total the budget clipped.
+
+        Returns:
+            The clipped ticks over the clipping total in percent; 0.0 without a clipping total
+        """
+        if self.clipping_total_ticks <= 0:
+            return 0.0
+        return self.clipping_total_clipped / self.clipping_total_ticks * 100
 
 
 class ProfilingReport(RunScopedReport):
@@ -2403,6 +3021,73 @@ class ProfilingReport(RunScopedReport):
     units: list[ProfilingUnitRow]
     aggregate: ProfilingAggregate = ProfilingAggregate()
     warmup_phases: list[WarmupPhaseRow] = []
+    # One row per unit both tracking layers measured, in the profiling's unit order; null on a
+    # record written before contract 52
+    worker_decision_breakdowns: Optional[list[WorkerDecisionBreakdownRow]] = None
+    # What makes one row of each list unique (§49)
+    keys: dict[str, list[str]] = {
+        'units': ['name'], 'warmup_phases': ['name'], 'worker_decision_breakdowns': ['name']}
+
+    # The whole warmup and its slowest phase are computed fields over `warmup_phases`, so a
+    # record written before they existed answers them too (#557)
+    @computed_field
+    @property
+    def warmup_total_s(self) -> float:
+        """
+        The whole warmup.
+
+        Returns:
+            The phases' durations summed
+        """
+        return sum(phase.duration_s for phase in self.warmup_phases)
+
+    def _slowest_phase(self) -> Optional[WarmupPhaseRow]:
+        """
+        The slowest warmup phase — the first among equals.
+
+        Returns:
+            The phase; None without one
+        """
+        return max(self.warmup_phases, key=lambda phase: phase.duration_s, default=None)
+
+    @computed_field
+    @property
+    def warmup_slowest_phase(self) -> Optional[str]:
+        """
+        The slowest warmup phase's name.
+
+        Returns:
+            The name; None without a phase
+        """
+        slowest = self._slowest_phase()
+        return slowest.name if slowest else None
+
+    @computed_field
+    @property
+    def warmup_slowest_s(self) -> Optional[float]:
+        """
+        The slowest warmup phase's duration.
+
+        Returns:
+            The duration; None without a phase
+        """
+        slowest = self._slowest_phase()
+        return slowest.duration_s if slowest else None
+
+    @computed_field
+    @property
+    def warmup_slowest_pct(self) -> Optional[float]:
+        """
+        The slowest warmup phase's share of the whole warmup.
+
+        Returns:
+            The share in percent; 0.0 when the warmup took no time, None without a phase
+        """
+        slowest = self._slowest_phase()
+        if slowest is None:
+            return None
+        total = self.warmup_total_s
+        return (slowest.duration_s / total * 100) if total > 0 else 0.0
 
 
 class BrokerSymbolRow(BaseModel):
@@ -2447,6 +3132,17 @@ class BrokerInfoRow(BaseModel):
     # session — false in a dry run, whose fills are simulated — and false in a backtest, which
     # has no venue. Null on an older record, and where a session never built its executor
     venue_fee_expected: Optional[bool] = None
+
+    @computed_field
+    @property
+    def scenario_count(self) -> int:
+        """
+        How many scenarios traded with the broker.
+
+        Returns:
+            The number of scenarios
+        """
+        return len(self.scenarios)
 
 
 class BrokerReport(RunScopedReport):
@@ -2581,6 +3277,39 @@ class ColdStartReport(RunScopedReport):
     decision_logic_class: str = ''
     decision_logic_accounted_for: Optional[bool] = None
     decision_logic_note: str = ''
+
+    @computed_field
+    @property
+    def adopted_count(self) -> int:
+        """
+        How many resting orders the boot adopted, or would have.
+
+        Returns:
+            The number of adopted rows
+        """
+        return len(self.adopted)
+
+    @computed_field
+    @property
+    def restored_count(self) -> int:
+        """
+        How many positions the boot restored, or would have.
+
+        Returns:
+            The number of restored rows
+        """
+        return len(self.restored_positions)
+
+    @computed_field
+    @property
+    def skipped_count(self) -> int:
+        """
+        How many orders the boot left alone.
+
+        Returns:
+            The number of skipped rows
+        """
+        return len(self.skipped)
 
 
 class SafetyLimits(BaseModel):
@@ -2739,6 +3468,17 @@ class SafetyReport(RunScopedReport):
     flatten_unconfirmed: list[str] = []
     flatten_kept: list[str] = []
 
+    @computed_field
+    @property
+    def day_count(self) -> int:
+        """
+        How many trading days the session measured against its daily limit.
+
+        Returns:
+            The number of day rows
+        """
+        return len(self.days)
+
 
 class SignalUsageRow(BaseModel):
     """
@@ -2803,6 +3543,17 @@ class SignalSourceRow(BaseModel):
     trigger_unknown: int = 0                # envelopes with no reason (producer pre-contract)
     usages: list[SignalUsageRow] = []
 
+    @computed_field
+    @property
+    def usage_count(self) -> int:
+        """
+        How many worker usages read the source.
+
+        Returns:
+            The number of usage rows
+        """
+        return len(self.usages)
+
 
 class SignalReport(RunScopedReport):
     """
@@ -2847,6 +3598,18 @@ class FeedStabilitySourceRow(BaseModel):
     stale_ticks: int = 0
     blind_ticks: int = 0            # signal domain only (nothing resolvable)
     episodes: list[FeedStabilityEpisodeRow] = []
+
+    @computed_field
+    @property
+    def fresh_tick_pct(self) -> Optional[float]:
+        """
+        The share of the source's counted ticks that were fresh.
+
+        Returns:
+            In percent of fresh, stale and blind together; None where no tick was counted
+        """
+        total = self.fresh_ticks + self.stale_ticks + self.blind_ticks
+        return (self.fresh_ticks / total * 100) if total else None
 
 
 class FeedStabilityReport(RunScopedReport):
@@ -2914,6 +3677,28 @@ class UnitErrorRow(BaseModel):
     logged_errors: list[LogEntryRow] = []   # scenario/session logger ERROR pot (§35)
     traceback: str = ''
 
+    @computed_field
+    @property
+    def validation_error_count(self) -> int:
+        """
+        How many validation errors the unit carries.
+
+        Returns:
+            The number of validation errors
+        """
+        return len(self.validation_errors)
+
+    @computed_field
+    @property
+    def logged_error_count(self) -> int:
+        """
+        How many ERROR records the unit's log pot holds.
+
+        Returns:
+            The number of logged errors
+        """
+        return len(self.logged_errors)
+
 
 class WarningsErrorsOutcome(BaseModel):
     """Run-level outcome (#395) — the Executive headline reads this, it does not re-scan."""
@@ -2945,6 +3730,78 @@ class WarningsErrorsOutcome(BaseModel):
     warning_count: int | None = None        # Tier-1 findings (validator-produced)
     log_warning_count: int | None = None    # Tier-2 WARNING records in the log pot
 
+    @computed_field
+    @property
+    def succeeded_count(self) -> int:
+        """
+        The units that did not fail.
+
+        Returns:
+            All units less the failed ones
+        """
+        return self.total_units - self.failed_count
+
+    @computed_field
+    @property
+    def success_rate_pct(self) -> float:
+        """
+        The units that did not fail, in percent of all units.
+
+        Returns:
+            The share; 0.0 over no unit
+        """
+        return (self.succeeded_count / self.total_units * 100) if self.total_units > 0 else 0.0
+
+    @computed_field
+    @property
+    def batch_status(self) -> BatchStatus:
+        """
+        Whether none, some or all of the units failed — a description of the two counts, not a
+        grading: that is `run_outcome`.
+
+        Returns:
+            The status the counts describe
+        """
+        return BatchStatus.of_counts(self.failed_count, self.total_units)
+
+    @computed_field
+    @property
+    def first_failure_messages(self) -> list[str]:
+        """
+        The first failure's message, line by line, as far as it says something.
+
+        A validation failure opens with a line that only names the scenario as having failed
+        validation; that line is left out, and so is every empty one.
+
+        Returns:
+            The message lines; empty without a first failure
+        """
+        lines = [line.strip() for line in self.first_failure_error.split('\n') if line.strip()]
+        return [line for line in lines
+                if not (line.startswith("Scenario '") and 'failed validation:' in line)]
+
+    @computed_field
+    @property
+    def first_failure_more_messages(self) -> int:
+        """
+        The first failure's message lines beyond the first one.
+
+        Returns:
+            The meaningful lines less one, never below zero
+        """
+        return max(len(self.first_failure_messages) - 1, 0)
+
+    @computed_field
+    @property
+    def other_failed_count(self) -> int:
+        """
+        The failed units besides the first one named.
+
+        Returns:
+            The failed count less one, never below zero
+        """
+        return max(self.failed_count - 1, 0)
+
 
 class WarningsErrorsReport(RunScopedReport):
     """
@@ -2961,6 +3818,17 @@ class WarningsErrorsReport(RunScopedReport):
     # events, nothing collapses them, and a session that logs one twice has two rows with the
     # same text — keyed on anything but position, they would fold into one.
     keys: dict[str, list[str]] = {'errors': ['name'], 'warnings': []}
+
+    @computed_field
+    @property
+    def error_unit_count(self) -> int:
+        """
+        How many units carry an error — not how many errors were logged.
+
+        Returns:
+            The number of error rows
+        """
+        return len(self.errors)
 
 
 class AggregatedPortfolioSpotScenarioRow(BaseModel):
@@ -3048,6 +3916,48 @@ class AggregatedPortfolioRow(BaseModel):
     spot_total_est_initial: float = 0.0
     spot_has_base_holdings: bool = False
 
+    # Read from the row's own fields, so a record written before they existed answers them too
+    @computed_field
+    @property
+    def total_costs(self) -> float:
+        """
+        Every cost category added up: the spread, the modelled spread, commission, swap, maker
+        and taker. The spread is measured inside the gross P&L and is no fee, so this is not
+        `total_fees`; an unmeasured spread is left out of it.
+
+        Returns:
+            The categories together, in the order they stand
+        """
+        return ((self.total_spread_cost or 0.0) + self.total_modelled_spread_cost
+                + self.total_commission + self.total_swap + self.maker_fee + self.taker_fee)
+
+    @computed_field
+    @property
+    def spot_total_est_pnl(self) -> Optional[float]:
+        """
+        The estimated value's move over the run.
+
+        Returns:
+            The current estimate less the initial one; None where no unit held a base asset it
+            could value, or the estimate started at nothing — the balance P&L is then the whole
+            statement
+        """
+        if not self.spot_has_base_holdings or self.spot_total_est_initial <= 0:
+            return None
+        return self.spot_total_est_current - self.spot_total_est_initial
+
+    @computed_field
+    @property
+    def spot_total_est_pnl_pct(self) -> Optional[float]:
+        """
+        The estimated value's move in percent of where it started.
+
+        Returns:
+            The percentage; None where the move is
+        """
+        pnl = self.spot_total_est_pnl
+        return None if pnl is None else pnl / self.spot_total_est_initial * 100
+
 
 class AggregatedPortfolioCurrency(BaseModel):
     """
@@ -3128,11 +4038,53 @@ class RobustnessRegimeRow(BaseModel):
     pct_profitable: float = 0.0
 
 
+class WalkForwardClass(StrEnum):
+    """
+    Where the Walk-Forward Efficiency lies against the run's thresholds (#367, #557).
+
+    One classification for every reader: the robustness report serves it, and the post-run
+    validator's insufficient-bucket and OVERFIT advisories fire on it.
+    """
+    INCONCLUSIVE = 'inconclusive'   # a bucket holds fewer windows than the minimum
+    UNDEFINED = 'undefined'         # no efficiency: the in-sample mean was not profitable
+    ROBUST = 'robust'               # at or above the robust threshold
+    MODERATE = 'moderate'           # between the two thresholds
+    OVERFIT = 'overfit'             # below the overfit threshold
+
+    @classmethod
+    def of(cls, in_sample_windows: int, out_of_sample_windows: int, min_windows: int,
+           efficiency: Optional[float], robust_threshold: float,
+           overfit_threshold: float) -> 'WalkForwardClass':
+        """
+        The class an efficiency falls into, given the windows it rests on.
+
+        Args:
+            in_sample_windows: The in-sample bucket's windows
+            out_of_sample_windows: The out-of-sample bucket's windows
+            min_windows: The fewest windows a bucket may hold for the efficiency to count
+            efficiency: The Walk-Forward Efficiency; None where undefined
+            robust_threshold: At or above it, robust
+            overfit_threshold: Below it, overfit
+
+        Returns:
+            The class
+        """
+        if in_sample_windows < min_windows or out_of_sample_windows < min_windows:
+            return cls.INCONCLUSIVE
+        if efficiency is None:
+            return cls.UNDEFINED
+        if efficiency >= robust_threshold:
+            return cls.ROBUST
+        if efficiency < overfit_threshold:
+            return cls.OVERFIT
+        return cls.MODERATE
+
+
 class RobustnessReport(RunScopedReport):
     """
-    Multi-window robustness + IS/OOS validation (#367, sim-only). PURE FACTS — the
-    ROBUST/OVERFIT verdict is a decision and lives in `PostRunValidator`, not in this model.
-    The renderer applies only a display class; the verdict warning fires from the validator.
+    Multi-window robustness + IS/OOS validation (#367, sim-only). The facts, and the class the
+    efficiency falls into — derived here once; the advisories it warrants fire from
+    `PostRunValidator`, which reads the same class.
     """
     enabled: bool = False
     metric: str = 'net_pnl'                 # the primary metric name
@@ -3154,3 +4106,30 @@ class RobustnessReport(RunScopedReport):
     robust_wfe_threshold: float = 0.8
     disposition_trust_pct: float = 25.0
     min_windows: int = 3
+
+    @computed_field
+    @property
+    def walk_forward_class(self) -> WalkForwardClass:
+        """
+        Where the Walk-Forward Efficiency lies against the report's thresholds.
+
+        Returns:
+            The class, inconclusive where a bucket is missing or below the minimum
+        """
+        return WalkForwardClass.of(
+            self.in_sample.window_count if self.in_sample else 0,
+            self.out_of_sample.window_count if self.out_of_sample else 0,
+            self.min_windows, self.walk_forward_efficiency,
+            self.robust_wfe_threshold, self.overfit_wfe_threshold)
+
+    @computed_field
+    @property
+    def drift_count(self) -> int:
+        """
+        How many windows ran with parameters other than the first window's.
+
+        Returns:
+            The number of drifting windows
+        """
+        return len(self.drifting_windows)
+

@@ -12,6 +12,7 @@ the submission-time refusal, which is RETURNED rather than announced — `_notif
 called only from the asynchronous resolution paths, so no outcome event fires for it.
 """
 
+import re
 from datetime import datetime, timezone
 from typing import List, Tuple
 
@@ -33,6 +34,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderType,
     RejectionReason,
 )
+from python.framework.utils.trading_math.order_math import covered_share_pct
 
 # The tick the harness feeds: a BUY pays 50001.0, a SELL receives 49999.0.
 _BID = 49999.0
@@ -179,6 +181,23 @@ class TestTheSubmissionRefusal:
         # one cannot read the same.
         assert 'committed' in second.rejection_message
         assert 'balance' in second.rejection_message
+
+    def test_the_refusal_says_how_much_of_the_order_the_free_funds_cover(self):
+        """
+        The share beside the two figures: a shortfall of a hair and one of nearly everything
+        no longer read alike. It is derived from the figures the sentence itself names.
+        """
+        _, executor = _spot_executor(usd=1000.0)
+        executor.open_order(_limit(OrderDirection.LONG, 0.012, _RESTING_BUY_PRICE))
+
+        second = executor.open_order(_market(OrderDirection.LONG, 0.01))
+
+        figures = re.search(r'requires ([\d.]+) USD, available: ([-\d.]+) USD — covers ([\d.]+) % of it',
+                            second.rejection_message)
+        assert figures is not None, second.rejection_message
+        required, available, share = (float(value) for value in figures.groups())
+        assert 0.0 < share < 100.0
+        assert share == pytest.approx(available / required * 100.0, abs=0.05)
 
     def test_the_same_order_passes_when_nothing_is_committed(self):
         """The regression guard: without an unfilled order, the balance is the balance."""
@@ -429,6 +448,179 @@ class TestAFillTheVenueMadeIsBooked:
         assert rejections[0].rejection_reason == RejectionReason.INSUFFICIENT_FUNDS
 
 
+def _the_long(executor) -> str:
+    """
+    The open LONG's position id.
+
+    Args:
+        executor: Either executor
+
+    Returns:
+        The id of the one LONG position it holds
+    """
+    long_position, = [p for p in executor.get_open_positions()
+                      if p.direction == OrderDirection.LONG]
+    return long_position.position_id
+
+
+class TestASpotCloseIsCheckedLikeASell:
+    """
+    A spot close sells or buys like any order, so it is checked against the balance as one is (#639).
+
+    Closing a LONG whose coins were already sold went through and left the base balance negative,
+    in both pipelines, while a SELL of the same coins was denied. The close is now denied the same
+    way, and the LONG stays in the book: what it becomes is #627's question. At the fill the split
+    of TestAFillTheVenueMadeIsBooked holds: the simulation refuses, a live session books what the
+    venue executed.
+    """
+
+    def _sold_long_simulation(self) -> TradeSimulator:
+        """A spot simulation holding a LONG of 0.01 BTC whose coins a SELL has since sold."""
+        sim = _spot_simulator(usd=1000.0)
+        sim.open_order(_market(OrderDirection.LONG, 0.01))
+        _feed_sim_tick(sim, msc=1001)
+        sim.open_order(_market(OrderDirection.SHORT, 0.01))
+        _feed_sim_tick(sim, msc=1002)
+        assert sim.portfolio.get_asset_balance('BTC') == pytest.approx(0.0), 'fixture'
+        return sim
+
+    def test_the_simulation_denies_the_close(self):
+        sim = self._sold_long_simulation()
+        long_id = _the_long(sim)
+
+        result = sim.close_position(long_id)
+        _feed_sim_tick(sim, msc=1003)
+
+        assert result.status == OrderStatus.DENIED
+        assert result.rejection_reason == RejectionReason.INSUFFICIENT_FUNDS
+        assert 'BTC' in result.rejection_message
+        # Nothing is free, so nothing of the close would have been covered
+        assert 'covers 0.0 % of it' in result.rejection_message
+        assert sim.portfolio.get_asset_balance('BTC') == pytest.approx(0.0)
+        assert long_id in [p.position_id for p in sim.get_open_positions()]
+
+    def test_the_live_executor_denies_it_too(self):
+        mock, executor = _spot_executor(usd=1000.0)
+        executor.open_order(_market(OrderDirection.LONG, 0.01))
+        mock.feed_tick(executor, symbol='BTCUSD', bid=_BID, ask=_ASK)
+        executor.open_order(_market(OrderDirection.SHORT, 0.01))
+        mock.feed_tick(executor, symbol='BTCUSD', bid=_BID, ask=_ASK)
+        assert executor.portfolio.get_asset_balance('BTC') == pytest.approx(0.0), 'fixture'
+
+        result = executor.close_position(_the_long(executor))
+
+        assert result.status == OrderStatus.DENIED
+        assert result.rejection_reason == RejectionReason.INSUFFICIENT_FUNDS
+        assert executor.portfolio.get_asset_balance('BTC') == pytest.approx(0.0)
+
+    def test_a_close_the_account_can_fund_goes_through(self):
+        """The regression guard: a LONG whose coins are held closes as before."""
+        sim = _spot_simulator(usd=1000.0)
+        sim.open_order(_market(OrderDirection.LONG, 0.01))
+        _feed_sim_tick(sim, msc=1001)
+
+        result = sim.close_position(_the_long(sim))
+        _feed_sim_tick(sim, msc=1002)
+
+        assert not result.is_refused
+        assert not sim.get_open_positions()
+        assert sim.portfolio.get_asset_balance('BTC') == pytest.approx(0.0)
+
+    def test_closing_a_short_needs_the_quote_it_buys_back_with(self):
+        """A spot SHORT sold held coins; closing it buys them back, and the quote can be claimed."""
+        sim = _spot_simulator(usd=1000.0, btc=0.01)
+        sim.open_order(_market(OrderDirection.SHORT, 0.01))
+        _feed_sim_tick(sim, msc=1001)
+        # A resting BUY claims nearly all of the quote the sale brought in
+        usd = sim.portfolio.get_asset_balance('USD')
+        sim.open_order(_limit(OrderDirection.LONG, round(usd * 0.99 / _RESTING_BUY_PRICE, 6),
+                              _RESTING_BUY_PRICE))
+        _feed_sim_tick(sim, msc=1002)
+        short_position, = [p for p in sim.get_open_positions()
+                           if p.direction == OrderDirection.SHORT]
+
+        result = sim.close_position(short_position.position_id)
+
+        assert result.status == OrderStatus.DENIED
+        assert result.rejection_reason == RejectionReason.INSUFFICIENT_FUNDS
+        assert 'USD' in result.rejection_message
+
+    def test_coins_gone_before_the_fill_refuse_the_simulated_fill(self):
+        sim = _spot_simulator(usd=1000.0)
+        sim.open_order(_market(OrderDirection.LONG, 0.01))
+        _feed_sim_tick(sim, msc=1001)
+        long_id = _the_long(sim)
+        submitted = sim.close_position(long_id)
+        # The coins leave between submission and fill — the case #627 meets from outside
+        sim.portfolio._balances['BTC'] = 0.0
+
+        _feed_sim_tick(sim, msc=1002)
+
+        assert submitted.status == OrderStatus.PENDING
+        assert long_id in [p.position_id for p in sim.get_open_positions()]
+        rejections = [r for r in sim.get_order_history() if r.status == OrderStatus.REJECTED]
+        assert len(rejections) == 1
+        assert rejections[0].rejection_reason == RejectionReason.INSUFFICIENT_FUNDS
+
+    def test_live_books_a_close_the_venue_executed(self):
+        mock, executor = _spot_executor(usd=1000.0)
+        executor.open_order(_market(OrderDirection.LONG, 0.01))
+        mock.feed_tick(executor, symbol='BTCUSD', bid=_BID, ask=_ASK)
+        long_id = _the_long(executor)
+        submitted = executor.close_position(long_id)
+        executor.portfolio._balances['BTC'] = 0.0
+
+        mock.feed_tick(executor, symbol='BTCUSD', bid=_BID, ask=_ASK)
+
+        assert submitted.status == OrderStatus.PENDING
+        assert not executor.get_open_positions(), 'the venue sold the coins; the book follows'
+        assert executor.get_execution_stats().orders_rejected == 0
+
+    def test_a_stop_the_account_cannot_fund_fires_once(self):
+        """
+        A breached stop whose close the simulated venue refuses is cancelled, not tried again.
+
+        Firing it on every tick added a rejected row and a protective close per tick, while the
+        position never closed.
+        """
+        sim = _spot_simulator(usd=1000.0)
+        sim.open_order(OpenOrderRequest(symbol='BTCUSD', order_type=OrderType.MARKET,
+                                        direction=OrderDirection.LONG, lots=0.01,
+                                        stop_loss=49000.0))
+        _feed_sim_tick(sim, msc=1001)
+        sim.open_order(_market(OrderDirection.SHORT, 0.01))
+        _feed_sim_tick(sim, msc=1002)
+
+        for msc in range(1003, 1008):
+            sim.on_tick(TickData(
+                timestamp=datetime.fromtimestamp(msc / 1000.0, tz=timezone.utc),
+                symbol='BTCUSD', bid=48000.0, ask=48002.0, collected_msc=msc, time_msc=msc))
+
+        rejected = [r for r in sim.get_order_history() if r.status == OrderStatus.REJECTED]
+        assert len(rejected) == 1
+        assert rejected[0].rejection_reason == RejectionReason.INSUFFICIENT_FUNDS
+        assert sim.get_execution_stats().sl_tp_triggered == 0
+        assert _the_long(sim) in [p.position_id for p in sim.get_open_positions()]
+
+    def test_margin_is_not_checked(self):
+        """At margin a close settles P&L and moves no coins."""
+        sim = TradeSimulator(
+            broker_config=BrokerConfig(BrokerType.KRAKEN_SPOT,
+                                       MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL)),
+            initial_balance=1000.0, account_currency='USD',
+            logger=GlobalLogger('CommittedFundsMargin'), seeds={'inbound_latency_seed': 42},
+            inbound_latency_min_ms=0, inbound_latency_max_ms=0, spot_mode=False)
+        _feed_sim_tick(sim, msc=1000)
+        sim.open_order(_market(OrderDirection.LONG, 0.01))
+        _feed_sim_tick(sim, msc=1001)
+
+        result = sim.close_position(_the_long(sim))
+        _feed_sim_tick(sim, msc=1002)
+
+        assert not result.is_refused
+        assert not sim.get_open_positions()
+
+
 class TestWhatTheEndReleased:
     """
     The end of a session or a scenario books its resting orders cancelled or expired, and leaves
@@ -458,3 +650,21 @@ class TestWhatTheEndReleased:
         assert [row.status for row in sim.get_order_history()][-1] == OrderStatus.EXPIRED
         assert sim.get_active_orders(), 'kept for the snapshot'
         assert sim.get_committed_funds('USD') == 0.0
+
+
+class TestTheCoveredShare:
+    """
+    The share a refusal names: what the account could spend over what the order needs.
+
+    Held to its edges here, where the formula is: the sentences above only ever show the
+    ordinary case.
+    """
+
+    def test_a_shortfall_of_a_hair_covers_nearly_all_of_it(self):
+        assert covered_share_pct(0.0098, 0.01) == pytest.approx(98.0)
+
+    def test_claims_above_the_balance_cover_nothing(self):
+        assert covered_share_pct(-120.0, 500.0) == 0.0
+
+    def test_an_order_that_needs_nothing_has_no_share(self):
+        assert covered_share_pct(10.0, 0.0) is None

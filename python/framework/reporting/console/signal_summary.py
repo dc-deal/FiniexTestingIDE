@@ -115,8 +115,8 @@ class SignalSummary(AbstractBatchSummarySection):
             print(f'{indent}     (no scenario consumed this source)')
             return
 
-        if compact and len(unit.usages) > threshold:
-            print(f'{indent}     {len(unit.usages)} scenarios — see log for full list')
+        if compact and unit.usage_count > threshold:
+            print(f'{indent}     {unit.usage_count} scenarios — see log for full list')
             return
 
         for usage in unit.usages:

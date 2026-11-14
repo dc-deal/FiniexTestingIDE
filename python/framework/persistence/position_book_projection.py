@@ -64,7 +64,6 @@ def position_to_carry_over(position: Position) -> PositionCarryOver:
         contract_size=position.contract_size,
         pip_size=position.pip_size,
         price_unit=position.price_unit,
-        entry_tick_index=position.entry_tick_index,
         mae_pnl=position.mae_pnl,
         mfe_pnl=position.mfe_pnl,
         mae_price=position.mae_price,
@@ -132,7 +131,8 @@ def carry_over_to_position(record: PositionCarryOver) -> Position:
         contract_size=record.contract_size,
         pip_size=record.pip_size,
         price_unit=record.price_unit,
-        entry_tick_index=record.entry_tick_index,
+        # Opened in another session's numbering: no tick of this one is its entry
+        entry_tick_index=None,
         mae_pnl=record.mae_pnl,
         mfe_pnl=record.mfe_pnl,
         # A note from before these fields carried 0.0; __post_init__ then seeds entry_price.

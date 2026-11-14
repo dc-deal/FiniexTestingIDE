@@ -13,6 +13,7 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 | `TestTimeframes` | `test_list_timeframes_contains_known_entries` | M1=1min, H1=60min, D1=1440min are present and correct |
 | `TestTimeframes` | `test_timeframes_sorted_ascending_by_minutes` | List is sorted from shortest to longest bar duration |
 | `TestTimeframes` | `test_the_validation_checks_are_the_catalog` | `/validation-checks` serves exactly the check catalog, keyed on `check` |
+| `TestTimeframes` | `test_the_drawing_types_are_the_entry_schema` | `/drawing-types` serves the JSON Schema of a served indicator series entry, the style vocabulary in its definitions (#379) |
 | `TestHealth` | `test_health_ok` | Status + version in response |
 | `TestHealth` | `test_it_says_which_installation_answers` | `host_id` is the identity a run's rows state, `host_name` null by default |
 | `TestHealth` | `test_a_configured_name_is_served` | `host_name` comes from the installation's configuration |
@@ -51,7 +52,7 @@ is the one that gets forgotten.
 | `TestTheTokenFileIsRefusedWhenItIsTheTrackedOne` | Against real files at their real paths in a throwaway tree: a live token answering from the committed `inbound/` file refuses the boot, and that refusal comes BEFORE the missing-account one, the parse and the account binding — each of those would tell the operator to edit a file whose only right edit is moving the key out; the consumer is named and its token never is. An entry not declared off counts as live, a value the token model cannot read included; one declared off in any spelling the model reads passes. The workspace file is not mistaken for the tracked one, an inactive entry there is fine, which is what lets the placeholder carry examples, and the path the loader REALLY answers from under isolation is recognised. The earlier version passed a path string of the flat layout, so it stayed green while the check never fired on the real path |
 | `TestTheSurfaceVocabularyIsClosed` | An unknown surface fails when the token is parsed, not at request time; and the vocabulary is held to the same set as `api_app.ROUTER_SURFACES`, so a router mounted under a surface no token can name — or a surface no router serves — fails here rather than becoming a denial nobody can explain |
 | `TestACollectionRouteIsGatedToo` | The hole the walk cannot see: a route with no path parameter had nothing for a grant to be about, so `/reports/runs`, `/sweeps` and `/deployments` would answer any authenticated token. Refusal and admission are both named by hand — a new collection route needs its own pair or nothing looks at it |
-| `TestTheAppLevelRoutesAreADecision` | Without a grant the application only describes itself: `/timeframes` and `/validation-checks` open beside `/health`; `/brokers` refused without a `brokers` grant and reached with any; `/machine-resources` and `/activities` needing a token, refused without a `machine` grant and reached with one — pinned so none drifts back to being accidental |
+| `TestTheAppLevelRoutesAreADecision` | Without a grant the application only describes itself: `/timeframes`, `/validation-checks` and `/drawing-types` open beside `/health`; `/brokers` refused without a `brokers` grant and reached with any; `/machine-resources` and `/activities` needing a token, refused without a `machine` grant and reached with one — pinned so none drifts back to being accidental |
 | `TestTheCallerRouteSaysWhoIsCalling` | `/caller` (#551): a valid token is answered with its client, account, account kind, display name, grants as a list and note; a wrong token is a 401 with `WWW-Authenticate: Bearer`, and so is no header; a token holding NOTHING still reaches it, because it is about the caller and token-only; with gating off it names nobody even for a valid token (`enforced: false`), and the real scaffold boot answers the same; the real boot from files on disk reaches the route; a verified consumer with no account is a 500 `identity_unbound`, not an anonymous caller; the route is on no grant surface; and it answers under contract 4 or later, which catches a forgotten bump |
 | `TestTheSchemaSurfaceIsOffWhereItCannotBeGuarded` | `/openapi.json`, `/docs` and `/redoc` are FastAPI's own routes at the APP ROOT — outside `/api/v1`, uncoverable by a router dependency, and outside the walk by construction (it filters on a path parameter). They are tied to the auth posture instead: present while nobody is configured, gone once somebody is, and a token does not bring them back |
 | `TestTheCorsPreflightIsNeverGated` | An `OPTIONS` without `Authorization` is not refused, and `WWW-Authenticate` / `Retry-After` are exposed — invisible from every seat but a browser's |
@@ -208,13 +209,15 @@ written through the same appender a session uses, beside a run registered in a t
 `/reports/runs/{run_id}/units/{unit_name}/recorded-streams` and its `/window` (#580) serve a unit's
 timeline and a window of its records a page at a time. The run is written through the session's own
 run writer and stream sealer — three trading days of state frames, two sealed and one running —
-beside a run registered in a tmp run index.
+beside a run registered in a tmp run index; the indicator series tests add a worker's series stream
+beside them (#379).
 
 | Class | Validates |
 |---|---|
 | `TestTheTimeline` | a running unit lists its stream across the sealed days and its file — the count, the first and latest frame time, the cadence, the key and `current`; its verdict is the latest-frame route's (`stopped` for both) and judged on the newest frame — days written long ago and a frame written just now read `current`; a unit before its first seal lists its running file; it lists every kind the store declares, and the window's `keys` name the same; a stream holding only its header counts none with no times; a stream opened before its header names `state_frame_not_written_yet` |
 | `TestEveryAbsenceNamesItsCause` | on both routes an unknown run is `run_not_found`, a run recording no stream `streams_not_recorded`, a unit the run does not record `unit_not_found`; a header naming another schema is `artifact_unreadable` |
 | `TestTheWindow` | left open it serves the whole stream with `record_no` from 1 and says which instants it covered; walking the pages from `next_from` meets every frame once for several limits; a window across a day boundary serves both sides; seeking with `limit=1` serves the first frame at or after the instant; a bound left out is a record's millisecond, never finer; a window holding no record — one before the stream, one after it, or a stream holding only its header — leaves the bound it was not given null, never an end before its start; a limit outside 1 to the ceiling is `invalid_limit`, a window ending before it starts `invalid_range`, an instant that is not ISO `invalid_timestamp` |
+| `TestTheIndicatorSeries` | each drawing worker is a row of the timeline, named for its instance, on `bar_time` and its timeframe's cadence · the window serves one entry per layer with `times` and `data` in parallel arrays · walking the pages meets every record of every stream once, the limit counted over all of them · a worker on two timeframes serves each series its own bars · a unit that records only its series is served, with no recording verdict · a series another unit recorded is not this one's (#379) |
 | `TestFollowingASessionWhileItWrites` | a session writes and seals a trading day on a thread of its own while the timeline and the window are followed the documented way — the window asked from the millisecond of the newest frame held, its pages walked, held frames dropped by `record_no`; the session goes on only once an answer saw the stage it is in, so answers come from before the seal and after it; every answer is whole, the count never goes back, and every frame is met once with the time it keeps in every answer (#380) |
 
 ## Polled routes in the access log (`test_polled_route_access_filter.py`)
@@ -277,8 +280,10 @@ and what the sweep view must:
 ## Deployment routes (`TestDeployments`)
 
 A deployment is the life of ONE bot across its restarts, and it is not a run: no header, no
-directory, no artifacts. Its rows live in the ledger and nowhere else, which is why these routes
-read the ledger and only the ledger.
+directory, no artifacts. Which sessions it holds is the run index's answer, and what they booked
+the ledger's: every session registers in the index at its start and books its first ledger row
+only at its first seal (#645). By default the class's run index knows no run, so a test reads only
+the ledger it hands over.
 
 | Test | Description |
 |------|-------------|
@@ -289,15 +294,21 @@ read the ledger and only the ledger.
 | `test_a_configuration_change_is_reported_before_the_table` | The advisory rides on the response rather than inside a row, so a client cannot render the table and drop the sentence that says whether the strategy parameters, the operational configuration or the orders' destination changed across the rows |
 | `test_a_code_change_alone_is_changed_with_no_advisory` | #559 — the state the contract log names: `changed` true with `advisory` null, `configuration_changed` false, the reason in `code_summary` and `code_changes`, and no path of the machine in any of them |
 | `test_a_configuration_change_alone_keeps_its_old_answer` | The same answer as before the code stands, with `code_summary` null |
-| `test_a_session_that_never_reached_its_close_is_counted` | The ledger row is written last, so a killed session is absent from the list by construction |
-| `test_unknown_deployment_is_a_404_and_not_an_empty_history` | An empty list would read as a deployment that ran and did nothing |
+| `test_a_session_that_never_reached_its_close_is_counted` | The ledger's row of a close is written last, so a killed session stands in the list with no end, or with no figures when it sealed no day; the count tells it from one still running |
+| `test_a_deployment_is_listed_from_its_first_sessions_start` | #645 — a deployment only the run index names is listed, with `currency`, `net_pnl` and both drawdowns null, never zero, and `bot`, `orders_to` and `first_started` from the index |
+| `test_its_detail_answers_with_the_session_that_booked_nothing` | the detail answers 200 with that session in `sessions`, without figures and without an end, and `unfinished` counts it |
+| `test_its_booking_periods_are_an_empty_list_and_not_a_404` | an empty list, and the session counted in `sessions_without_periods` |
+| `test_a_new_session_of_a_booked_deployment_is_counted_on_its_row` | before its first seal a session has no currency, so it is counted on the booked USD row (`sessions_without_figures`) rather than standing in an empty row, and last in the detail |
+| `test_a_failed_start_serves_no_figure_and_says_why` | #646 — a run that failed before it measured anything serves no figure and no currency, is counted on the deployment's booked row with a session not booked yet (`sessions_without_figures` 2, `sessions_failed` 1), and its `booking_state` reads `failed` |
+| `test_a_sweep_naming_the_same_id_is_not_a_session` | the parent's KIND decides, not the shape of its id |
+| `test_unknown_deployment_is_a_404_and_not_an_empty_history` | An empty list would read as a deployment that ran and did nothing; the sentence names both stores it asked |
 | `test_the_detail_route_filters_in_the_store` | `read_rows(deployment_id=...)`, not a full read followed by a filter |
 | `test_the_periods_of_every_session_come_back_in_one_call` | `/deployments/{id}/booking-periods` — the thirty-day picture without walking the sessions |
 | `test_every_period_names_the_session_that_booked_it` | `period_no` restarts wherever a session wrote no carry-over floor, so two periods of one deployment can both be #1; `run_id` is what tells them apart |
 | `test_a_row_that_books_no_period_is_skipped_and_counted` | Every row written before the booking journal is one of those — skipped, and its session counted, so an incomplete history is not read as a quiet one |
 | `test_the_periods_carry_their_own_band_not_the_cumulative_one` | `period_max_drawdown`, not `account_max_drawdown` — the running figure would repeat the same number down the column |
 | `test_there_is_no_reconciliation_and_that_is_deliberate` | Pinned as an ABSENCE: across many runs no second, independently derived figure exists, so a check could only compare the rows with themselves |
-| `test_periods_of_an_unknown_deployment_are_a_404` | An id with no ledger rows |
+| `test_periods_of_an_unknown_deployment_are_a_404` | An id that no session and no ledger row names |
 
 ## TestGaps — `/brokers/{broker}/symbols/{symbol}/gaps`
 

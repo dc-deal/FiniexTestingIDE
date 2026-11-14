@@ -10,18 +10,13 @@ Pure data output, no recommendations or suggestions.
 FULLY TYPED: Uses BatchPerformanceStats with direct attribute access.
 """
 
-from typing import List, Optional
-
 from python.framework.reporting.console.abstract_batch_summary_section import (
     AbstractBatchSummarySection,
 )
 from python.framework.types.api.report_types import (
     ProfilingReport,
-    ProfilingUnitRow,
+    WorkerDecisionBreakdownRow,
     WorkerDecisionReport,
-)
-from python.framework.types.performance_types.performance_metrics_types import (
-    WorkerDecisionBreakdown,
 )
 from python.framework.utils.console_renderer import ConsoleRenderer
 
@@ -47,7 +42,8 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
         # profiling_data_map dependency anymore.
         self._wd_rows_by_name = {row.name: row for row in worker_decision_report.units}
         self._profiling_by_name = {unit.name: unit for unit in profiling_report.units}
-        self.breakdowns = self._build_breakdowns()
+        # One breakdown per unit both layers measured — derived on the profiling model (#557)
+        self.breakdowns = profiling_report.worker_decision_breakdowns or []
 
     def _both_layers_have_data(self) -> bool:
         """
@@ -92,73 +88,9 @@ class WorkerDecisionBreakdownSummary(AbstractBatchSummarySection):
 
         print()
 
-    def _build_breakdowns(self) -> List[WorkerDecisionBreakdown]:
-        """Build breakdowns from the profiling units (model-fed, ordered per run unit)."""
-        breakdowns = []
-        for profiling in self._profiling_by_name.values():
-            breakdown = self._build_breakdown_for_unit(profiling)
-            if breakdown:
-                breakdowns.append(breakdown)
-        return breakdowns
-
-    def _build_breakdown_for_unit(
-        self, profiling: ProfilingUnitRow
-    ) -> Optional[WorkerDecisionBreakdown]:
-        """
-        Build breakdown for a single run unit from the model rows (matched by name).
-
-        Args:
-            profiling: The unit's profiling row (operation timing)
-
-        Returns:
-            WorkerDecisionBreakdown or None if the worker_decision op / worker facts are missing
-        """
-        # Total worker_decision operation time — from the profiling model (#399,
-        # closing the #398 residual; was the profiling_data_map top-line).
-        total_worker_decision_ms = next(
-            (op.total_time_ms for op in profiling.operations
-             if op.operation == 'worker_decision'), 0.0)
-        if total_worker_decision_ms == 0:
-            return None
-
-        # Facts from the unified worker/decision model (#398), matched by unit name.
-        row = self._wd_rows_by_name.get(profiling.name)
-        if row is None:
-            return None
-
-        # Calculate worker execution time (sum from the model's per-worker rows)
-        worker_execution_ms = sum(w.total_time_ms for w in row.workers)
-
-        # Build worker breakdown dict (worker_name -> time_ms)
-        worker_breakdown = {
-            w.worker_name: w.total_time_ms
-            for w in row.workers
-        }
-
-        # Get decision logic time
-        # Null when the unit did not track its decisions — nothing was timed, so nothing is
-        # taken out of the profiled total.
-        decision_logic_ms = row.decision_total_time_ms or 0.0
-
-        # Calculate coordination overhead (profiling total minus the model components)
-        coordination_overhead_ms = max(
-            0.0,
-            total_worker_decision_ms - worker_execution_ms - decision_logic_ms
-        )
-
-        return WorkerDecisionBreakdown(
-            scenario_name=profiling.name,
-            total_time_ms=total_worker_decision_ms,
-            total_ticks=row.ticks_processed,
-            worker_execution_ms=worker_execution_ms,
-            decision_logic_ms=decision_logic_ms,
-            coordination_overhead_ms=coordination_overhead_ms,
-            worker_breakdown=worker_breakdown
-        )
-
-    def _render_scenario_breakdown(self, breakdown: WorkerDecisionBreakdown, renderer):
+    def _render_scenario_breakdown(self, breakdown: WorkerDecisionBreakdownRow, renderer):
         """Render scenario breakdown."""
-        print(f"{renderer.bold('Scenario:')} {renderer.blue(breakdown.scenario_name)}")
+        print(f"{renderer.bold('Scenario:')} {renderer.blue(breakdown.name)}")
         print(f"{renderer.gray('Total:')} {breakdown.total_time_ms:.2f}ms  |  "
               f"{renderer.gray('Ticks:')} {breakdown.total_ticks:,}")
         print()

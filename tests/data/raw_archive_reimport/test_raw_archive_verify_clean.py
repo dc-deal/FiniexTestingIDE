@@ -94,14 +94,25 @@ class TestVerify:
         assert offender.startswith(f'{refused} — ') and 'before its extraction' in offender
         assert tree.build_tool().verify() == 1
 
-    def test_an_import_without_override_leaves_every_file_in_the_inbox(self, tree):
-        """Without --override the importer skips every file as a duplicate."""
+    def test_an_import_without_override_is_caught_by_rewritten_alone(self, tree):
+        """Without --override the importer skips every file as a duplicate and moves it on: the
+        inbox empties, and only the parquets' age shows that nothing was imported."""
         _extract_winter(tree)
-        tree.simulate_import(refused=WINTER_MT5)
+        tree.simulate_import(not_rewritten=WINTER_MT5)
 
         checks = _checks_by_id(tree)
-        assert sorted(checks[ReimportCheckId.INBOX].offenders) == sorted(WINTER_MT5)
-        assert checks[ReimportCheckId.INBOX].detail.startswith('3 of 3 left in ')
+        assert checks[ReimportCheckId.INBOX].passed
+        assert not checks[ReimportCheckId.REWRITTEN].passed
+        assert len(checks[ReimportCheckId.REWRITTEN].offenders) == len(WINTER_MT5)
+
+    def test_a_refused_file_is_found_in_the_refused_directory(self, tree):
+        _extract_winter(tree)
+        refused = 'GBPUSD_20260120_000000_ticks.json'
+        tree.simulate_import(shift=timedelta(hours=1), refused=[refused])
+
+        checks = _checks_by_id(tree)
+        assert checks[ReimportCheckId.INBOX].detail.endswith(
+            f'1 refused to {tree.refused_dir}')
 
     def test_a_stale_parquet_fails_rewritten_while_count_names_and_inbox_pass(self, tree):
         """The file left the inbox, but its parquet is older than its extraction."""

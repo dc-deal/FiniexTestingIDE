@@ -9,7 +9,7 @@ cause.
 import threading
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 from unittest.mock import patch
 
 import pytest
@@ -29,6 +29,8 @@ from python.framework.store.entry_members.run_entry_members import RUN_ENTRY_MEM
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.api.report_types import RunHeader
 from python.framework.types.api.state_frame_types import StateFrame, StateFrameCause
+from python.framework.types.chart_types.indicator_series_entry_types import IndicatorSeriesLayer
+from python.framework.types.chart_types.indicator_series_types import Plot, PriceFormat, ValueRange
 from python.framework.types.run_kind_types import TicksFrom
 from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.time_utils import floor_to_millisecond
@@ -107,6 +109,45 @@ def _three_days(root: Path, written_at: datetime) -> List[datetime]:
     times += _write_frames(stream, _DAY_3, 2, written_at)
     stream.close()
     return times
+
+
+def _write_series(root: Path, bar_times: List[datetime], worker: str = 'rsi_fast',
+                  with_header: bool = True,
+                  higher_bar_times: Optional[List[datetime]] = None) -> None:
+    """
+    An indicator series stream of the session — one worker's RSI on M5, one value per bar, and
+    where asked a second series of the same worker on M30.
+
+    Args:
+        root: The test's tree
+        bar_times: The M5 bars' opening instants, oldest first; the first holds no value yet
+        worker: The worker instance
+        with_header: False opens the stream without its header line, as the moment before it lands
+        higher_bar_times: The M30 bars' opening instants of a second series; None for none
+    """
+    writer = RunEntryWriter(root / 'autotrader' / 'my_profile' / _RUN, RUN_TYPE_AUTOTRADER)
+    layers = [IndicatorSeriesLayer(
+        title='RSI', price_format=PriceFormat(precision=2),
+        range=ValueRange(min_value=0, max_value=100), plots=(Plot(id='rsi_value'),),
+        layer=f'worker:{worker}', pane=worker, inputs={'period': 14}, timeframe='M5')]
+    if higher_bar_times is not None:
+        layers.append(IndicatorSeriesLayer(
+            title='RSI higher', plots=(Plot(id='rsi_higher'),), layer=f'worker:{worker}:higher',
+            pane=f'{worker}:higher', timeframe='M30'))
+    stream = writer.open_stream(
+        RunEntryMemberId.INDICATOR_SERIES, _RUN, None, stops='-',
+        header_fields=({'unit_name': _UNIT, 'worker': worker, 'cadence_timeframe': 'M5',
+                        'series': [layer.model_dump(mode='json') for layer in layers]}
+                       if with_header else None),
+        worker=worker)
+    records = [(moment, 'M5', {'rsi_value': None if index == 0 else 40.0 + index})
+               for index, moment in enumerate(bar_times)]
+    records += [(moment, 'M30', {'rsi_higher': 50.0 + index})
+                for index, moment in enumerate(higher_bar_times or [])]
+    for moment, timeframe, values in sorted(records, key=lambda record: record[0]):
+        assert stream.write({'bar_time': moment.isoformat(), 'timeframe': timeframe,
+                             'values': values})
+    stream.close()
 
 
 def _declared_kinds() -> set:
@@ -217,7 +258,8 @@ class TestTheTimeline:
 
     def test_it_lists_every_kind_the_store_declares(self, client, tmp_path):
         """A kind declared on a stream is claimed as served; a session recording it lists it."""
-        _three_days(tmp_path, datetime.now(timezone.utc))
+        times = _three_days(tmp_path, datetime.now(timezone.utc))
+        _write_series(tmp_path, times[:2])
 
         answer = client.get(_BASE).json()
         window = client.get(f'{_BASE}/window', params={'limit': 1}).json()
@@ -290,7 +332,8 @@ class TestTheWindow:
 
         assert [_parse(frame['frame_time']) for frame in answer['state_frames']] == times
         assert [frame['record_no'] for frame in answer['state_frames']] == list(range(1, 10))
-        assert answer['keys'] == {'state_frames': ['record_no']}
+        assert answer['keys'] == {'state_frames': ['record_no'], 'indicator_series': ['layer']}
+        assert answer['indicator_series'] == []
         assert (answer['matched'], answer['returned'], answer['limit']) == (
             9, 9, MAX_WINDOW_RECORDS)
         assert answer['truncated'] is False and answer['next_from'] is None
@@ -444,3 +487,101 @@ class TestFollowingASessionWhileItWrites:
         assert any(300 < count < len(written) for count in counts)
         assert sorted(held) == list(range(1, len(written) + 1))
         assert [held[number] for number in sorted(held)] == written
+
+
+class TestTheIndicatorSeries:
+    """
+    A drawing worker's series beside the state frames (#379): one timeline row per worker, served in
+    the window as one entry per layer, its bars in parallel arrays — merged with the frames by time,
+    so walking the pages meets every record of every stream once.
+    """
+
+    def _bars(self, count: int) -> List[datetime]:
+        start = datetime(2026, 12, 1, 1, 5, 0, 412000, tzinfo=timezone.utc)
+        return [start + timedelta(minutes=5 * index) for index in range(count)]
+
+    def test_each_drawing_worker_is_a_row_of_the_timeline(self, client, tmp_path):
+        _three_days(tmp_path, datetime.now(timezone.utc))
+        bars = self._bars(4)
+        _write_series(tmp_path, bars)
+
+        rows = {row['stream_name']: row for row in client.get(_BASE).json()['streams']}
+
+        series = rows['rsi_fast']
+        assert series['stream_kind'] == 'indicator_series'
+        assert series['record_time_field'] == 'bar_time'
+        assert series['record_count'] == 4
+        assert (series['cadence_timeframe'], series['cadence_s']) == ('M5', 300.0)
+        assert _parse(series['first_record_time']) == bars[0]
+        assert _parse(series['last_record_time']) == bars[-1]
+
+    def test_the_window_serves_one_entry_per_layer_in_parallel_arrays(self, client, tmp_path):
+        _three_days(tmp_path, datetime.now(timezone.utc))
+        bars = self._bars(3)
+        _write_series(tmp_path, bars)
+
+        (entry,) = client.get(f'{_BASE}/window').json()['indicator_series']
+
+        assert (entry['layer'], entry['pane'], entry['timeframe']) == (
+            'worker:rsi_fast', 'rsi_fast', 'M5')
+        assert [_parse(moment) for moment in entry['times']] == bars
+        assert entry['data'] == {'rsi_value': [None, 41.0, 42.0]}
+        assert entry['range'] == {'min_value': 0.0, 'max_value': 100.0}
+
+    def test_a_worker_on_two_timeframes_serves_each_series_its_own_bars(self, client, tmp_path):
+        _three_days(tmp_path, datetime.now(timezone.utc))
+        bars = self._bars(7)
+        _write_series(tmp_path, bars, higher_bar_times=[bars[0]])
+
+        entries = {entry['layer']: entry
+                   for entry in client.get(f'{_BASE}/window').json()['indicator_series']}
+
+        lower, higher = entries['worker:rsi_fast'], entries['worker:rsi_fast:higher']
+        assert (lower['timeframe'], higher['timeframe']) == ('M5', 'M30')
+        assert [_parse(moment) for moment in lower['times']] == bars
+        assert len(lower['data']['rsi_value']) == len(bars)
+        assert [_parse(moment) for moment in higher['times']] == [bars[0]]
+        assert higher['data'] == {'rsi_higher': [50.0]}
+
+    @pytest.mark.parametrize('limit', [1, 2, 5, 13])
+    def test_walking_the_pages_meets_every_record_of_every_stream_once(
+            self, client, tmp_path, limit):
+        frame_times = _three_days(tmp_path, datetime.now(timezone.utc))
+        bars = self._bars(4)
+        _write_series(tmp_path, bars)
+        frames_seen: List[int] = []
+        bars_seen: List[datetime] = []
+        params: Dict[str, object] = {'limit': limit}
+        while True:
+            page = client.get(f'{_BASE}/window', params=params).json()
+            frames_seen += [frame['record_no'] for frame in page['state_frames']]
+            for entry in page['indicator_series']:
+                bars_seen += [_parse(moment) for moment in entry['times']]
+            assert page['returned'] == (len(page['state_frames']) + sum(
+                len(entry['times']) for entry in page['indicator_series']))
+            if not page['truncated']:
+                break
+            params['from'] = page['next_from']
+
+        assert frames_seen == list(range(1, len(frame_times) + 1))
+        assert bars_seen == bars
+
+    def test_a_unit_that_records_only_its_series_is_served(self, client, tmp_path):
+        _run_dir(tmp_path)
+        _write_series(tmp_path, self._bars(2))
+
+        timeline = client.get(_BASE).json()
+        window = client.get(f'{_BASE}/window').json()
+
+        assert [row['stream_kind'] for row in timeline['streams']] == ['indicator_series']
+        assert timeline['recording'] is None
+        assert window['state_frames'] == [] and len(window['indicator_series']) == 1
+
+    def test_a_series_another_unit_recorded_is_not_this_ones(self, client, tmp_path):
+        _run_dir(tmp_path)
+        _write_series(tmp_path, self._bars(2))
+
+        answer = client.get(_BASE.replace(_UNIT, 'another_session'))
+
+        assert answer.status_code == 404 and answer.json()['error'] == 'unit_not_found'
+

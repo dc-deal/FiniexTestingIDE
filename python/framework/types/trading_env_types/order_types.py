@@ -182,6 +182,18 @@ FAILED_ORDER_STATUSES = frozenset({
 })
 
 
+@dataclass
+class FailedOrderOfReason:
+    """
+    A failed order as the order history counts it: its status and the reason its row names.
+
+    A fold row (#557) — the reason is resolved from the row once, so the failed orders can be
+    grouped by it.
+    """
+    status: OrderStatus
+    reason: str
+
+
 class OrderInitiator(Enum):
     """
     Who ended an order that did not fill — on a cancelled, expired or unaccounted row.
@@ -295,7 +307,7 @@ class FeeReport(Enum):
 # Order Capability System
 # ============================================
 
-@dataclass
+@dataclass(frozen=True)
 class OrderCapabilities:
     """
     Runtime capability checks for broker-specific order types.

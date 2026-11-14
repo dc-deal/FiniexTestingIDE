@@ -22,6 +22,7 @@ Event → payload → hook map:
     PARTIAL_CLOSE     → PartialCloseEvent     → on_partial_close
     POSITION_CLOSED   → PositionClosedEvent   → on_position_closed
     SESSION_END       → SessionEndEvent       → on_session_end
+    SESSION_END_ORDER_OUTCOME → SessionEndOrderOutcomeEvent → on_session_end_order_outcome
 """
 
 from dataclasses import dataclass
@@ -29,11 +30,12 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Optional, Union
 
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderEndReason,
-    OrderResult,
+    OrderStatus,
     RejectionReason,
 )
 
@@ -47,6 +49,7 @@ class DecisionEventType(StrEnum):
     PARTIAL_CLOSE = 'partial_close'
     POSITION_CLOSED = 'position_closed'
     SESSION_END = 'session_end'
+    SESSION_END_ORDER_OUTCOME = 'session_end_order_outcome'
 
 
 class SessionEndSeverity(StrEnum):
@@ -71,7 +74,7 @@ class OrderFilledEvent:
         direction: Position direction (LONG/SHORT)
         fill_price: Executed price
         lots: Executed lots
-        result: Full OrderResult for detailed access
+        result: The order's full result, as a read-only mask (#654)
         tick_time: Tick timestamp at delivery (sim time / wall-clock)
     """
     order_id: str
@@ -79,7 +82,7 @@ class OrderFilledEvent:
     direction: OrderDirection
     fill_price: Optional[float]
     lots: Optional[float]
-    result: OrderResult
+    result: AlgoOrderResult
     tick_time: Optional[datetime] = None
 
 
@@ -104,14 +107,14 @@ class OrderRejectedEvent:
             position it closes; None when that position is no longer held
         reason: Machine-readable rejection reason; None for an undelivered order
         message: Human-readable rejection message
-        result: Full OrderResult for detailed access
+        result: The order's full result, as a read-only mask (#654)
         tick_time: Tick timestamp at delivery (sim time / wall-clock)
     """
     order_id: str
     direction: Optional[OrderDirection]
     reason: Optional[RejectionReason]
     message: str
-    result: OrderResult
+    result: AlgoOrderResult
     tick_time: Optional[datetime] = None
 
 
@@ -135,13 +138,13 @@ class OrderUnaccountedEvent:
         direction: Position direction (LONG/SHORT) — for a close, the direction of the
             position it closes; None when that position is no longer held
         end_reason: Why the framework stopped asking — the timeout or the resolution ceiling
-        result: Full OrderResult for detailed access
+        result: The order's full result, as a read-only mask (#654)
         tick_time: Tick timestamp at delivery (sim time / wall-clock)
     """
     order_id: str
     direction: Optional[OrderDirection]
     end_reason: Optional[OrderEndReason]
-    result: OrderResult
+    result: AlgoOrderResult
     tick_time: Optional[datetime] = None
 
 
@@ -162,7 +165,7 @@ class OrderCancelledEvent:
     """
     order_id: str
     direction: Optional[OrderDirection]
-    result: OrderResult
+    result: AlgoOrderResult
     tick_time: Optional[datetime] = None
 
 
@@ -177,7 +180,7 @@ class PartialCloseEvent:
         closed_lots: Lots closed by this fill
         remaining_lots: Lots still open after this fill
         fill_price: Executed close price
-        result: Full OrderResult for detailed access
+        result: The order's full result, as a read-only mask (#654)
         tick_time: Tick timestamp at delivery (sim time / wall-clock)
     """
     position_id: str
@@ -185,7 +188,7 @@ class PartialCloseEvent:
     closed_lots: float
     remaining_lots: float
     fill_price: Optional[float]
-    result: OrderResult
+    result: AlgoOrderResult
     tick_time: Optional[datetime] = None
 
 
@@ -205,7 +208,7 @@ class PositionClosedEvent:
         fill_price: Executed close price
         lots: Lots closed
         realized_pnl: Realised P&L of the close
-        result: Full OrderResult for detailed access
+        result: The order's full result, as a read-only mask (#654)
         tick_time: Tick timestamp at delivery (sim time / wall-clock)
     """
     position_id: str
@@ -214,7 +217,7 @@ class PositionClosedEvent:
     fill_price: Optional[float]
     lots: Optional[float]
     realized_pnl: float
-    result: OrderResult
+    result: AlgoOrderResult
     tick_time: Optional[datetime] = None
 
 
@@ -236,6 +239,31 @@ class SessionEndEvent:
     tick_time: Optional[datetime] = None
 
 
+@dataclass(frozen=True, slots=True)
+class SessionEndOrderOutcomeEvent:
+    """
+    How an order the strategy sent from on_session_end ended. Delivered to
+    on_session_end_order_outcome(), once, after the session-end event (#642).
+
+    The session is over when it arrives: an order sent from this hook is withdrawn, never sent.
+    Every ending is reported, not only a fill — a close that was refused or never accounted for
+    is what the strategy most needs to hear.
+
+    Args:
+        order_id: Internal order id
+        position_id: The position the order opened or closed, None where its row has none
+        status: How the order ended: executed, rejected, undelivered, unaccounted, cancelled
+            (withdrawn) or expired
+        result: The order's booked row, for the price, the lots and the reason
+        tick_time: Tick timestamp at delivery (sim time / wall-clock)
+    """
+    order_id: str
+    position_id: Optional[str]
+    status: OrderStatus
+    result: AlgoOrderResult
+    tick_time: Optional[datetime] = None
+
+
 # Union of all event payloads — the buffer element type carried by the dispatcher.
 DecisionEvent = Union[
     OrderFilledEvent,
@@ -245,4 +273,5 @@ DecisionEvent = Union[
     PartialCloseEvent,
     PositionClosedEvent,
     SessionEndEvent,
+    SessionEndOrderOutcomeEvent,
 ]

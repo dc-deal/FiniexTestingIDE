@@ -96,8 +96,8 @@ class FeedStabilitySummary(AbstractBatchSummarySection):
         print(f'{indent}📉 {unit.source} ({unit.domain})')
         print(f'{indent}   {self._counter_line(unit)}')
 
-        if len(unit.episodes) > threshold:
-            print(f'{indent}     {len(unit.episodes)} episodes — '
+        if unit.episode_count > threshold:
+            print(f'{indent}     {unit.episode_count} episodes — '
                   f'full list in feed_stability.json')
             return
 
@@ -114,11 +114,10 @@ class FeedStabilitySummary(AbstractBatchSummarySection):
 
     def _counter_line(self, unit: FeedStabilitySourceRow) -> str:
         """The domain's per-tick counters — signal carries a third (blind) class."""
-        total = unit.fresh_ticks + unit.stale_ticks + unit.blind_ticks
-        if total == 0:
+        fresh_pct = unit.fresh_tick_pct
+        if fresh_pct is None:
             return 'no tick counters recorded'
 
-        fresh_pct = unit.fresh_ticks / total * 100
         if unit.domain == DisturbanceDomain.SIGNAL.value:
             return (f'{unit.fresh_ticks:,} fresh · {unit.stale_ticks:,} stale · '
                     f'{unit.blind_ticks:,} blind     ({fresh_pct:.1f}% fresh)')

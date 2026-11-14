@@ -19,10 +19,11 @@ from typing import List, Optional
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.config_directory.config_directory import declared_run_purposes
 from python.framework.reporting.builders.deployment_history_builder import (
+    add_unbooked_sessions,
     build_deployment_histories,
+    compose_deployment_list,
     deployment_code_summary,
     deployment_comparability_advisory,
-    summarize_deployments,
 )
 from python.framework.reporting.console.deployment_history_summary import (
     render_deployment_history,
@@ -121,12 +122,20 @@ class RunIndexCli:
         """
         ledger = RunResultsLedger(Path(AppConfigManager().get_run_ledger_path()))
         rows = ledger.read_rows()
-        histories = build_deployment_histories(rows)
+        # Which sessions a deployment holds is the run index's answer, what they booked the
+        # ledger's (#645): a session registers at its start and books its first row only at its
+        # first seal, so the ledger alone leaves a new deployment out until then.
+        runs = self._index.list_runs()
+        histories = add_unbooked_sessions(build_deployment_histories(rows), rows, runs)
         if deployment:
             histories = {k: v for k, v in histories.items() if k == deployment}
 
         if not histories:
-            print('No deployment found in the ledger.')
+            if deployment:
+                print(f'No deployment {deployment!r}: no session in the run index and no ledger '
+                      'row names it.')
+                return 0
+            print('No deployment found: no session in the run index and no ledger row names one.')
             print('A session joins one only when its profile declares '
                   '`deployment.continuous: true` — until then every start stands alone.')
             return 0
@@ -146,14 +155,12 @@ class RunIndexCli:
         # "which one do I open", the DETAIL answers "what happened inside it". Printing every
         # deployment's full table was neither — it buried the overview in the detail.
         if not deployment:
-            render_deployment_list(summarize_deployments(histories, advisories, code_summaries))
+            render_deployment_list(compose_deployment_list(rows, runs, now))
             return 0
 
-        # The sessions ABOVE come from the ledger, which holds the row of a session's close
-        # only at the end: a hard kill leaves the session in that table without an end when it
-        # sealed a day, and out of it when it did not. The run index registered it at start, so
-        # every such run is recoverable from there.
-        runs = self._index.list_runs()
+        # The ledger holds the row of a session's close only at the end: a hard kill leaves the
+        # session in the table without an end when it sealed a day, and with no figures when it
+        # did not. The run index registered it at start, so every such run is named from there.
         for name in sorted(histories):
             # Resolved BEFORE rendering: the table's own heading counts the sessions the
             # ledger holds, so it has to be told how many never completed.

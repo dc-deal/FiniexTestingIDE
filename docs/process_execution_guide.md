@@ -173,10 +173,16 @@ timeframe, as the last N bars complete at the scenario's first tick, and its dat
 refused the scenario if a timeframe had none. The process only hands it on:
 
 ```python
-warmup_history = WarmupHistory.from_package(
-    symbol=config.symbol, package=shared_data, logger=scenario_logger)
+if config.warmup_record is not None:
+    warmup_history = WarmupHistory.from_record(config.warmup_record, logger=scenario_logger)
+else:
+    warmup_history = WarmupHistory.from_package(
+        symbol=config.symbol, package=shared_data, logger=scenario_logger)
 warmup_history.inject_into(bar_rendering_controller)
 ```
+
+A scenario that names `warmup_from_run` is a backtest of a live session's window: the loader read
+that run's recorded history, and the process starts from it instead of the archive's selection.
 
 `inject_into` goes through `BarRenderingController.inject_warmup_bars`, which refuses a bar not
 complete at that instant, a repeated period or one out of order — the same route the AutoTrader
@@ -196,7 +202,12 @@ and handed to the subprocesses with only the symbols the run's scenarios trade. 
 symbol specifications from the runtime cache — machine-local, and refreshed by a live-adapter
 session start or `broker_config_cli.py sync`, never by a backtest — and the fee structure from the
 tracked seed ([Broker Configuration](broker_config_guide.md)). When an entry it read was older than
-seven days, the run says so once per symbol afterwards (`broker_spec_stale`).
+seven days, the run says so once per symbol afterwards (`broker_spec_stale`). A scenario that names
+`broker_config_document` trades with that frozen configuration instead — a backtest of a session's
+window trades with what the session traded with. The loader reads the document before the batch
+begins and refuses one the run-config store does not hold; a document no configuration can be built
+from is that scenario's error (`broker_config_document_unavailable`). Neither read touches a store
+from the preparation or the scenario process.
 
 Before the scenarios execute, the run freezes the configuration the mount carries: a copy goes
 into the run-config store, and the run's broker section names it `broker_config_id`, beside

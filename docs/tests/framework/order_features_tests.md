@@ -29,7 +29,7 @@ which its own suite holds.
 | `TestTheSetDeclaresTheException` | it reaches every scenario; an unknown name and a misspelt key are refused |
 | `TestARefusedModifyLeavesATrace` | a refused modify reaches the executor, is logged once per feature in both account models, and removing a level is not reported |
 | `TestALiveExecutorHoldsNoLevel` | the backstop: a level on an order, a position or a stop order is refused, both account models, and removing one is not; a breached price closes nothing on its own |
-| `TestASimulationEnforcesTheLevelsPositionsCarry` | a stop and a target fill AT the level, and count |
+| `TestASimulationEnforcesTheLevelsPositionsCarry` | in both account models a stop fills at the market of the tick that breaches it — the gap's price on a gap, the level on a touch — and a target at its level; the record's P&L comes from the exit price it names, and each close counts |
 | `TestAStoredBookWithALevelIsRefused` | a stop resting at the venue and a level on a position are named with what to do; a clean book passes, and one written before the rebuilt stop went still loads; the load carries the refusal and keeps the book readable; a malformed book reads as unreadable instead of crashing |
 | `TestItIsRecorded` | the run header serves the values; the ledger row says it over all scenarios, and is empty without one; the column is declared with how it combines |
 | `TestASessionCannotDeclareIt` | the key in an AutoTrader profile is refused |

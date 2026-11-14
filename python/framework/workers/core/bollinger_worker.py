@@ -3,13 +3,22 @@ FiniexTestingIDE - Bollinger Worker
 Bar-based Bollinger band computation
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 
+from python.framework.trading_env.algo_masks.algo_bar import AlgoBar
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
+from python.framework.types.chart_types.drawing_style_types import DrawingEmphasis, DrawingStyle
+from python.framework.types.chart_types.indicator_series_types import (
+    FilledArea,
+    IndicatorPane,
+    IndicatorSeriesDeclaration,
+    Plot,
+)
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.indicator_types import MaType
-from python.framework.types.market_types.market_data_types import Bar, TickData
+from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
 from python.framework.utils.trading_math.indicators.bollinger_bands import bollinger_bands
@@ -70,6 +79,21 @@ class BollingerWorker(AbstractIndicatorWorker):
                 description='Moving-average type for the midline (sma or ema)'
             ),
         }
+
+    @classmethod
+    def get_indicator_series(cls) -> Tuple[IndicatorSeriesDeclaration, ...]:
+        """
+        The bands on the candles, the middle line quieter, the channel between them filled.
+
+        Returns:
+            The series
+        """
+        return (IndicatorSeriesDeclaration(
+            pane=IndicatorPane.PRICE, title='Bollinger',
+            plots=(Plot(id='upper', style=DrawingStyle(series=0)),
+                   Plot(id='middle', style=DrawingStyle(series=1, emphasis=DrawingEmphasis.QUIET)),
+                   Plot(id='lower', style=DrawingStyle(series=0))),
+            filled_areas=(FilledArea(between=('plot:upper', 'plot:lower')),)),)
 
     @classmethod
     def get_output_schema(cls) -> Dict[str, OutputParamDef]:
@@ -192,15 +216,15 @@ class BollingerWorker(AbstractIndicatorWorker):
         """LIVE — `position`/`position_raw` track tick.price intra-bar (#420). BAR_CLOSE opt-in."""
         return ComputeBasis.LIVE
 
-    def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
+    def should_recompute(self, tick: AlgoTick, bar_updated: bool) -> bool:
         """Bollinger recomputes when bar updated"""
         return bar_updated
 
     def compute(
         self,
-        tick: TickData,
-        bar_history: Dict[str, List[Bar]],
-        current_bars: Dict[str, Bar],
+        tick: AlgoTick,
+        bar_history: Mapping[str, Tuple[Bar, ...]],
+        current_bars: Mapping[str, AlgoBar],
     ) -> WorkerResult:
         """
         Bollinger Band computation using bar close prices.

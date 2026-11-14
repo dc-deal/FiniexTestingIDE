@@ -13,11 +13,20 @@ Reads the map directly — NOT via RunUnit — because it is a source-keyed data
 per-unit record (same pattern as the broker section).
 """
 
-from datetime import datetime
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from python.framework.discoveries.signal_coverage.signal_coverage_report import SignalCoverageReport
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
+from python.framework.reporting.aggregation.aggregation_fold import (
+    fold_group,
+    fold_rows,
+    served_part,
+)
+from python.framework.reporting.aggregation.tables.signal_figure_table import (
+    FEED_PROVENANCE_TABLE,
+    SIGNAL_COVERAGE_TABLE,
+    SIGNAL_RESOLUTION_TABLE,
+)
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import SignalReport, SignalSourceRow, SignalUsageRow
 from python.framework.types.scenario_types.scenario_set_types import (
@@ -27,7 +36,9 @@ from python.framework.types.signal_data_types import (
     SignalObservedSeries,
     SignalResolutionStats,
     SignalSeriesKind,
+    SignalStatsOfUnit,
 )
+from python.framework.utils.time_utils import format_iso_or_empty
 
 
 def build_signal_report(
@@ -100,31 +111,18 @@ def _index_resolution_stats(
     Returns:
         Summed counters keyed by (unit name, symbol)
     """
+    rows = [SignalStatsOfUnit(
+        unit_name=unit.name, symbol=stats.symbol or unit.symbol, worker_name=stats.worker_name,
+        signal_kind=stats.signal_kind, fresh_ticks=stats.fresh_ticks,
+        stale_ticks=stats.stale_ticks, blind_ticks=stats.blind_ticks,
+        availability_clamps=stats.availability_clamps,
+        max_clamp_correction_ms=stats.max_clamp_correction_ms)
+        for unit in units for stats in unit.signal_statistics]
+    # Summed per worker, the clamps by MAX — declared in the signal resolution table
     index: Dict[Tuple[str, str], SignalResolutionStats] = {}
-    for unit in units:
-        for stats in unit.signal_statistics:
-            key = (unit.name, stats.symbol or unit.symbol)
-            merged = index.get(key)
-            if merged is None:
-                index[key] = SignalResolutionStats(
-                    worker_name=stats.worker_name,
-                    signal_kind=stats.signal_kind,
-                    symbol=key[1],
-                    fresh_ticks=stats.fresh_ticks,
-                    stale_ticks=stats.stale_ticks,
-                    blind_ticks=stats.blind_ticks,
-                    availability_clamps=stats.availability_clamps,
-                    max_clamp_correction_ms=stats.max_clamp_correction_ms,
-                )
-                continue
-            merged.fresh_ticks += stats.fresh_ticks
-            merged.stale_ticks += stats.stale_ticks
-            merged.blind_ticks += stats.blind_ticks
-            # MAX, not +=: one series, one clamp count, however many workers read it.
-            merged.availability_clamps = max(
-                merged.availability_clamps, stats.availability_clamps)
-            merged.max_clamp_correction_ms = max(
-                merged.max_clamp_correction_ms, stats.max_clamp_correction_ms)
+    for figures in fold_rows(rows, SIGNAL_RESOLUTION_TABLE):
+        key = (figures['unit_name'], figures['symbol'])
+        index[key] = SignalResolutionStats(**served_part(figures, SIGNAL_RESOLUTION_TABLE))
     return index
 
 
@@ -152,23 +150,12 @@ def _to_source_row(
         for usage in info.usages:
             usages.append(_to_usage_row(info.coverage, usage, stats_index))
 
-    trigger_reasons, trigger_unknown = _merge_trigger_reasons(coverages)
+    archive = served_part(fold_group(coverages, SIGNAL_COVERAGE_TABLE), SIGNAL_COVERAGE_TABLE)
 
     return SignalSourceRow(
         source=source,
         series_kind=SignalSeriesKind.ARCHIVE.value,
-        sequence=infos[0].coverage.get_sequence_description() if infos else '',
-        data_origin=_first_non_empty(c.get_data_origin() for c in coverages),
-        config_fingerprint=_first_non_empty(
-            c.get_config_fingerprint() for c in coverages),
-        cadence_seconds=max((c.cadence_seconds for c in coverages), default=0.0),
-        snapshot_count=max((c.snapshot_count for c in coverages), default=0),
-        archive_start=_iso(min((c.start_time for c in coverages if c.start_time),
-                               default=None)),
-        archive_end=_iso(max((c.end_time for c in coverages if c.end_time), default=None)),
-        gap_counts=_merge_gap_counts(coverages),
-        trigger_reasons=trigger_reasons,
-        trigger_unknown=trigger_unknown,
+        **archive,
         usages=sorted(usages, key=lambda u: u.scenario),
     )
 
@@ -201,13 +188,13 @@ def _to_feed_row(
         source=observed.source,
         series_kind=SignalSeriesKind.FEED.value,
         sequence=observed.get_sequence_description(),
-        data_origin=_merge_values(observed.data_origins),
-        config_fingerprint=_merge_values(observed.config_fingerprints),
-        prompt_version=_merge_values(observed.prompt_versions),
+        data_origin=fold_group(observed.data_origins, FEED_PROVENANCE_TABLE)['value'],
+        config_fingerprint=fold_group(observed.config_fingerprints, FEED_PROVENANCE_TABLE)['value'],
+        prompt_version=fold_group(observed.prompt_versions, FEED_PROVENANCE_TABLE)['value'],
         cadence_seconds=observed.cadence_seconds,
         snapshot_count=observed.snapshot_count,
-        archive_start=_iso(observed.start_time),
-        archive_end=_iso(observed.end_time),
+        archive_start=format_iso_or_empty(observed.start_time),
+        archive_end=format_iso_or_empty(observed.end_time),
         gap_counts={},
         trigger_reasons=dict(observed.trigger_reasons),
         trigger_unknown=observed.trigger_unknown,
@@ -245,8 +232,8 @@ def _to_feed_usage_row(
     return SignalUsageRow(
         scenario=unit.name,
         symbol=symbol,
-        window_start=_iso(observed.start_time),
-        window_end=_iso(observed.end_time),
+        window_start=format_iso_or_empty(observed.start_time),
+        window_end=format_iso_or_empty(observed.end_time),
         coverage_ratio=None,
         fresh_ticks=fresh,
         stale_ticks=stale,
@@ -255,22 +242,6 @@ def _to_feed_usage_row(
         availability_clamps=clamps,
         max_clamp_correction_ms=worst_clamp_ms,
     )
-
-
-def _merge_values(values) -> str:
-    """
-    One value, 'mixed' when a series carried several, '' when it carried none.
-
-    Args:
-        values: Distinct values observed across the series
-
-    Returns:
-        The single value, 'mixed', or '' for unknown
-    """
-    ordered = sorted(v for v in values if v)
-    if not ordered:
-        return ''
-    return ordered[0] if len(ordered) == 1 else 'mixed'
 
 
 def _to_usage_row(
@@ -310,8 +281,8 @@ def _to_usage_row(
     return SignalUsageRow(
         scenario=usage.scenario_name,
         symbol=usage.symbol,
-        window_start=_iso(usage.window_start),
-        window_end=_iso(usage.window_end),
+        window_start=format_iso_or_empty(usage.window_start),
+        window_end=format_iso_or_empty(usage.window_end),
         coverage_ratio=coverage_ratio,
         fresh_ticks=fresh,
         stale_ticks=stale,
@@ -320,47 +291,3 @@ def _to_usage_row(
         availability_clamps=clamps,
         max_clamp_correction_ms=worst_clamp_ms,
     )
-
-
-def _merge_gap_counts(coverages: List[SignalCoverageReport]) -> Dict[str, int]:
-    """Sum the gap counts across a source's symbols, dropping empty categories."""
-    merged: Dict[str, int] = {}
-    for coverage in coverages:
-        for category, count in coverage.gap_counts.items():
-            if count:
-                merged[category] = merged.get(category, 0) + count
-    return merged
-
-
-def _merge_trigger_reasons(
-        coverages: List[SignalCoverageReport]) -> Tuple[Dict[str, int], int]:
-    """
-    Trigger composition of a source — envelope-level, so taken from ONE coverage.
-
-    Summing across symbols would multiply every envelope by its symbol count. The
-    unknown count travels with the composition: both come from the same coverage,
-    so the pair always describes the same envelope set.
-
-    Args:
-        coverages: The source's per-symbol coverage reports
-
-    Returns:
-        Tuple of (composition, count of envelopes carrying no reason)
-    """
-    for coverage in coverages:
-        if coverage.trigger_reasons or coverage.trigger_unknown:
-            return dict(coverage.trigger_reasons), coverage.trigger_unknown
-    return {}, 0
-
-
-def _first_non_empty(values: Iterable[str]) -> str:
-    """First non-empty provenance value; '' when none carries one (= unknown)."""
-    for value in values:
-        if value:
-            return value
-    return ''
-
-
-def _iso(moment: Optional[datetime]) -> str:
-    """ISO-8601 string of a UTC moment, '' when absent."""
-    return moment.isoformat() if moment is not None else ''

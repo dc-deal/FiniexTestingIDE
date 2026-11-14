@@ -17,9 +17,14 @@ from typing import Dict, Optional, Tuple
 
 from python.configuration.autotrader.broker_config_cache_policy import CACHE_REFRESH_DAYS
 from python.framework.reporting.builders.pending_orders_report_builder import submission_count
+from python.framework.reporting.builders.portfolio_report_builder import usable_funds
 from python.framework.reporting.builders.robustness_report_builder import (
     build_robustness_report_from_batch,
 )
+from python.framework.reporting.builders.worker_decision_breakdown_builder import (
+    coordination_overhead_ms,
+)
+from python.framework.types.api.report_types import WalkForwardClass
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.config_types.robustness_config_types import RobustnessMetric
@@ -45,6 +50,7 @@ from python.framework.validators.shared_advisory_checks import (
     check_order_event_stream,
     check_stress_test,
     check_unversioned_code,
+    check_usable_funds,
 )
 
 # Scope of a batch-global finding — it concerns the run, not one scenario.
@@ -101,6 +107,7 @@ class PostRunValidator:
         self._check_multi_currency()
         self._check_time_divergence()
         self._check_order_event_stream()
+        self._check_usable_funds()
         self._check_robustness()
 
     def _add(self, check: str, domain: ValidationDomain, message: str) -> None:
@@ -450,7 +457,7 @@ class PostRunValidator:
             worker_exec = sum(w.worker_total_time_ms for w in (tlr.worker_statistics or []))
             decision = tlr.decision_statistics.decision_total_time_ms if tlr.decision_statistics else 0.0
             computation = worker_exec + decision
-            overhead = max(0.0, op_total - computation)
+            overhead = coordination_overhead_ms(op_total, worker_exec, decision)
             if computation > 0 and overhead / computation > _HIGH_OVERHEAD_RATIO:
                 high.append(result.scenario_name)
         if high:
@@ -504,6 +511,16 @@ class PostRunValidator:
             f'Parallel worker execution lost {abs(stats.parallel_time_saved_ms):.1f}ms in '
             f"'{name}'{f' (+{len(penalised) - 1} more)' if len(penalised) > 1 else ''} — "
             f'consider disabling parallel workers for this workload'))
+
+    def _check_usable_funds(self) -> None:
+        """Warn when a scenario's funds fall below zero once its own unfilled orders count."""
+        finding = check_usable_funds(
+            [(result.scenario_name, usable_funds(result.tick_loop_results.portfolio_stats))
+             for result in self._batch.process_result_list
+             if result.tick_loop_results and result.tick_loop_results.portfolio_stats],
+            _SCENARIO_UNIT_LABEL)
+        if finding is not None:
+            self._add_finding(finding)
 
     def _check_multi_currency(self) -> None:
         """Advisory when a batch mixes account currencies (cross-currency P&L is not summed)."""
@@ -597,9 +614,12 @@ class PostRunValidator:
         # Per-bucket sufficiency: the WFE rests on BOTH the IS and OOS means. The overall
         # window check above can pass while a single bucket — usually OOS — is decimated
         # (excluded / crashed scenarios), so guard each bucket before trusting the verdict.
+        # Both checks read the class the report serves (#557) — one classification, not a copy
+        # of its thresholds here.
+        walk_forward = report.walk_forward_class
         is_n = report.in_sample.window_count if report.in_sample else 0
         oos_n = report.out_of_sample.window_count if report.out_of_sample else 0
-        if is_n < config.min_windows or oos_n < config.min_windows:
+        if walk_forward is WalkForwardClass.INCONCLUSIVE:
             self._add('robustness_insufficient_buckets', ValidationDomain.ROBUSTNESS, (
                 f'ROBUSTNESS: verdict suppressed — IS={is_n} / OOS={oos_n} window(s), one below '
                 f'the {config.min_windows}-window minimum; the Walk-Forward Efficiency rests on '
@@ -608,7 +628,7 @@ class PostRunValidator:
 
         # The degradation verdict — only OVERFIT fires a warning (ROBUST is good news, no advisory).
         wfe = report.walk_forward_efficiency
-        if wfe is not None and wfe < config.overfit_wfe_threshold:
+        if walk_forward is WalkForwardClass.OVERFIT:
             self._add('robustness_overfit', ValidationDomain.ROBUSTNESS, (
                 f'ROBUSTNESS: OVERFIT — Walk-Forward Efficiency {wfe:.2f} (OOS/IS) below '
                 f'{config.overfit_wfe_threshold:.2f}; out-of-sample performance degrades sharply '

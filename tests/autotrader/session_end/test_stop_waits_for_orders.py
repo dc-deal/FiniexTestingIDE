@@ -175,6 +175,9 @@ class _HearingLogic:
     def on_session_end(self, event: Any) -> None:
         self.heard.append('session_end')
 
+    def on_session_end_order_outcome(self, event: Any) -> None:
+        self.heard.append(f'session_end_order:{event.order_id}:{event.status.value}')
+
 
 class _Stage:
     """
@@ -1573,8 +1576,8 @@ class TestAnOrderSentAtTheSessionEnd:
         assert [trade.position_id for trade in trades] == [position_id]
         assert built.executor.get_awaited_orders() == []
         assert built.errors() == []
-        # What the second wait settled is booked, and the session end stays the last word
-        assert logic.heard[-1] == 'session_end'
+        # What the second wait settled is booked, and the logic hears how it ended (#642)
+        assert logic.heard[-2:] == ['session_end', f'session_end_order:{position_id}:executed']
         assert any('1 order(s) sent at the session end' in message for message in journal.infos)
         if spot_mode:
             balances = built.executor.portfolio.get_balances()
@@ -1610,7 +1613,27 @@ class TestAnOrderSentAtTheSessionEnd:
             position_id, OrderAction.CLOSE, OrderStatus.UNACCOUNTED)
         assert len([message for message in built.errors() if position_id in message]) == 1
         built.alerts.send.assert_called_once()
-        assert logic.heard[-1] == 'session_end'
+        # The close the bound ran out on is told as what it is (#642)
+        assert logic.heard[-2:] == ['session_end', f'session_end_order:{position_id}:unaccounted']
+
+    @ACCOUNT_MODELS
+    def test_an_order_sent_from_the_outcome_hook_never_leaves(self, stage, spot_mode):
+        """The session is over when the logic hears the outcome: what it sends then is withdrawn."""
+        built = stage('acknowledging', spot_mode)
+        built.open_a_position()
+        sent: List[str] = []
+
+        class _SendsAgain(_ActsAtTheSessionEnd):
+            def on_session_end_order_outcome(self, event: Any) -> None:
+                super().on_session_end_order_outcome(event)
+                sent.append(built.buy_at_market().order_id)
+
+        built.stop(_SendsAgain(lambda: _close_everything(built)))
+
+        row, = [row for row in built.endings() if row.order_id == sent[0]]
+        assert (row.status, row.initiator, row.end_reason) == (
+            OrderStatus.CANCELLED, OrderInitiator.FRAMEWORK, OrderEndReason.SESSION_END)
+        assert built.executor.get_open_positions() == []
 
     @ACCOUNT_MODELS
     def test_after_a_wait_that_ran_out_nothing_more_goes_out(self, stage, spot_mode):

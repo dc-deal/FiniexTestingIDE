@@ -12,9 +12,10 @@ import copy
 import dataclasses
 import queue
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from unittest.mock import MagicMock
 
+from python.framework.autotrader import autotrader_tick_loop as tick_loop_module
 from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
@@ -25,11 +26,15 @@ from python.framework.decision_logic.core.test_probes.deterministic_probe import
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_tick_loop import execute_tick_loop
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
+from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
+from python.framework.types.config_types.autotrader_defaults_config_types import (
+    AutotraderExecutionDefaults,
+)
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
 from python.framework.types.market_types.market_data_types import TickData
@@ -51,6 +56,9 @@ _TICK_COUNT = 900
 _BOUNDARY_TICK = 300          # lands on midnight; one tick per second
 GAP = 2_000.0                 # the boundary tick's drop — 20 USD on the position below
 LOTS = 0.01
+
+# Builds the orchestrator a loop asks for its decision, from the probe it delegates to
+OrchestratorFactory = Callable[[DeterministicProbe], Any]
 
 _LOGIC_CONFIG = {
     'trade_sequence': [
@@ -186,7 +194,12 @@ def simulation_periods(ticks: List[TickData], spot_mode: bool,
 
 
 def simulation_result(ticks: List[TickData], spot_mode: bool,
-                      stop_loss: Optional[float] = None) -> ProcessTickLoopResult:
+                      stop_loss: Optional[float] = None,
+                      orchestrator: Optional[OrchestratorFactory] = None,
+                      decision_events: bool = False,
+                      state_frames: Optional[Any] = None,
+                      indicator_series: Optional[Any] = None,
+                      **config_options: Any) -> ProcessTickLoopResult:
     """
     Run the simulation's tick loop over the ticks.
 
@@ -194,6 +207,11 @@ def simulation_result(ticks: List[TickData], spot_mode: bool,
         ticks: The input
         spot_mode: The account model
         stop_loss: The position's stop level, or None for none
+        orchestrator: Builds the orchestrator from the probe; the harness's own when None
+        decision_events: Hand the loop a decision event dispatcher (#348) over the probe
+        state_frames: The state-frame recorder the loop feeds, or None for none
+        indicator_series: The indicator series recorder the loop feeds, or None for none
+        config_options: Further scenario settings, by name
 
     Returns:
         Everything the loop returns — its booking periods and its execution statistics among it
@@ -211,14 +229,18 @@ def simulation_result(ticks: List[TickData], spot_mode: bool,
         config=ProcessScenarioConfig(
             name='booking_parity', symbol=SYMBOL, scenario_index=0,
             start_time=ticks[0].timestamp, broker_type=BrokerType.KRAKEN_SPOT,
-            live_stats_config=LiveStatsExportConfig(enabled=False)),
-        worker_coordinator=_orchestrator(logic),
+            live_stats_config=LiveStatsExportConfig(enabled=False), **config_options),
+        worker_coordinator=(orchestrator or _orchestrator)(logic),
         trade_simulator=simulator,
         bar_rendering_controller=BarRenderingController(logger=logger),
         decision_logic=logic,
         scenario_logger=logger,
         ticks=tuple(ticks),
         live_queue=None,
+        decision_event_dispatcher=(
+            DecisionEventDispatcher(logic, simulator, logger) if decision_events else None),
+        state_frames=state_frames,
+        indicator_series=indicator_series,
     )
     return result
 
@@ -247,6 +269,9 @@ def autotrader_loop(ticks: List[TickData], spot_mode: bool,
                     idle_heartbeats: int = 0,
                     hold_ticks: Optional[int] = None,
                     executor: Optional[LiveTradeExecutor] = None,
+                    orchestrator: Optional[OrchestratorFactory] = None,
+                    decision_events: bool = False,
+                    heartbeat_interval_ms: Optional[int] = None,
                     **loop_options: Any) -> AutotraderTickLoop:
     """
     The AutoTrader tick loop over the ticks, built the way a session builds it.
@@ -264,6 +289,10 @@ def autotrader_loop(ticks: List[TickData], spot_mode: bool,
         hold_ticks: How many ticks the position is held; None keeps the fixture's
         executor: The executor to trade through, so a caller can read it afterwards; a fresh
             one when None
+        orchestrator: Builds the orchestrator from the probe; the harness's own when None
+        decision_events: Hand the loop a decision event dispatcher (#348) over the probe
+        heartbeat_interval_ms: How long the loop waits for a tick before an idle pass; the
+            configured default when None
         loop_options: Further collaborators the session would hand the loop, by name
 
     Returns:
@@ -285,16 +314,26 @@ def autotrader_loop(ticks: List[TickData], spot_mode: bool,
     # What an idle heartbeat asks a live source: a stream that never dropped
     tick_source.get_reconnect_count.return_value = 0
     tick_source.get_injected_outage_label.return_value = None
+    # A live source's time for a pass without a tick is the wall clock (#616), read where a test
+    # fakes it: the tick loop's module
+    tick_source.get_idle_pass_time.side_effect = (
+        lambda: tick_loop_module.datetime.now(timezone.utc))
 
+    execution: Dict[str, Any] = (
+        {'execution': AutotraderExecutionDefaults(heartbeat_interval_ms=heartbeat_interval_ms)}
+        if heartbeat_interval_ms is not None else {})
+    if decision_events:
+        loop_options['decision_event_dispatcher'] = DecisionEventDispatcher(
+            logic, executor, logger)
     loop = AutotraderTickLoop(
         config=AutoTraderConfig(
             profile_name='booking_parity', symbol=SYMBOL, broker_type='kraken_spot',
-            adapter_type='mock'),
+            adapter_type='mock', **execution),
         tick_queue=tick_queue,
         tick_source=tick_source,
         executor=executor,
         bar_controller=BarRenderingController(logger=logger),
-        worker_orchestrator=_orchestrator(logic),
+        worker_orchestrator=(orchestrator or _orchestrator)(logic),
         decision_logic=logic,
         clipping_monitor=LiveClippingMonitor(),
         logger=logger,

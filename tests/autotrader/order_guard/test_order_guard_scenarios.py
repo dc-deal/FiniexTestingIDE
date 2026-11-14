@@ -12,6 +12,7 @@ rejections correctly flow into _order_history and execution_stats.orders_rejecte
 via the record_guard_rejection() hook on AbstractTradeExecutor.
 """
 
+import re
 from typing import List
 
 import pytest
@@ -69,6 +70,24 @@ class TestRejectionCooldown:
             f'Expected at least 1 INSUFFICIENT_MARGIN rejection to arm '
             f'cooldown (threshold=1), got {len(margin_rejections)}'
         )
+
+    def test_a_margin_rejection_says_how_much_the_free_margin_covers(
+        self,
+        cooldown_order_history: List[OrderResult],
+    ):
+        """Each margin refusal names the share of its requirement the free margin covered."""
+        margin_rejections = [
+            r for r in cooldown_order_history
+            if r.rejection_reason == RejectionReason.INSUFFICIENT_MARGIN
+        ]
+        assert margin_rejections
+        for rejection in margin_rejections:
+            figures = re.search(
+                r'Required margin ([\d.]+) exceeds free margin ([-\d.]+) — covers ([\d.]+) % of it',
+                rejection.rejection_message)
+            assert figures is not None, rejection.rejection_message
+            required, free, share = (float(value) for value in figures.groups())
+            assert share == pytest.approx(max(free, 0.0) / required * 100.0, abs=0.1)
 
     def test_cooldown_rejection_present(
         self,

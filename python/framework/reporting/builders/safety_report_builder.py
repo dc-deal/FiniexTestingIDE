@@ -18,6 +18,8 @@ cannot tell them apart once both are 0.0.
 
 from typing import Optional
 
+from python.framework.reporting.aggregation.aggregation_fold import fold_group
+from python.framework.reporting.aggregation.tables.safety_figure_table import SAFETY_DAYS_TABLE
 from python.framework.types.api.report_types import (
     SafetyDayRow,
     SafetyLimits,
@@ -49,11 +51,9 @@ def build_safety_report_from_session(
     baseline = record.baseline
     spot_mode = record.spot_mode
     baseline_value = baseline.value if baseline is not None else 0.0
-    # The deepest day, picked ONCE. A thirty-day run cannot put thirty rows on a console, so
-    # something has to choose — and if a renderer chooses, the console and the API answer the
-    # same question differently. It names the DAY rather than only the number, because a loss
-    # of 310 means nothing without the baseline it was measured against, which sits in its row.
-    worst_day = max(record.days, key=lambda day: day.worst_loss_abs, default=None)
+    # The deepest day and the days that hit their limit, folded once — declared in the safety
+    # days table, which says why the day is picked here and not by a renderer
+    days = fold_group(record.days, SAFETY_DAYS_TABLE)
 
     return SafetyReport(
         run_id=run_id,
@@ -104,10 +104,7 @@ def build_safety_report_from_session(
             )
             for day in record.days
         ],
-        days_limit_hit=sum(1 for day in record.days if day.limit_hit),
-        worst_day=worst_day.day if worst_day is not None else '',
-        worst_day_loss_abs=worst_day.worst_loss_abs if worst_day is not None else 0.0,
-        worst_day_loss_pct=worst_day.worst_loss_pct if worst_day is not None else 0.0,
+        **days,
         flatten_fired=record.flatten_fired,
         flatten_reason=record.flatten_reason,
         flatten_outcome=record.flatten_outcome,

@@ -6,9 +6,10 @@ an entry's runs and checks them; the newest production that carried every proper
 CURRENT fixture, derived from the production record and never written into a run.
 
 The properties are the ones the consumers assert. FiniexViewer replays its tests from the
-report-coverage run, the demo deployment and the state-frame session; #557 freezes its golden
-samples from the backtest, the mock sessions, the deployment and the sweep — both pipelines, both
-account models.
+report-coverage run, the demo deployment, the state-frame session and the indicator-series session,
+and draws its indicator panes from the last; #557 freezes its golden
+samples from the backtest, the mock sessions, the deployment, the sweep and the signal-and-feed
+backtest — both pipelines, both account models.
 """
 
 from collections import defaultdict
@@ -29,10 +30,17 @@ from python.framework.types.fixture_catalog_types import (
     FixtureSession,
 )
 from python.framework.types.run_kind_types import OrdersTo
+from python.framework.types.run_stream_types import RecordedStreamKind
 from python.framework.types.run_outcome_types import RunOutcome
 
 _FINIEX_VIEWER = 'FiniexViewer'
 _GOLDEN_SAMPLES = '#557 golden samples'
+
+# The worker instances of the indicator-series session's profile that draw — one of each kind of
+# CORE drawing worker (#379). The viewer draws its indicator panes from them, so a worker that stops
+# drawing, or leaves the profile, fails the production by name.
+_DRAWING_WORKERS = ('rsi_fast', 'bollinger_main', 'obv_volume', 'macd_main', 'tide_wave',
+                    'trend_ema')
 
 
 # ============================================
@@ -234,6 +242,34 @@ def _reported(evidence: FixtureEvidence) -> bool:
     return bool(evidence.runs) and all(run.artifacts for run in evidence.runs)
 
 
+def _signal_worker(evidence: FixtureEvidence) -> bool:
+    """
+    A run's strategy reads a signal worker that resolved ticks.
+
+    Args:
+        evidence: What the production made, as the API serves it
+
+    Returns:
+        Whether the production carries this property
+    """
+    return any(summary.signal_fresh_ratio is not None
+               for summary in evidence.run_summary.values())
+
+
+def _feeds_disturbed(evidence: FixtureEvidence) -> bool:
+    """
+    A run's feeds were disturbed by planned outages on more than one source.
+
+    Args:
+        evidence: What the production made, as the API serves it
+
+    Returns:
+        Whether the production carries this property
+    """
+    return any(summary.disturbance_stress_injected > 0 and summary.disturbance_source_count > 1
+               for summary in evidence.run_summary.values())
+
+
 def _orders_simulated(evidence: FixtureEvidence) -> bool:
     """
     No order went to a venue.
@@ -295,6 +331,30 @@ def _position_in_the_last_frame(evidence: FixtureEvidence) -> bool:
     """
     return any(unit.frame.open_positions
                for answer in evidence.latest_state_frames.values() for unit in answer.units)
+
+
+def _every_drawing_worker_recorded(evidence: FixtureEvidence) -> bool:
+    """
+    Every run's timeline lists an indicator series for each drawing worker of the profile, and each
+    holds at least one bar.
+
+    Args:
+        evidence: What the production made, as the API serves it
+
+    Returns:
+        Whether the production carries this property
+    """
+    if not evidence.runs:
+        return False
+    for run in evidence.runs:
+        timeline = evidence.recorded_streams.get(run.run_id)
+        if timeline is None:
+            return False
+        bars = {stream.stream_name: stream.record_count for stream in timeline.streams
+                if stream.stream_kind == RecordedStreamKind.INDICATOR_SERIES}
+        if not all(bars.get(worker, 0) > 0 for worker in _DRAWING_WORKERS):
+            return False
+    return True
 
 
 # ============================================
@@ -581,6 +641,25 @@ FIXTURE_CATALOG: Tuple[FixtureEntry, ...] = (
         ),
     ),
     FixtureEntry(
+        entry_id='indicator_series_session',
+        title='One AutoTrader mock session in which every kind of CORE drawing worker records its '
+              'indicator series beside the state frames',
+        producer=FixtureProducerKind.PROFILE,
+        source='configs/autotrader_profiles/mock/indicator_series_session.json',
+        consumers=(_FINIEX_VIEWER,),
+        properties=(
+            FixtureProperty('reported', 'The session reaches its report', _reported),
+            FixtureProperty('every_series_recorded', 'Its timeline lists an indicator series '
+                            'with bars for each drawing worker of its profile — RSI, Bollinger, '
+                            'OBV, MACD, the tide-and-wave worker and the moving-average trend',
+                            _every_drawing_worker_recorded),
+            FixtureProperty('state_frames_ended', 'Its latest state frame is the one written at '
+                            'its end, with how it ended and its first frame beside it',
+                            _state_frames_to_the_end),
+            FixtureProperty('simulated', 'No order goes to a venue', _orders_simulated),
+        ),
+    ),
+    FixtureEntry(
         entry_id='mock_session_spot',
         title='One AutoTrader mock session on a spot account (Kraken BTCUSD), its position '
               'closed by its take-profit',
@@ -612,11 +691,27 @@ FIXTURE_CATALOG: Tuple[FixtureEntry, ...] = (
         ),
     ),
     FixtureEntry(
+        entry_id='signal_feed',
+        title='One backtest whose strategy reads a signal worker, its signal sources and its '
+              'tick feeds disturbed by planned outages',
+        producer=FixtureProducerKind.SCENARIO_SET,
+        source='configs/scenario_sets/backtesting/signal_feed_disturbance_reference.json',
+        consumers=(_GOLDEN_SAMPLES,),
+        properties=(
+            FixtureProperty('reported', 'The run reaches its report', _reported),
+            FixtureProperty('signal_worker', 'Its strategy reads a signal worker that resolved '
+                            'ticks', _signal_worker),
+            FixtureProperty('feeds_disturbed', 'Planned outages disturb more than one of its '
+                            'sources', _feeds_disturbed),
+        ),
+    ),
+    FixtureEntry(
         entry_id='sweep',
         title='A small parameter sweep — every combination an ordinary backtest of its parent',
         producer=FixtureProducerKind.SWEEP,
         source='configs/sweeps/trend_channel_reference_grid.json',
-        consumers=(_GOLDEN_SAMPLES,),
+        # FiniexViewer pins it for its ranking fixtures and its README's sweep picture
+        consumers=(_FINIEX_VIEWER, _GOLDEN_SAMPLES),
         properties=(
             FixtureProperty('combinations', 'The sweep runs two combinations or more',
                             _several_combinations),
@@ -630,6 +725,16 @@ FIXTURE_CATALOG: Tuple[FixtureEntry, ...] = (
 
 FIXTURE_CATALOG_BY_ID: Dict[str, FixtureEntry] = {entry.entry_id: entry
                                                   for entry in FIXTURE_CATALOG}
+
+
+def golden_sample_entries() -> List[FixtureEntry]:
+    """
+    The entries #557 freezes its golden samples from.
+
+    Returns:
+        Every entry whose consumers name the golden samples, in catalog order
+    """
+    return [entry for entry in FIXTURE_CATALOG if _GOLDEN_SAMPLES in entry.consumers]
 
 
 def entry_ids() -> List[str]:

@@ -1,0 +1,328 @@
+{
+  "run_id": "20261110_143837_47e4e7f4",
+  "units": [
+    {
+      "name": "BTCUSD_signal_feed_disturbed",
+      "symbol": "BTCUSD",
+      "total_ticks": 20000,
+      "avg_per_tick_ms": 0.08153015988918924,
+      "total_ms": 1630.6031977837847,
+      "bottleneck_operation": "worker_decision",
+      "bottleneck_pct": 71.51441788634673,
+      "operations": [
+        {
+          "operation": "worker_decision",
+          "total_time_ms": 1166.1163849312288,
+          "avg_time_ms": 0.05830581924656144,
+          "call_count": 20000,
+          "pct": 71.51441788634673
+        },
+        {
+          "operation": "bar_rendering",
+          "total_time_ms": 141.1670617562777,
+          "avg_time_ms": 0.0070583530878138845,
+          "call_count": 20000,
+          "pct": 8.657352196300318
+        },
+        {
+          "operation": "trade_simulator",
+          "total_time_ms": 98.37343999606674,
+          "avg_time_ms": 0.004918671999803337,
+          "call_count": 20000,
+          "pct": 6.03294781524836
+        },
+        {
+          "operation": "equity_sample",
+          "total_time_ms": 61.93779827299295,
+          "avg_time_ms": 0.0030968899136496475,
+          "call_count": 20000,
+          "pct": 3.7984592669249624
+        },
+        {
+          "operation": "order_execution",
+          "total_time_ms": 43.5967794219323,
+          "avg_time_ms": 0.002179838971096615,
+          "call_count": 20000,
+          "pct": 2.673659629834306
+        },
+        {
+          "operation": "live_update",
+          "total_time_ms": 23.865994589868933,
+          "avg_time_ms": 0.0011932997294934466,
+          "call_count": 20000,
+          "pct": 1.4636298163959276
+        }
+      ],
+      "inter_tick": {
+        "min_ms": 0.0,
+        "p5_ms": 0.0,
+        "median_ms": 45.0,
+        "mean_ms": 2812.3966198309918,
+        "p95_ms": 14033.399999999994,
+        "max_ms": 133250.0,
+        "interval_count": 19999,
+        "gaps_removed": 0,
+        "threshold_s": 600.0
+      },
+      "clipping": null
+    },
+    {
+      "name": "GBPUSD_signal_feed_disturbed",
+      "symbol": "GBPUSD",
+      "total_ticks": 20000,
+      "avg_per_tick_ms": 0.08210090593620407,
+      "total_ms": 1642.0181187240814,
+      "bottleneck_operation": "worker_decision",
+      "bottleneck_pct": 71.90251437915597,
+      "operations": [
+        {
+          "operation": "worker_decision",
+          "total_time_ms": 1180.652313923929,
+          "avg_time_ms": 0.059032615696196444,
+          "call_count": 20000,
+          "pct": 71.90251437915597
+        },
+        {
+          "operation": "bar_rendering",
+          "total_time_ms": 139.0202949696686,
+          "avg_time_ms": 0.006951014748483431,
+          "call_count": 20000,
+          "pct": 8.466428803946044
+        },
+        {
+          "operation": "trade_simulator",
+          "total_time_ms": 87.2409709081694,
+          "avg_time_ms": 0.0043620485454084704,
+          "call_count": 20000,
+          "pct": 5.3130333894219985
+        },
+        {
+          "operation": "equity_sample",
+          "total_time_ms": 72.53632503852714,
+          "avg_time_ms": 0.003626816251926357,
+          "call_count": 20000,
+          "pct": 4.417510635929583
+        },
+        {
+          "operation": "order_execution",
+          "total_time_ms": 37.53932773543056,
+          "avg_time_ms": 0.001876966386771528,
+          "call_count": 20000,
+          "pct": 2.2861701285367197
+        },
+        {
+          "operation": "live_update",
+          "total_time_ms": 21.757260194135597,
+          "avg_time_ms": 0.0010878630097067798,
+          "call_count": 20000,
+          "pct": 1.3250316757187748
+        }
+      ],
+      "inter_tick": {
+        "min_ms": 0.0,
+        "p5_ms": 130.0,
+        "median_ms": 304.0,
+        "mean_ms": 544.6350817540877,
+        "p95_ms": 1746.0,
+        "max_ms": 14008.0,
+        "interval_count": 19999,
+        "gaps_removed": 0,
+        "threshold_s": 300.0
+      },
+      "clipping": null
+    }
+  ],
+  "aggregate": {
+    "scenarios": 2,
+    "total_ticks": 40000,
+    "total_time_s": 3.272621316507866,
+    "avg_per_tick_ms": 0.08181553291269665,
+    "most_common_bottleneck": "worker_decision",
+    "most_common_bottleneck_pct": 100.0,
+    "p5_min_ms": 0.0,
+    "p5_max_ms": 130.0,
+    "p95_processing_ms": 0.08210090593620407,
+    "suggested_budget_ms": 0.09,
+    "budget_active": false,
+    "scenarios_over_p5": 1,
+    "clipping_total_ticks": 0,
+    "clipping_total_kept": 0,
+    "clipping_total_clipped": 0,
+    "clipping_budgets": [],
+    "avg_operation_times": [
+      {
+        "operation": "worker_decision",
+        "total_time_ms": 0.0,
+        "avg_time_ms": 0.058669217471378945,
+        "call_count": 0,
+        "pct": 0.0
+      },
+      {
+        "operation": "bar_rendering",
+        "total_time_ms": 0.0,
+        "avg_time_ms": 0.007004683918148657,
+        "call_count": 0,
+        "pct": 0.0
+      },
+      {
+        "operation": "trade_simulator",
+        "total_time_ms": 0.0,
+        "avg_time_ms": 0.004640360272605904,
+        "call_count": 0,
+        "pct": 0.0
+      },
+      {
+        "operation": "equity_sample",
+        "total_time_ms": 0.0,
+        "avg_time_ms": 0.0033618530827880023,
+        "call_count": 0,
+        "pct": 0.0
+      },
+      {
+        "operation": "order_execution",
+        "total_time_ms": 0.0,
+        "avg_time_ms": 0.0020284026789340716,
+        "call_count": 0,
+        "pct": 0.0
+      },
+      {
+        "operation": "live_update",
+        "total_time_ms": 0.0,
+        "avg_time_ms": 0.0011405813696001132,
+        "call_count": 0,
+        "pct": 0.0
+      }
+    ],
+    "bottlenecks": [
+      {
+        "operation": "worker_decision",
+        "scenario_count": 2,
+        "total_scenarios": 2,
+        "pct": 100.0,
+        "status": "expected"
+      },
+      {
+        "operation": "bar_rendering",
+        "scenario_count": 0,
+        "total_scenarios": 2,
+        "pct": 0.0,
+        "status": "none"
+      },
+      {
+        "operation": "equity_sample",
+        "scenario_count": 0,
+        "total_scenarios": 2,
+        "pct": 0.0,
+        "status": "none"
+      },
+      {
+        "operation": "live_update",
+        "scenario_count": 0,
+        "total_scenarios": 2,
+        "pct": 0.0,
+        "status": "none"
+      },
+      {
+        "operation": "order_execution",
+        "scenario_count": 0,
+        "total_scenarios": 2,
+        "pct": 0.0,
+        "status": "none"
+      },
+      {
+        "operation": "trade_simulator",
+        "scenario_count": 0,
+        "total_scenarios": 2,
+        "pct": 0.0,
+        "status": "none"
+      }
+    ],
+    "profiled_unit_mean_ms": 1636.310658253933,
+    "slowest_profiled_unit": "GBPUSD_signal_feed_disturbed",
+    "slowest_profiled_unit_ms": 1642.0181187240814,
+    "slowest_profiled_unit_deviation_pct": 0.3488005435495148,
+    "clipping_budget_count": 0,
+    "clipping_rate_pct": 0.0
+  },
+  "warmup_phases": [
+    {
+      "name": "Config Validation",
+      "duration_s": 0.03636884689331055,
+      "pct": 0.4864129650601336
+    },
+    {
+      "name": "Index & Coverage",
+      "duration_s": 5.792906045913696,
+      "pct": 77.47687504015788
+    },
+    {
+      "name": "Availability Check",
+      "duration_s": 0.0003895759582519531,
+      "pct": 0.005210360326390491
+    },
+    {
+      "name": "Requirements",
+      "duration_s": 0.03576469421386719,
+      "pct": 0.47833276122471524
+    },
+    {
+      "name": "Data Loading → Ticks (parquet)",
+      "duration_s": 0.9285924434661865,
+      "pct": 12.41940403235334
+    },
+    {
+      "name": "Data Loading → Bars (parquet)",
+      "duration_s": 0.33930158615112305,
+      "pct": 4.537968747085315
+    },
+    {
+      "name": "Data Loading → Packaging",
+      "duration_s": 0.31653594970703125,
+      "pct": 4.233491105637505
+    },
+    {
+      "name": "Quality Validation",
+      "duration_s": 0.027089357376098633,
+      "pct": 0.3623049881547209
+    }
+  ],
+  "worker_decision_breakdowns": [
+    {
+      "name": "BTCUSD_signal_feed_disturbed",
+      "total_time_ms": 1166.1163849312288,
+      "total_ticks": 20000,
+      "worker_execution_ms": 0.0,
+      "decision_logic_ms": 0.0,
+      "coordination_overhead_ms": 1166.1163849312288,
+      "worker_execution_pct": 0.0,
+      "decision_logic_pct": 0.0,
+      "coordination_overhead_pct": 100.0
+    },
+    {
+      "name": "GBPUSD_signal_feed_disturbed",
+      "total_time_ms": 1180.652313923929,
+      "total_ticks": 20000,
+      "worker_execution_ms": 0.0,
+      "decision_logic_ms": 0.0,
+      "coordination_overhead_ms": 1180.652313923929,
+      "worker_execution_pct": 0.0,
+      "decision_logic_pct": 0.0,
+      "coordination_overhead_pct": 100.0
+    }
+  ],
+  "keys": {
+    "units": [
+      "name"
+    ],
+    "warmup_phases": [
+      "name"
+    ],
+    "worker_decision_breakdowns": [
+      "name"
+    ]
+  },
+  "warmup_total_s": 7.476948499679565,
+  "warmup_slowest_phase": "Index & Coverage",
+  "warmup_slowest_s": 5.792906045913696,
+  "warmup_slowest_pct": 77.47687504015788
+}

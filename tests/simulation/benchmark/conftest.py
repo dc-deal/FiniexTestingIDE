@@ -62,6 +62,31 @@ class BenchmarkRunResult:
 # DEBUG MODE DETECTION
 # =============================================================================
 
+def _loop_glue_ms(profiling: Dict[str, Any]) -> Optional[float]:
+    """
+    A run's loop glue per tick: the time of all its ticks minus the time of their timed steps,
+    over the ticks — what a tick costs outside its named steps (the drive, the hand-over into the
+    loop core and its events, the ghost passes, the day boundary, the state frame; #458).
+
+    Summed from the units' totals, never from the averages per call: the steps run a different
+    number of times — a clipped tick skips the algo path, the drain needs a decision channel.
+
+    Args:
+        profiling: One run's persisted profiling section
+
+    Returns:
+        Milliseconds per tick, or None when the run recorded no tick
+    """
+    units = profiling.get('units') or []
+    ticks = sum(unit.get('total_ticks', 0) for unit in units)
+    if not ticks:
+        return None
+    total_ms = sum(unit.get('total_ms', 0.0) for unit in units)
+    stepped_ms = sum(operation.get('total_time_ms', 0.0)
+                     for unit in units for operation in unit.get('operations', []))
+    return (total_ms - stepped_ms) / ticks
+
+
 def _read_persisted_profiling(log_dir: Path) -> Dict[str, Any]:
     """
     Read one run's persisted profiling section.
@@ -438,6 +463,7 @@ def benchmark_metrics(
         {row['name']: row.get('duration_s', 0.0)
          for row in prof.get('warmup_phases', [])}
         for prof in profilings])
+    loop_glues = [glue for glue in (_loop_glue_ms(prof) for prof in profilings) if glue is not None]
 
     return {
         'ticks_per_second': statistics.median(tps_values),
@@ -445,6 +471,7 @@ def benchmark_metrics(
         'warmup_time_s': statistics.median(warmup_times),
         'summary_generation_time_s': statistics.median(summary_times),
         'operation_avg_ms': operations,
+        'loop_glue_avg_ms': statistics.median(loop_glues) if loop_glues else None,
         'warmup_phase_s': warmup_phases,
         'total_ticks': total_ticks,
         'scenarios_count': len(runs[0].summary.process_result_list),
@@ -643,13 +670,16 @@ def benchmark_report(
         'status': summary_status
     })
 
-    # The two anchors. Chosen because their MEANING survives a refactor and each dominates
+    # The anchors. Chosen because their MEANING survives a refactor and each dominates
     # its phase: worker_decision is ~79% of tick cost, tick-parquet loading ~81% of warmup.
     # Recorded, never gated — a pipeline change must not turn a release red.
     operations = benchmark_metrics.get('operation_avg_ms', {})
     warmup_phases = benchmark_metrics.get('warmup_phase_s', {})
+    # And the loop's glue (#458): a change of 1 % of a tick is far below the throughput
+    # tolerance, so it gets an address of its own — see _loop_glue_ms
     for label, value in (
         ('worker_decision_avg_ms', operations.get('worker_decision')),
+        ('loop_glue_avg_ms', benchmark_metrics.get('loop_glue_avg_ms')),
         ('warmup_ticks_parquet_s', next(
             (v for k, v in warmup_phases.items() if 'Ticks' in k), None)),
     ):

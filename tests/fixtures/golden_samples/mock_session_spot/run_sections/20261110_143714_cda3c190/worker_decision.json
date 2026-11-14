@@ -1,0 +1,84 @@
+{
+  "run_id": "20261110_143714_cda3c190",
+  "units": [
+    {
+      "name": "tp_triggered_test",
+      "symbol": "BTCUSD",
+      "decision_logic_type": "CORE/test_probes/deterministic_probe",
+      "decision_logic_name": "test_probes/deterministic_probe",
+      "worker_decision_tracked": true,
+      "decision_count": 1000,
+      "buy_signals": 143,
+      "sell_signals": 0,
+      "flat_signals": 857,
+      "trades_requested": 1,
+      "decision_total_time_ms": 3.8127329826238565,
+      "decision_avg_time_ms": 0.004,
+      "decision_min_time_ms": 0.001,
+      "decision_max_time_ms": 0.278,
+      "ticks_processed": 1000,
+      "parallel_workers": false,
+      "parallel_time_saved_ms": 0.0,
+      "parallel_avg_saved_per_tick_ms": 0.0,
+      "workers": [
+        {
+          "worker_type": "CORE/test_probes/sample_probe_worker",
+          "worker_name": "probe_worker",
+          "call_count": 1000,
+          "total_time_ms": 2.4135319908964448,
+          "avg_time_ms": 0.002,
+          "min_time_ms": 0.001,
+          "max_time_ms": 0.293,
+          "compute_basis": "live",
+          "last_compute_tick": 1000,
+          "compute_ratio_pct": 100.0,
+          "ticks_idle": 0,
+          "unit_mean_time_ms": null
+        }
+      ],
+      "timed_worker_count": 1,
+      "worker_call_count": 1000,
+      "worker_time_ms": 2.4135319908964448,
+      "algo_time_ms": 6.226264973520301,
+      "algo_avg_per_tick_ms": 0.006226264973520301,
+      "non_flat_signals": 143
+    }
+  ],
+  "worker_totals": [
+    {
+      "worker_type": "CORE/test_probes/sample_probe_worker",
+      "worker_name": "probe_worker",
+      "call_count": 1000,
+      "total_time_ms": 2.4135319908964448,
+      "avg_time_ms": 0.0024135319908964448,
+      "min_time_ms": 0.001,
+      "max_time_ms": 0.293,
+      "compute_basis": "live",
+      "last_compute_tick": -1,
+      "compute_ratio_pct": null,
+      "ticks_idle": null,
+      "unit_mean_time_ms": 0.002
+    }
+  ],
+  "decision_totals": {
+    "total_ticks": 1000,
+    "total_decisions": 1000,
+    "total_non_flat_signals": 143,
+    "decision_total_time_ms": 3.8127329826238565,
+    "decision_avg_time_ms": 0.0038127329826238565,
+    "decision_unit_mean_time_ms": 0.004
+  },
+  "bottlenecks": {
+    "slowest_algo_unit": "tp_triggered_test",
+    "slowest_algo_unit_avg_per_tick_ms": 0.006226264973520301,
+    "slowest_algo_unit_time_ms": 6.226264973520301,
+    "slowest_worker": "probe_worker",
+    "slowest_worker_mean_ms": 0.002,
+    "slowest_worker_worst_unit": "tp_triggered_test",
+    "slowest_worker_worst_unit_ms": 0.002,
+    "slowest_decision_logic": "test_probes/deterministic_probe",
+    "slowest_decision_logic_mean_ms": 0.004,
+    "worst_parallel_unit": null,
+    "worst_parallel_time_saved_ms": null
+  }
+}

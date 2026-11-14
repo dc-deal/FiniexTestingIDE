@@ -304,6 +304,29 @@ Validates that `data_format_version` survives the tick index write/read cycle �
 **TestLegacyIndexTolerance:**
 - An index file without the version column still loads (entries intact) and reads as `'unknown'` — never an exception that silently empties the index
 
+### test_tick_index_update.py
+
+An import used to rebuild the tick index by reading every tick file in full. It now updates the
+index: it reads only the files that changed and keeps every other entry, and it rebuilds in full
+only where it must. These tests pin which files an update reads and that its index equals a full
+rebuild's.
+
+**TestAnUpdateReadsOnlyWhatChanged:**
+- A second import reads only its own file; an update with nothing changed reads none
+- A file whose modification time moved is read again; a removed file leaves the index
+
+**TestAnUpdateFallsBackToAFullRebuild:**
+- No index, or one written under an older schema version, means a full rebuild, with the reason
+- An index written before the file identities existed is rebuilt in full once, with that reason, and updated after
+
+**TestAnUpdateEqualsAFullRebuild:**
+- After new, rewritten and removed files, the updated index equals a full rebuild row for row
+- Size and modification time are stored as exact integers, so a nanosecond time does not drift
+
+**TestTheImportShowsWhichMethodRan:**
+- The summary names the method, a full rebuild its reason, and the counts
+- An update is estimated per file the import writes, a full rebuild per file of the archive; every rebuild reason has its words
+
 ### test_tick_index_lookup.py
 
 Every backtest batch asks the tick index which files cover a symbol's window. The lookup used to
@@ -358,7 +381,9 @@ The one import over both import inboxes (`ImportCoordinator`, #175), run against
 tree:
 
 - **TestBothArchives** — ticks and signals are imported, moved and rendered; every step ends
-  done, except the caches, which a scoped import shows skipped as `not the production archive`;
+  done, except the caches, which a scoped import shows skipped as `not the production archive`,
+  the zip unpacking, shown skipped as `no zip in the inbox`, and the package fetch and receipt,
+  shown skipped as `no package source configured`; the frame's first step is the package fetch;
   the import's own log holds both importers' lines, the summary and the line naming itself; the
   frame serializes to JSON; the scan names the broker from each file's metadata head
 - **TestPinnedIssue** — a duplicate is counted and pinned as the bottom line; an `--override` run,
@@ -389,6 +414,59 @@ tree:
   as success
 - `test_bar_files_carry_the_render_after_a_complete_import` — a complete import leaves only
   finished bar files, each readable in full
+
+### test_tick_zip_import.py
+
+Every import drains the tick inbox, and a zip there is imported like loose files (#120). Run
+through the coordinator against a temporary tree with its own finished, unpacking and refused
+directories:
+
+- **TestTheOutcomes** — exactly IMPORTED and ALREADY_ARCHIVED count as taken by the archive
+- **TestLooseFilesLeaveTheInbox** — a file the validation refuses (an overlap) and one that cannot
+  be read go to the refused directory, unchanged, with a note naming the reason, and the summary
+  lists them; a duplicate is counted as before and leaves the inbox — the identical file already in
+  finished/ makes its copy go; a different file of the same name in finished/ is never overwritten
+  and keeps the file in the inbox, counted as an error
+- **TestAZipIsImported** — a zip's files are imported and the zip moves to finished/ byte-identical,
+  with no loose copy beside it and the unpacking directory gone with its folder — but kept while
+  another zip's folder still lies in it; loose files and a zip in one import; a
+  Deflate64 zip (a Deflate zip relabelled — the package reads that method but cannot write it, and a
+  Deflate stream without a 258-byte match is also valid Deflate64); the unpacking is a step of its
+  own whose rate is per MB of zip, and the scan names the zip
+- **TestAZipWithFilesTheImportRefuses** — a zip with one refused file still moves to finished/, the
+  refused file's copy goes to refused/ with a note naming the zip; a zip with nothing of use goes to
+  refused/ itself, its note naming every file, and no copy of its files is left
+- **TestAZipFedAgain** — the same zip twice leaves the inbox the second time (its files are
+  duplicates; the identical zip in finished/ makes the copy go); a package holding a file the
+  archive has already moves to finished/ with its new file imported; `--override` re-imports a
+  zip's files; a different zip of the same name in finished/ is never overwritten
+- **TestAZipRefusedAsAWhole** — a foreign file, a file in a folder, a name also lying loose in the
+  inbox, a name twice in one zip and a damaged file (a CRC that no longer matches, found while
+  unpacking) each send the zip to refused/ with nothing written; a zip too large for the disk stays
+  in the inbox for the next import, nothing refused
+
+### test_tick_package_fetch.py
+
+The import fetches the data collector's tick packages and acknowledges them (#120). Run through
+the coordinator against a stub package service on a local port (`ThreadingHTTPServer`) that serves
+the list, a manifest, the zip with `Range` support, and the receipt:
+
+- **TestAPackageIsFetchedImportedAndAcknowledged** — the whole exchange: the zip and its manifest end
+  in finished/, the inbox is empty, the receipt carries the zip's SHA-256 and what the import did; a
+  download that breaks off is resumed with a `Range` request (the client reads small chunks here, so
+  a break-off leaves something to resume from); a delivered package is left alone; a source the
+  import never saw, such as an experimental collector line, is fetched and acknowledged like the others
+- **TestWhatArrivesIsProven** — a zip that does not match its hash is removed and nothing imported or
+  acknowledged; a zip whose files differ from its manifest, or one file whose SHA-256 does, is refused
+  whole with its manifest beside it, and not acknowledged
+- **TestWhatLiesHereAlready** — a zip in finished/ already is not downloaded again, only acknowledged;
+  a zip in refused/ is neither fetched nor acknowledged
+- **TestTheReceipt** — a 409 is an error and nothing is marked; a receipt whose answer is lost is sent
+  once and settled by reading the package back
+- **TestAServiceThatFails** — a refused token is asked once, not retried, and the import goes on with
+  the inbox; `--no-fetch` shows the step skipped with its reason
+- **TestTheConfiguration** — the tracked file mirrors the model's defaults and fetches nothing; an
+  address in the workspace copy makes a source
 
 ### test_bar_render_replace.py
 

@@ -8,12 +8,19 @@ reporting pipeline separates the three concerns so every consumer renders **iden
 from one model, with the derivation off the hot loop.
 
 ```
-CAPTURE  (source-specific, raw)         DERIVE  (shared, pure)            PRESENT  (thin renderers)
-  sim:        List[TradeRecord] ──┐                                         ┌─► console (text)
-              per scenario        ├─► postprocessor → ReportModel ──────────┼─► CSV (table)
-  AutoTrader: List[TradeRecord] ──┘   (off the hot loop)                    └─► API → frontend (JSON)
-              the session
+CAPTURE  (source-specific, raw)    DERIVE  (shared, pure)                    PRESENT  (thin renderers)
+  sim:        List[TradeRecord] ─┐                                             ┌─► console (text)
+              per scenario       ├─► postprocessor → per-unit rows ─┐          ├─► CSV (table)
+  AutoTrader: List[TradeRecord] ─┘   (off the hot loop)             │          └─► API → frontend (JSON)
+              the session              fold, through the fold table ▼
+                                       of those rows ──────────► ReportModel ─┘
 ```
+
+The per-unit rows and the aggregates over them land on the same model: a builder maps the records
+of each unit into rows, and every figure that combines rows — a total, a mean, the deepest
+drawdown — comes from the fold, which applies the fold table declared for that kind of row. The
+read-time views (the run list, the deployments, the sweeps) take the same fold over the ledger's
+rows when they are asked for.
 
 The migrated slices are **trade-history**, **order-history**, **portfolio**, **execution-stats**,
 **pending-orders**, **scenario-details**, and the cross-section **run-summary**. The `RunUnit`
@@ -33,7 +40,9 @@ see *Pipeline in detail* below.
 | Model | `framework/types/api/report_types.py` | the canonical, Pydantic, serializable models (the same models the API serves and the console/CSV render). **Every artifact model inherits `RunScopedReport`, whose one required field is `run_id`** (#475): a body that does not name its run cannot be checked against the run that was asked for — measured, two sweep combinations produce byte-identical portfolio bodies, so a consumer receiving the wrong one has nothing to notice it by. The route is not proof; the payload is. Inheriting also puts `run_id` FIRST in every serialized artifact, and the three CSVs carry it as their first COLUMN, on every row, because a CSV is the format that gets exported and merged. Models: `TradeHistoryReport`, `OrderHistoryReport`, `PortfolioReport` (full per-unit projection), `ExecutionStatsReport`, `PendingOrdersReport`, `ScenarioDetailsReport`, `RunSummary` (cross-section KPIs), `WorkerDecisionReport` (per-unit worker + decision performance — incl. the #420 cadence telemetry: per-worker `compute_basis`, compute/tick ratio, last-compute idle), `ProfilingReport` (per-unit operation timing + inter-tick + clipping + run-level aggregate + warmup, sim-only) |
 | Run units | `framework/reporting/builders/run_unit.py` — `RunUnit` (+ `run_units_from_batch` / `run_units_from_session`) | the **unified per-unit source** (#391 Phase 2): the run extracted once into units (sim: N scenarios; AutoTrader: 1 session), each carrying `name` · `symbol` · the raw trade / order / portfolio / execution sources. Every builder maps from these — no per-section extraction, no flat variants |
 | Postprocessor | `framework/reporting/builders/{trade_history,order_history,portfolio,execution_stats,pending_orders,worker_decision,scenario_details,profiling,broker,warnings_errors,aggregated_portfolio}_report_builder.py` | **pure** derivation: `RunUnit`s → report. One `build_*_report(run_id, units, …)` per section — `run_id` leads, because the model requires it. The shared filter (trade / order) lives here. `scenario_details` / `profiling` / `broker` / `warnings_errors` are the exceptions — not via `RunUnit`: they read the batch directly (failed scenarios carry no `RunUnit`; `warnings_errors` reads the validation channels + log pots — the verdicts are decided by validators upstream, never here). `aggregated_portfolio` rolls up the per-unit portfolio / execution / pending **rows** |
-| Aggregators | `framework/reporting/builders/report_aggregators.py` | the **measures** over the report rows — one pure `aggregate_*(rows)` per section (trade analytics per currency incl. P&L totals, execution totals, the lean portfolio per-currency roll-up + the rich `aggregate_full_portfolio` for #397). Ratios recomputed from summed components (byte-identical to the retired console `PortfolioAggregator`) |
+| Aggregators | `framework/reporting/builders/report_aggregators.py` | the **measures** over the report rows — one pure `aggregate_*(rows)` per section (trade analytics per currency incl. P&L totals, execution totals, the lean portfolio per-currency roll-up + the rich `aggregate_full_portfolio` for #397). Each is a thin caller of the fold through its section's fold table; ratios are recomputed from summed components |
+| Fold tables | `framework/reporting/aggregation/tables/` — one `*_figure_table.py` per family, listed in `figure_tables.py`; the ledger's figures in `figure_catalog.py` | the **declarations** of how rows combine (#557) — data, not code. One table per kind of row (a trade, a portfolio unit, a ledger row, a fill): per figure its reduction, where it is read on a row, what it answers when no row carries a value, how its values are added, which figure a companion follows, which count weights a mean; beside them the derivations of its rates, its grain — what one served entry is grouped by — the model it serves and the fields it leaves to the family. A test holds every table to the model it serves, both ways, and every source to a field of its row. The catalog #657 serves to readers, through #582 |
+| Fold | `framework/reporting/aggregation/aggregation_fold.py` — `fold_rows`, `fold_keyed`, `fold_group`, `aggregate_ledger_rows` | the **one engine** that applies a fold table — the same way for every table, a function per reduction. Resolves each table once and refuses a declaration it cannot apply. The aggregates of the run's report sections and of the read-time views all go through it |
 | Run summary | `framework/reporting/builders/run_summary_builder.py` — `build_run_summary()` | the **cross-section KPI** composer (#390 prework): joins the per-section aggregates (portfolio roll-up + trade analytics + execution totals) into one run-wide `RunSummary` (per-currency KPIs + global counts) — composes, never re-derives. The single object the sweep / API / console headline reads |
 | Shared core | `framework/reporting/shared_report_coordinator.py` — `SharedReportCoordinator.derive_and_persist(run_id, units, writer, signal_scenario_map)` — `writer` is the run's `RunEntryWriter`, which places each section where the run store declares it (+ `builders/unified_reports.py` — `UnifiedReports`) | the **units-derived DERIVE+PERSIST core both pipelines delegate to** (#403): builds + writes the sections identical across sim + AutoTrader (trade / order / portfolio / pending / execution-stats / run-summary / worker-decision / signal / feed-stability) and returns them as `UnifiedReports`, which each coordinator reuses for its own console + ledger. Its `record_run_artifacts(run_dir)` is called LAST by each pipeline — deliberately not inside `derive_and_persist`, because both pipelines write further artifacts of their own after it returns, so a list taken there would be short by exactly those |
 | IO | `framework/reporting/io/` — `artifact_specs.py` (one spec per artifact: file name + model; which files a run lists as artifacts or streams is the run store's declaration, [Store Entry Members](store_entry_members.md)) · `report_artifact_io.py` (`write_artifact` / `read_artifact`, generic and typed) · `report_csv_io.py` (the CSV surfaces) · `report_filters.py` (the API row filters) · `order_event_stream_io.py` + `order_event_stream_writer.py` + `jsonl_stream_writer.py` (the order-event stream — written as it happens in a live session, with the report in a backtest — [Order-Event Stream](order_event_stream.md)) | write the artifact(s); read back + filter (the API path). One writer and one reader for every artifact since #486 — it used to be one module per artifact, eighteen of them differing in a file name and a model class |
@@ -45,7 +54,9 @@ see *Pipeline in detail* below.
 | API | `python/api/endpoints/reports_router.py` | `GET /api/v1/reports/runs/{run_id}/<section>` — one route per persisted section, some with section-specific filters, and `…/order-events` for the stream. Not listed here: each route declares the document that describes it, and the documents served at `/api/v1/docs` are the route reference ([API Server Architecture](api_server_architecture.md), *Endpoints*) |
 
 The reporting home is organized by pipeline stage: `builders/` (DERIVE — the `build_*_report`
-modules + `report_aggregators` + `run_unit` + `run_summary_builder` + `unified_reports`), `io/`
+modules + `report_aggregators` + `run_unit` + `run_summary_builder` + `unified_reports`),
+`aggregation/` (the fold, its tables under `tables/` with their index `figure_tables.py`, and
+the ledger's figure catalog), `io/`
 (PERSIST — the per-section `*_report_io` writers), `store/` (the read-master `report_store` + the
 cross-run `run_results_ledger` + `run_provenance_builder`), and `console/` (PRESENT); the
 `shared_report_coordinator.py` at the top owns the shared DERIVE+PERSIST core (#403). The other
@@ -70,10 +81,88 @@ both and computes neither — and, critically, never splits the symbol string it
 
 ### Aggregates are their own stage, and they serve both outputs
 
-A per-currency / per-worker roll-up is computed once in `report_aggregators`, lands on the model,
-and is then available to the aggregated block AND to every single-unit render — a per-scenario
-view may show the run's aggregate beside its own figures without recomputing it. A renderer that
-builds its own aggregate is the defect this rule prevents.
+A per-currency / per-worker roll-up is computed once — by the fold, through the fold table of the
+rows it combines — lands on the model, and is then available to the aggregated block AND to every
+single-unit render — a per-scenario view may show the run's aggregate beside its own figures
+without recomputing it. A renderer that builds its own aggregate is the defect this rule prevents.
+
+How a report's aggregates come about, and how the read-time views fold the ledger:
+
+```
+BUILD — at the end of a run
+  run's records (trades, orders, positions, counters)                    CAPTURE
+     │
+     ▼
+  build_*_report             → one row per unit (TradeHistoryRow, PortfolioUnitRow, …)   DERIVE
+     │
+     ▼
+  the family (aggregate_*)   → fold_rows(rows, TABLE)  ◄── the fold table: figures, derivations, grain
+     │                         the one engine, aggregation_fold.py
+     ▼
+  the model (TradeAnalytics, PortfolioAggregateRow, …) on the report section
+     │                         + its computed fields: shares, differences, counts of its own lists
+     ├─► io/        the section's JSON in the run directory                          PERSIST
+     ├─► console/   formats, computes nothing — not a count, not a share, not a sum  PRESENT
+     └─► API        GET /api/v1/reports/runs/{run_id}/<section> serves that JSON
+
+READ — when a list is asked for
+  ledger rows (one per booking period)
+     │  aggregate_ledger_rows (the ledger's table)  → one row per run and currency
+     ▼
+  fold_rows(…, the deployment, sweep or run-list table)
+     ▼
+  the route reads the stores, composes (compose_*), serves the JSON
+```
+
+What the API serves today is the fold's RESULT — the same fields as before the tables existed. The
+tables themselves are what #657 serves next (through #582): per figure its reduction, its unit,
+what its empty value means and what one row is, so a reader that combines figures itself — a total
+over a selection, the sessions of a deployment — follows the declaration instead of a formula of
+its own.
+
+### What a console may do — and what it may not (#557)
+
+The console is one surface among the file, the CSV and the API, so it gets no number the others do
+not. Every figure it prints is a field of the model — a COUNT included: the number of positions
+still open, of resting orders, of periods, of workers is a field beside its list
+(`open_position_count`, `active_order_count`, `period_count`, `worker_count`), served to every
+surface, never a `len()` a renderer takes while it prints.
+
+What a renderer may still do — and nothing more:
+
+- **format one value:** a unit (ms → s, s → h → d, bytes → GB), a ratio as a percent, a sign, a
+  rounding, a width, a bar's length;
+- **loop over a served list:** sort or group it for display, find a row by its key;
+- **choose whether a line prints** from whether something is empty;
+- **choose a colour or an order** by a threshold — presentation, as long as the threshold never
+  decides whether a warning fires.
+
+Where a figure lives, by what it is read from:
+
+| The figure reads | It is | Example |
+|---|---|---|
+| fields of ONE model — a share, a difference, the count or the sum of its own list | a computed field on that model (`@computed_field`): derived where the model is, served with it, unable to drift from what it reads; a stored artifact written before the field existed answers it rightly when it is read | `ScenarioDetailsRow.non_flat_signal_pct`, `AggregatedPortfolioRow.total_costs`, `WorkerDecisionUnitRow.worker_time_ms`, `ProfilingReport.warmup_total_s` |
+| ROWS — a total, a mean, the slowest of them | a figure of the rows' fold table, stored; a field added later is OPTIONAL and null on an artifact written before it, never a zero that claims a measurement | `TradeAnalytics.winning_trades`, `DecisionTotals`, `WorkerDecisionBottlenecks` |
+| SEVERAL sections | derived once in the coordinator, when every section it reads exists | the run's throughput on the run meta (`derive_run_throughput`), the worker/decision breakdown on the profiling report |
+| something outside the run — configuration, the machine | read once at DERIVE and carried on the model | the batch's parallelism and the machine reading on the run meta |
+
+A verdict — does this warrant a warning? — is a validator's, never a renderer's. Where the console
+and a validator both need the same classification, it is declared once, beside its members, and
+both read it: `BatchStatus.of_counts`, `WalkForwardClass.of`.
+
+**The lock is a test.** `tests/framework/reporting/test_consoles_compute_nothing.py` walks every
+console module the two report coordinators reach, through their imports, and refuses an aggregate
+call in one — a `sum`, a `max` over values, a mean; a `max` over string lengths, which sizes a
+column, passes. A console added to the end-of-run report is covered the moment a coordinator
+imports it.
+
+**A new aggregate is a fold table, not a loop.** Its figures are declared under
+`aggregation/tables/`, the table is listed in `figure_tables.py`, and its family calls the fold.
+A test then holds the table to the model it serves, both ways — a served field nobody folds or
+names, and a figure nobody serves or names, both fail — and holds a figure the fold can answer
+empty to an optional field. Where a figure today folds differently from the same quantity
+elsewhere — a sum beside a latest value, a zero beside a None, a loop beside the compensated sum —
+its declaration says so, so each difference is one line to change rather than a search.
 
 **An aggregate over several units is an aggregate over several ACCOUNTS.** A backtest's scenarios
 each trade their own balance; an AutoTrader session is one account. So a figure keeps its name only
@@ -374,7 +463,7 @@ open work to finish migrating the section (issue ref where one exists; ✅ = don
 
 | Section | Domain | Model | Console | Remaining work |
 |---|---|---|---|---|
-| Trade History (#389 analytics) | unified | ✅ | ✅ — the slippage block sits in the aggregated statistics of a multi-unit run and follows the trade table of a single unit, so an AutoTrader session prints it too; it renders the execution statistics' `fill_slippage_totals`, one line per reference kind, and computes nothing (#631) | offload the still-inline per-currency aggregates: trade-breakdown counts · duration · rejection-by-reason |
+| Trade History (#389 analytics) | unified | ✅ | ✅ — the slippage block sits in the aggregated statistics of a multi-unit run and follows the trade table of a single unit, so an AutoTrader session prints it too; it renders the execution statistics' `fill_slippage_totals`, one line per reference kind, and computes nothing (#631). The trade breakdown — direction, outcome and close counts, the per-trade averages, the holding time in ticks — is on `TradeAnalytics`, and the failed orders by unit and by reason are on the order history (#557) | — |
 | Order History | unified | ✅ | ✅ | — a row names the order event it was booked with (`order_event_seq`, stamped where the row is booked), so a fill's row carries that fill's slippage against the reference its order names (#631): derived in `fill_slippage` from the unit's order events and the level each stop-loss or take-profit close fired at, which the executor keeps per fill as it books it — uncapped, unlike the trade history — in both pipelines; served and in the CSV, not printed |
 | Portfolio — per-unit | unified | ✅ | ✅ (linear, boxes removed) | — `max_dd_pct`, the spot dual-balance estimate and `final_equity` are derived in the builder; the renderer's `symbol[-3:]` currency split was replaced by the broker-config split stamped at capture (#265). Carries `open_positions` / `unrealized_pnl` / `session_end_policy` (#492) |
 | Portfolio — aggregated (by currency) | sim | ✅ (`AggregatedPortfolioReport`) | ✅ from the model (byte-identical; `PortfolioAggregator` retired) | — |
@@ -383,7 +472,7 @@ open work to finish migrating the section (issue ref where one exists; ✅ = don
 | Execution — aggregated ORDER EXECUTION | sim | ✅ (in `AggregatedPortfolioReport`) | ✅ from the model | — (folded into the portfolio aggregate, #397) |
 | Scenario Details | **sim-only** | ✅ | ✅ (linear, incl. failed + `account_currency` hint) | — |
 | Run Summary (#390) | unified | ✅ | ✅ executive headline | — |
-| Worker / Decision (#398/#399) | unified | ✅ (`WorkerDecisionReport`) | ✅ — `performance_summary` (worker details / aggregated / bottleneck) + the breakdown read the model (overhead Total from the profiling model, #399); the duplicate per-scenario worker list was removed. Per-worker cadence (`compute_ratio_pct`, `ticks_idle`) and `parallel_avg_saved_per_tick_ms` are derived in the builder | **still console-only:** the AGGREGATED STATS block and the bottleneck scan (slowest scenario / worst worker / worst decision logic) build their aggregates and pick their winners inside the renderer — a section migration, not a move |
+| Worker / Decision (#398/#399) | unified | ✅ (`WorkerDecisionReport`) | ✅ — `performance_summary` (worker details / aggregated / bottleneck) + the breakdown read the model (overhead Total from the profiling model, #399); the duplicate per-scenario worker list was removed. Per-worker cadence (`compute_ratio_pct`, `ticks_idle`) and `parallel_avg_saved_per_tick_ms` are derived in the builder. The AGGREGATED STATS block reads `decision_totals` and `worker_totals`, the bottleneck scan `bottlenecks` (#557) | — |
 | Profiling — operations + inter-tick + clipping (#399) | **sim-only** | ✅ (`ProfilingReport`) | ✅ from the model | — |
 | Warmup phases (#399) | **sim-only** | ✅ (in `ProfilingReport`) | ✅ from the model (`ProfilingSummary.render_warmup`; `warmup_phase_summary` retired) | — |
 | Block-Splitting Disposition | **sim-only** (Profile Run) | ⏳ | ✅ inline | **separate follow-up** — generation-quality metric (`generator_profiles` + the tick loop's open positions / trade history), not runtime profiling |
@@ -567,7 +656,8 @@ substrate the Parameter Optimization system ranks over. Both pipelines append (#
    category still comes from how the order filled — the venue states maker or taker per execution
    only. A backtest's fees are the model's estimate throughout; every order event says which with
    `fee_source`, so a live-versus-backtest comparison of fees can tell the two apart. The portfolio
-   row folds those events into `fill_fees_by_source` — fills and their fees per source — and the
+   row folds those events into `fill_fees_by_source` — fills and their fees per source, through
+   the fee-source table — and the
    order-history row carries `fee_source` beside its `commission`.
    Block-splitting disposition is also model-fed now (`BlockSplittingReport`, Profile Runs only).
    File-logs follow automatically (captured stdout).

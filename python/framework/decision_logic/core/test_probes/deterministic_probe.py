@@ -90,12 +90,13 @@ from typing import Any, Dict, List, Optional
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.decision_logic.own_exit_levels import OwnExitLevels
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
 )
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
-from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
@@ -103,7 +104,6 @@ from python.framework.types.probe_metadata_types import ProbeMetadata
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     OrderFeature,
-    OrderResult,
     OrderSide,
     OrderType,
 )
@@ -407,7 +407,7 @@ class DeterministicProbe(AbstractDecisionLogic):
 
     def compute_tick(
         self,
-        tick: TickData,
+        tick: AlgoTick,
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         """
@@ -529,8 +529,8 @@ class DeterministicProbe(AbstractDecisionLogic):
     def _execute_decision_impl(
         self,
         decision: Decision,
-        tick: TickData
-    ) -> Optional[OrderResult]:
+        tick: AlgoTick
+    ) -> Optional[AlgoOrderResult]:
         """
         Execute trading decision via DecisionTradingApi.
 
@@ -544,7 +544,7 @@ class DeterministicProbe(AbstractDecisionLogic):
             tick: Current tick data
 
         Returns:
-            OrderResult if order was sent, None otherwise
+            AlgoOrderResult if order was sent, None otherwise
         """
         if not self.trading_api:
             self.logger.warning(
@@ -641,14 +641,14 @@ class DeterministicProbe(AbstractDecisionLogic):
             for current_position in open_positions:
                 self.trading_api.close_position(current_position.position_id)
 
-            # FLAT doesn't return an OrderResult
+            # FLAT doesn't return an AlgoOrderResult
             return None
 
         return None
 
     def _arm_own_levels(
         self,
-        order_response: OrderResult,
+        order_response: AlgoOrderResult,
         stop_loss: Optional[float],
         take_profit: Optional[float],
     ) -> None:

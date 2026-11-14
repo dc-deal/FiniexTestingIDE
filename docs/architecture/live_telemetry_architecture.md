@@ -1,4 +1,4 @@
-# Live Telemetry Stream — Console Dashboards & Viewer Push (Groundwork)
+# Live Telemetry Stream — Console Dashboards
 
 The **live telemetry stream** is the throttled, lossy per-run feed that drives the live console
 dashboards *while a run is in flight*. It is the deliberate counterpart of the unified **report
@@ -7,10 +7,10 @@ pipeline** — and is kept strictly separate from it (see [Boundary](#boundary-v
 Both execution pipelines emit this feed through one shared model, derived off the hot loop:
 
 ```
-CAPTURE (per pipeline, throttled ~300ms)        MODEL (shared core)            PRESENT (surfaces)
-  sim subprocess ─ process_live_export ──┐                                     ┌─► console (rich.live)   ← today
-                   builds LiveScenarioStats ├─► LiveCoreSnapshot ───────────────┼─► JSONL replay (#379)   ← groundwork
-  AutoTrader     ─ AutotraderDisplayExporter┘   + per-domain extension          └─► socket push (#380/#331) ← groundwork
+CAPTURE (per pipeline, throttled ~300ms)        MODEL (shared core)            PRESENT (surface)
+  sim subprocess ─ process_live_export ──┐
+                   builds LiveScenarioStats ├─► LiveCoreSnapshot ─────────────────► console (rich.live)
+  AutoTrader     ─ AutotraderDisplayExporter┘   + per-domain extension
                    builds AutoTraderDisplayStats
 ```
 
@@ -115,24 +115,26 @@ queue is the one failure they skip without a word. Any other failure to hand a f
 reported to the global log once and never raised; a scenario whose frames cannot be sent stops
 sending them and runs on.
 
-## Viewer push — preview (groundwork only)
+## Frames as JSON — no push to the viewer
 
-The frames are JSON-serializable so the FiniexViewer live windows (#379 Algo State / Session /
-Portfolio / Trade History / Orders) can render the **same** model. The encoder is a thin
-PRESENT-stage step:
+The frames are JSON-serializable. The encoder is a thin PRESENT-stage step:
 
 ```python
 # framework/utils/live_frame_serialization_utils.py
 frame_to_json(frame)  # = serialize_value(asdict(frame))  — enums→value, datetime→isoformat
 ```
 
-The frames stay `@dataclass` runtime domain types; JSON is a render concern. **The push
-transport itself is not built here** — it is owned by #380 (live streaming, transport designed
-once with #331's WebSocket) and #379 (the per-run JSONL replay artifact). The hard part is the
-**cross-process bridge**: the sim feed already crosses a process boundary (subprocess → batch
-process), and the read-only API server ([api_server_architecture.md](api_server_architecture.md))
-is a separate uvicorn process — so exposing the live feed needs a bridge (in-process host, a light
-message bus, or a JSONL tail that doubles as #379's replay artifact). That design lives in #380.
+The frames stay `@dataclass` runtime domain types; JSON is a render concern, and no surface
+consumes it today. **No push transport is built or planned for this stream.** Since #380 was
+re-cut on 2026-10-11, a viewer that follows a running session reads the run's record as it grows,
+not this feed: the session writes its streams into its own run directory and flushes each record
+(#476), and the read-only API server
+([api_server_architecture.md](api_server_architecture.md)), a separate uvicorn process, reads the
+same files, so no bridge between processes is needed. The viewer's side, still to be built, will
+poll the recorded-streams timeline and read what is new from its window (#580), and take the
+current state from the latest-frame route (#611), both described under
+[The recorded state frame](#the-recorded-state-frame--not-this-stream). Push comes only if a
+measurement shows polling too slow, and then as SSE rather than a WebSocket (#380).
 
 ## Boundary vs the report pipeline
 
@@ -144,7 +146,7 @@ stream is the fast, lossy live feed. The two never share code:
 |---|---|---|
 | When | end of run (+ snapshot #392) | during the run, throttled |
 | Fidelity | coherent, derived once | lossy, latest-wins |
-| Transport | persisted JSON/CSV → REST | mp.Queue / thread queue → console (push later) |
+| Transport | persisted JSON/CSV → REST | mp.Queue / thread queue → console |
 | Model | `report_types.py` (Pydantic) | `LiveCoreSnapshot` + frames (`@dataclass`) |
 
 ## The recorded state frame — not this stream
@@ -164,7 +166,8 @@ at most one per pass of the loop. It is what a backtest of the same period is co
 | A health nobody checked | a default (`reconcile_clean` true without a reconciler) | null |
 | Positions and orders | the dashboard's own rows | the rows the report serves, so the last frame agrees with it |
 
-It is built on its own from the session's objects — `framework/autotrader/run_record/state_frame_recorder.py`,
+It is built on its own from the run's objects — `framework/process/state_frame_recorder.py`, shared by
+both pipelines, opened for a session by `framework/autotrader/run_record/state_frame_stream_opener.py`;
 the line `framework/types/api/state_frame_types.py` — and written through the run-stream appender
 (`framework/reporting/io/run_stream_appender.py`). At each trading-day boundary the session seals the
 day's frames into `days/<day>/io/state_frames.parquet` and the file starts afresh
@@ -172,6 +175,18 @@ day's frames into `days/<day>/io/state_frames.parquet` and the file starts afres
 memory rides on every frame of a live session. A replay compresses hours into seconds, and reading
 the memory costs about a millisecond in a session-sized process, so a replay reads it at most once
 per cadence interval of the monotonic clock and at its last frame.
+
+**A backtest records the same frame when its scenario asks (#579 part B item 3).** The scenario's
+execution block carries `state_frames` (`enabled`, `cadence_timeframe`; off by default, mirrored in
+`app_config.json`), and a scenario that switches it on writes `io/state_frames_{scenario}.jsonl` in its
+run, beside its events table — at the end of each tick pass, at each ghost pass, and once at its end, on
+the slots of the simulated clock. The recorder reads the run and changes nothing it computes; a test runs
+one scenario with frames on and off and compares the order events and trades event by event. A
+backtest's frame carries no reconciliation, no circuit breaker (`safety_blocked` false, no drawdown
+reading) and no memory reading. Its heartbeats run on simulated time, so a cadence slot inside a quiet
+stretch is filled only when the decision logic asks for heartbeats; a live session fills it on its own
+heartbeat, and the divergence report compares the slots both sides hold (#512). A backtest of a session's
+window switches the frames on with the cadence the session recorded with.
 
 **Served while it is written (#611).** `GET /api/v1/reports/runs/{run_id}/state-frames/latest`
 reads the stream's two ends — its header, its first frame and its last complete line — never the

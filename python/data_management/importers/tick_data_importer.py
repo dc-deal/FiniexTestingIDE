@@ -22,6 +22,7 @@ import pyarrow.parquet as pq
 from python.configuration.data_origin_registry import DataOriginRegistry
 from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.importers.bar_importer import BarImporter
+from python.data_management.importers.tick_inbox_conveyor import TickInboxConveyor
 from python.data_management.index.tick_index_manager import TickIndexManager
 
 # Import duplicate detection
@@ -37,6 +38,12 @@ from python.framework.types.import_types.import_schema_types import (
     ALREADY_CAPTURED_METADATA_KEYS,
     DISCARDED_METADATA_KEYS,
     NESTED_METADATA_KEYS,
+)
+from python.framework.types.import_types.tick_inbox_types import (
+    InboxDisposition,
+    InboxMove,
+    TickImportOutcome,
+    TickImportResult,
 )
 from python.framework.types.validation_types import TickFileValidationResult
 from python.framework.utils.file_utils import create_directory
@@ -82,7 +89,8 @@ class TickDataImporter:
                  override: bool = False,
                  move_processed_files: bool = True,
                  finished_dir: Optional[str] = None,
-                 auto_render_bars: bool = True):
+                 auto_render_bars: bool = True,
+                 refused_dir: Optional[str] = None):
         """
         Initialize importer with source and target paths.
 
@@ -90,9 +98,11 @@ class TickDataImporter:
             source_dir: MQL5 JSON export directory
             target_dir: Parquet target directory (import_output)
             override: Overwrite existing files
-            move_processed_files: Move JSON to finished_dir after import
-            finished_dir: Directory for processed JSON files
+            move_processed_files: Move each JSON out of the inbox after its import
+            finished_dir: Directory for the JSON files the import took
             auto_render_bars: Automatically render bars after tick import
+            refused_dir: Directory for the JSON files the import refused or failed on, each
+                with its reason beside it; None keeps them in the inbox
         """
         self.source_dir = Path(source_dir)
         self.target_dir = Path(target_dir)
@@ -102,8 +112,11 @@ class TickDataImporter:
         # Per broker: how many files resolved to each UTC offset — the summary's evidence that
         # a season boundary was crossed rather than one constant applied to everything.
         self._applied_offsets: Dict[str, Dict[str, int]] = {}
-        self._move_processed_files = move_processed_files
-        self._finished_dir = Path(finished_dir) if finished_dir else None
+        self._conveyor = TickInboxConveyor(
+            finished_dir=Path(finished_dir) if move_processed_files and finished_dir else None,
+            refused_dir=Path(refused_dir) if move_processed_files and refused_dir else None)
+        # The loose files this import moved to the refused directory
+        self._refused_files: List[str] = []
         self._auto_render_bars = auto_render_bars
 
         # Batch processing statistics
@@ -148,8 +161,8 @@ class TickDataImporter:
 
         if not json_files:
             vLog.warning(
-                f'No JSON files found in {self.source_dir}. Just rebuilding index.')
-            index_manager = self.rebuild_parquet_index()
+                f'No JSON files found in {self.source_dir}. Just updating the index.')
+            index_manager = self.update_parquet_index()
             if index_manager is not None:
                 self.validate_archive_ordering(index_manager)
             return
@@ -160,7 +173,7 @@ class TickDataImporter:
         for json_file in json_files:
             self.import_file(json_file)
 
-        index_manager = self.rebuild_parquet_index()
+        index_manager = self.update_parquet_index()
         if index_manager is not None:
             self.validate_archive_ordering(index_manager)
 
@@ -213,55 +226,145 @@ class TickDataImporter:
         Returns:
             True when the file was processed, False when it was skipped or failed
         """
-        vLog.info(f'\n📄 Processing: {json_file.name}')
+        return self.import_file_result(json_file).outcome is TickImportOutcome.IMPORTED
+
+    def import_file_result(self, json_file: Path,
+                           archived_in: Optional[Path] = None) -> TickImportResult:
+        """
+        Import one tick export and say how it ended. A refused, duplicate or failing file is
+        counted and logged, never raised — the batch goes on with the next file. A loose export
+        then leaves the inbox: to the finished directory when the archive holds it, to the
+        refused directory when not. An export unpacked from a zip is left where it is; the
+        zip's handling decides about it.
+
+        Args:
+            json_file: The export to import
+            archived_in: The zip the export was unpacked from, None for a loose export
+
+        Returns:
+            How the import of the file ended, and why when it was not taken
+        """
+        origin = f' (from {archived_in.name})' if archived_in is not None else ''
+        vLog.info(f'\n📄 Processing: {json_file.name}{origin}')
+        result = self._convert_and_judge(json_file, origin)
+        if archived_in is None:
+            self._leave_inbox(json_file, result)
+        return result
+
+    def get_refused_files(self) -> List[str]:
+        """
+        The loose files this import moved to the refused directory.
+
+        Returns:
+            Their names, in the order they were refused
+        """
+        return list(self._refused_files)
+
+    def _convert_and_judge(self, json_file: Path, origin: str) -> TickImportResult:
+        """
+        Convert one export, counting and logging whatever stops it.
+
+        Args:
+            json_file: The export
+            origin: Where it came from, for the log lines — empty for a loose export
+
+        Returns:
+            How its import ended
+        """
         try:
             self.convert_json_to_parquet(json_file)
             self.processed_files += 1
-            return True
+            return TickImportResult(outcome=TickImportOutcome.IMPORTED)
         except ArtificialDuplicateException as e:
             # Special handling for duplicate detection
-            warning_msg = f'DUPLICATE DETECTED in {json_file.name}'
+            warning_msg = f'DUPLICATE DETECTED in {json_file.name}{origin}'
             vLog.warning(warning_msg)
             vLog.warning(str(e))
             self.warnings.append(warning_msg)
             vLog.info('→ Skipping import (duplicate already exists)')
+            return TickImportResult(outcome=TickImportOutcome.ALREADY_ARCHIVED)
         except TickFileValidationException as e:
             # Structural defect in the source file — refuse it, keep the batch running
-            error_msg = f'VALIDATION FAILED in {json_file.name}'
+            error_msg = f'VALIDATION FAILED in {json_file.name}{origin}'
             vLog.error(error_msg)
             vLog.error(str(e))
             self.errors.append(error_msg)
             vLog.info('→ Skipping import (file not written)')
+            return TickImportResult(outcome=TickImportOutcome.REFUSED, reason=str(e))
         except Exception as e:
-            error_msg = f'ERROR in {json_file.name}: {str(e)}'
+            error_msg = f'ERROR in {json_file.name}{origin}: {str(e)}'
             vLog.error(error_msg)
             self.errors.append(error_msg)
-        return False
+            return TickImportResult(outcome=TickImportOutcome.FAILED,
+                                    reason=f'{type(e).__name__}: {e}')
 
-    def rebuild_parquet_index(
+    def _leave_inbox(self, json_file: Path, result: TickImportResult) -> None:
+        """
+        Move a loose export out of the inbox once its import ended.
+
+        Args:
+            json_file: The export
+            result: How its import ended
+
+        Returns:
+            None
+        """
+        if result.outcome.is_taken():
+            move = self._conveyor.to_finished(json_file)
+        else:
+            move = self._conveyor.to_refused(json_file, result.reason or result.outcome.value)
+        self._log_move(json_file.name, move)
+
+    def _log_move(self, name: str, move: InboxMove) -> None:
+        """
+        Log where a loose export went, and count a move that could not happen as an error.
+
+        Args:
+            name: The export's file name
+            move: Where it went
+
+        Returns:
+            None
+        """
+        if move.disposition is InboxDisposition.MOVED_TO_FINISHED:
+            vLog.info(f'→ Moved {name} to {move.destination}')
+        elif move.disposition is InboxDisposition.MOVED_TO_REFUSED:
+            self._refused_files.append(name)
+            vLog.info(f'→ Moved {name} to {move.destination}, the reason beside it')
+        elif move.disposition is InboxDisposition.ALREADY_THERE:
+            vLog.info(f'→ An identical {name} lies in {move.destination}; the inbox copy '
+                      'was removed')
+        elif move.destination is not None:
+            error_msg = f'KEPT IN THE INBOX {name}: {move.detail}'
+            vLog.error(error_msg)
+            self.errors.append(error_msg)
+
+    def update_parquet_index(
         self,
         on_file_scanned: Optional[Callable[[int, int], None]] = None
     ) -> Optional[TickIndexManager]:
         """
-        Rebuild index after successful imports. A failure is counted among the errors, and so
-        is a tick file the scan could not read, so the summary cannot read `Errors: 0` over an
-        index that no longer describes the archive.
+        Bring the index up to date after the imports: only the files that changed are read, or
+        every file where the index is missing or was written under an older schema
+        (TickIndexManager.update_index). A failure is counted among the errors, and so is a
+        tick file the scan could not read, so the summary cannot read `Errors: 0` over an index
+        that no longer describes the archive.
 
         Args:
             on_file_scanned: Called with (file number, file count) for each tick file scanned
 
         Returns:
-            The rebuilt index — also when files were missing from it — or None when the
-            rebuild failed
+            The updated index — also when files were missing from it — or None when the
+            update failed
         """
-        vLog.info('\n🔄 Rebuilding Parquet index...')
+        vLog.info('\n🔄 Updating Parquet index...')
         try:
 
             index_manager = TickIndexManager(data_dir=str(self.target_dir))
-            index_manager.build_index(force_rebuild=True, on_file_scanned=on_file_scanned)
+            index_manager.update_index(on_file_scanned=on_file_scanned)
 
             symbols = index_manager.list_symbols()
-            vLog.info(f'✅ Index rebuilt: {len(symbols)} symbols indexed')
+            vLog.info(f'✅ Index up to date: {len(symbols)} symbols indexed')
             unreadable = index_manager.get_unreadable_files()
             if unreadable:
                 # The ticks are the archive, not derived: the repair is a re-import
@@ -272,9 +375,9 @@ class TickDataImporter:
             return index_manager
 
         except Exception as e:
-            vLog.error(f'❌ Failed to rebuild index: {e}')
+            vLog.error(f'❌ Failed to update index: {e}')
             vLog.error('   Index may be outdated - run manual rebuild!')
-            self.errors.append(f'Tick index rebuild failed: {e}')
+            self.errors.append(f'Tick index update failed: {e}')
             return None
 
     def get_applied_offsets(self) -> Dict[str, Dict[str, int]]:
@@ -340,6 +443,11 @@ class TickDataImporter:
         5. Validate structural invariants (refuses the file on violation)
         6. Check for existing duplicates (with override support)
         7. Save as Parquet with metadata
+
+        Where the export goes afterwards is not decided here (import_file_result).
+
+        Args:
+            json_file: The export to convert
         """
 
         # ===========================================
@@ -606,12 +714,6 @@ class TickDataImporter:
             json_size = json_file.stat().st_size
             parquet_size = parquet_path.stat().st_size
             compression_ratio = json_size / parquet_size if parquet_size > 0 else 0
-
-            if self._move_processed_files and self._finished_dir:
-                create_directory(self._finished_dir, holds='the raw files after their import')
-                finished_file = self._finished_dir / json_file.name
-                json_file.rename(finished_file)
-                vLog.info(f'→ Moved {json_file.name} to finished/')
 
             self._remember_archived(ArchivedTickFile(
                 broker_type=broker_type_normalized,

@@ -47,6 +47,7 @@ and a written one cannot drift apart (#621). The tables, the shapes and how a fi
 | 1f | `runs/simulation/sweeps/` — the parameter sweeps; their combinations are runs of row 1 | RECORD | `sweep_id` | none — its figures are the ledger's rows, `ranked.csv` an export of them | A · document |
 | 2 | `runs/ledger/` | RECORD | `(run_id, unit, period_no, currency)` — columns, never a path | `run_ledger_index.parquet` | B · set |
 | 3 | `tests/*/reports/` | RECORD | family + version + date | `certificates_index.parquet` | A · document |
+| 3b | `tests/fixtures/golden_samples/` — the frozen aggregates of fixture productions (#557) | RECORD | `entry_id` — one folder per fixture-catalog entry | none — opened by its entry id | A · document |
 | 4 | `data/runtime/session_state/` | **CARRY-OVER** | `<bot_id>_<symbol>`, separator reserved | none — opened by key | A · document |
 | 4b | `data/runtime/cold_start_state/` | **CARRY-OVER** | `<bot_id>_<symbol>`, separator reserved | `cold_start_state_index.parquet` | A · document |
 | 5 | `data/processed/{broker}/ticks` | ARCHIVE | broker / symbol / file | `ticks_index.parquet` | C · bulk |
@@ -59,7 +60,8 @@ and a written one cannot drift apart (#621). The tables, the shapes and how a fi
 | 10c | `data/runtime/import_timings.json` | DERIVED ← the imports' own durations (not a store) | none | none — one file | A · document |
 | 11 | `data/finished/` | ARCHIVE | zip or file name | none — opened by name | A · document |
 | 11b | `data/external/` | ARCHIVE | vendor / dataset / fetch folder | none — a fetch is opened by its folder, its `manifest.json` keyed on part SHA-256 and fetch time | A · document |
-| 12 | `data/raw/` → `data/finished/` | **SPECIAL** | file name | none — conveyor | — |
+| 12 | `data/raw/` → `data/finished/`, through `data/unpacking/` for a zip's files | **SPECIAL** | file name | none — conveyor | — |
+| 12b | `data/refused/` | **SPECIAL** | file or zip name | none — quarantine, a note beside each file | — |
 | 13 | `logs/global.log` | **SPECIAL** | none | none — append stream | — |
 | 14 | `user_configs/host_identity.json` | **SPECIAL** | none | none — one file, read at boot by its manager | — |
 | 15 | `~/.finiex/activities/` — one per machine, configured | **SPECIAL** | `activity_id` | none — read by its own reader | — |
@@ -90,8 +92,9 @@ one data home, the directory the environment variable `FINIEX_DATA_HOME` names, 
 the workspace (`user_configs/`) and the strategy directories. Unset, the working directory is
 the home, and a development checkout keeps every path exactly as configured.
 
-Three roots stay where they are, each on purpose: the certificates (row 3) and the generator
-profiles (row 9) are committed and belong to the code tree of the release that made them, and
+Some roots stay where they are, each on purpose: the certificates (row 3), the golden samples
+(row 3b) and the generator profiles (row 9) are committed and belong to the code tree that made
+them, and
 the activity list (row 15) is the machine's, at an absolute path every tree shares. An absolute
 path in the configuration stands for itself. A home that does not exist refuses the start
 instead of being created: an empty one holds no carry-over, and a session started on it would
@@ -149,8 +152,8 @@ per trading day of ITS window. A run whose scenarios are shorter than a day writ
 which is the shape the ledger had before — the grain widened, it did not change meaning.
 
 **No aggregate row is written beside the periods.** The run's total is derivable from them —
-`COLUMN_REDUCTION` beside `LEDGER_COLUMNS` states how every column combines, and
-`COLUMN_NULL_MEANING` what an empty cell of a nullable figure means — and a derivable
+the figure catalog (`reporting/aggregation/figure_catalog.py`) states for every column of
+`LEDGER_COLUMNS` how it combines and what an empty cell of a nullable figure means — and a derivable
 copy kept next to its source is the pair that drifts. Keeping both would also be wrong in
 a way no reader could see: the deployment history SUMS rows and would count every month twice,
 the sweep ranking SORTS them and would see one candidate four times. One reduction has a limit
@@ -513,8 +516,15 @@ bot's, rather than ignoring it and overwriting the successor's book.
 ### Why the SPECIAL stores stay special
 
 - **`data/raw/` → `data/finished/`** is a **conveyor, not a store**: a file lies there in order to
-  disappear. The importer reads it and MOVES it; it never rewrites the content. Giving it a header
-  and an index would make it something it is not, and would blur that contract.
+  disappear. The importer reads it and MOVES it; it never rewrites the content, and every import
+  drains it. A zip's files pass through `data/unpacking/`, one folder per zip, which exists only
+  while a zip is unpacked. Giving it a header and an index would make it something it is not, and would
+  blur that contract.
+- **`data/refused/`** is a **quarantine**: a raw file or zip the import refused or failed on lies
+  there unchanged, with `<name>.refused.txt` beside it — one line per refusal, when and why — until
+  somebody decides. It goes back into `data/raw/` by hand once its cause is fixed. It is no archive
+  (nothing was imported from it) and no conveyor (nothing moves it on by itself), and the import only
+  ever adds to it, because what lies there is raw source of truth.
 - **`logs/global.log`** is an append stream without identity. It gets bounding and rotation, never
   an index.
 - **`user_configs/host_identity.json`** is the installation's minted identity (#551): one file,

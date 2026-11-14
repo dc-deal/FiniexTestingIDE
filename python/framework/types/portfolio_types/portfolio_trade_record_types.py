@@ -112,7 +112,7 @@ class TradeRecord:
     exit_tick_value: float
 
     # === Tick Index (for backtesting analysis) ===
-    entry_tick_index: int  # tick_counter at position open
+    entry_tick_index: Optional[int]  # tick_counter at position open; None when restored at boot
     exit_tick_index: int   # tick_counter at position close
 
     # === Symbol Properties (for formula verification) ===

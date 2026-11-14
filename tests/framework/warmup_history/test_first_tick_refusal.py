@@ -24,7 +24,7 @@ from python.framework.autotrader.operator_alerts.operator_alerts_setup import (
 )
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
-from python.framework.process.tick_pipeline_core import render_bars_for_tick
+from python.framework.loop.blocks.bar_render_block import render_bars_for_tick
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
@@ -46,6 +46,7 @@ def _session(tick_loop_started: bool, executor=None) -> AutotraderMain:
     """A session reduced to what the abort report reads and sets; by default it sent nothing."""
     session = AutotraderMain.__new__(AutotraderMain)
     session._tick_loop_started = tick_loop_started
+    session._tick_loop = None
     session._executor = executor or SimpleNamespace(
         get_execution_stats=lambda: SimpleNamespace(orders_submitted=0))
     session._session_logger = RecordingLogger()
@@ -167,6 +168,7 @@ def test_the_result_carries_the_refusal(monkeypatch):
     # record and entered its loop, but this double built none of them
     session._order_event_stream = None
     session._study_recorder = None
+    session._indicator_series = None
     session._tick_source = None
     session._tick_loop = None
     session._algo_state_found = False

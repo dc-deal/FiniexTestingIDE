@@ -404,6 +404,14 @@ class TestTheFillFeesBySource:
         assert (totals[FeeSource.ESTIMATE].fill_count,
                 totals[FeeSource.ESTIMATE].fill_fees) == (1, 0.0)
 
+    def test_a_fill_without_a_fee_figure_is_counted_and_adds_nothing(self):
+        no_figure = OrderEvent(seq=2, event_type=OrderEventType.FILLED, order_id='pos_btcusd_2',
+                               submitted_seq=2, fee_source=FeeSource.VENUE)
+        totals = fill_fees_by_source([_fill(1, FeeSource.VENUE, 0.05), no_figure])
+
+        assert (totals[FeeSource.VENUE].fill_count,
+                totals[FeeSource.VENUE].fill_fees) == (2, 0.05)
+
     def test_both_pipelines_fold_their_units_order_events(self):
         events = [_fill(1, FeeSource.VENUE, 0.05), _fill(2, FeeSource.ESTIMATE, 0.01)]
         session = build_portfolio_report(_RUN_ID, run_units_from_session(

@@ -47,9 +47,26 @@ currency, per run, per ledger row — carries all of them.
 | `test_a_strategy_cancel_ends_cancelled_by_the_strategy` | the cancel gets its closing row, and the cancellation event carries it |
 | `test_the_data_end_expires_resting_and_travelling_orders_alike` | an order still in the latency queue when the data ends used to end without any row |
 
+### `TestAnOrderSentAtTheSessionEndInTheSimulation`
+
+An order the strategy sends from `on_session_end` ends as it ends live (#642). The simulation's end is
+run in the order its tick loop runs it; `test_trend_channel_reference.py` runs it through the loop
+itself.
+
+| Test | Description |
+|------|-------------|
+| `test_a_close_sent_from_the_event_ends_flat_and_is_heard` | in both account models the close fills at the last bid and the logic hears `executed` after the session-end event |
+| `test_a_market_order_sent_from_the_event_fills_at_the_last_quote` | an open fills at the last ask, in both account models |
+| `test_a_resting_order_sent_from_the_event_expires_and_is_heard` | a limit sent then expires and is reported as `expired` |
+| `test_a_cancel_sent_from_the_event_is_applied` | a cancel the strategy asks for then is applied — `cancelled` by the strategy — where it used to wait for a tick that never came and the order expired |
+| `test_an_order_sent_from_the_outcome_hook_is_withdrawn` | the session is over: cancelled by the framework at the session end, never filled and not reported |
+| `test_an_order_already_on_its_way_still_expires_with_the_data` | only what the strategy sent from the event is settled; an order in flight before it expires with the data, unreported |
+| `test_after_an_emergency_end_nothing_is_settled` | as a live stop does not wait through an `EMERGENCY` end, the close is withdrawn and the position stays open |
+
 ### `TestAProtectiveExitInTheSimulation`
 
-The simulation fills a breached stop-loss or take-profit with a synthetic close at the level.
+The simulation fills a breached stop-loss or take-profit with a synthetic close in the breaching tick:
+a stop at that tick's market, a target at its level.
 That close is an order in the backtest as live's is in a session, and it waits as live's does.
 
 | Test | Description |

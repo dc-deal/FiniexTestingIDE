@@ -44,7 +44,7 @@ class ScenarioDetailsSummary(AbstractBatchSummarySection):
         if not units:
             print('No scenarios')
             return
-        if len(units) > scenario_detail_threshold:
+        if self._report.scenario_count > scenario_detail_threshold:
             self._render_compact(units, renderer)
             return
         print()
@@ -77,27 +77,25 @@ class ScenarioDetailsSummary(AbstractBatchSummarySection):
         if unit.trades_requested is None:
             print(f'   Signals: not counted (decision tracking off) | Worker: {unit.worker_count}')
         else:
-            non_flat = unit.buy_signals + unit.sell_signals
-            nf_pct = (non_flat / unit.ticks_processed * 100) if unit.ticks_processed else 0.0
-            tr_pct = ((unit.trades_requested / unit.ticks_processed * 100)
-                      if unit.ticks_processed else 0.0)
             print(
-                f'   Non-Flat Sign.: {non_flat} ({nf_pct:.1f}%) | '
+                f'   Non-Flat Sign.: {unit.non_flat_signals} ({unit.non_flat_signal_pct:.1f}%) | '
                 f'B/S/F: {unit.buy_signals}/{unit.sell_signals}/{unit.flat_signals} | '
-                f'Trades requested: {unit.trades_requested} ({tr_pct:.1f}%) | '
+                f'Trades requested: {unit.trades_requested} ({unit.trades_requested_pct:.1f}%) | '
                 f'Worker: {unit.worker_count}')
         if unit.status == 'hybrid':
             print(renderer.red('   ⚠️ CRITICAL: Errors detected'))
 
     def _render_compact(self, units: List[ScenarioDetailsRow], renderer: ConsoleRenderer) -> None:
-        """Compact failures-only list for large scenario counts."""
-        total = len(units)
-        failed = [u for u in units if u.status != 'success']
-        if not failed:
-            print(f'  ✅ All {total} scenarios completed successfully')
+        """Compact failures-only list for large scenario counts — the counts are the report's."""
+        report = self._report
+        if not report.failed_scenario_count:
+            print(f'  ✅ All {report.scenario_count} scenarios completed successfully')
         else:
-            print(f'  ✅ {total - len(failed)}/{total} completed  |  ❌ {len(failed)} failed\n')
-            for unit in failed:
+            print(f'  ✅ {report.completed_scenario_count}/{report.scenario_count} completed  |  '
+                  f'❌ {report.failed_scenario_count} failed\n')
+            for unit in units:
+                if unit.status == 'success':
+                    continue
                 error = unit.error_message or unit.error_type or 'unknown error'
                 print(f'  ❌  {unit.name:<40}  {error}')
         print()

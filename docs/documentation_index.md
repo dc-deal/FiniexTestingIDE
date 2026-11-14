@@ -9,6 +9,7 @@
 | [Quickstart Guide](user_guides/quickstart_guide.md) | Create your first strategy (Worker + Decision Logic + Config) |
 | [CLI Tools Guide](cli_tools_guide.md) | All CLI commands with examples and workflow overview |
 | [Worker Naming](user_guides/worker_naming_doc.md) | Worker reference system, path-based loading, requirements contract |
+| [Algo Masks](user_guides/algo_masks.md) | What an algo receives instead of an engine object — the read-only masks, their fields and where each value comes from (#653) |
 | [Algo State Persistence](user_guides/algo_state_persistence_guide.md) | Restart-safe algo memory — snapshot/restore hooks, staleness, JSON contract |
 | [Reading the Results Ledger](user_guides/results_ledger_guide.md) | What one ledger row is, which of its numbers add up, and what changes between one account and several |
 | [Robustness Validation](user_guides/robustness_validation_guide.md) | Multi-window + In-Sample/Out-of-Sample overfit guard — roles, WFE, distribution, trust gate (#367) |
@@ -54,6 +55,7 @@
 |----------|-------------|
 | [Execution Layer](architecture/architecture_execution_layer.md) | Core Sim/Live hybrid architecture, shared portfolio logic |
 | [Simulation vs Live Flow](architecture/simulation_vs_autotrader_flow.md) | Side-by-side tick flow comparison |
+| [Loop Core](architecture/loop_core_architecture.md) | The event model and its one timeline, and the dispatcher that owns the order of every backtest pass; the AutoTrader's follow (#457, #458) |
 | [Live Execution](architecture/live_execution_architecture.md) | LiveTradeExecutor, broker polling, LiveRequestProcessor |
 | [Pending Order Lifecycle](architecture/pending_order_architecture.md) | 3-world model (latency, limit, stop), trigger logic |
 | [Order-Event Stream](architecture/order_event_stream.md) | One record per order transition in both pipelines — the vocabulary and who writes it, where each step is recorded, the stream on disk and in the run index, determinism (#362) |
@@ -67,7 +69,7 @@
 | [Day Records](architecture/run_stream_day_records.md) | A session's streams sealed per trading day — what a day folder holds, how a day is sealed, what a day record keeps, and how a stream is read as one (#476) |
 | [Accounting Periods](architecture/accounting_periods.md) | Which clock resets what — the swap rollover at 17:00 New York against the risk day at midnight UTC, the tick-level equity sample, the two carry-over cadences, and what deliberately does not reset |
 | [Data Provenance](architecture/data_provenance.md) | Who wrote an imported file and what that is allowed to mean — the identity a producer states, the registry that maps it here, the three evidence grades, and the gate that keeps development data out of a measurement |
-| [Fixture Catalog](architecture/fixture_catalog.md) | The runs a consumer pins as a committed procedure — every entry produced and checked by one command, the production record, and why the current fixture is derived rather than stored (#576) |
+| [Fixture Catalog](architecture/fixture_catalog.md) | The runs a consumer pins as a committed procedure — every entry produced and checked by one command, the production record, why the current fixture is derived rather than stored (#576), and the golden samples frozen from it (#557) |
 | [Run Origin and Code Identity](architecture/run_origin_and_code_identity.md) | What every run header states about where a run came from — the declared channel, client, principal and minted host — and which code it ran across every repository a component came from; who reads it (ledger, run index), what the capture costs, and why a real-money session from uncommitted code refuses to start unless `--allow-dirty` is typed (#551) |
 | [Credentials Layout](architecture/credentials_layout.md) | Which secret points which way — the inbound consumer registry against the outbound peer and venue credentials, why an address never travels apart from its credential, and when the folder splits |
 | [External Connection Policy](architecture/external_connection_policy.md) | One retry ladder, one give-up rule, one classification for all seven outbound connections — TRANSIENT / TERMINAL / INADMISSIBLE, why a write is resolved by asking rather than retried, the `cl_ord_id` wire key, who owns the wait (#473) |
@@ -77,11 +79,12 @@
 | [Reporting Pipeline](architecture/reporting_pipeline.md) | One result model for console/file/API across sim + AutoTrader — capture → derive (postprocessor) → present; trade-history / order-history / portfolio slices, section taxonomy, ReportStore, /reports endpoints (#391) |
 | [Parameter Optimization System](architecture/parameter_optimization_system.md) | Grid sweep over strategy params + run-results ledger (parquet) + objective ranking + one-factor sensitivity; sweep spec, dotted-path overrides, pluggable generator seam (#390) |
 | [Swap / Overnight-Funding Cost Model](trading_realism/swap_cost_model.md) | Overnight swap accrual — signed debit/credit, triple-swap (T+2), DST-aware rollover, MarketClock awareness, per-trade reporting (#365) |
-| [Live Telemetry Stream](architecture/live_telemetry_architecture.md) | The throttled live feed behind the console dashboards (LiveCoreSnapshot + frames), both pipelines, JSON groundwork for the viewer push (#400) — distinct from the report pipeline |
+| [The Drawing Channel](architecture/drawing_channel_architecture.md) | What a worker shows on a run's chart (#379): its declared indicator series, the check at creation, the schema route, the stream per worker and the value that stands for a closed bar |
+| [Live Telemetry Stream](architecture/live_telemetry_architecture.md) | The throttled live feed behind the console dashboards (LiveCoreSnapshot + frames), both pipelines, frames serializable as JSON (#400) — distinct from the report pipeline |
 | [Warnings & Errors Tiers](architecture/warnings_errors_tiers.md) | Tier taxonomy (errors / Tier-1 major → validators / Tier-2 log) + the "no decisions in reports" principle; pre-run vs post-run validators, sim/AutoTrader channels (#395) |
 | [Release Certificates](architecture/release_certificates.md) | The release-gate certificates, their shared CertificateIdentity, the version/dirty-tree guards and the observed-not-re-read rule |
 | [Mock Adapter Guide](architecture/mock_adapter_guide.md) | MockBrokerAdapter for deterministic pipeline testing |
-| [Order Guard](architecture/order_guard_architecture.md) | Pre-validation guard (SHORT+SPOT, rejection cooldown, async callback) |
+| [Order Guard](architecture/order_guard_architecture.md) | Pre-trade guard (the rules that deny an order before the executor, rejection cooldown, async callback) |
 | [Performance Tracking Layers](architecture/performance_tracking_layers.md) | Two-layer model (per-component + tick-loop profiler), defaults, graceful degradation, why no context-manager wrappers in the tick loop |
 | [What a Venue Holds](architecture/venue_order_features.md) | An adapter offers what its venue's API offers: what a run refuses, what a logic does instead (own exits) and what that costs |
 | [Safety Circuit Breaker](architecture/safety_circuit_breaker_architecture.md) | Account-level protection (account-value floor, drawdown and daily limits, the risk baseline that survives a restart, the hard flatten, and the end-of-session record — AutoTrader only) |
@@ -214,12 +217,15 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Account Leverage Tests](tests/framework/account_leverage_tests.md) | What an algo's `get_leverage()` answers — the account's leverage from the broker configuration, the figure margin divides by |
 | [Round-Trip Fee Tests](tests/framework/round_trip_fees_tests.md) | What one completed trade costs in both account models, the two fee totals a run reports, the rule for a trade that realised nothing, and the excursion a spot trade records |
 | [Spot Entry Capital Tests](tests/framework/spot_entry_capital_tests.md) | How much capital a new entry may commit, per account model — why `free_margin` is not that number at spot, and that the margin answer is unchanged |
+| [Indicator Series Tests](tests/framework/indicator_series_tests.md) | Each worker's drawing declaration held to its outputs, the value the recorder writes for a closed bar, and the orders of a backtest the same with the recording on and off (#379) |
 | [Indicator Tests](tests/framework/indicator_tests.md) | The shared indicator library: what each name means, that the per-tick and bulk forms of one indicator agree, and how much history each average needs |
 | [Price Trigger Tests](tests/framework/price_trigger_tests.md) | The shared order-vs-quote predicate: has the market reached this price, and which side of the book does this direction trade at |
 | [Order Features Tests](tests/framework/order_features_tests.md) | What a logic declares against what its venue's API holds: refused at the start, in the batch's main process and at order time, and the exception a backtest may declare |
 | [Own Exit Levels Tests](tests/framework/own_exit_levels_tests.md) | A logic's own stop and target per position: seeded, only tightened, closed once, gone with their position, restored only for restored positions (#625) |
 | [Order Endings Tests](tests/framework/order_endings_tests.md) | One status per way an order ends, in both pipelines — who refused it, who cancelled it, what the end of a run leaves — and the counts declared from them |
 | [Order Events Tests](tests/framework/order_events_tests.md) | Every order transition as one event in both pipelines — the declared vocabulary held to the source, each order life step by step, the stream file, the run index and the route |
+| [Loop Event Tests](tests/framework/loop_events_tests.md) | The loop core's event vocabulary and its one timeline (#457): two stamps per event, the earliest stamp first, one instant per stamp, the ticks of an instant as one data slice |
+| [Loop Pass Order Tests](tests/framework/loop_pass_order_tests.md) | What each tick loop calls in each kind of pass, and in which order — pinned before the passes move behind one dispatcher (#458) |
 | [Field Study Recorder Tests](tests/framework/field_study_recorder_tests.md) | The field study's capture as a copy of the order-event stream, and the certificate that reads it — offline, no order placed |
 | [Security Study Certificate Tests](tests/framework/security_cert_certificate_tests.md) | The certificate that judges the security study's stages together, and the catalog of how each rule is proven — offline |
 | [Trading Day Anchor Tests](tests/framework/trading_day_anchor_tests.md) | Where a market flips its trading day, and which day an instant belongs to — DST-aware, one answer for the log rotation, the daily-loss baseline and the record seal |
@@ -239,10 +245,13 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Algo Clock Convention](tests/framework/algo_clock_tests.md) | Wall-clock ban lint (decision logic/workers, CI plane) |
 | [Algo Clock Validator](tests/framework/algo_clock_validator_tests.md) | Wall-clock ban, runtime startup validator — AST scan of loaded algos (CORE + user) + batch pre-flight |
 | [Discovery Cache Validity](tests/framework/discovery_validity_tests.md) | The config-fingerprint comparison across all three cache families, and the single-open metadata reader behind it |
+| [Cache Transparency Tests](tests/framework/cache_transparency_tests.md) | Nothing an algo sees depends on the portfolio's lazy marking — the observer probe with the cache on and off, a session read at its tick, the read-only algo masks and frozen bars (#653, #654) |
+| [Divergence Report Tests](tests/framework/divergence_report_tests.md) | A live session against a backtest of exactly its window — the backtest built from the session's record: the rendered profile with every block declared, the frozen broker document, the recorded warmup; the live side's segments, windows and trading days, each compared or excluded with every cause (#512) |
 | [Composite Key Tests](tests/framework/composite_tests.md) | Which accounts may add up to one result — the composite definition and its floor, the key projected from the rendered configuration, what joins and what splits, the excluded member, the changed values, every value of every shipped document classified (#615) |
 | [Rendered Configuration Tests](tests/framework/rendered_config_tests.md) | What a run records it ran with, held to what it actually ran with — every shipped scenario set's document against its subprocess configuration, the portable strategy key, the header naming it, a sweep combination's own, never fatal, one strategy section in both pipelines |
 | [Run Entry Census Tests](tests/framework/run_entry_census_tests.md) | Real runs held to what the run store declares a run directory may hold — both directions, the stream versions, the run index row (#621) |
 | [Store Model Tests](tests/framework/store_tests.md) | Catalog completeness, the shared index base (atomic write, delete-and-rebuild, logic version), generic form-A retrieval, carry-over envelope |
 | [Config Directory Tests](tests/framework/config_directory_tests.md) | Every file that can start a run, read without running it — unreadable files as rows, precedence, the per-file cache, run figures |
 | [Fixture Catalog Tests](tests/framework/fixture_catalog_tests.md) | The runs a consumer pins — the catalog's completeness, the production record, and one real production carrying every asserted property |
+| [Golden Samples Tests](tests/framework/golden_samples_tests.md) | Every aggregate frozen from a fixture production, rebuilt through today's code and compared field by field — the proof the aggregation refactor moves no number |
 | [Static Analysis Tests](tests/framework/static_analysis_tests.md) | Undefined-name gate (pyflakes) + the measured ruff/vulture backlog tier |

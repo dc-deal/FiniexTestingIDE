@@ -60,7 +60,7 @@ Each order life in a live session against the mock venue.
 | `TestACloseWhosePositionIsGone` | a close whose position something else took before the answer came still names the position's side and size on its steps, in both account models — both travel on the close from its registration |
 | `TestTheStreamItself` | `seq` strictly increasing across orders; an answer for an order that is gone names how it ended |
 | `TestTheSessionsPendingCounters` | the pending-order counters derived from a session's events — one accepted, one rejected, one never confirmed — add up, and only the answers carry a duration |
-| `TestEachFillIsFoundAndMeasured` | #631: a booked row names its own fill event and a market fill is measured against the mid when the order was sent, in both account models; a stop-loss exit is measured against its level and reads how far below it the mock venue sold — where the simulation reads 0 |
+| `TestEachFillIsFoundAndMeasured` | #631: a booked row names its own fill event and a market fill is measured against the mid when the order was sent, in both account models; a stop-loss exit is measured against its level and reads how far below it the mock venue sold — in the simulation too, which sells at the bid of the tick that breached it (#629) |
 
 ### `test_live_crossed_answers.py`
 
@@ -74,6 +74,19 @@ What the stream records where answers cross, time out or come back late.
 | `TestACancelTheVenueDidNotCarryOut` | a lost cancel the venue did not carry out explains no later ending: a later expiry is the venue's |
 | `TestTheFillTimeoutsOwnCancel` | the timeout's cancel after a partial fill ends the order as the framework's; a lost cancel answer is the cancel's question, not the read's; the give-up keeps the venue's refusal of its cancel |
 | `TestTheSessionEnd` | a session-end cancel whose answer was lost is `unresolved` before the order is `unaccounted` |
+
+### `test_order_event_count_pin.py`
+
+The divergence report checks a sealed day of a live session by counting the day's order events the
+way the executor counts its orders, and comparing every count with the day's ledger row (#512).
+This holds that counting to the live executor's own counts on every way an order lives, in both
+account models.
+
+| Test | Description |
+|------|-------------|
+| `test_the_record_counts_what_the_executor_counted` | a fill and a close, a refusal, a denial, a strategy cancel, a partial fill the venue then ended, an adoption and its fill, the session end's cancel, a lost answer the venue never received — each counted from its events exactly as the executor counted it |
+| `test_the_step_after_a_partial_fill_is_recorded_and_not_counted` | the venue's ending of the rest is written after `partially_filled` and counted nowhere |
+| `test_a_close_for_a_position_no_longer_held_is_the_one_known_difference` | the venue's fill of a close whose position something else took is recorded and booked nowhere, so the count is one execution higher than the executor's — the one known difference |
 
 ### `test_order_event_stream_io.py`
 

@@ -22,6 +22,14 @@ Components are referenced by type strings in scenario sets and AutoTrader profil
 
 **Detection rule:** If the string starts with `CORE/` → framework magic. Anything else → file path.
 
+**Every check resolves a reference the way the run does.** A path a scenario set or a profile
+names is looked up in the data home first, then from the project root; a path a decision logic
+requires is resolved from the logic's own folder. The batch pre-flights — the wall-clock scan and
+the worker-signal check — and the scenario validator's parameter check follow the same two rules,
+so they look at exactly the file the run will load. A pre-flight that still cannot find a file
+does not run, and says so as a warning in the scenario log and in the batch summary
+(`algo_preflight_skipped`); the run itself then reports the missing file.
+
 ---
 
 ## CORE Workers & Decision Logics
@@ -247,9 +255,10 @@ optionally, bounds the depth to the last `count` completed bars:
 bars = self.effective_bars(timeframe, bar_history, current_bars, count=period + 1)
 ```
 
-**Pass `count` = the exact depth your `compute()` reads.** `bar_history` is a rolling
-`deque(maxlen=bar_max_history)` (1000 by default) shared across all workers, so without `count`
-every compute materializes the whole history just to use its last `period` bars. With `count`
+**Pass `count` = the exact depth your `compute()` reads.** `bar_history` holds, per timeframe, a
+tuple of the last `bar_max_history` closed bars (1000 by default), frozen and shared across all
+workers ([Algo Masks](algo_masks.md)), so without `count` every compute on a `LIVE` basis copies
+the whole history to append the forming bar, just to use its last `period` bars. With `count`
 the per-compute cost is **O(count)** instead of **O(bar_max_history)** — and stays constant if the
 operator raises `bar_max_history`. The result is bit-identical for a worker that only reads its
 tail (an SMA / Bollinger band over the last `period` bars); it is **not** correct to bound a worker
@@ -311,6 +320,49 @@ window above: the consumer declares the *outputs* it reads, the worker the *bars
 
 ---
 
+## Drawing a Worker's Outputs
+
+A worker can show what it computes on a run's chart, as an indicator pane: one value per closed bar,
+on the candles or in a pane of its own. It writes no drawing code — it declares, once, how its
+outputs are drawn, in a class method beside `get_output_schema()`:
+
+```python
+@classmethod
+def get_indicator_series(cls) -> Tuple[IndicatorSeriesDeclaration, ...]:
+    return (IndicatorSeriesDeclaration(
+        pane=IndicatorPane.OWN, title='My Oscillator', price_format=PriceFormat(precision=2),
+        range=ValueRange(min_value=-1, max_value=1),
+        plots=(Plot(id='oscillator_value'),),
+        price_lines=(PriceLine(price=0, line_style=LineStyle.DOTTED),)),)
+```
+
+- **A plot draws one output**, named exactly as `get_output_schema()` names it, and that output is a
+  number. Outputs that belong together are plots of one series and switch together.
+- **`pane`** is `IndicatorPane.PRICE` for a series on the candles, in price units, or
+  `IndicatorPane.OWN` for a pane of its own. Only a series in its own pane takes a fixed `range`.
+- **Style is a role**, never a colour: `DrawingStyle(role=DrawingRole.POSITIVE)`. The viewer's theme
+  picks the colour.
+- **A further series** of the same worker gives itself a `layer_name`.
+- **A series draws on the first timeframe of `periods`** unless it says otherwise:
+  `timeframe_position=1` puts it on the second. A worker that computes on two timeframes gives the
+  second one a series of its own — its own `layer_name`, its own pane — and `CORE/tide_and_wave` is
+  the example to copy. A position the worker's `periods` do not give it is refused when the worker
+  is created.
+- **The declaration is checked when the worker is created**, before the run starts: a plot of an
+  output the worker lacks, or of one that is not a number, stops the run with
+  `IndicatorSeriesDeclarationError`, naming the worker and what is wrong.
+- **A plot of an optional output** — one the worker computes only when a decision reads it, behind
+  `wants_output()` — stays null where no decision logic reads it. Drawing changes nothing about what
+  a run computes.
+
+The values are recorded only when the run asks: `execution_config.indicator_series.enabled` in a
+scenario set, `indicator_series.enabled` in an AutoTrader profile. A worker that declares nothing
+draws nothing. The CORE workers that declare a series are the examples to copy from; the drawing
+vocabulary and the stream are described in
+[the drawing channel](../architecture/drawing_channel_architecture.md).
+
+---
+
 ## Accessing Framework Capabilities — Injected vs Imported
 
 There are two ways your worker or decision logic reaches framework functionality, and one
@@ -332,6 +384,10 @@ rule for telling them apart:
 `self` (injected). Is it pure / stateless? → import it. The base class stays a lean contract
 (the methods you override + the injected collaborators), not a catch-all facade for every
 utility — so what a component actually depends on stays readable at the top of its file.
+
+What the injected `trading_api` hands back is never the engine's own object: an open position comes
+as a read-only `AlgoPosition` that computes its price and P&L when read. Which fields it shows and
+where each comes from: [Algo Masks](algo_masks.md).
 
 ---
 
@@ -481,6 +537,7 @@ Labels are resolved once at startup and cached (frozen `DisplayLabelCache`) — 
 ValueError: Worker file not found: '/app/user_algos/my_algo/my_range_worker.py'
 ```
 **Fix:** Check the path. Paths in JSON are relative to project root. Paths in `get_required_workers()` are relative to the decision logic file.
+When the message adds that the data home holds no such file either, both places were searched.
 
 ### ❌ Zero or multiple matching classes
 ```

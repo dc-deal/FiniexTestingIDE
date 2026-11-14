@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 
 from python.framework.reporting.builders.profiling_report_builder import (
     build_profiling_report_from_batch,
+    with_warmup_shares,
 )
 from python.framework.reporting.builders.report_aggregators import aggregate_profiling
 from python.framework.reporting.console.profiling_summary import ProfilingSummary
@@ -246,7 +247,7 @@ class TestRenderWarmup:
     """render_warmup (#399, 3c) — the folded warmup breakdown, model-fed."""
 
     def _render(self, phases) -> str:
-        report = ProfilingReport(run_id=_RUN_ID, units=[], warmup_phases=phases)
+        report = with_warmup_shares(ProfilingReport(run_id=_RUN_ID, units=[], warmup_phases=phases))
         buf = io.StringIO()
         with redirect_stdout(buf):
             ProfilingSummary(report).render_warmup(ConsoleRenderer())
@@ -262,3 +263,60 @@ class TestRenderWarmup:
 
     def test_empty_renders_nothing(self):
         assert self._render([]) == ''
+
+
+class TestWhatTheConsolesPrintIsOnTheModel:
+    """
+    The slowest scenario beside the mean, the clipping rate and the warmup's whole and slowest
+    phase are derived on the report (#557) — the executive and the profiling section print them.
+    """
+
+    def _unit(self, name, total_ms, clipping=None):
+        return ProfilingUnitRow(name=name, symbol='EURUSD', total_ticks=100, total_ms=total_ms,
+                                avg_per_tick_ms=total_ms / 100, clipping=clipping)
+
+    def test_the_slowest_scenario_and_how_far_above_the_mean_it_lies(self):
+        agg = aggregate_profiling([self._unit('a', 100.0), self._unit('b', 200.0),
+                                   self._unit('c', 300.0)], budget_active=False)
+        assert agg.profiled_unit_mean_ms == 200.0
+        assert (agg.slowest_profiled_unit, agg.slowest_profiled_unit_ms) == ('c', 300.0)
+        assert agg.slowest_profiled_unit_deviation_pct == 50.0
+
+    def test_the_first_among_equals_is_the_slowest(self):
+        agg = aggregate_profiling([self._unit('a', 300.0), self._unit('b', 300.0)],
+                                  budget_active=False)
+        assert agg.slowest_profiled_unit == 'a' and agg.slowest_profiled_unit_deviation_pct == 0.0
+
+    def test_no_deviation_over_a_mean_of_zero(self):
+        agg = aggregate_profiling([self._unit('a', 0.0), self._unit('b', 0.0)],
+                                  budget_active=False)
+        assert agg.slowest_profiled_unit_deviation_pct is None
+
+    def test_the_clipping_rate_and_the_budgets(self):
+        clipped = ClippingRow(ticks_total=1000, ticks_kept=750, ticks_clipped=250,
+                              clipping_rate_pct=25.0, budget_ms=1.0)
+        agg = aggregate_profiling([self._unit('a', 100.0, clipped),
+                                   self._unit('b', 100.0, clipped)], budget_active=True)
+        assert agg.clipping_rate_pct == 25.0 and agg.clipping_budget_count == 1
+        assert aggregate_profiling([self._unit('a', 1.0)], budget_active=False).clipping_rate_pct == 0.0
+
+    def test_the_warmup_whole_its_slowest_phase_and_each_share(self):
+        report = with_warmup_shares(ProfilingReport(run_id=_RUN_ID, units=[], warmup_phases=[
+            WarmupPhaseRow(name='Config', duration_s=1.0),
+            WarmupPhaseRow(name='Data Loading', duration_s=3.0)]))
+        assert report.warmup_total_s == 4.0
+        assert (report.warmup_slowest_phase, report.warmup_slowest_s) == ('Data Loading', 3.0)
+        assert report.warmup_slowest_pct == 75.0
+        assert [phase.pct for phase in report.warmup_phases] == [25.0, 75.0]
+
+    def test_no_warmup_has_no_slowest_phase(self):
+        report = ProfilingReport(run_id=_RUN_ID, units=[])
+        assert (report.warmup_total_s, report.warmup_slowest_phase, report.warmup_slowest_s,
+                report.warmup_slowest_pct) == (0.0, None, None, None)
+
+    def test_a_record_written_before_the_shares_reads_them_as_unrecorded(self):
+        # The whole and the slowest phase are computed from the phases; a phase's share is not
+        report = ProfilingReport.model_validate(
+            {'run_id': _RUN_ID, 'units': [], 'warmup_phases': [{'name': 'Config', 'duration_s': 2.0}]})
+        assert report.warmup_total_s == 2.0 and report.warmup_slowest_pct == 100.0
+        assert report.warmup_phases[0].pct is None

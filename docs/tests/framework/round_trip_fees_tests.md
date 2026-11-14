@@ -27,6 +27,7 @@ reports sum them (the reporting suite).
 | `TestTheFeeModelDecidesWhetherThereIsAnExitFee` | a maker/taker venue charges the exit, a spread broker charges nothing per side; an absent or unpriced fee model is refused when the adapter is built |
 | `TestARoundTripBooksBothLegs` | two fees on a maker/taker round trip, one on a spread one |
 | `TestTheExitFeeLeavesTheMoney` | `net_pnl == gross_pnl − total_fees` in BOTH account models, and a margin balance moves by the net figure |
+| `TestACloseBooksThePriceItFilledAt` | a close away from the last mark books the price it filled at, in both account models — the full close at margin and the partial close in both used to record the fill and book the mark (#629) |
 | `TestAPartialCloseChargesOnlyTheClosedLots` | the closed portion carries the whole exit fee and its share of the entry fee |
 | `TestTheCostColumnsAddUpToTheFees` | `commission_cost + swap_cost == total_fees` on every record — full and partial close, margin and spot. A partial close left its exit fee out of `commission_cost`, so the columns fell short by exactly that fee at a maker/taker venue |
 | `TestTheSessionCostIsReadableThroughTheApi` | a decision logic reads what the session spent through `get_cost_breakdown()`, both legs included, as a copy it cannot disturb |

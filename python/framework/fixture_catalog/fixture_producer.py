@@ -151,16 +151,21 @@ class FixtureProducer:
 
     def __init__(self, session_runner: SessionRunner = run_autotrader_session,
                  store: Optional[FixtureProductionStore] = None,
-                 progress: Callable[[str], None] = print):
+                 progress: Callable[[str], None] = print,
+                 workspace_root: Path = _WORKSPACE_ROOT):
         """
         Args:
             session_runner: How an AutoTrader session is run — a test hands in one that runs none
             store: The production record; the configured one when not given
             progress: Where a line about each step goes
+            workspace_root: Where a production's workspace lies — the system temp, the same path
+                every time; a test hands in its own, because one machine's processes share that
+                path and a test that empties it deletes a real production's profiles mid-run
         """
         self._session_runner = session_runner
         self._store = store or FixtureProductionStore()
         self._progress = progress
+        self._workspace_root = workspace_root
         self._session_outcomes: List[str] = []
 
     def produce(self, entry: FixtureEntry) -> FixtureProduction:
@@ -281,7 +286,7 @@ class FixtureProducer:
             run_name: The profile's name, printed with the outcome
         """
         base = json.loads((_PROJECT_ROOT / entry.source).read_text(encoding='utf-8'))
-        with _production_workspace(entry) as workspace:
+        with _production_workspace(entry, self._workspace_root) as workspace:
             # The profile's own file name, so the run records the configuration it came from.
             path = workspace / Path(entry.source).name
             path.write_text(json.dumps(isolated_profile(base, workspace), indent=2),
@@ -299,7 +304,7 @@ class FixtureProducer:
             entry: The catalog entry
         """
         base = json.loads((_PROJECT_ROOT / entry.source).read_text(encoding='utf-8'))
-        with _production_workspace(entry) as workspace:
+        with _production_workspace(entry, self._workspace_root) as workspace:
             for index, session in enumerate(entry.sessions, start=1):
                 profile = session_profile(isolated_profile(base, workspace), entry, session)
                 path = workspace / f'{entry.session_profile_name}_s{index}.json'
@@ -319,7 +324,7 @@ class FixtureProducer:
 
 
 @contextmanager
-def _production_workspace(entry: FixtureEntry) -> Iterator[Path]:
+def _production_workspace(entry: FixtureEntry, root: Path) -> Iterator[Path]:
     """
     A directory for one production's profiles and the carry-over its sessions write, emptied
     before the production and removed after it.
@@ -330,11 +335,12 @@ def _production_workspace(entry: FixtureEntry) -> Iterator[Path]:
 
     Args:
         entry: The catalog entry
+        root: The folder the workspace lies in
 
     Returns:
         The workspace
     """
-    workspace = _WORKSPACE_ROOT / entry.entry_id
+    workspace = root / entry.entry_id
     shutil.rmtree(workspace, ignore_errors=True)
     create_directory(workspace, holds="a fixture production's workspace")
     try:

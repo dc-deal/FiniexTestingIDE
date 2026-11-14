@@ -133,15 +133,17 @@ def _data_windows(config: AutoTraderConfig, run_timestamp: datetime) -> List[Dat
     return [DataWindow(unit_name=config.get_unit_name(), start_date=run_timestamp.isoformat())]
 
 
-def _register_profile_config(source: Optional[Path]) -> str:
+def _register_profile_config(source: Optional[Path], session_logger: ScenarioLogger) -> str:
     """
     Record which profile content this session is starting from, and return its identity.
 
     Never fatal, and never a reason not to trade: a store that cannot be written costs the run a
-    join key, and the session itself is unaffected.
+    join key, and the session itself is unaffected. The failure is said in the session's log,
+    because an empty id read afterwards cannot tell a store that failed from one never asked.
 
     Args:
         source: The profile file this session was commissioned with, or None
+        session_logger: Where a failed registration is reported
 
     Returns:
         The registered content id, or an empty string
@@ -155,11 +157,18 @@ def _register_profile_config(source: Optional[Path]) -> str:
         # purpose — a config listed by the finder is registered without being run.
         store.note_run(entry.config_id)
         return entry.config_id
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError) as error:
+        session_logger.warning(
+            f'Run-config store: the profile {Path(source).name} was not registered '
+            f'({type(error).__name__}: {error}). This session carries no config_id, so the run '
+            f'index cannot join it to its profile; trading is not affected.')
         return ''
 
 
-def _register_rendered_profile(rendered_profile: Optional[Dict[str, Any]]) -> str:
+def _register_rendered_profile(
+    rendered_profile: Optional[Dict[str, Any]],
+    session_logger: ScenarioLogger,
+) -> str:
     """
     Freeze what this session RUNS with, and return its identity (#547).
 
@@ -168,6 +177,7 @@ def _register_rendered_profile(rendered_profile: Optional[Dict[str, Any]]) -> st
 
     Args:
         rendered_profile: The rendered document, or None when it could not be rendered
+        session_logger: Where a failed registration is reported
 
     Returns:
         The registered content id, or an empty string
@@ -179,7 +189,11 @@ def _register_rendered_profile(rendered_profile: Optional[Dict[str, Any]]) -> st
         entry = store.register_document(rendered_profile, RunConfigKind.AUTOTRADER_RENDERED)
         store.note_run(entry.config_id)
         return entry.config_id
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError) as error:
+        session_logger.warning(
+            f'Run-config store: the rendered configuration was not frozen '
+            f'({type(error).__name__}: {error}). This session carries no rendered_config_id, so '
+            f'a backtest of its window cannot read what it ran with; trading is not affected.')
         return ''
 
 
@@ -280,7 +294,7 @@ def create_autotrader_loggers(
     # costs ~2.0 s, and the header has no use for branch / dirty (§42). The dirty state
     # arrives with the code identity, which the caller has already paid for (#551).
     if run_dir:
-        rendered_config_id = _register_rendered_profile(rendered_profile)
+        rendered_config_id = _register_rendered_profile(rendered_profile, session_logger)
         header = RunHeader(
             run_id=run_id,
             start_time=run_timestamp,
@@ -303,7 +317,7 @@ def create_autotrader_loggers(
             # Which profile content this session started from (#538). Registered at the start,
             # like the header itself, and never fatal: a profile the store cannot record is a
             # profile the session can still trade with.
-            config_id=_register_profile_config(config.config_path),
+            config_id=_register_profile_config(config.config_path, session_logger),
             # What the session RUNS with (#547): the profile above with the app_config layer
             # merged in and every schema default filled. Frozen here, at the start, because
             # this header has no update path and a session that dies at its first tick is the
@@ -722,6 +736,8 @@ def _build_executor(
         # at a number no file states.
         order_history_max=AppConfigManager().get_order_history_max(),
         trade_history_max=AppConfigManager().get_trade_history_max(),
+        # #653 — the reference mode a verification run compares the lazy marking against
+        portfolio_cache=config.execution.verification.portfolio_cache,
     )
     # The session log's event-time column pulls from the canonical clock. Attachable only
     # HERE: the logger goes INTO build_live_executor above, so it necessarily exists first.

@@ -18,9 +18,8 @@ from python.api.api_error_catalog import SWEEP_NOT_FOUND, api_error
 from python.api.api_route_documents import describes
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.optimization.optimization_analysis import (
-    rank_per_currency,
-    summarize_sweeps,
-    unranked_count,
+    compose_sweep_detail,
+    compose_sweep_list,
 )
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import SweepDetailResponse, SweepListResponse
@@ -42,10 +41,7 @@ def list_sweeps() -> SweepListResponse:
     Returns:
         The SweepListResponse (empty list when no sweep has been recorded yet)
     """
-    # summarize_sweeps orders chronologically (sweep_id is timestamp-based); newest first is
-    # what a picker wants, and it matches the run index's ordering.
-    sweeps = list(reversed(summarize_sweeps(_ledger().read_rows())))
-    return SweepListResponse(sweeps=sweeps, count=len(sweeps))
+    return compose_sweep_list(_ledger().read_rows())
 
 
 @router.get('/sweeps/{sweep_id}', response_model=SweepDetailResponse,
@@ -60,17 +56,7 @@ def get_sweep(sweep_id: str) -> SweepDetailResponse:
     Returns:
         The ranked combinations, best first within each account currency
     """
-    rows = _ledger().read_rows(sweep_id=sweep_id)
-    if not rows:
+    detail = compose_sweep_detail(sweep_id, _ledger().read_rows(sweep_id=sweep_id))
+    if detail is None:
         raise api_error(SWEEP_NOT_FOUND, sweep_id=sweep_id)
-
-    # The spec's own objective and direction were recorded with the runs — ranking by anything
-    # else here would answer a question the sweep did not ask.
-    head = rows[0]
-    objective = head.sweep_objective or 'net_pnl'
-    maximize = head.sweep_maximize if head.sweep_maximize is not None else True
-    combinations = rank_per_currency(rows, objective, maximize=maximize)
-    return SweepDetailResponse(
-        sweep_id=sweep_id, objective=objective, maximize=maximize,
-        combinations=combinations, count=len(combinations),
-        unranked=unranked_count(rows, objective))
+    return detail

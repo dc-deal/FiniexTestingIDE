@@ -12,7 +12,8 @@ Not in this document: what each stream's lines hold (the order events in
 [order_event_stream.md](order_event_stream.md), the state frames in
 [live_telemetry_architecture.md](live_telemetry_architecture.md)), the ledger row a sealed day books
 ([accounting_periods.md](accounting_periods.md)), and how long day records are kept — nothing deletes
-them yet. A backtest writes its streams at its end and never seals one.
+them yet. A backtest writes its order events with its report and its state frames and indicator
+series as each scenario runs, and never seals one.
 
 ## What a session's run directory holds after two boundaries
 
@@ -106,8 +107,9 @@ and latest record, the header line the day's file opened with, and whether a las
 mid-write was left out. The version of the day record's own layout stands there too.
 
 A stream declares its time fields in the run store's declaration: the order events their
-`event_time` on the canonical clock, the state frames their `frame_time`, the trades their
-`exit_time`, the tick stream `lost_at` or `received_at` by the kind of line. Diagnostics rows carry
+`event_time` on the canonical clock, the state frames their `frame_time`, an indicator series its
+`bar_time`, the trades their `exit_time`, the tick stream `lost_at` or `received_at` by the kind of
+line. Diagnostics rows carry
 whatever columns their strategy chose, so they declare none, and a time window reads them by day.
 
 ## How a stream is read

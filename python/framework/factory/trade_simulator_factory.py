@@ -68,4 +68,5 @@ def prepare_trade_executor_for_scenario(
         spot_mode=spot_mode,
         initial_balances=initial_balances,
         modelled_quote_runs=shared_data.modelled_quote_runs,
+        portfolio_cache=config.portfolio_cache,
     )

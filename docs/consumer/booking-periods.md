@@ -131,11 +131,14 @@ unit's periods measured one.
 ```
 
 `total_net_pnl`, `total_fees` and `total_trades` are the sums over the periods — the table's own
-totals, and the figures to render beside it. `run_net_pnl` and `run_total_trades` are what the run
+totals, and the figures to render beside it. `period_count` and `period_unit_count` count the
+periods listed and the units that booked them. `run_net_pnl` and `run_total_trades` are what the run
 itself reports for the same currency; they are there to be compared against, and when the check
 holds they carry the same value.
 
-`reconciles` compares the periods' sums against the figures the run reports. What it proves is
+`reconciles` compares the periods' sums against the figures the run reports;
+`reconciliation_difference` is the periods' net P&L less the run's, null where the run reports no
+figure. What it proves is
 **completeness**: every closed trade reached exactly one period. A `false` means a trade was lost
 between the run and its ledger — dropped in retention, missed by a window, lost in transport.
 
@@ -168,7 +171,9 @@ The rows have the same shape plus `run_id`, which across a deployment is the onl
 two periods apart, and is the hinge into that run's report routes.
 
 Sessions that booked no period are skipped, and counted in `sessions_without_periods` — so an
-incomplete history is not read as a quiet one.
+incomplete history is not read as a quiet one. That count includes a session that has not sealed its
+first trading day yet, which runs before its first seal or ended before it. A deployment that has
+only such sessions answers 200 with an empty list, never `404`.
 
 **A session books its days while it runs**: each trading day's row appears when the day closes, so
 this route shows the days a running session has sealed so far, and those of a session that died

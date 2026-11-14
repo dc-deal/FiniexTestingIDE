@@ -6,7 +6,7 @@ Tracks account balance, equity, open positions, and P&L with full fee tracking
 from collections import deque
 from dataclasses import replace
 from datetime import datetime, timezone
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from python.framework.exceptions.algo_clock_errors import ClockNotInjectedError
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -15,6 +15,7 @@ from python.framework.persistence.position_book_projection import (
     position_to_carry_over,
 )
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
+from python.framework.trading_env.algo_masks.algo_position import AlgoPosition
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.trading_fees import MakerTakerFee, SwapFee
 from python.framework.types.config_types.market_config_types import SwapRolloverConfig
@@ -33,6 +34,7 @@ from python.framework.types.portfolio_types.portfolio_types import (
     COMMISSION_FEE_TYPES,
     Position,
     PositionStatus,
+    PositionValuation,
 )
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import (
@@ -95,6 +97,7 @@ class PortfolioManager:
         initial_balances: Optional[Dict[str, float]] = None,
         clock_fn: Optional[Callable[[], datetime]] = None,
         swap_rollover: Optional[SwapRolloverConfig] = None,
+        portfolio_cache: bool = True,
     ):
         """
         Initialize portfolio manager.
@@ -109,6 +112,9 @@ class PortfolioManager:
             trade_history_max: Max trade records to retain (0=unlimited)
             spot_mode: Enable spot trading mode (asset transfer instead of P&L accumulation)
             initial_balances: Asset inventory for spot mode (e.g., {'USD': 50.0, 'ETH': 0.0})
+            portfolio_cache: True marks open positions lazily, only when something asks; False
+                keeps every open position current at every event that can change its figures —
+                the reference a verification run compares the lazy marking against (#653)
         """
         self._logger = logger
         self.account_currency = account_currency
@@ -134,11 +140,21 @@ class PortfolioManager:
         # Swap / overnight-funding accrual config (#365) — injected by the executor's
         # MarketClock (the single resolver). None for spot/crypto or unknown broker → no accrual.
         self._swap_rollover: Optional[SwapRolloverConfig] = swap_rollover
+        # The next rollover after each position's last accrual (#528): until the clock reaches it,
+        # an accrual crosses none and costs one comparison. Not a cache of anything the market
+        # says — the instant follows from the date and the configured rollover alone, the way a
+        # trading day's boundary does — so it is not the kind of cache a worker may not keep.
+        self._swap_due_utc: Dict[str, datetime] = {}
 
         # Account state
 
         # Positions
         self._positions_dirty = False  # Performance: Lazy evaluation state
+        # The reference mode (#653): False keeps every position current at every event instead
+        self._portfolio_cache = portfolio_cache
+        # What an algo receives for each open position (#653): one mask per position, made on the
+        # first read and dropped when the position leaves the book
+        self._algo_positions: Dict[str, AlgoPosition] = {}
         self.open_positions: Dict[str, Position] = {}
         self._trade_history_max = trade_history_max
         self._trade_history: deque[TradeRecord] = deque(
@@ -448,6 +464,10 @@ class PortfolioManager:
                 self._balances[spec.base_currency] -= lots
                 self._balances[spec.quote_currency] += revenue
 
+        # Marked once as it opens, in both modes: the fill's quote belongs to its excursion, and a
+        # position read before the next mark would otherwise carry no price at all (#653)
+        self._remark_position(position)
+        self._keep_current_if_uncached()
         return position
 
     def close_position_portfolio(
@@ -536,11 +556,13 @@ class PortfolioManager:
             # same prices the refresh uses puts the fee into the money and into the record as
             # one number. Only when there IS an exit fee: a spread broker passes None and
             # takes the untouched path.
-            if exit_fee:
-                self._remark_position(position)
-            # Booked from the last mark, never from exit_price: a close that fills away from it —
-            # the simulation's stop at its level, a fill MT5 reports — records one price and
-            # books another (measured 2026-10-25, #209)
+            # Re-marked against the exit price, as the spot branch does: that folds the fee in and
+            # books the price the record names. Booked from the last mark instead, a close that
+            # filled away from it — a fill the venue reports, a target at its level — recorded one
+            # price and booked another (measured 2026-10-25, #209, #629). A close at the mark
+            # re-marks to the same figure.
+            position.update_current_price(
+                exit_price, exit_price, exit_tick_value, position.digits)
             realized_pnl = position.unrealized_pnl
             self.balance += realized_pnl
 
@@ -567,6 +589,8 @@ class PortfolioManager:
         self._record_spread_attribution(trade_record)
         self._file_trade_record(trade_record)
         del self.open_positions[position_id]
+        self._algo_positions.pop(position_id, None)
+        self._swap_due_utc.pop(position_id, None)
 
         # Update statistics
         self._update_statistics(position, realized_pnl, trade_record.total_fees)
@@ -626,8 +650,11 @@ class PortfolioManager:
         close_ratio = close_lots / position.lots
         remaining_ratio = 1.0 - close_ratio
 
-        # --- P&L for closed portion (proportional) ---
-        closed_gross_pnl = position.gross_pnl * close_ratio
+        # --- P&L for closed portion (proportional), valued at the price it filled at (#629).
+        # The last mark is the price before the close: a fill away from it — a venue's slippage —
+        # was recorded at the fill and booked at the mark. The open remainder keeps its mark.
+        closed_gross_pnl = position.valuation_at(
+            exit_price, exit_price, exit_tick_value, position.digits).gross_pnl * close_ratio
         closed_fees = position.get_total_fees() * close_ratio
 
         # Add exit fee if provided
@@ -783,6 +810,7 @@ class PortfolioManager:
         position = self.open_positions.pop(position_id, None)
         if position is None:
             return False
+        self._algo_positions.pop(position_id, None)
 
         position.status = PositionStatus.CLOSED
         self._positions_dirty = True
@@ -1004,6 +1032,34 @@ class PortfolioManager:
         self._positions_dirty = True
         self._current_tick = tick
         self._current_prices[tick.symbol] = (tick.bid, tick.ask)
+        self._keep_current_if_uncached()
+
+    def on_clock_advanced(self) -> None:
+        """
+        The canonical clock moved without a new price — a heartbeat or a between-tick fill.
+
+        Under the lazy marking nothing happens here: a swap accrues up to the clock on the next
+        refresh. The reference mode accrues it now, so no position is ever behind the clock.
+
+        Returns:
+            None
+        """
+        self._keep_current_if_uncached()
+
+    def _keep_current_if_uncached(self) -> None:
+        """
+        Bring every open position up to date now — in the reference mode only (#653).
+
+        Under the lazy marking (the ordinary behaviour) this is a no-op and the positions are
+        marked when something asks; with the cache off they are current after every event that
+        can change their figures, which is what a verification run compares the lazy path to.
+
+        Returns:
+            None
+        """
+        if self._portfolio_cache:
+            return
+        self._ensure_positions_updated()
 
     def _calculate_tick_value(
         self,
@@ -1026,12 +1082,33 @@ class PortfolioManager:
         Returns:
             tick_value for P&L calculations
         """
+        tick_value, conversion_rate = self._tick_value_and_rate(symbol_spec, current_price)
+        self._last_conversion_rate = conversion_rate
+        return tick_value
+
+    def _tick_value_and_rate(
+        self,
+        symbol_spec: SymbolSpecification,
+        current_price: float
+    ) -> Tuple[float, Optional[float]]:
+        """
+        The tick value and the conversion rate behind it — computed, nothing recorded.
+
+        Split from _calculate_tick_value, which records the rate for the portfolio statistics: an
+        algo reading a position's P&L must not move a figure the run reports (#653).
+
+        Args:
+            symbol_spec: Static symbol specification
+            current_price: Current market price
+
+        Returns:
+            The tick value, and the rate it converted at (None when the quote is the account currency)
+        """
         base_factor = symbol_spec.tick_size * symbol_spec.contract_size
 
         # Quote Currency matches Account Currency
         if self.account_currency == symbol_spec.quote_currency:
-            self._last_conversion_rate = None
-            return base_factor
+            return base_factor, None
 
         # Base Currency matches Account Currency
         elif self.account_currency == symbol_spec.base_currency:
@@ -1039,8 +1116,7 @@ class PortfolioManager:
                 raise ValueError(
                     f'Invalid price for tick_value calculation: {current_price}'
                 )
-            self._last_conversion_rate = current_price
-            return base_factor / current_price
+            return base_factor / current_price, current_price
 
         # Cross Currency - Not supported
         else:
@@ -1079,6 +1155,13 @@ class PortfolioManager:
         """
         if now <= position.swap_accrued_until:
             return
+        # No rollover lies before the one due next, so the window crosses none. Measured
+        # 2026-11-11: an accrual that searches its window for rollovers costs about 5.3 µs per
+        # position and pass at margin, two thirds of it the search itself.
+        due = self._swap_due_utc.get(position.position_id)
+        if due is not None and now < due:
+            position.swap_accrued_until = now
+            return
 
         spec = self.broker_config.get_symbol_specification(position.symbol)
         if spec.swap_mode != SwapMode.POINTS:
@@ -1108,6 +1191,8 @@ class PortfolioManager:
             self._record_fee_cost(fee)
 
         position.swap_accrued_until = now
+        self._swap_due_utc[position.position_id], _ = MarketCalendar.next_swap_rollover(
+            now, self._swap_rollover.local_time, self._swap_rollover.timezone, triple_weekday_py)
 
     def _ensure_positions_updated(self) -> None:
         """
@@ -1167,9 +1252,10 @@ class PortfolioManager:
 
     def get_open_positions(self) -> List[Position]:
         """
-        Get all open positions WITHOUT triggering a P&L update.
+        Get all open positions — the engine's own objects, for the framework's side only.
 
-        Position.unrealized_pnl may be stale (last mark_dirty cycle).
+        With the lazy marking (the default) this triggers no P&L update, so Position.unrealized_pnl
+        may be stale (last mark_dirty cycle); an algo receives get_algo_positions() instead (#653).
         Callers that need current P&L must call _ensure_positions_updated()
         beforehand — this is intentional to keep the hot path (algo tick
         loop) free of redundant recalculations.
@@ -1177,6 +1263,7 @@ class PortfolioManager:
         Returns:
             Snapshot list of open Position objects
         """
+        self._keep_current_if_uncached()
         return list(self.open_positions.values())
 
     def get_position_book(self) -> List[PositionCarryOver]:
@@ -1214,6 +1301,7 @@ class PortfolioManager:
 
         if records:
             self._positions_dirty = True
+            self._keep_current_if_uncached()
 
         return len(records)
 
@@ -1241,7 +1329,98 @@ class PortfolioManager:
 
     def get_position(self, position_id: str) -> Optional[Position]:
         """Get specific position by ID"""
+        self._keep_current_if_uncached()
         return self.open_positions.get(position_id)
+
+    def value_position(self, position: Position) -> Optional[PositionValuation]:
+        """
+        What a position is worth at its symbol's latest quote — computed, nothing written.
+
+        The same formula and tick value the mark uses, without recording the conversion rate the
+        portfolio statistics report.
+
+        Args:
+            position: The position to value
+
+        Returns:
+            Its valuation, or None while its symbol has no quote yet
+        """
+        prices = self._current_prices.get(position.symbol)
+        if prices is None:
+            return None
+        bid, ask = prices
+        spec = self.broker_config.get_symbol_specification(position.symbol)
+        tick_value, _ = self._tick_value_and_rate(spec, mid_price(bid, ask))
+        return position.valuation_at(bid, ask, tick_value, spec.digits)
+
+    def get_algo_positions(self, symbol: Optional[str] = None) -> List[AlgoPosition]:
+        """
+        The open positions as an algo receives them (#653).
+
+        One mask per position, reused from read to read; it computes what moves with the market
+        when read, so the lazy marking never reaches the algo.
+
+        Args:
+            symbol: Only this symbol's positions, None for all
+
+        Returns:
+            A mask for each open position
+        """
+        return [self._algo_position_for(position) for position in self.open_positions.values()
+                if symbol is None or position.symbol == symbol]
+
+    def get_algo_position(self, position_id: str) -> Optional[AlgoPosition]:
+        """
+        One open position as an algo receives it (#653).
+
+        Args:
+            position_id: The position's identifier
+
+        Returns:
+            Its mask, or None when no such position is open
+        """
+        position = self.open_positions.get(position_id)
+        if position is None:
+            return None
+        return self._algo_position_for(position)
+
+    def _algo_position_for(self, position: Position) -> AlgoPosition:
+        """
+        The mask of an open position, made on its first read.
+
+        A position rebuilt under an id a mask already holds — a restored book — gets a new mask.
+
+        Args:
+            position: An open position
+
+        Returns:
+            Its mask
+        """
+        mask = self._algo_positions.get(position.position_id)
+        if mask is None or not mask.is_mask_of(position):
+            mask = AlgoPosition(position, self._value_for_algo)
+            self._algo_positions[position.position_id] = mask
+        return mask
+
+    def _value_for_algo(self, position: Position) -> Optional[PositionValuation]:
+        """
+        A position's valuation when an algo reads it, its swap booked up to the canonical clock.
+
+        The booking is what reading the account info already does: the same amounts at the same
+        rollover instants, booked when read rather than at the next refresh (margin only).
+
+        Args:
+            position: The open position read
+
+        Returns:
+            Its valuation, or None while its symbol has no quote yet or once the position has left
+            the book — a mask kept past a reset or a restored book books nothing for a stale object
+        """
+        if self.open_positions.get(position.position_id) is not position:
+            return None
+        if not self._spot_mode and self._swap_rollover is not None:
+            self._accrue_swap(position, self._clock_now())
+        return self.value_position(position)
 
     # ============================================
     # Account Information - for example, for decision
@@ -1406,9 +1585,17 @@ class PortfolioManager:
         if not self._drawdown_established:
             self._drawdown_established = True
             if not self._drawdown_started_at:
-                # Wall-clock, and legitimately so (§9): it records when WE began measuring,
-                # an observation of our own act that nothing decides on.
-                self._drawdown_started_at = datetime.now(timezone.utc).isoformat()
+                # When the curve began, on the canonical clock: replay time in a backtest, the
+                # event time in a session — one time axis with the run's other records, so two
+                # runs of one backtest agree. It was the wall clock until 2026-11-12, which put a
+                # replay's curve start on the day the backtest ran. A run whose clock was never
+                # set (a session that ends before its first pass) has no instant to name, and the
+                # start stays unrecorded; a portfolio built without a clock still raises.
+                try:
+                    self._drawdown_started_at = self._clock_now().isoformat()
+                except ClockNotInjectedError:
+                    if self._clock_fn is None:
+                        raise
         if equity > self._max_equity:
             self._max_equity = equity
         drawdown = self._max_equity - equity
@@ -1712,6 +1899,7 @@ class PortfolioManager:
         """Reset portfolio to initial state"""
         self._balances = dict(self._initial_balances)
         self.open_positions.clear()
+        self._algo_positions.clear()
         self._trade_history.clear()
         self._position_counter = 0
 
@@ -1764,12 +1952,15 @@ class PortfolioManager:
         Args:
             record: Completed TradeRecord to log
         """
-        duration_ticks = record.exit_tick_index - record.entry_tick_index
+        # A position restored at boot has no entry tick in this session's numbering
+        restored = record.entry_tick_index is None
+        entry_tick = '—' if restored else record.entry_tick_index
+        duration_ticks = '—' if restored else record.exit_tick_index - record.entry_tick_index
 
         self._logger.debug(
             f'📊 TRADE RECORD #{len(self._trade_history)} | {record.position_id}\n'
             f'   {record.symbol} {record.direction} {record.lots} lots\n'
-            f'   Entry: {record.entry_price:.5f} @ tick {record.entry_tick_index} | '
+            f'   Entry: {record.entry_price:.5f} @ tick {entry_tick} | '
             f'Exit: {record.exit_price:.5f} @ tick {record.exit_tick_index} | '
             f'Duration: {duration_ticks} ticks\n'
             f'   Tick Value: entry={record.entry_tick_value:.5f}, exit={record.exit_tick_value:.5f}\n'

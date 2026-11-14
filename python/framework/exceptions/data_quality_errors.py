@@ -79,3 +79,15 @@ class TradedPriceMissingException(DataQualityException):
     price are the same number, and total from the first file that carries a real spread.
     """
     pass
+
+
+class TickZipUnpackException(DataQualityException):
+    """
+    Raised when a member of a zip in the import inbox cannot be unpacked
+
+    A damaged member fails its CRC check when its stream ends, an unknown compression
+    method cannot be read at all, and a full disk stops the copy half way. Each refuses
+    the zip as a whole: an import of the members that did come out would leave the zip
+    neither archived nor importable as one.
+    """
+    pass

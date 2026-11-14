@@ -33,13 +33,53 @@ A P&L column added up over two currencies is not a number, so a bot that traded 
 silently, in the direction that loses data. See [row keys](/api/v1/docs/row-keys).
 
 `sessions` on such a row counts the sessions **in that currency**, not the deployment's sessions in
-total.
+total. `sessions_without_figures` counts the deployment's sessions that have no booked figures, and
+`sessions_failed` how many of those failed before they measured anything — see the next section.
+Both describe the deployment, not the currency: on a deployment with two rows they repeat, and are
+never added across rows.
 
 The list is newest first. The detail route is oldest first — a life reads forwards.
 
+## From the first session's start: a row that has booked nothing yet
+
+Which sessions a deployment holds comes from the runs that name it, and each session is registered
+as it starts. What they booked comes from the run-results ledger, and a session books a trading day
+only when that day closes. So a session that has **booked nothing yet**, because it runs before its
+first seal or ended before reaching it, stands in both routes with its start and **without
+figures**: `currency`, `net_pnl`, `max_drawdown` and `max_drawdown_pct` are null and never zero,
+because nothing was measured. `bot` names it already; `bot_id` stays empty until its first seal.
+Whether it still runs is what the run list's `recording` says.
+
+A session that **failed before it measured anything** — refused at its start, say — stands with
+them. Its ledger row records the failure and no figure, so it shows the same nulls: a zero there
+would read like a session that traded and broke even. `booking_state` tells the cases apart:
+`failed` for this one, `not_booked_yet` for a session whose first seal has not come, `booked` for
+every other session.
+
+None of these sessions has an account currency, and none adds a figure. In the list they are
+therefore **counted on the deployment's booked rows** rather than drawn as rows of their own:
+
+```json
+{"deployment_id": "deploy_20261022_123713_e5f6a7b8", "currency": "USD", "sessions": 1,
+ "sessions_without_figures": 1, "sessions_failed": 0, "net_pnl": -0.10, …}
+```
+
+A deployment that has booked nothing — a new one, or one whose sessions all failed — has no booked
+row to carry them, so it stands in a row of its own with `currency: null`. At its first seal a
+session not booked yet moves into its currency's row and out of the count; a failed one stays in
+the count.
+
+```json
+{"deployment_id": "deploy_20261103_090000_a1b2c3d4", "currency": null, "sessions": 1,
+ "sessions_without_figures": 1, "sessions_failed": 0,
+ "first_started": "2026-11-03T09:00:00+00:00", "last_started": "2026-11-03T09:00:00+00:00",
+ "net_pnl": null, "max_drawdown": null, "max_drawdown_pct": null, "orders_to": ["simulated"]}
+```
+
 ## What adds up, and what never does
 
-`net_pnl` is summed over the row's sessions. This one genuinely adds up.
+`net_pnl` is summed over the row's booked sessions. This one genuinely adds up. It is null on the
+row of a deployment that has booked nothing.
 
 `max_drawdown` is the **largest** of them and never a sum. Each live session carries the running
 decline measured against the peak it inherited, so adding them counts one decline once per session
@@ -50,7 +90,7 @@ this row. Only the sessions that measured a drawdown take part; where none did, 
 `longest_gap_hours` is the longest stretch the bot was not running, over the gaps that could be
 measured; null when none could.
 
-`first_started` and `last_started` are the first and the most recent session's start.
+`first_started` and `last_started` are the earliest and the latest start among the row's sessions.
 
 ## `changed` is a flag; the advisory and the code summary are its reasons
 
@@ -84,20 +124,21 @@ money's, so the session rows' `max_drawdown` restarts where the kind of run chan
 
 | Field | Meaning |
 |---|---|
-| `index` | its position in the deployment, 1-based |
+| `index` | its position in its series, 1-based — see [each currency is its own series](#each-currency-is-its-own-series) |
 | `run_id` | the session's own run identity, and the way into its report routes |
 | `started` | when it began |
 | `ended` | when it stopped |
 | `ran_hours` | how long it ran |
 | `gap_hours` | hours the bot was **not** running before it |
 | `gap_between_starts` | whether that gap could only be measured the coarse way |
-| `net_pnl` | realised P&L of that session |
+| `net_pnl` | realised P&L of that session; null when it has no booked figures, and `booking_state` says why |
 | `max_drawdown` / `max_drawdown_pct` | the cumulative account decline as of that session; both are null where the session's rows carry none |
 | `orders_to` | where its orders went — `venue` is real money, `simulated` a rehearsal; null when not recorded |
 | `strategy_changed` / `operation_changed` / `orders_to_changed` | what differed from the session before |
 | `code_changes` | which repositories' code differed from the session before, and how far; see [which code the sessions started on](#which-code-the-sessions-started-on) |
-| `bot` / `bot_id` | which bot ran it |
-| `currency` | the row's account currency |
+| `bot` / `bot_id` | which bot ran it; `bot_id` is empty until the session has booked a day |
+| `currency` | the row's account currency; null when it has no booked figures |
+| `booking_state` | whether its figures exist: `booked`; `failed`, it failed before it measured anything; `not_booked_yet`, its first seal has not come |
 
 `key` is `["run_id", "currency"]` — the same two-part identity as the list, one level down.
 
@@ -112,6 +153,9 @@ about that session alone.
 the next currency has no predecessor, so nothing is measured against the last session of the other
 one.
 
+The sessions without booked figures are one more series, after the others: oldest first and
+numbered from 1. They mark no gap and no change, because there is no figure to compare across.
+
 A fixture captured before this changed holds those figures measured across currencies instead;
 [the contract log](/api/v1/docs/contract-log) names the version it moved in.
 
@@ -119,7 +163,8 @@ A fixture captured before this changed holds those figures measured across curre
 
 `ended` is when the row of the session's close was written, which is when it stopped. A session
 books each trading day as it closes, so a session still running — or one that died before its end —
-already has rows; until the row of its close exists, `ended` and `ran_hours` are null. Whether the
+has rows from its first sealed day on; until the row of its close exists, `ended` and `ran_hours`
+are null. Before its first seal it has no rows at all and stands here without figures. Whether the
 session is still running or stopped is what the run list's `recording` says. `ended` is also null on
 a row written before the stamp existed.
 
@@ -128,7 +173,7 @@ the seconds its reports took**. Null when either end is unknown — an unmeasura
 as unmeasured rather than as a number nobody can check.
 
 `gap_hours` runs from the predecessor's close to this session's start. It is null for the first
-session of a currency series, which has no predecessor.
+session of a currency series, which has no predecessor, and on a session without booked figures.
 
 `gap_between_starts: true` is the warning on that figure. It means the gap could only be measured
 from one **start** to the next, because the predecessor's row predates the close stamp or the
@@ -238,9 +283,10 @@ sessions on either side of it are compared with each other.
 
 `unfinished` counts this deployment's runs that never reached their close. A session books each
 trading day as it closes and the row of its own close last, so a run killed before that stands
-in `sessions` with `ended` null when it sealed at least one day, and is absent from `sessions`
-when it died before its first seal. The two counts therefore overlap and are never added.
-Without this one, a short list would be a number you had no reason to doubt.
+in `sessions` with `ended` null when it sealed at least one day, and without figures when it
+sealed none. Every run the count names is therefore in `sessions`, and the two are never added.
+Without this one, nothing would tell a session that died from one written before the close
+stamp existed, whose `ended` is null as well.
 
 A session running **right now** looks exactly the same — a start record and no close. Render it as
 *not completed*, never as *aborted*; whoever reads it knows whether a bot is up.
@@ -272,9 +318,11 @@ its deployment-wide route carries the same absence for the same reason.
 
 ## Where these rows come from
 
-The run-results ledger, and nothing else. A deployment has no run directory, no header and no
-artifacts of its own, so the report routes have nothing to say about one — they are addressed by
+Which sessions a deployment holds: the runs that name it, registered as each one starts. What they
+booked: the run-results ledger, and nothing else. A deployment has no run directory, no header and
+no artifacts of its own, so the report routes have nothing to say about one — they are addressed by
 `run_id`, which is what every session row carries for exactly that reason.
 
-An identity no ledger row names answers `404 deployment_not_found`. An **empty** `/deployments` is
-a state and not a failure: no profile has declared a continuous deployment yet.
+An identity that no session and no ledger row names answers `404 deployment_not_found`. An
+**empty** `/deployments` is a state and not a failure: no session has named a continuous
+deployment yet.

@@ -22,7 +22,7 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.bars.warmup_history import WarmupHistory
 from python.framework.data_preparation.shared_data_preparator import SharedDataPreparator
 from python.framework.factory.worker_factory import WorkerFactory
-from python.framework.process.tick_pipeline_core import render_bars_for_tick
+from python.framework.loop.blocks.bar_render_block import render_bars_for_tick
 from tests.framework.warmup_history.warmup_history_builders import (
     SYMBOL,
     ArchiveIndexStub,

@@ -22,6 +22,8 @@ from python.framework.reporting.diagnostics_csv_sink import DiagnosticsCsvSink
 from python.framework.reporting.io.run_stream_appender import RunStreamAppender
 from python.framework.store.entry_members.strategy_file import StrategyFile
 from python.framework.store.entry_members.strategy_file_writer import StrategyFileWriter
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
@@ -37,6 +39,7 @@ from python.framework.types.decision_event_types import (
     PartialCloseEvent,
     PositionClosedEvent,
     SessionEndEvent,
+    SessionEndOrderOutcomeEvent,
 )
 from python.framework.types.decision_logic_types import (
     AwarenessLevel,
@@ -56,7 +59,6 @@ from python.framework.types.persistence_types import RestoreContext
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     OrderFeature,
-    OrderResult,
     OrderType,
 )
 from python.framework.types.worker_types import WorkerRequirement, WorkerResult
@@ -114,6 +116,10 @@ class AbstractDecisionLogic(ABC):
         # Set by DecisionLogicFactory when loaded from a file path
         # Used by WorkerOrchestrator to resolve relative worker references
         self._source_path: Optional[Path] = None
+
+        # The mask of the latest tick, so a pass makes one: the workers, compute_tick and
+        # execute_decision receive the same (#654)
+        self._algo_tick: Optional[AlgoTick] = None
 
         # API and loggers
         self.trading_api: Optional[DecisionTradingApi] = None
@@ -277,11 +283,28 @@ class AbstractDecisionLogic(ABC):
             context_name=cls.__name__, reserved_keys=set(),
         )
 
+    def get_algo_tick(self, tick: TickData) -> AlgoTick:
+        """
+        The mask an algo reads a tick through, made once per tick (#654).
+
+        The framework hands it to the workers, to compute_tick and to _execute_decision_impl;
+        a logic has no need to call it.
+
+        Args:
+            tick: The engine's tick
+
+        Returns:
+            Its mask — the one already made when this tick was asked for before
+        """
+        if self._algo_tick is None or not self._algo_tick.is_mask_of(tick):
+            self._algo_tick = AlgoTick(tick)
+        return self._algo_tick
+
     def execute_decision(
         self,
         decision: Decision,
         tick: Optional[TickData]
-    ) -> Optional[OrderResult]:
+    ) -> Optional[AlgoOrderResult]:
         """
         Execute trading decision via DecisionTradingApi (Template Method).
 
@@ -297,13 +320,14 @@ class AbstractDecisionLogic(ABC):
 
         Args:
             decision: Decision object from compute()
-            tick: Current tick data
+            tick: Current tick data — the implementation receives its mask
 
         Returns:
-            OrderResult if order was sent, None if no trade
+            AlgoOrderResult if order was sent, None if no trade
         """
         # Call implementation (subclass)
-        order_result = self._execute_decision_impl(decision, tick)
+        order_result = self._execute_decision_impl(
+            decision, self.get_algo_tick(tick) if tick is not None else None)
 
         if order_result:
             # Track trade request in performance logger
@@ -316,8 +340,8 @@ class AbstractDecisionLogic(ABC):
     def _execute_decision_impl(
         self,
         decision: Decision,
-        tick: Optional[TickData]
-    ) -> Optional[OrderResult]:
+        tick: Optional[AlgoTick]
+    ) -> Optional[AlgoOrderResult]:
         """
         Implementation of decision execution (to be overridden by subclass).
 
@@ -329,7 +353,7 @@ class AbstractDecisionLogic(ABC):
             tick: Current tick data
 
         Returns:
-            OrderResult if order was sent, None if no trade
+            AlgoOrderResult if order was sent, None if no trade
         """
         pass
 
@@ -364,7 +388,7 @@ class AbstractDecisionLogic(ABC):
     @abstractmethod
     def compute_tick(
         self,
-        tick: TickData,
+        tick: AlgoTick,
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         """
@@ -376,7 +400,7 @@ class AbstractDecisionLogic(ABC):
         (compute_heartbeat), so no None-guards are needed here.
 
         Args:
-            tick: Current tick data (never None)
+            tick: Current tick, as its mask (never None)
             worker_results: Dict[worker_name, WorkerResult] - All worker outputs
 
         Returns:
@@ -697,8 +721,22 @@ class AbstractDecisionLogic(ABC):
         """
         React to the session ending. No-op unless overridden.
 
+        An order sent from here — a close on the way out — is settled in both pipelines, and
+        how it ended is reported to on_session_end_order_outcome() (#642).
+
         Args:
             event: Session-end detail (reason, severity)
+        """
+        pass
+
+    def on_session_end_order_outcome(self, event: SessionEndOrderOutcomeEvent) -> None:
+        """
+        Hear how an order sent from on_session_end ended. No-op unless overridden.
+
+        The session is over: an order sent from this hook is withdrawn, never sent.
+
+        Args:
+            event: The order, how it ended, and its booked row
         """
         pass
 

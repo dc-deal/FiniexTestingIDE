@@ -234,6 +234,7 @@ class RecordedStreamKind(StrEnum):
     events (#379) and a strategy's tables (#589) join as kinds of their own.
     """
     STATE_FRAMES = 'state_frames'    # what a session held and decided, moment by moment (#579)
+    INDICATOR_SERIES = 'indicator_series'    # a drawing worker's outputs, per closed bar (#379)
 
 
 class StreamDaySource(StrEnum):

@@ -171,7 +171,6 @@ class PositionCarryOver(BaseModel):
         contract_size: Contract size as stamped at entry
         pip_size: Authoritative pip size for the report unit (#167)
         price_unit: The report's unit label ('pip' / 'tick')
-        entry_tick_index: Tick index at entry, in the numbering of the session that opened it
         mae_pnl: Worst gross unrealized P&L seen so far (#389) — cannot be recomputed
         mfe_pnl: Best gross unrealized P&L seen so far (#389) — cannot be recomputed
         mae_price: Price at the worst excursion
@@ -201,7 +200,6 @@ class PositionCarryOver(BaseModel):
     contract_size: int = 100000
     pip_size: float = 0.0
     price_unit: str = ''
-    entry_tick_index: int = 0
 
     mae_pnl: float = 0.0
     mfe_pnl: float = 0.0

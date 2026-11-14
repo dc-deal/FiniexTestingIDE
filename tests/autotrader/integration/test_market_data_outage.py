@@ -11,6 +11,8 @@ one session ("runs fine → silence → notified → recovered").
 """
 
 
+from datetime import date
+
 import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
@@ -55,6 +57,20 @@ class TestMarketDataOutage:
         recovery = next(
             w for w in logged_messages(result, LogLevel.WARNING) if 'Market data recovered' in w)
         assert '(-' not in recovery
+
+    def test_the_pause_keeps_the_session_on_the_replay_s_day(self, outage_session):
+        """
+        The freeze is a pause in real time inside a replay of 2026-04-27 (#616). The idle pass
+        used to read the wall clock, the clock only moves forward, and the session then sealed a
+        booking period for every day up to the day it ran. The replay's own time keeps every
+        period on the replay's day, and the session closes once.
+        """
+        result = outage_session
+        replay_day = date(2026, 4, 27)
+        assert [period.reason.value for period in result.booking_periods] == ['session_end']
+        for period in result.booking_periods:
+            assert period.opened_at.date() == replay_day
+            assert period.closed_at.date() == replay_day
 
     def test_decision_hook_fired_once(self, outage_session):
         """Edge-triggered: the mandatory hook fires once per episode."""

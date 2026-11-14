@@ -14,7 +14,7 @@ from python.framework.types.live_types.live_stats_config_types import (
     ProcessLiveSetup,
     ScenarioStatus,
 )
-from python.framework.types.market_types.market_data_types import Bar, TickData
+from python.framework.types.market_types.market_data_types import FormingBar, TickData
 from python.framework.types.process_data_types import ProcessScenarioConfig
 from python.framework.utils.process_serialization_utils import serialize_current_bars
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
@@ -61,7 +61,7 @@ def process_live_export(live_setup: ProcessLiveSetup,
                         tick: TickData,
                         portfolio: PortfolioManager,
                         worker_coordinator: WorkerOrchestrator,
-                        current_bars: Dict[str, Bar]
+                        current_bars: Dict[str, FormingBar]
                         ) -> bool:
     first_tick = live_setup.first_tick
     tick_count = live_setup.tick_count

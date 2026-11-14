@@ -32,6 +32,10 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import List, Optional
 
+from python.framework.reporting.aggregation.aggregation_fold import fold_group
+from python.framework.reporting.aggregation.tables.booking_figure_table import (
+    BOOKING_PERIOD_TRADES_TABLE,
+)
 from python.framework.reporting.builders.report_aggregators import aggregate_trade_analytics
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.reporting.builders.trade_history_report_builder import (
@@ -199,33 +203,15 @@ def _figures(rows: List[TradeHistoryRow], snapshot: PeriodSnapshot) -> RunSummar
     """
     analytics = aggregate_trade_analytics(rows)
     stats = analytics[0] if analytics else None
-    winners = [r for r in rows if r.net_pnl > 0]
-    losers = [r for r in rows if r.net_pnl < 0]
-    gross_profit = sum(r.net_pnl for r in winners)
-    gross_loss = abs(sum(r.net_pnl for r in losers))
-    total_trades = len(rows)
-
-    # None rather than 0.0 where the quotient is undefined: a period that traded nothing has no
-    # profit factor, and a period that traded and lost nothing has none either — a measured 0.0
-    # would claim the bot made no profit, which is a different statement.
-    if total_trades == 0:
-        profit_factor = None
-    elif gross_loss > 0:
-        profit_factor = gross_profit / gross_loss
-    else:
-        profit_factor = 0.0 if gross_profit == 0 else None
+    # The flows and the two rates, by the ledger's own derivations. The profit factor is None
+    # rather than 0.0 where the quotient is undefined: a period that traded nothing has none, and
+    # a period that traded and lost nothing has none either — a measured 0.0 would claim the bot
+    # made no profit, which is a different statement.
+    flows = fold_group(rows, BOOKING_PERIOD_TRADES_TABLE)
 
     return RunSummaryCurrency(
         currency=snapshot.currency,
-        net_pnl=gross_profit - gross_loss,
-        profit_factor=profit_factor,
-        win_rate=(len(winners) / total_trades) if total_trades else 0.0,
-        total_fees=sum(r.total_fees for r in rows),
-        gross_profit=gross_profit,
-        gross_loss=gross_loss,
-        total_trades=total_trades,
-        winning_trades=len(winners),
-        losing_trades=len(losers),
+        **flows,
         # --- stock: read at the seal, never summed out of the period's trades
         account_max_drawdown=snapshot.account_max_drawdown,
         max_equity=snapshot.max_equity,
