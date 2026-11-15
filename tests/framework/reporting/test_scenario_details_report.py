@@ -7,11 +7,15 @@ Tested with real ProcessResult / ProcessTickLoopResult / SingleScenario fixtures
 scenarios (no tick_loop_results) must still appear.
 """
 
+import io
+import re
+from contextlib import redirect_stdout
 from datetime import datetime, timezone
 
 from python.framework.reporting.builders.scenario_details_report_builder import (
     build_scenario_details_report_from_batch,
 )
+from python.framework.reporting.console.scenario_details_summary import ScenarioDetailsSummary
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.performance_types.performance_stats_types import (
     DecisionLogicStats,
@@ -24,6 +28,7 @@ from python.framework.types.process_data_types import (
     TickRangeStats,
 )
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.framework.utils.console_renderer import ConsoleRenderer
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
 _RUN_ID = '20260830_120000_a1b2c3d4'
@@ -147,3 +152,34 @@ class TestBuild:
         row = build_scenario_details_report_from_batch(_RUN_ID, batch).units[0]
         assert row.account_currency == 'USD'
         assert row.account_currency_explicit is False
+
+
+class TestTheConsoleNamesThePasses:
+    """
+    The algo computes once per arrival millisecond (#460), so a scenario's line names its passes
+    beside its ticks on every record that counts them — equal ones too, so "as many passes as
+    ticks" reads apart from "not counted".
+    """
+
+    def _line(self, algo_passes) -> str:
+        tick_loop = _tick_loop(ticks=15000)
+        tick_loop.coordination_statistics.algo_passes = algo_passes
+        report = build_scenario_details_report_from_batch(
+            _RUN_ID, _batch([_result('s1', 0, tick_loop=tick_loop)],
+                            [_scenario('s1', 0, 'EURUSD', workers=_TWO_WORKERS)]))
+        if algo_passes is None:
+            report.units[0].algo_passes = None
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            ScenarioDetailsSummary(report).render(ConsoleRenderer())
+        out = re.sub(r'\x1b\[[0-9;]*m', '', buf.getvalue())
+        return next(line for line in out.splitlines() if 'Duration:' in line)
+
+    def test_fewer_passes_than_ticks(self):
+        assert '| Ticks: 15,000 | Passes: 9,800 |' in self._line(9800)
+
+    def test_as_many_passes_as_ticks(self):
+        assert '| Ticks: 15,000 | Passes: 15,000 |' in self._line(15000)
+
+    def test_a_record_before_contract_56_names_none(self):
+        assert 'Passes' not in self._line(None)

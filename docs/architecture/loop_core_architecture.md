@@ -114,7 +114,10 @@ their stamp and hands the dispatcher one instant at a time:
   every instant, so an order sent in one comes due in time; it is an instant of its own between two
   slices, or joins the slice on its stamp. An order never comes due in the instant it was sent in:
   its latency is at least a millisecond, which the configuration enforces (*An order's latency* in
-  the [Configuration Cascade Guide](../config_cascade_guide.md), with what other backtesters do);
+  the [Configuration Cascade Guide](../config_cascade_guide.md), with what other backtesters do).
+  A due time before the instant already handed over can therefore only mean inconsistent due
+  times: it resolves at once, late, and the scenario's log carries an error, so the run ends as
+  finished with errors;
 - **a heartbeat logic's timers**, every interval inside a quiet stretch no longer than the gap
   threshold (#208), none across a longer one and none without opting in.
 

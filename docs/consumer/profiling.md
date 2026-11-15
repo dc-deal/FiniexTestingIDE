@@ -60,6 +60,11 @@ first**, so the first entry is the bottleneck named above.
 intended hot path. **A large share there is the strategy doing its work, not something to remove.**
 Everything else measured around them — `bar_rendering`, for instance — is infrastructure.
 
+`instant_resolution` is the broker work of an instant that carries no tick: an order coming due
+between two ticks, or a heartbeat's resolutions. It is kept apart so that `trade_simulator` stays
+the cost of the ticks it counts; its `call_count` is the number of such instants. A run recorded
+before contract 57 has no such operation and counted that work under `trade_simulator`.
+
 The run-level `bottlenecks` list states that classification per operation as `status`: `expected`
 for one of the two above, `infra` for anything else that was some unit's bottleneck, and `none`
 for an operation that was never any unit's bottleneck.

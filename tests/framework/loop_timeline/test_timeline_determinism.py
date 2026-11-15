@@ -109,6 +109,15 @@ class TestTheSameRunTwice:
     def test_gives_the_same_orders_fills_and_trades(self):
         assert _record(_run()) == _record(_run())
 
+    def test_an_instant_without_a_tick_times_its_resolutions_apart(self):
+        """
+        Fills come due between ticks here, so instants without a tick resolve orders: their work
+        is timed as `instant_resolution`, and `trade_simulator` counts exactly the ticks (#460).
+        """
+        counts = _run().profiling_data.profile_counts
+        assert counts['instant_resolution'] > 0
+        assert counts['trade_simulator'] == _TICK_COUNT
+
 
 class TestNoWallClockReachesTheRecord:
 

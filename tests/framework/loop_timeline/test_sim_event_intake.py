@@ -7,6 +7,7 @@ heartbeat logic's timers, merged by stamp and handed over one instant at a time.
 
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
+from unittest.mock import MagicMock
 
 from python.framework.loop.event_sequencer import EventSequencer
 from python.framework.loop.sim_event_intake import SimEventIntake
@@ -62,7 +63,8 @@ class _Simulator:
 
 
 def _instants(ticks: List[TickData], simulator: _Simulator, timer_ms: int = 0,
-              threshold_ms: float = 300_000.0) -> List[Tuple[int, Tuple[type, ...]]]:
+              threshold_ms: float = 300_000.0,
+              logger: Optional[MagicMock] = None) -> List[Tuple[int, Tuple[type, ...]]]:
     """
     Every instant the intake hands over, run as the loop core would.
 
@@ -71,11 +73,13 @@ def _instants(ticks: List[TickData], simulator: _Simulator, timer_ms: int = 0,
         simulator: The due times
         timer_ms: The heartbeat interval, 0 for none
         threshold_ms: The gap threshold
+        logger: The scenario log the intake reports to; a stand-in when left out
 
     Returns:
         Each instant's stamp, as an offset from the start, and the classes of its events
     """
-    intake = SimEventIntake(ticks, simulator, EventSequencer(), timer_ms, threshold_ms)
+    intake = SimEventIntake(ticks, simulator, EventSequencer(), timer_ms, threshold_ms,
+                            logger if logger is not None else MagicMock())
     handed = []
     for events in intake:
         stamp = events[0].ts_init
@@ -94,7 +98,7 @@ def _slice_sizes(ticks: List[TickData]) -> List[int]:
     Returns:
         The sizes, in order
     """
-    intake = SimEventIntake(ticks, _Simulator(), EventSequencer(), 0, 0.0)
+    intake = SimEventIntake(ticks, _Simulator(), EventSequencer(), 0, 0.0, MagicMock())
     sizes = []
     for events in intake:
         slice_event: LoopEvent = events[0]
@@ -110,7 +114,8 @@ class TestTheTicksBecomeSlices:
 
     def test_a_slice_is_stamped_with_the_arrival_and_its_last_tick_s_venue_stamp(self):
         ticks = [_tick(10, event_offset=1), _tick(10, event_offset=4)]
-        (events,) = list(SimEventIntake(ticks, _Simulator(), EventSequencer(), 0, 0.0))
+        (events,) = list(SimEventIntake(ticks, _Simulator(), EventSequencer(), 0, 0.0,
+                                        MagicMock()))
         assert (events[0].ts_init, events[0].ts_event) == (_START + 10, _START + 4)
 
     def test_an_arrival_that_steps_back_joins_the_running_instant(self):
@@ -121,12 +126,13 @@ class TestTheTicksBecomeSlices:
         tick = _tick(0, event_offset=3)
         tick = TickData(timestamp=tick.timestamp, symbol='BTCUSD', bid=1.0, ask=1.0,
                         time_msc=tick.time_msc, collected_msc=0)
-        (events,) = list(SimEventIntake([tick], _Simulator(), EventSequencer(), 0, 0.0))
+        (events,) = list(SimEventIntake([tick], _Simulator(), EventSequencer(), 0, 0.0,
+                                        MagicMock()))
         assert events[0].ts_init == _START + 3
 
     def test_the_last_tick_handed_over_is_named_by_its_index(self):
         intake = SimEventIntake([_tick(0), _tick(0), _tick(5)], _Simulator(), EventSequencer(),
-                                0, 0.0)
+                                0, 0.0, MagicMock())
         seen = []
         for _ in intake:
             seen.append(intake.get_last_tick_index())
@@ -160,6 +166,25 @@ class TestTheDueTimes:
         simulator.run = lambda stamp: None      # resolves nothing
         handed = _instants([_tick(0), _tick(100)], simulator)
         assert [stamp for stamp, _ in handed] == [0, 40, 100]
+
+    def test_a_due_time_before_the_instant_handed_is_reported_once_and_counted(self):
+        """
+        A due time at +40 the simulator never resolves is still standing at the slice at +200,
+        though +100 was handed over since: it resolves there, late, and the scenario's log is
+        told once — the first with its stamps — and the intake counts every one (#460).
+        """
+        simulator = _Simulator([40])
+        simulator.run = lambda stamp: None      # resolves nothing
+        logger = MagicMock()
+        intake = SimEventIntake([_tick(0), _tick(100), _tick(200), _tick(300)], simulator,
+                                EventSequencer(), 0, 300_000.0, logger)
+        handed = [events[0].ts_init - _START for events in intake]
+
+        assert handed == [0, 40, 100, 200, 300]
+        assert intake.get_late_due_count() == 2
+        message, = [call.args[0] for call in logger.error.call_args_list]
+        assert 'lies before the instant already handed over' in message
+        assert '60 ms late' in message
 
     def test_an_order_sent_where_a_fill_resolved_comes_due_a_millisecond_later(self):
         """

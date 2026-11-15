@@ -222,7 +222,8 @@ def execute_tick_loop(
             ticks, trade_simulator, sequencer,
             timer_interval_ms=(config.heartbeat_interval_ms
                                if decision_logic.wants_heartbeat() else 0),
-            gap_threshold_ms=config.inter_tick_gap_threshold_s * 1000.0)
+            gap_threshold_ms=config.inter_tick_gap_threshold_s * 1000.0,
+            logger=scenario_logger)
         for events in intake:
             if profiling_enabled: instant_start = time.perf_counter()
 
@@ -295,6 +296,12 @@ def execute_tick_loop(
                 if pass_kind is BacktestPassKind.TICK_PASS:
                     profile_times['total_per_algo_pass'] += instant_ms
                     profile_counts['total_per_algo_pass'] += 1
+
+        # #460: every due time that resolved late, counted — the intake reported the first
+        if intake.get_late_due_count() > 1:
+            scenario_logger.error(
+                f'{intake.get_late_due_count()} due times in all lay before the instant already '
+                f"handed over and resolved late; the simulator's due times are inconsistent")
 
         # #436: close a stale window still active at scenario end (episode
         # span reaches the pot even without a recovery tick).

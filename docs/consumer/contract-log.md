@@ -52,7 +52,9 @@ than at the next tick.
   on the aggregate (new) — the time of one pass beside the time per tick. A changed meaning:
   `p95_processing_ms`, `suggested_budget_ms` and `scenarios_over_p5` are taken per algo pass, and
   `inter_tick` counts one interval per arrival: the ticks that arrived in one millisecond count
-  once, so a burst no longer puts the P5 at 0 ms.
+  once, so a burst no longer puts the P5 at 0 ms. A new operation in `operations`,
+  `instant_resolution`: the broker work of an instant without a tick, which `trade_simulator`
+  counted before.
 - [Validation checks](/api/v1/docs/validation-checks): a new id, `data_arrival_time_offset` — a tick
   file whose recorded arrival time a drifting clock set off, so the backtest orders it by event time.
 
@@ -61,7 +63,8 @@ and its per-pass shares read as before, because each of its passes was one tick.
 null, and its budget figures are taken per tick, as they were then. Its figures were produced the
 earlier way and can differ from a backtest of the same data recorded now.
 
-Fields added on four rows, one check added, seven meanings changed; nothing removed.
+Fields added on four rows, one operation and one check added, seven meanings changed; nothing
+removed.
 
 ## Version 56 — 2026-11-15 (#666)
 

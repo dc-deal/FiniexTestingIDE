@@ -46,7 +46,8 @@ CHANGES: List[str] = [
     'profiling: algo_passes, algo_pass_ms and avg_per_algo_pass_ms on a unit row, total_algo_passes '
     'and avg_per_algo_pass_ms on the aggregate (new); p95_processing_ms, suggested_budget_ms and '
     'scenarios_over_p5 are taken per algo pass, and inter_tick counts one interval per arrival — '
-    'the ticks of one millisecond once — changed meanings',
+    'the ticks of one millisecond once — changed meanings; a new operation instant_resolution, '
+    'the broker work of an instant without a tick',
     'validation-checks: a new id, data_arrival_time_offset',
     'a backtest orders its ticks by when they arrived and fills an order at its due time, so a '
     'backtest recorded from this contract on can differ from one recorded before over the same data',

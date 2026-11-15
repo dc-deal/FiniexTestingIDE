@@ -5,8 +5,10 @@ The backtest's timeline: the ticks, the simulator's due times and a heartbeat lo
 merged by their stamp and handed over one instant at a time.
 """
 
+from datetime import datetime, timezone
 from typing import Iterator, List, Optional, Sequence, Tuple
 
+from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.loop.event_sequencer import EventSequencer
 from python.framework.loop.tick_slicer import tick_event_msc, tick_receipt_msc
 from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
@@ -42,6 +44,7 @@ class SimEventIntake:
         sequencer: The scenario's sequencer; each event takes the next number when it is made
         timer_interval_ms: The heartbeat interval, or 0 when the logic takes no heartbeat
         gap_threshold_ms: The longest quiet stretch timers are made in
+        logger: The scenario's log, told when a due time lies before the instant already handed
     """
 
     def __init__(
@@ -51,13 +54,25 @@ class SimEventIntake:
         sequencer: EventSequencer,
         timer_interval_ms: int,
         gap_threshold_ms: float,
+        logger: AbstractLogger,
     ):
         self._ticks = ticks
         self._simulator = simulator
         self._sequencer = sequencer
         self._timer_interval_ms = timer_interval_ms
         self._gap_threshold_ms = gap_threshold_ms
+        self._logger = logger
         self._last_tick_index = -1
+        self._late_due_count = 0
+
+    def get_late_due_count(self) -> int:
+        """
+        How many due times lay before the instant already handed over, and resolved late.
+
+        Returns:
+            The count; 0 in a consistent run
+        """
+        return self._late_due_count
 
     def get_last_tick_index(self) -> int:
         """
@@ -109,6 +124,16 @@ class SimEventIntake:
                 # so the slice reuses it rather than asking again
                 asked = due = simulator.peek_next_due_msc()
                 if due is not None and handed is not None and due < handed:
+                    # Nothing sent in an instant comes due before it — an order's latency is at
+                    # least a millisecond — so the simulator's due times are inconsistent. The
+                    # order resolves now, late, and the run says so (#460): an error, so the run
+                    # ends as finished with errors; the first with its stamps, the rest counted
+                    self._late_due_count += 1
+                    if self._late_due_count == 1:
+                        self._logger.error(
+                            f'Due time {_utc_text(due)} lies before the instant already handed '
+                            f'over ({_utc_text(handed)}) — it resolves now, {handed - due} ms '
+                            f"late; the simulator's due times are inconsistent")
                     due = handed
                 if due is not None and due == resolved_at:
                     due = None
@@ -170,3 +195,16 @@ class SimEventIntake:
             timers.append(stamp)
             stamp += interval
         return timers
+
+
+def _utc_text(msc: int) -> str:
+    """
+    An epoch millisecond as a UTC time a reader can place.
+
+    Args:
+        msc: Milliseconds since the epoch, UTC
+
+    Returns:
+        The time, to the millisecond
+    """
+    return datetime.fromtimestamp(msc / 1000, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]

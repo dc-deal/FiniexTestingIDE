@@ -99,7 +99,7 @@ class _NothingDue:
 def _instants(ticks, interval_ms: int = 1000, threshold_s: float = 300.0):
     """Every instant the intake hands over for the ticks, as tuples of event classes."""
     intake = SimEventIntake(ticks, _NothingDue(), EventSequencer(), interval_ms,
-                            threshold_s * 1000.0)
+                            threshold_s * 1000.0, MagicMock())
     return [tuple(type(event) for event in instant) for instant in intake]
 
 

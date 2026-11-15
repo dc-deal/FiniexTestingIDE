@@ -92,10 +92,13 @@ def dispatch_backtest_instant(
     # does not fill in this instant (#318). Then every tick of the slice, in arrival order: the
     # broker path sees each — resting orders and the levels positions carry are checked per tick,
     # clipped or not — the bars aggregate each, and the equity is sampled after each (#497).
+    # An instant without a tick times its resolutions under a key of its own, so
+    # `trade_simulator` stays the cost of the ticks it counts (#460)
+    resolution_key = 'trade_simulator' if data is not None else 'instant_resolution'
     if profiling_enabled: started = time.perf_counter()
     simulator.resolve_scheduled(stamp)
     if profiling_enabled:
-        profile_times['trade_simulator'] += (time.perf_counter() - started) * 1000
+        profile_times[resolution_key] += (time.perf_counter() - started) * 1000
     if data is not None:
         for tick in data.ticks:
             if profiling_enabled: started = time.perf_counter()
@@ -121,7 +124,9 @@ def dispatch_backtest_instant(
     if profiling_enabled: started = time.perf_counter()
     simulator.resolve_due(stamp)
     if profiling_enabled:
-        profile_times['trade_simulator'] += (time.perf_counter() - started) * 1000
+        profile_times[resolution_key] += (time.perf_counter() - started) * 1000
+        if data is None:
+            profile_counts['instant_resolution'] += 1
 
     # === EVENT_DELIVERY === the fills and cancels of this instant reach the hooks before the
     # decision does; a hook that asks for the session end ends it here, before the algo

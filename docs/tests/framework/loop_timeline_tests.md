@@ -47,6 +47,7 @@ instant runs.
 | `test_an_order_sent_in_an_instant_comes_due_before_a_later_one` | An order sent at +5 with a due time of +25 comes before one already standing at +80 |
 | `test_nothing_comes_due_after_the_last_tick` | A due time past the last tick is never handed over |
 | `test_a_due_time_left_standing_by_its_own_instant_is_not_handed_over_again` | A due time its own instant did not resolve waits for the next slice instead of repeating |
+| `test_a_due_time_before_the_instant_handed_is_reported_once_and_counted` | A due time still standing after a later instant was handed over resolves late; the scenario's log gets one error with its stamps and how late (60 ms), and the intake counts every one |
 | `test_an_order_sent_where_a_fill_resolved_comes_due_a_millisecond_later` · `test_so_does_one_the_algo_sends_in_a_slice_that_resolved` | An order sent with the least latency a run accepts, 1 ms, in an instant that already resolved something comes due 1 ms later, in an instant of its own before the next slice |
 | `test_a_timer_every_interval_inside_a_quiet_stretch` | Timers at each interval between two slices |
 | `test_none_across_a_stretch_longer_than_the_threshold` | No timers across a stretch longer than the gap threshold (#208) |
@@ -76,6 +77,7 @@ of them sharing a millisecond, each arriving 25 ms after its venue stamp, a seed
 |---|---|
 | `test_the_fixture_is_worth_comparing` | The run trades, a slice holds more than one tick, and an order fills between two ticks |
 | `test_gives_the_same_orders_fills_and_trades` | Two runs record the same orders, order events, trades and booking periods |
+| `test_an_instant_without_a_tick_times_its_resolutions_apart` | The resolutions of an instant without a tick are timed as `instant_resolution`, and `trade_simulator` counts exactly the 1,200 ticks |
 | `test_a_clock_that_jumps_about_changes_nothing` | With `time.time`, `time.perf_counter` and `time.monotonic` jumping an hour back and forth, the run records exactly the same |
 | `test_every_time_the_record_holds_lies_in_the_data_s_span` | Every instant in the orders, events, trades and booking periods lies inside the data's span — a wall-clock read would land at the time the test ran |
 
