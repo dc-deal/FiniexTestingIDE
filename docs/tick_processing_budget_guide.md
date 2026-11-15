@@ -8,7 +8,7 @@ In a live-adapter session, ticks that arrive while the algorithm is still proces
 
 The **Tick Processing Budget** bridges this gap by deterministically **flagging** ticks as clipped,
 simulating the clipping behavior of a live-adapter session. Flagged ticks still flow through the tick loop —
-the broker path (`trade_simulator.on_tick()`) and bar rendering see every tick, while the algo path
+the broker path (`trade_simulator.apply_tick()`) and bar rendering see every tick, while the algo path
 (bar history, workers, decision logic) skips clipped ticks.
 
 **Key property:** Flag-based approach. All ticks enter the subprocess and tick loop. The
@@ -27,18 +27,32 @@ data feed.
 budget_ms = configured tick_processing_budget_ms
 virtual_clock = 0
 
-for each tick (ordered by collected_msc):
-    if tick.collected_msc >= virtual_clock:
+for each tick (in arrival order):
+    arrival = tick.collected_msc, or tick.time_msc where the file recorded no arrival
+    if arrival >= virtual_clock:
         FLAG tick as is_clipped = False (algo processes it)
-        virtual_clock = tick.collected_msc + budget_ms
+        virtual_clock = arrival + budget_ms
     else:
         FLAG tick as is_clipped = True (algo skips it, broker still sees it)
 ```
 
 - **O(n) single pass** — no sorting, no lookback
 - Deterministic: same budget + same data = same result every time
-- Uses `collected_msc` (device-side collection timestamp, available since V1.3.0)
+- Uses `collected_msc` (device-side collection timestamp, available since V1.3.0), and the venue
+  stamp where a file recorded no arrival the run can trust: data preparation clears an arrival the
+  import marked as reconstructed, missing or offset (#460), so the budget never runs on an
+  invented arrival
 - All ticks returned — flags control processing, not removal
+
+### Clipping a slice
+
+Since #460 the backtest hands the algo one *slice* at a time — the ticks that arrived in one
+millisecond — and the algo computes once, on the slice's last tick, when **any** tick of the slice
+is unclipped. A budget keeps the first tick of a burst and clips the ones after it, so a slice of
+several ticks usually has one unclipped tick and several clipped ones; it is computed once, on the
+most recent state, the way a live algo meets the market after a long computation. A slice whose
+every tick is clipped is not computed. The broker path and the bars see every tick either way. The
+budget itself is unchanged: it still flags ticks, not slices.
 
 ### Example
 
@@ -114,11 +128,10 @@ The system warns about this:
 
 ### Data Source Specifics
 
-| Source | `collected_msc` Origin | Minimum Spacing |
+| A tick's file | What the budget is timed on | Minimum spacing |
 |--------|----------------------|-----------------|
-| MT5 (V1.3.0+) | Device clock at collection time | Typically 100ms+ (interpolated within seconds) |
-| Kraken (V1.3.0+) | Synthesized from trade fills | 1ms (synthetic, real cadence unknown) |
-| Data without an arrival time (`no_arrival_time`) | Not available | Filtering skipped, warning logged |
+| Records its arrival time (the collector's receipt, UTC) | `collected_msc` | 1 ms |
+| Records none, or one the import marked reconstructed or offset (`no_arrival_time`, `arrival_time_reconstructed`, `arrival_time_offset`) | `time_msc`, the venue's event time — data preparation clears the arrival (#460), and the log says how many ticks were timed this way | As the venue stamps: the trades of one sweep often share a millisecond |
 
 ---
 
@@ -132,6 +145,19 @@ When the budget is active, the following sections appear in the batch summary:
 Ticks: 3,362 / 5,000 (clipped: 1,638 = 32.8%)  |  Budget: 1.5ms  |  Avg/Tick: 0.839ms
 ```
 
+Beside the time per tick the line prints `Avg/Pass`, the time of one algo pass. Ticks that arrived
+in the same millisecond are one slice and the algo computes once on it, so where ticks arrive in
+bursts a pass takes longer than a tick. A run without a budget, 4,000 Kraken ETHUSD ticks in 2,784
+passes:
+
+```
+Ticks: 4,000  |  Avg/Tick: 0.029ms  |  Avg/Pass: 0.041ms  |  Total: 117.18ms
+```
+
+A pass is the unit a budget clips, so the recommendation and the warnings below are taken per pass.
+With a budget active the two figures agree: the budget keeps the first tick of a burst and clips the
+ones that arrived in the same millisecond, so each slice the algo computes on holds one kept tick.
+
 ### Aggregated (Profiling Analysis)
 
 ```
@@ -142,11 +168,13 @@ Ticks: 3,362 / 5,000 (clipped: 1,638 = 32.8%)  |  Budget: 1.5ms  |  Avg/Tick: 0.
 
 ### Budget Recommendation
 
-Always shown when budget is active or when processing exceeds P5 tick interval:
+Always shown when budget is active or when an algo pass takes longer than the P5 interval. The
+interval counts arrivals, not ticks: the ticks that arrived in one millisecond are one arrival, so
+a bursty feed does not put its P5 at 0 ms.
 
 ```
 💡 Tick Processing Budget Recommendation:
-   P95 processing time: 1.392ms
+   P95 time per algo pass: 1.392ms
    Suggested budget: 1.531ms (P95 + 10% safety margin)
 ```
 
@@ -158,14 +186,14 @@ The "how to set" hint is only shown when no budget is currently configured.
 |-----------|-----------------|---------|
 | Budget < 1.0ms, 0 clipped | Profiling + Warnings & Notices | Below data granularity |
 | Budget > 2× P95 processing | Profiling + Warnings & Notices | Ticks clipped unnecessarily |
-| Avg processing > P5 interval | Profiling + Warnings & Notices | Risk of clipping in a live-adapter session |
-| Data without an arrival time | Log output | Filtering skipped |
+| Avg algo pass > P5 interval | Profiling + Warnings & Notices | Risk of clipping in a live-adapter session |
+| Data without a usable arrival time | Log output | How many ticks were timed on their event time |
 
 ---
 
 ## Hardware Dependency
 
-The tick processing budget simulates **your target hardware's processing speed**. The recommended budget is derived from measured P95 processing time on the current machine.
+The tick processing budget simulates **your target hardware's processing speed**. The recommended budget is derived from the measured P95 time per algo pass on the current machine.
 
 **Important:** If you develop on a fast machine but deploy to slower hardware, the recommended budget from your dev machine will be too optimistic. Set the budget based on the target environment's measured processing time, not the dev machine.
 
@@ -189,14 +217,15 @@ SharedDataPreparator (Main Process, Phase 1)
                     ▼
             execute_tick_loop()
                     │
-                    for tick in ticks:
-                    │   ├── trade_simulator.on_tick(tick)   ← BROKER PATH (all ticks)
-                    │   ├── bar_rendering.process_tick(tick) ← BAR PATH (all ticks)
+                    for instant in SimEventIntake(...):   (#460)
+                    │   ├── for tick in slice:
+                    │   │   ├── trade_simulator.apply_tick(tick)  ← BROKER PATH (all ticks)
+                    │   │   └── bar_rendering.process_tick(tick)  ← BAR PATH (all ticks)
                     │   │
-                    │   ├── if tick.is_clipped: continue    ← CLIPPING GATE
+                    │   ├── every tick clipped: next instant      ← CLIPPING GATE
                     │   │
-                    │   └── bar_history, workers,           ← ALGO PATH (non-clipped only)
-                    │       decision, live_export
+                    │   └── bar_history, workers,                 ← ALGO PATH (once per slice,
+                    │       decision, live_export                   on its last tick)
                     │
                     ▼
           BatchExecutionSummary
@@ -206,7 +235,7 @@ SharedDataPreparator (Main Process, Phase 1)
 ```
 
 - Flagging in main process → all ticks cross pickle boundary (with `is_clipped` flag)
-- Tick loop splits into broker+bar path (all ticks) and algo path (non-clipped only)
+- Tick loop splits into broker+bar path (all ticks) and algo path (slices with an unclipped tick)
 - Broker simulation and bar rendering see full market data — bars reflect complete OHLC/volume
 - ClippingStats flows through main process (same pattern as `broker_scenario_map`)
 
@@ -237,7 +266,7 @@ Confirmed by profiling call counts:
 |-----------|-------|---------|
 | `trade_simulator` | 5,000 | All ticks (broker path) |
 | `bar_rendering` | 5,000 | All ticks (bar path) |
-| `worker_decision` | 3,950 | Algo ticks only (non-clipped) |
+| `worker_decision` | 3,950 | Algo passes only — one per slice with an unclipped tick |
 
 Executive summary displays both: `Ticks Processed: 5,000 total (3,950 algo)`
 

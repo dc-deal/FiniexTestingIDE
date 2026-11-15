@@ -156,6 +156,8 @@ def _to_row(result: ProcessResult, scenario: SingleScenario,
     return ScenarioDetailsRow(
         status='hybrid' if has_error else 'success',
         ticks_processed=coordination.ticks_processed,
+        algo_passes=coordination.algo_passes,
+        ghost_passes=coordination.ghost_passes,
         first_tick_time=tick_range.first_tick_time.isoformat() if tick_range.first_tick_time else '',
         last_tick_time=tick_range.last_tick_time.isoformat() if tick_range.last_tick_time else '',
         # No tick processed is no market time — 0.0, as the row declares, never None.

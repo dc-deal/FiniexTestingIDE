@@ -97,13 +97,15 @@ class TestPositionCloseErrors:
 
     def test_scenario_completes_despite_close_error(
         self,
-        probe_metadata: ProbeMetadata,
+        tick_loop_results: ProcessTickLoopResult,
         scenario_config: Dict[str, Any]
     ):
-        """Scenario should complete all ticks despite close errors."""
+        """Scenario should complete all ticks despite close errors — every configured tick
+        reaches the algo path, a pass counting each tick of its slice (#460)."""
         expected_ticks = scenario_config['scenarios'][0]['max_ticks']
-        assert probe_metadata.tick_count == expected_ticks, (
-            f'Expected {expected_ticks} ticks, got {probe_metadata.tick_count}. '
+        actual = tick_loop_results.coordination_statistics.ticks_processed
+        assert actual == expected_ticks, (
+            f'Expected {expected_ticks} ticks, got {actual}. '
             f'Scenario may have crashed on close error.'
         )
 

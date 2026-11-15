@@ -25,11 +25,12 @@ class AbstractBacktestPassHooks(ABC):
         """
 
     @abstractmethod
-    def prepare_algo(self, tick: TickData) -> None:
+    def prepare_algo(self, tick: TickData, ticks: int) -> None:
         """
         Bring the market-data status up to the tick, before the algo computes — after the
-        clipping gate, so only a tick the algo sees moves it.
+        clipping gate, so only a slice the algo sees moves it.
 
         Args:
-            tick: The tick the algo is about to see
+            tick: The tick the algo is about to see — the last of its slice
+            ticks: The slice's unclipped ticks, which the status counts
         """

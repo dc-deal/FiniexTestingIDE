@@ -7,9 +7,21 @@ inside one pass can leave every output the same on a fixture and still change a 
 that comes after the ghost pass instead of before it, a boundary checked after the broker path
 instead of before. This suite pins the call order itself.
 
-It was written against the loops before the move and stayed unchanged through it. When
-the passes later take the phase order of the event model (#460 for the backtest, #461 for the
-AutoTrader), the differences become deliberate, and this suite is where they are written down.
+It was written against the loops before the move and stayed unchanged through it. With the
+timeline driver (#460) the backtest's instants took the phase order of the event model, and the
+differences are written down below and in the test's own docstring; the AutoTrader's follow with
+#461.
+
+**What #460 changed in the backtest, deliberately:**
+- the clock is set once per instant, and a tick no longer sets it again;
+- a modify or cancel due by the instant applies before its first tick (`scheduled`), and the
+  latency queue resolves once after its last tick (`due`) — no longer inside the first tick's
+  broker path;
+- the bars a slice closed are read after all its ticks;
+- the decision events are delivered before the algo as well as after it, so a fill of this
+  instant reaches the hooks before the decision does;
+- a heartbeat instant resolves through the same two calls instead of the executor's heartbeat;
+- a slice of several ticks applies each of them, and the algo computes once.
 
 Not here: what the steps compute. The booking parity, the bar parity and the suites of each
 collaborator hold that; this suite only asks which step comes when.
@@ -34,17 +46,18 @@ one second apart; the suite runs in about a second.
 
 | Pass | Steps, in order |
 |---|---|
-| Backtest tick | clock → day boundary → broker `on_tick` → bars → equity sample → booking observation → market-data tracker → algo → execute → drain (only with a dispatcher) → state frame |
-| Backtest clipped tick | clock → day boundary → broker `on_tick` → bars → equity sample → booking observation, and nothing after |
-| Backtest ghost pass | clock → day boundary → executor heartbeat → drain → ghost compute → execute (only when the ghost decided something) → drain → state frame |
+| Backtest slice | clock → day boundary → scheduled modifies and cancels → for each tick: broker `apply_tick` → bars → equity sample → booking observation; then the closed bars → what came due → drain → market-data tracker → algo → execute → drain → state frame (the drains only with a dispatcher) |
+| Backtest clipped slice | the same up to the first drain, and nothing after |
+| Backtest ghost pass | clock → day boundary → scheduled modifies and cancels → what came due → drain → ghost compute → execute (only when the ghost decided something) → drain → state frame |
 | AutoTrader tick | signal inbox → clock → day boundary → sealed days → log rotation → broker `on_tick` → market-data tracker → account value (booking observation, equity sample) → bars → algo → equity sample for safety → safety check → entries blocked? → execute → rejection record → drain → reconcile → state persistence → carry-over → state frame |
 | AutoTrader idle pass | clock → day boundary → sealed days → log rotation → executor heartbeat → staleness → reconcile → signal inbox → drain → ghost compute → (entries blocked? → execute → rejection record, when the ghost decided something) → state persistence → carry-over → state frame — no drain after the ghost |
 | A stop's order wait | clock → day boundary → sealed days → log rotation → executor heartbeat → drain (only before the session-end event) → carry-over |
 
-Two differences between the pipelines show in the table and are kept on purpose until the phase
-order arrives: the AutoTrader merges its signal inbox before the clock moves, and it samples the
-account after the algo computes as well as before, where the backtest samples once, before its
-clipping gate.
+Three differences between the pipelines show in the table and are kept on purpose until the
+AutoTrader takes the phase order too (#461): the AutoTrader merges its signal inbox before the
+clock moves; it samples the account after the algo computes as well as before, where the backtest
+samples once per tick, before its clipping gate; and it delivers the decision events only after
+the algo, where the backtest delivers them before it as well.
 
 ## What Is Tested
 
@@ -52,13 +65,15 @@ clipping gate.
 
 | Test | What it pins |
 |---|---|
-| `test_clock_boundary_broker_bars_equity_then_algo_execute_drain` | Three tick passes with a dispatcher and a frame recorder, then the end of the run: the session-end event and the outcomes of its orders each drained, and one more equity sample |
+| `test_clock_boundary_broker_bars_equity_then_algo_execute_drain` | Three slices of one tick with a dispatcher and a frame recorder, then the end of the run: the session-end event and the outcomes of its orders each drained, and one more equity sample |
 | `test_without_a_dispatcher_nothing_is_drained` | The same without a dispatcher: no drain in the pass, none at the end |
-| `test_stops_after_the_equity_sample` | The clipped middle tick of three stops after the booking observation: no tracker, no algo, no execute, no drain, no frame |
+| `test_every_tick_reaches_the_broker_and_the_bars_and_the_algo_computes_once` | Two ticks arriving in one millisecond and a third a second later: two instants, the first applying both ticks and computing once |
+| `test_the_algo_computes_on_the_slice_s_last_tick_for_both` | The same ticks at two prices: the algo computes on the second of the two, standing for both (740.a), then on the third |
+| `test_stops_after_the_delivery` | The clipped middle tick of three still reaches the broker, the bars, the resolutions and the delivery, and nothing after: no tracker, no algo, no execute, no frame |
 | `test_clock_boundary_heartbeat_drain_ghost_execute_drain` | A heartbeat logic, ticks a second apart and a heartbeat every 400 ms: two ghost passes between the two ticks, the first executing its decision, the second computing none and executing nothing, each drained before and after |
 | `test_none_in_a_gap_no_longer_than_the_interval` | A heartbeat every 1000 ms over the same gap: no ghost pass |
 | `TestTheIndicatorSeries` (#379) | the indicator series is recorded right after the state frame on every tick pass, and with the series alone the bars a tick closed are still read |
-| `test_keys_in_pass_order_and_counted_per_pass` | The profiling timers' keys in the order the pass reaches them, and their counts over three ticks with one clipped — the reports read both |
+| `test_keys_in_pass_order_and_counted_per_pass` | The profiling timers' keys in the order the pass reaches them, and their counts over three ticks with one clipped: three for the broker path and the bars, two for the algo path, five deliveries, and the two algo passes timed whole (#460) — the reports read both |
 
 ### `test_autotrader_pass_order.py`
 
@@ -85,6 +100,7 @@ own with stand-in collaborators.
 | `test_one_sample_serves_the_drawdown_and_the_booking_period` | One equity evaluation per tick, and the booking period observes exactly that figure |
 | `test_with_profiling_the_sample_is_timed_under_its_own_key` · `test_without_profiling_nothing_is_timed` | The sample is timed under `equity_sample` when the backtest profiles, and nothing is recorded when it does not |
 | `test_the_stress_window_moves_before_the_status_is_recorded` · `test_without_a_stress_window_the_status_carries_no_label` | The planned stale window advances before the tracker records the status, with the window's label; without a window the label is empty |
+| `test_a_slice_of_several_ticks_counts_each_of_them` | A pass over a slice of several unclipped ticks counts each of them in the tracker, so its fresh and stale figures still add up to ticks (#460) |
 
 ## Running the Tests
 

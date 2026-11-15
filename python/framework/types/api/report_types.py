@@ -1058,6 +1058,11 @@ class ScenarioDetailsRow(BaseModel):
     # (monotonic clock)
     execution_time_ms: float = 0.0
     ticks_processed: int = 0
+    # The algo's passes (#460): the ticks that arrived in one millisecond are one pass, so the
+    # passes fall below the ticks where ticks share a millisecond. The heartbeat logic's passes
+    # between ticks are counted apart. None in a record written before contract 57: not counted.
+    algo_passes: Optional[int] = None
+    ghost_passes: Optional[int] = None
     first_tick_time: str = ''       # ISO-8601 UTC, '' if none
     last_tick_time: str = ''
     tick_timespan_seconds: float = 0.0
@@ -1092,27 +1097,43 @@ class ScenarioDetailsRow(BaseModel):
     @property
     def non_flat_signal_pct(self) -> Optional[float]:
         """
-        The decisions that asked to buy or sell, per tick processed.
+        The decisions that asked to buy or sell, per pass — an algo pass or a heartbeat logic's
+        pass between ticks, each deciding at most once (#460).
 
         Returns:
-            In percent of the ticks; 0.0 without a tick, None where the decisions were not counted
+            In percent of the passes; 0.0 without a pass, None where the decisions were not counted
         """
         if self.non_flat_signals is None:
             return None
-        return (self.non_flat_signals / self.ticks_processed * 100) if self.ticks_processed else 0.0
+        passes = self._pass_count()
+        return (self.non_flat_signals / passes * 100) if passes else 0.0
 
     @computed_field
     @property
     def trades_requested_pct(self) -> Optional[float]:
         """
-        The trades the decisions requested, per tick processed.
+        The trades the decisions requested, per pass — algo and heartbeat (#460).
 
         Returns:
-            In percent of the ticks; 0.0 without a tick, None where the decisions were not counted
+            In percent of the passes; 0.0 without a pass, None where the decisions were not counted
         """
         if self.trades_requested is None:
             return None
-        return (self.trades_requested / self.ticks_processed * 100) if self.ticks_processed else 0.0
+        passes = self._pass_count()
+        return (self.trades_requested / passes * 100) if passes else 0.0
+
+    def _pass_count(self) -> int:
+        """
+        The passes the per-pass shares divide by: every pass that can decide, an algo pass and a
+        heartbeat logic's pass between ticks alike.
+
+        Returns:
+            The algo and heartbeat passes; the ticks in a record written before passes were
+            counted, where each tick was one pass
+        """
+        if self.algo_passes is None:
+            return self.ticks_processed
+        return self.algo_passes + (self.ghost_passes or 0)
 
 
 class DataBrokerRow(BaseModel):
@@ -2777,7 +2798,7 @@ class WorkerStatRow(BaseModel):
     # Cadence, derived here so every surface reads the same figure. Null where it is not
     # defined: no tick processed (no ratio), a worker that never computed (no idle distance),
     # and on the run-level totals, which span several units' tick counts
-    compute_ratio_pct: Optional[float] = None   # call_count / the unit's ticks_processed
+    compute_ratio_pct: Optional[float] = None   # call_count / the unit's algo passes (#460)
     ticks_idle: Optional[int] = None            # ticks since the last real compute
     # On the run-level totals only: the mean of the units' own mean call times — every unit
     # weighs the same, whatever its calls. Null on a unit's row
@@ -2813,6 +2834,10 @@ class WorkerDecisionUnitRow(BaseModel):
     decision_max_time_ms: Optional[float] = None
     # coordination (both pipelines)
     ticks_processed: int = 0
+    # The algo's passes and the heartbeat passes (#460), as the scenario details count them; None
+    # in a record written before contract 57, where they were not counted
+    algo_passes: Optional[int] = None
+    ghost_passes: Optional[int] = None
     parallel_workers: bool = False
     parallel_time_saved_ms: float = 0.0
     parallel_avg_saved_per_tick_ms: float = 0.0     # parallel_time_saved_ms / ticks_processed
@@ -2880,6 +2905,22 @@ class WorkerDecisionUnitRow(BaseModel):
         if self.algo_time_ms is None:
             return None
         return self.algo_time_ms / self.ticks_processed if self.ticks_processed > 0 else 0.0
+
+    @computed_field
+    @property
+    def algo_avg_per_pass_ms(self) -> Optional[float]:
+        """
+        The algo path's own time per pass: the algo's passes and the heartbeat passes, each of
+        which runs it once (#460) — a slice of ticks that arrived in one millisecond is one pass.
+
+        Returns:
+            The algo time over the passes; 0.0 without a pass, None where it is not timed or the
+            record was written before contract 57
+        """
+        if self.algo_time_ms is None or self.algo_passes is None:
+            return None
+        passes = self.algo_passes + (self.ghost_passes or 0)
+        return self.algo_time_ms / passes if passes > 0 else 0.0
 
     @computed_field
     @property
@@ -2986,6 +3027,12 @@ class ProfilingUnitRow(BaseModel):
     total_ticks: int = 0
     avg_per_tick_ms: float = 0.0
     total_ms: float = 0.0                   # total_per_tick across all operations
+    # The instants the algo computed in, one pass each (#460): how many, their time, and the time
+    # of one — what a processing budget is held to. Null on a record written before contract 57;
+    # the average also where the algo never computed
+    algo_passes: Optional[int] = None
+    algo_pass_ms: Optional[float] = None
+    avg_per_algo_pass_ms: Optional[float] = None
     bottleneck_operation: str = ''          # the highest-share operation
     bottleneck_pct: float = 0.0
     operations: list[ProfilingOperationRow] = []
@@ -3037,14 +3084,20 @@ class ProfilingAggregate(BaseModel):
     total_ticks: int = 0
     total_time_s: float = 0.0
     avg_per_tick_ms: float = 0.0
+    # The units' algo passes and the time of one, from their summed time (#460). Null on a
+    # record written before contract 57; the average also where no algo computed
+    total_algo_passes: Optional[int] = None
+    avg_per_algo_pass_ms: Optional[float] = None
     most_common_bottleneck: str = ''
     most_common_bottleneck_pct: float = 0.0
     p5_min_ms: float = 0.0      # P5 range across scenarios
     p5_max_ms: float = 0.0
+    # The P95 of the units' time per algo pass (#460) — per tick on a record written before
+    # contract 57, as it was computed then
     p95_processing_ms: float = 0.0
     suggested_budget_ms: float = 0.0    # P95 + 10% margin
     budget_active: bool = False
-    # How many scenarios processed a tick slower than their own fastest 5% of tick intervals.
+    # How many scenarios took longer per algo pass than their own fastest 5% of tick intervals.
     # A COUNT, not a verdict — whether that warrants a warning is decided by PostRunValidator
     # (_check_budget). The console reads it only to know whether a budget hint is worth showing.
     scenarios_over_p5: int = 0

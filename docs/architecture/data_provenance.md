@@ -393,6 +393,7 @@ and the check id its finding carries. A test holds the declarations complete aga
 | `no_quote` | bid equals ask on every row | whether a fill crossed a spread |
 | `no_arrival_time` | no `collected_msc` column, or only zeros | when a tick reached us |
 | `arrival_time_reconstructed` | the two reconstruction fingerprints: every multi-tick second ending on .999, or the arrival time copied from the event time | a recorded receive time |
+| `arrival_time_offset` | the median of arrival time minus event time outside 0–1,000 ms: a collector clock that drifted, not a delivery | when a tick reached us — a backtest orders the file by its event time |
 | `missing_trades` | gaps in the venue's trade ids — a count always, a deficiency above 1 % of the id span or one run longer than five minutes | every trade the venue printed |
 | `synthetic` | the producer's own `data_origin` on the signal envelope | anything about a market |
 

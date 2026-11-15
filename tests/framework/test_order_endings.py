@@ -75,14 +75,15 @@ _ASK = 50001.0
 _RESTING_BUY = 40000.0
 
 
-def _simulator(spot_mode: bool, latency_ms: int = 0,
+def _simulator(spot_mode: bool, latency_ms: int = 1,
                stress: StressTestConfig = None) -> TradeSimulator:
     """
     The simulation executor with one BTCUSD tick fed.
 
     Args:
         spot_mode: The account model
-        latency_ms: The inbound latency, fixed — 0 lets an order arrive on the next tick
+        latency_ms: The inbound latency, fixed — the least a run accepts, 1 ms, lets an order
+            arrive on the next tick
         stress: A stress-test configuration, or None
 
     Returns:

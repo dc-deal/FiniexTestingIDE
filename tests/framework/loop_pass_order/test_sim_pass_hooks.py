@@ -52,10 +52,10 @@ class _Driver:
 
 class _Tracker:
     def __init__(self) -> None:
-        self.calls: List[Tuple[datetime, str, str]] = []
+        self.calls: List[Tuple[datetime, str, str, int]] = []
 
-    def on_tick(self, timestamp: datetime, status: str, label: str) -> None:
-        self.calls.append((timestamp, status, label))
+    def on_tick(self, timestamp: datetime, status: str, label: str, ticks: int = 1) -> None:
+        self.calls.append((timestamp, status, label, ticks))
 
 
 def _hooks(profiling_enabled: bool, driver: Optional[_Driver] = None):
@@ -99,14 +99,22 @@ class TestTheMarketDataStatus:
         driver = _Driver()
         hooks, _, _, tracker, _, _ = _hooks(profiling_enabled=False, driver=driver)
 
-        hooks.prepare_algo(_TICK)
+        hooks.prepare_algo(_TICK, 1)
 
         assert driver.ticks == [_TICK.timestamp]
-        assert tracker.calls == [(_TICK.timestamp, 'status', 'feed dies')]
+        assert tracker.calls == [(_TICK.timestamp, 'status', 'feed dies', 1)]
 
     def test_without_a_stress_window_the_status_carries_no_label(self):
         hooks, _, _, tracker, _, _ = _hooks(profiling_enabled=False)
 
-        hooks.prepare_algo(_TICK)
+        hooks.prepare_algo(_TICK, 1)
 
-        assert tracker.calls == [(_TICK.timestamp, 'status', '')]
+        assert tracker.calls == [(_TICK.timestamp, 'status', '', 1)]
+
+    def test_a_slice_of_several_ticks_counts_each_of_them(self):
+        """The algo computes once for a slice; the status counts every unclipped tick of it (#460)."""
+        hooks, _, _, tracker, _, _ = _hooks(profiling_enabled=False)
+
+        hooks.prepare_algo(_TICK, 3)
+
+        assert tracker.calls == [(_TICK.timestamp, 'status', '', 3)]

@@ -122,7 +122,7 @@ def live_session(mode: MockExecutionMode = MockExecutionMode.DELAYED_FILL,
     return mock, executor, record_events(executor)
 
 
-def make_simulator(spot_mode: bool, latency_ms: int = 0,
+def make_simulator(spot_mode: bool, latency_ms: int = 1,
                    stress: Optional[StressTestConfig] = None,
                    initial_balance: float = 100000.0,
                    trade_history_max: int = 5000) -> TradeSimulator:

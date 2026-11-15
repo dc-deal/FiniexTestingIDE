@@ -39,7 +39,16 @@ states. Within the run, a unit is its `name`, the same identity the other per-un
 | `total_ticks` | the ticks the loop processed |
 | `total_ms` | every operation's total time, added up |
 | `avg_per_tick_ms` | `total_ms` divided by `total_ticks` |
+| `algo_passes` · `algo_pass_ms` | the passes the algo computed in, and their time together |
+| `avg_per_algo_pass_ms` | `algo_pass_ms` divided by `algo_passes`: the time of one pass |
 | `bottleneck_operation` · `bottleneck_pct` | the operation with the largest share, and that share |
+
+**One pass can hold several ticks.** Ticks that arrived in the same millisecond are one slice: the
+loop moves the market and checks the orders for each of them, and the algo computes once, on the
+last. So where ticks arrive in bursts, a pass takes longer than a tick, and `avg_per_algo_pass_ms`
+is the figure a processing budget is held to. Where every tick arrives on its own, the two are
+nearly the same. The three are null on a run recorded before contract 57, and the average also
+where the algo never computed.
 
 `operations` carries one row per measured operation — `total_time_ms`, `avg_time_ms`, `call_count`
 and `pct`, the operation's share of the unit's total. **The list is sorted by share, largest
@@ -61,11 +70,14 @@ a verdict, and verdicts on a run arrive as warnings — see
 
 ## How much time the market left between ticks
 
-`inter_tick` is the distribution of **market-side** time between consecutive ticks. It is not
-processing time; it is the budget the market handed the loop.
+`inter_tick` is the distribution of **market-side** time between consecutive arrivals. It is not
+processing time; it is the budget the market handed the loop. **The ticks that arrived in the same
+millisecond count as one arrival** — the algo computes once on them — so a burst puts no 0 ms gap
+into it. On a run recorded before contract 57 every tick counted, and on a bursty feed the
+fastest 5 % read 0 ms.
 
-- `p5_ms` — the fastest 5 % of tick arrivals: 95 % of intervals are longer than this. It is the
-  tightest budget the unit faced, and the figure worth comparing `avg_per_tick_ms` against.
+- `p5_ms` — the fastest 5 % of arrivals: 95 % of intervals are longer than this. It is the
+  tightest budget the unit faced, and the figure worth comparing `avg_per_algo_pass_ms` against.
 - `p95_ms` — only 5 % of intervals are longer: the quiet phases, with long gaps between ticks.
 - `min_ms`, `median_ms`, `mean_ms`, `max_ms` — the rest of the distribution.
 
@@ -93,15 +105,16 @@ budget filter ran over the unit's ticks and the row says what it did:
 ## The run-level roll-up
 
 `aggregate` folds the unit rows into one picture. Ratios are recomputed from summed components —
-`avg_per_tick_ms` is the summed time over the summed ticks, never an average of the units'
-averages.
+`avg_per_tick_ms` is the summed time over the summed ticks, and `avg_per_algo_pass_ms` the summed
+pass time over `total_algo_passes`, never an average of the units' averages. Both pass figures are
+null on a run recorded before contract 57.
 
 | Field | Meaning |
 |---|---|
 | `scenarios` · `total_ticks` · `total_time_s` | how many units are folded here, and their totals |
 | `most_common_bottleneck` · `most_common_bottleneck_pct` | the operation that was the bottleneck in the most units, and in what share of them |
 | `p5_min_ms` · `p5_max_ms` | the range of the units' own P5 intervals — how uneven the tightest budget was across the run |
-| `p95_processing_ms` | the 95th percentile of the units' `avg_per_tick_ms` |
+| `p95_processing_ms` | the 95th percentile of the units' `avg_per_algo_pass_ms` — of their `avg_per_tick_ms` on a run recorded before contract 57, as it was computed then |
 | `suggested_budget_ms` | that figure plus a 10 % margin |
 | `budget_active` | whether a tick-processing budget was configured |
 
@@ -128,8 +141,9 @@ on [workers and decisions](/api/v1/docs/worker-decision).)
 
 ## `scenarios_over_p5` is a count, not a verdict
 
-It is how many units processed a tick slower, on average, than their own fastest 5 % of tick
-intervals — the units whose work did not fit the tightest budget the market gave them.
+It is how many units took longer per algo pass, on average, than their own fastest 5 % of tick
+intervals — the units whose work did not fit the tightest budget the market gave them. On a run
+recorded before contract 57 it compared the time per tick.
 
 It counts, and stops there. Whether that warrants a warning is decided elsewhere on the run and
 surfaces as one; this number is the input, not the conclusion.

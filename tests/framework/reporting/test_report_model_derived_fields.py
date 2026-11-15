@@ -62,6 +62,23 @@ class TestScenarioDetails:
         assert (row.non_flat_signals, row.non_flat_signal_pct, row.trades_requested_pct) == (
             10, 5.0, 2.5)
 
+    def test_the_shares_divide_by_the_algo_and_the_heartbeat_passes(self):
+        """
+        200 ticks in 120 algo passes and 40 heartbeat passes: each pass decides at most once, so
+        the shares divide by the 160 passes, not by the ticks (#460).
+        """
+        row = ScenarioDetailsRow(name='s1', symbol='BTCUSD', ticks_processed=200,
+                                 algo_passes=120, ghost_passes=40, buy_signals=10,
+                                 sell_signals=6, flat_signals=144, trades_requested=8)
+        assert (row.non_flat_signal_pct, row.trades_requested_pct) == (10.0, 5.0)
+
+    def test_a_record_before_the_passes_were_counted_divides_by_its_ticks(self):
+        """A row written before contract 57 carries no pass count; each of its ticks was a pass."""
+        row = ScenarioDetailsRow(name='s1', symbol='EURUSD', ticks_processed=200,
+                                 buy_signals=6, sell_signals=4, trades_requested=5)
+        assert (row.algo_passes, row.ghost_passes) == (None, None)
+        assert (row.non_flat_signal_pct, row.trades_requested_pct) == (5.0, 2.5)
+
     def test_uncounted_decisions_have_no_share(self):
         row = ScenarioDetailsRow(name='s1', symbol='EURUSD', ticks_processed=200)
         assert (row.non_flat_signals, row.non_flat_signal_pct,

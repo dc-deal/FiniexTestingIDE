@@ -39,9 +39,27 @@ def p5_of(row: Any) -> Optional[float]:
     return row.inter_tick.p5_ms if row.inter_tick else None
 
 
+def processing_ms(row: Any) -> Optional[float]:
+    """
+    A unit's processing time per algo pass — the unit a budget clips, since a slice of ticks
+    that arrived in one millisecond is computed once (#460). A record written before contract 57
+    counts no passes and answers per tick, as its figures were computed then; a newer unit whose
+    algo never computed has no such time at all, never a per-tick stand-in.
+
+    Args:
+        row: A profiling unit row
+
+    Returns:
+        Milliseconds per algo pass, per tick on an older record, or None
+    """
+    if row.algo_passes is None:
+        return row.avg_per_tick_ms
+    return row.avg_per_algo_pass_ms
+
+
 def over_its_p5(row: Any) -> int:
     """
-    Whether a unit's average tick took longer than its own P5 interval — one count each.
+    Whether a unit's average algo pass took longer than its own P5 interval — one count each.
 
     Args:
         row: A profiling unit row
@@ -49,7 +67,8 @@ def over_its_p5(row: Any) -> int:
     Returns:
         1 when it did, else 0
     """
-    return 1 if row.inter_tick and row.avg_per_tick_ms > row.inter_tick.p5_ms else 0
+    processing = processing_ms(row)
+    return 1 if row.inter_tick and processing is not None and processing > row.inter_tick.p5_ms else 0
 
 
 def clipped_ticks_total(row: Any) -> Optional[int]:
@@ -168,7 +187,7 @@ def most_common_bottleneck_pct(combined: Dict[str, Any], rows: Sequence[Any]) ->
 
 def _p95_processing(rows: Sequence[Any]) -> float:
     """
-    The P95 of the units' average tick processing time, nearest rank at int(n · 0.95).
+    The P95 of the units' processing time per algo pass, nearest rank at int(n · 0.95).
 
     Args:
         rows: The units
@@ -176,7 +195,7 @@ def _p95_processing(rows: Sequence[Any]) -> float:
     Returns:
         The P95 in ms; 0.0 when no unit processed a tick
     """
-    averages = sorted(r.avg_per_tick_ms for r in rows if r.avg_per_tick_ms > 0)
+    averages = sorted(ms for ms in (processing_ms(r) for r in rows) if ms is not None and ms > 0)
     if not averages:
         return 0.0
     return averages[min(int(len(averages) * 0.95), len(averages) - 1)]
@@ -184,7 +203,7 @@ def _p95_processing(rows: Sequence[Any]) -> float:
 
 def p95_processing(combined: Dict[str, Any], rows: Sequence[Any]) -> float:
     """
-    The P95 of the units' average tick processing time.
+    The P95 of the units' processing time per algo pass.
 
     Args:
         combined: The figures being built
@@ -238,6 +257,23 @@ def average_per_tick(combined: Dict[str, Any], rows: Sequence[Any]) -> float:
     """
     total_ticks = combined['total_ticks']
     return combined['total_time_ms'] / total_ticks if total_ticks > 0 else 0.0
+
+
+def average_per_algo_pass(combined: Dict[str, Any], rows: Sequence[Any]) -> Optional[float]:
+    """
+    The time of one algo pass over every unit — from the summed pass time and passes (#460).
+
+    Args:
+        combined: The figures being built
+        rows: The units
+
+    Returns:
+        Milliseconds per algo pass; None where no unit timed one
+    """
+    passes = combined['total_algo_passes']
+    if not passes or combined['algo_pass_time_ms'] is None:
+        return None
+    return combined['algo_pass_time_ms'] / passes
 
 
 def slowest_unit_deviation(combined: Dict[str, Any], rows: Sequence[Any]) -> Optional[float]:
@@ -320,13 +356,17 @@ PROFILING_TABLE = FoldTable(
         'total_time_s': FigureDeclaration(Reduction.DERIVE),
         # From the summed components, never an average of the units' averages
         'avg_per_tick_ms': FigureDeclaration(Reduction.DERIVE),
+        # The same for one algo pass (#460); null on a record written before contract 57
+        'total_algo_passes': FigureDeclaration(Reduction.SUM, source='algo_passes'),
+        'algo_pass_time_ms': FigureDeclaration(Reduction.SUM, source='algo_pass_ms'),
+        'avg_per_algo_pass_ms': FigureDeclaration(Reduction.DERIVE),
         'most_common_bottleneck': FigureDeclaration(Reduction.DERIVE),
         'most_common_bottleneck_pct': FigureDeclaration(Reduction.DERIVE),
         'p5_min_ms': FigureDeclaration(Reduction.MIN, source=p5_of, empty_value=0.0),
         'p5_max_ms': FigureDeclaration(Reduction.MAX, source=p5_of, empty_value=0.0),
         'p95_processing_ms': FigureDeclaration(Reduction.DERIVE),
         'suggested_budget_ms': FigureDeclaration(Reduction.DERIVE),
-        # The units whose average tick exceeded their own P5 interval — the console used to count
+        # The units whose average algo pass exceeded their own P5 interval — the console used to count
         # this itself to decide what to print (#391: no measures in PRESENT)
         'scenarios_over_p5': FigureDeclaration(Reduction.SUM, source=over_its_p5, empty_value=0),
         'clipping_total_ticks': FigureDeclaration(Reduction.SUM, source=clipped_ticks_total,
@@ -349,6 +389,7 @@ PROFILING_TABLE = FoldTable(
         'slowest_profiled_unit_deviation_pct': slowest_unit_deviation,
         'total_time_s': total_time_seconds,
         'avg_per_tick_ms': average_per_tick,
+        'avg_per_algo_pass_ms': average_per_algo_pass,
         'most_common_bottleneck': most_common_bottleneck,
         'most_common_bottleneck_pct': most_common_bottleneck_pct,
         'p95_processing_ms': p95_processing,
@@ -359,6 +400,7 @@ PROFILING_TABLE = FoldTable(
     served_as=ProfilingAggregate,
     outside_the_fold={
         'total_time_ms': 'folded, not served: the seconds and the time per tick come from it',
+        'algo_pass_time_ms': 'folded, not served: the time per algo pass comes from it',
         'budget_active': 'an input: the run decides whether a tick budget was active',
         'avg_operation_times': 'a nested table: the operations folded by their table',
     },

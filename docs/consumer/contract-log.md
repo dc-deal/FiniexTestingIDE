@@ -33,6 +33,36 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 57 — 2026-11-16 (#460)
+
+A backtest runs on its timeline: it orders its ticks by when they arrived, computes the algo once
+for the ticks that arrived in one millisecond, and fills an order at the instant it comes due rather
+than at the next tick.
+
+- [Scenario details](/api/v1/docs/scenario-details): **`algo_passes`** and **`ghost_passes`** (new) —
+  how often the algo computed, and how often a heartbeat logic's decision ran between ticks. Where
+  ticks share a millisecond, `algo_passes` falls below `ticks_processed`, which still counts ticks.
+  A changed meaning: `non_flat_signal_pct` and `trades_requested_pct` are per pass, algo and
+  heartbeat passes together.
+- [Worker and decision](/api/v1/docs/worker-decision): `algo_passes` and `ghost_passes` on a unit row
+  (new), and **`algo_avg_per_pass_ms`** (new) — the algo path's own time per pass, beside
+  `algo_avg_per_tick_ms`. A changed meaning: `compute_ratio_pct` is a worker's calls per algo pass.
+- [Profiling](/api/v1/docs/profiling): **`algo_passes`**, **`algo_pass_ms`** and
+  **`avg_per_algo_pass_ms`** on a unit row, **`total_algo_passes`** and **`avg_per_algo_pass_ms`**
+  on the aggregate (new) — the time of one pass beside the time per tick. A changed meaning:
+  `p95_processing_ms`, `suggested_budget_ms` and `scenarios_over_p5` are taken per algo pass, and
+  `inter_tick` counts one interval per arrival: the ticks that arrived in one millisecond count
+  once, so a burst no longer puts the P5 at 0 ms.
+- [Validation checks](/api/v1/docs/validation-checks): a new id, `data_arrival_time_offset` — a tick
+  file whose recorded arrival time a drifting clock set off, so the backtest orders it by event time.
+
+**A backtest recorded before this contract** carries null in both counts — nothing counted them —
+and its per-pass shares read as before, because each of its passes was one tick. Its pass times are
+null, and its budget figures are taken per tick, as they were then. Its figures were produced the
+earlier way and can differ from a backtest of the same data recorded now.
+
+Fields added on four rows, one check added, seven meanings changed; nothing removed.
+
 ## Version 56 — 2026-11-15 (#666)
 
 A list says what a reader opens a run or a sweep to find out.
@@ -120,51 +150,13 @@ and `duration_ticks` null only where the exit lies before it.
 
 A field became nullable; nothing added, removed or renamed.
 
-## Version 52 — 2026-11-09 (#557)
-
-Every figure a console printed is now a field the API serves, so no reader has to compute it.
-
-- [Trade history](/api/v1/docs/trade-history): **`duration_ticks`** on every row. Each analytics
-  entry adds `long_trades`, `short_trades`, `winning_trades`, `losing_trades`, the closes by reason
-  (`sl_closes`, `tp_closes`, `scenario_end_closes`, `manual_closes`), the averages per trade
-  (`avg_gross_pnl`, `avg_fees`, `avg_net_pnl`) and the holding time in ticks
-  (`avg_trade_duration_ticks`, `min_…`, `max_…`).
-- [Order history](/api/v1/docs/order-history): `failed_listed`, `failed_by_unit` and
-  `failed_by_reason` count the failed rows the list holds; a filter counts them again.
-- [Portfolio](/api/v1/docs/portfolio): `open_position_count` on a unit row.
-  [Pending orders](/api/v1/docs/pending-orders): `active_limit_count`, `active_stop_count`,
-  `active_order_count`.
-- [Aggregated portfolio](/api/v1/docs/aggregated-portfolio): **`total_costs`** — every cost
-  category, the spread included, so not a fee total — and `spot_total_est_pnl` with
-  `spot_total_est_pnl_pct`.
-- [Run summary](/api/v1/docs/run-summary): `execution_rate_pct` over the run's counts.
-- [Workers and decisions](/api/v1/docs/worker-decision): on a unit row `timed_worker_count`,
-  `worker_call_count`, `worker_time_ms`, `algo_time_ms`, `algo_avg_per_tick_ms`, `non_flat_signals`;
-  on a totals row `unit_mean_time_ms`; `decision_totals` and `bottlenecks` over the tracked units —
-  null where no unit tracked its decisions.
-- [Profiling](/api/v1/docs/profiling): `clipping_rate_pct`, `clipping_budget_count`, the slowest
-  profiled unit beside the mean, the warmup's total and slowest phase with each phase's `pct`, and
-  `worker_decision_breakdowns`; `keys` for its lists.
-- [Order history](/api/v1/docs/order-history): `keys`, with `[]` for `orders`.
-- [Scenario details](/api/v1/docs/scenario-details), [warnings and errors](/api/v1/docs/warnings-errors),
-  [booking periods](/api/v1/docs/booking-periods), [feed stability](/api/v1/docs/feed-stability),
-  [signal](/api/v1/docs/signal), [broker](/api/v1/docs/broker): the shares, the differences and the
-  counts their own lists imply — `batch_status` among them, a description of the failed count and
-  not a grading.
-- Validation checks: `usable_funds_negative`.
-
-**A run recorded before this contract:** a figure read from fields of its own row is answered for
-it too; a figure folded over rows the artifact does not keep — `decision_totals`, `bottlenecks`,
-the slowest profiled unit, `worker_decision_breakdowns`, a warmup phase's `pct` — is null there.
-
-Nothing removed or renamed; no meaning changed.
-
-## Versions 51 and earlier
+## Versions 52 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 52** — 2026-11-09 (#557): Every figure a console printed is a field the API serves — `duration_ticks` and the per-trade analytics on [trade history](/api/v1/docs/trade-history), the failed counts on [order history](/api/v1/docs/order-history), `open_position_count` and the active pending counts, `total_costs` on the [aggregated portfolio](/api/v1/docs/aggregated-portfolio), `execution_rate_pct` on the [run summary](/api/v1/docs/run-summary), the worker and decision totals, the profiling figures, `keys` on the lists and the check `usable_funds_negative`; a figure folded over rows an older run does not keep is null there.
 - **Version 51** — 2026-11-05 (#646): A deployment no longer reads twice in the list: the sessions without booked figures stand in no row of their own, each booked row of [deployments](/api/v1/docs/deployments) counts them as `sessions_without_figures` and `sessions_failed`, and the row with `currency: null` is served only for a deployment that has booked nothing.
 - **Version 50** — 2026-11-04 (#646): A run that failed before it measured anything no longer reads like a session that traded and broke even — such a [deployments](/api/v1/docs/deployments) session serves no figure and no currency (null, not `0.0` and the empty string), every session in the detail carries `booking_state` (`booked`, `failed`, `not_booked_yet`), and a [sweep](/api/v1/docs/sweeps) combination's figures are nullable in the schema while a ranked one never carries null.
 - **Version 49** — 2026-11-02 (#645): A deployment is listed from its first session's start — sessions without a sealed day stand in the list and the detail without figures, in a row of their own with `currency: null`; `net_pnl` and `currency` nullable; `/deployments/{deployment_id}` and its booking periods answer 200 for such a deployment, and `deployment_not_found` means no run and no ledger row names it.

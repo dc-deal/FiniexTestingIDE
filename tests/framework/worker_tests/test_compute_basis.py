@@ -162,7 +162,7 @@ def _orchestrator(worker: BollingerWorker) -> WorkerOrchestrator:
     orch._signal_stale_state = {}
     orch.logger = MagicMock()
     orch.parallel_workers = False
-    orch._coordination_stats = SimpleNamespace(ticks_processed=0)
+    orch._coordination_stats = SimpleNamespace(ticks_processed=0, algo_passes=0)
     orch.decision_logic = _StubDecisionLogic()
     orch.tick_logger = SimpleNamespace(log_tick_data=lambda **kw: None)
     return orch

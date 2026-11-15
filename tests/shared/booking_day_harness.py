@@ -12,7 +12,7 @@ import copy
 import dataclasses
 import queue
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from unittest.mock import MagicMock
 
 from python.framework.autotrader import autotrader_tick_loop as tick_loop_module
@@ -170,7 +170,7 @@ def _orchestrator(logic: DeterministicProbe) -> MagicMock:
     """Both loops ask the orchestrator for the decision; it delegates to the probe."""
     orchestrator = MagicMock()
     orchestrator.process_tick.side_effect = (
-        lambda tick, current_bars, bar_history, bar_render_state=None:
+        lambda tick, current_bars, bar_history, bar_render_state=None, tick_weight=1:
         logic.compute_tick(tick, {}))
     # The probe does not take part in heartbeats, so an idle pass computes no decision
     orchestrator.process_heartbeat.return_value = None
@@ -199,6 +199,7 @@ def simulation_result(ticks: List[TickData], spot_mode: bool,
                       decision_events: bool = False,
                       state_frames: Optional[Any] = None,
                       indicator_series: Optional[Any] = None,
+                      inbound_latency_ms: Tuple[int, int] = (1, 1),
                       **config_options: Any) -> ProcessTickLoopResult:
     """
     Run the simulation's tick loop over the ticks.
@@ -211,6 +212,8 @@ def simulation_result(ticks: List[TickData], spot_mode: bool,
         decision_events: Hand the loop a decision event dispatcher (#348) over the probe
         state_frames: The state-frame recorder the loop feeds, or None for none
         indicator_series: The indicator series recorder the loop feeds, or None for none
+        inbound_latency_ms: The seeded order latency's range; by default the least a run accepts,
+            1 ms, so an order fills in an instant of its own 1 ms after the one it was sent in
         config_options: Further scenario settings, by name
 
     Returns:
@@ -222,7 +225,8 @@ def simulation_result(ticks: List[TickData], spot_mode: bool,
             BrokerType.KRAKEN_SPOT, MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL)),
         initial_balance=10000.0, account_currency='USD', logger=logger,
         seeds={'inbound_latency_seed': 42},
-        inbound_latency_min_ms=0, inbound_latency_max_ms=0,
+        inbound_latency_min_ms=inbound_latency_ms[0],
+        inbound_latency_max_ms=inbound_latency_ms[1],
         spot_mode=spot_mode, initial_balances=_balances(spot_mode))
     logic = _probe(simulator, logger, stop_loss, stop_beyond_venue=True)
     result = execute_tick_loop(

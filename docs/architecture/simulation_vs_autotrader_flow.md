@@ -9,45 +9,53 @@ For how the console dashboards get their live data (the throttled telemetry feed
 
 ## Backtesting Tick Flow
 
-The backtesting flow processes a finite list of historical ticks synchronously. All components run in sequence per tick.
+The backtesting flow processes a finite list of historical ticks synchronously. The clock jumps
+from one event to the next (#460): the ticks, grouped by the millisecond they arrived in; the
+simulator's next due time — a fill, a scheduled modify or cancel; and a heartbeat logic's timers.
 
 **Entry point:** `python/framework/process/process_tick_loop.py` → `execute_tick_loop()`. The
-drive walks the ticks and the gaps between them; each pass — steps 1 to 5 below, with the clock,
-the day boundary and the equity sample — runs in the loop core
-(`dispatch_backtest_slice`, `dispatch_backtest_heartbeat`, [The Loop Core](loop_core_architecture.md)).
+timeline intake (`SimEventIntake`) merges the three sources and hands over one instant at a time;
+each instant runs in the loop core (`dispatch_backtest_instant`,
+[The Loop Core](loop_core_architecture.md)), in the phases of the event model.
 
 ```
 execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_controller, decision_logic, scenario_logger, ticks)
     │
-    for tick in ticks:                              # finite, pre-loaded from data provider
+    for instant in SimEventIntake(ticks, trade_simulator, ...):
+        │                                         # a slice (ticks that arrived in one ms), a due time,
+        │                                         #   a timer — or several of them at one stamp
+        ├── 1. clock → the instant's stamp, once; the trading-day boundary is checked on it
         │
-        │   ═══ BROKER PATH (all ticks) ═══
+        │   ═══ MARKET DATA (every tick of the slice, clipped or not) ═══
         │
-        ├── 1. trade_simulator.on_tick(tick)         # TradeSimulator, over AbstractTradeExecutor
-        │       ├── Update prices (bid/ask)
-        │       ├── _process_pending_orders()         # LatencySimulator: drain tick-based queue
-        │       └── _check_sl_tp_triggers(tick)       # The simulation's own: local check of a position's levels
+        ├── 2. trade_simulator.resolve_scheduled(stamp)   # modifies and cancels due by now — a due
+        │                                                 #   cancel keeps its order from filling here
+        ├── 3. for tick in slice:
+        │       ├── trade_simulator.apply_tick(tick)      # prices; resting limits and stops; SL/TP
+        │       ├── render_bars_for_tick(tick, ...)       # SHARED CORE (#303) — bars see every tick
+        │       └── equity sample, booking observation
         │
-        ├── 2. render_bars_for_tick(tick, ...)        # SHARED CORE (#303) — all ticks, BEFORE the gate
-        │       └── Aggregate tick into OHLC bars     # (#293: bars reflect the full stream)
+        │   ═══ BROKER RESOLUTIONS ═══
         │
-        ├── if tick.is_clipped: continue             # Clipping gate (budget active only)
+        ├── 4. trade_simulator.resolve_due(stamp)         # the latency queue, at the last tick's prices
+        ├── 5. drain()                                    # fills and cancels reach the hooks first
         │
-        │   ═══ ALGO PATH (non-clipped ticks only) ═══
+        ├── if every tick of the slice is clipped: next instant
         │
-        ├── 3+4. execute_algo_path(tick, ...)        # SHARED CORE (#303)
+        │   ═══ ALGO PASS (once per slice, on its last tick) ═══
+        │
+        ├── 6. execute_algo_path(last tick, ...)          # SHARED CORE (#303)
         │       ├── bar_history retrieval
         │       ├── Workers compute indicators
         │       └── decision_logic.compute_tick(tick, worker_results) → Decision
-        │           └── Pure analysis: BUY / SELL / HOLD + metadata (no side effects)
+        │   or, at a timer: process_heartbeat() → compute_heartbeat (a ghost pass)
         │
-        ├── 5. decision_logic.execute_decision(decision, tick)
-        │       └── _execute_decision_impl(decision, tick)          # abstract, per strategy
-        │           └── trading_api.send_order(symbol, order_type, direction, ...)
-        │               └── executor.open_order(request)
-        │                   └── LatencySimulator.submit() → PendingOrder
+        ├── 7. decision_logic.execute_decision(decision, tick)
+        │       └── trading_api.send_order(...) → executor.open_order(request)
+        │           └── LatencySimulator.submit() → PendingOrder, due at the instant + its latency
+        ├── 8. drain()
         │
-        └── 6. process_live_export(...)              # Dashboard updates (time-based)
+        └── 9. state frame, indicator series, process_live_export(...)
 
     # Session end (#348, #642) — only when the logic subscribes to decision events
     decision_event_dispatcher.emit_session_end()         # on_session_end; the executor
@@ -68,23 +76,31 @@ execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_con
 - Ticks are pre-loaded (finite list from historical data)
 - Synchronous: each step completes before the next starts
 - SL/TP triggers checked locally (`_check_sl_tp_triggers`), in this pipeline only: a session holds no level (#625)
-- Pending orders resolved by ms-timestamp comparison (deterministic, seeded delay)
+- An order fills when it comes due, not at the next tick: its due time is an instant of the
+  timeline, between two ticks if need be, at the prices of the last tick before (deterministic,
+  seeded delay)
+- **Ordered by arrival (#460):** a tick's recorded arrival (`collected_msc`), or its venue stamp
+  where its file recorded none it can trust — data preparation clears an arrival that was
+  reconstructed, offset or never recorded. The algo sees a tick no earlier than a live session
+  would have; bars still form by the venue's time
+- **One algo pass per slice:** ticks that arrived in one millisecond reach the broker path and the
+  bars one by one, so a stop inside a sweep fires on its tick, and the algo computes once, on the
+  most recent state. `ticks_processed` still counts ticks; `algo_passes` counts the computations
 - `compute_tick()` and `execute_decision()` are **two separate phases** — compute produces a Decision object, execute_decision acts on it
 - **Tick processing budget:** When active, ticks are flagged as `is_clipped` during data
-  preparation. The broker path (step 1) sees every tick — pending order fills, SL/TP triggers, and
-  limit/stop monitoring operate on the full market data stream. The algo path (steps 2-6) skips
-  clipped ticks via `continue`. When budget is disabled (default), `is_clipped` is always `False`
-  and all ticks pass through both paths.
+  preparation. The broker path (steps 2 to 4) sees every tick — pending order fills, SL/TP
+  triggers, and limit/stop monitoring operate on the full market data stream. The algo computes on
+  a slice when any of its ticks is unclipped, and skips a slice whose every tick is clipped. When
+  budget is disabled (default), `is_clipped` is always `False`.
 - **Ghost-pass in simulated time (#360, opt-in):** for a decision that opts in via
-  `wants_heartbeat()`, the loop drives ghost-passes in the simulated gap between two data ticks
-  (`_run_sim_heartbeats`): every `heartbeat_interval_ms` it injects the simulated clock, resolves
-  latency-queue fills at that moment (`TradeSimulator.heartbeat()` → `process_up_to_msc`), and runs
-  `process_heartbeat()` → `execute_decision(tick=None)`. This gives the **same relative reaction
-  point** as the AutoTrader ghost-pass (sim/live parity). It is **hard-gated**: a non-opt-in
-  decision (all current algos) sees no heartbeat path at all. A **correctness gate** suppresses
-  ghost-passes across a gap longer than `inter_tick_gap_threshold_s` (#208) — across a data/weekend
-  gap the market says nothing. The clock is injected (sim = simulated time, deterministic) and never
-  freezes to the last tick.
+  `wants_heartbeat()`, the intake makes a timer every `heartbeat_interval_ms` in the quiet stretch
+  between two slices. At a timer the clock moves to it, what came due resolves, and
+  `process_heartbeat()` → `execute_decision(tick=None)` runs. This gives the **same relative
+  reaction point** as the AutoTrader ghost-pass (sim/live parity). It is **hard-gated**: a
+  non-opt-in decision gets no timer at all. A **correctness gate** makes no timer across a gap
+  longer than `inter_tick_gap_threshold_s` (#208) — across a data/weekend gap the market says
+  nothing. The clock is the timeline's (simulated time, deterministic) and never freezes to the
+  last tick.
 
 ---
 
@@ -173,12 +189,12 @@ which owns its order; see [The Loop Core](loop_core_architecture.md):
 | Function | Steps | Called for |
 |---|---|---|
 | `render_bars_for_tick` | 2 — bar aggregation | every tick, BEFORE any gate |
-| `execute_algo_path` | 3–4 — bar history + worker/decision compute | non-clipped ticks |
+| `execute_algo_path` | bar history + worker/decision compute | a backtest slice with an unclipped tick (once, on its last tick); a non-clipped live tick |
 | `run_ghost_pass` | heartbeat decision compute (#360) | idle heartbeats (opt-in algos) |
 
 Outside the shared blocks, each runner's own steps sit in its own dispatcher entries, in its own
-order. The backtest's `dispatch_backtest_slice` and `dispatch_backtest_heartbeat` hold the
-clipping gate, the per-step profiling and the error wrap around step 5 `execute_decision`. The
+order. The backtest's `dispatch_backtest_instant` holds the instant's phases, the clipping gate,
+the per-step profiling and the error wrap around `execute_decision`. The
 AutoTrader's `dispatch_live_slice` and `dispatch_live_timer` hold the safety override and have no
 clipping gate and no profiling; `dispatch_live_order_wait` is one pass of a stop's wait. Both keep
 the #348 event-drain boundary and the clock injection (simulated vs wall-clock, #360) in their
@@ -190,20 +206,20 @@ state frame follow a pass in the AutoTrader's tick loop.
 | Aspect | Backtesting | Live-adapter session |
 |--------|-------------|------|
 | **Tick source** | Pre-loaded list (finite) | WebSocket / REST (real-time, infinite) |
-| **Loop type** | `for tick in ticks` | `while running` / event-driven |
+| **Loop type** | `for instant in SimEventIntake(...)` — next event: slice, due time, timer | `while running` / event-driven |
 | **Runner** | `execute_tick_loop()` | `AutotraderTickLoop.run()` |
 | **Pending orders** | OrderLatencySimulator (ms-timestamp, seeded delay) | LiveRequestProcessor → broker polling |
 | **SL/TP check** | `_check_sl_tp_triggers()` local price check of the levels a position carries | None: a session holds no level (#625). A logic's own exit (`OwnExitLevels`) closes through `close_position()`, so it lands at the broker's next price instead of at the level |
-| **Fill detection** | Tick timestamp `collected_msc` >= `broker_fill_msc` | Broker response via polling (#320); WebSocket push primary in V1.4 (#331) |
-| **Fill price** | Current tick bid/ask at fill time | Broker's actual execution price |
+| **Fill detection** | An instant at `broker_fill_msc`, on the arrival axis (#460) | Broker response via polling (#320); WebSocket push primary in V1.4 (#331) |
+| **Fill price** | Bid/ask of the last tick at or before the due time | Broker's actual execution price |
 | **Latency model** | Seeded random (deterministic, reproducible) | Real network latency |
 | **Error source** | Stress test injection (configurable) | Real broker errors / timeouts |
 | **Strategy layer** | Identical | Identical |
 | **Portfolio logic** | Identical (`_fill_open_order`, `_fill_close_order`) | Identical |
 
-**What stays the same:** Steps 2-5 (bar rendering, workers, decision compute, decision execute) are completely unchanged. The strategy never knows which mode it runs in.
+**What stays the same:** bar rendering, workers, decision compute and decision execute are the same blocks in both modes. The strategy never knows which mode it runs in.
 
-**What differs:** Step 1 (how pending orders are processed) and the tick source. Everything else is shared infrastructure.
+**What differs:** how pending orders are resolved, the tick source, and — until the live driver takes the phase order too (#461) — the order inside a pass: the backtest computes once per slice and delivers the decision events before the algo as well as after it. Everything else is shared infrastructure.
 
 ---
 

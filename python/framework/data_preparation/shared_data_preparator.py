@@ -594,30 +594,24 @@ class SharedDataPreparator:
         if ticks_total == 0:
             return scenario_ticks, ClippingStats(budget_ms=budget_ms)
 
-        # The budget is timed on arrival, so data without an arrival time cannot be filtered
-        first_tick = ticks_tuple[0]
-        if first_tick.get('collected_msc', 0) == 0:
-            self._logger.warning(
-                f'⚠️  Budget filtering skipped for {symbol}: the data records no arrival '
-                f'time (deficiency no_arrival_time)'
-            )
-            return scenario_ticks, ClippingStats(
-                ticks_total=ticks_total,
-                ticks_kept=ticks_total,
-                budget_ms=budget_ms
-            )
-
-        # Virtual clock flagging — all ticks kept, clipped ones flagged
+        # Virtual clock flagging — all ticks kept, clipped ones flagged. The budget is timed on
+        # arrival; a tick whose file recorded no usable arrival time — none at all, or one data
+        # preparation cleared as reconstructed or offset (#460) — is timed on its event time, the
+        # axis the backtest orders it by
         virtual_clock = 0.0
         flagged_ticks = []
         ticks_kept = 0
+        timed_on_event = 0
 
         for tick in ticks_tuple:
             tick_copy = dict(tick)
-            collected_msc = tick_copy['collected_msc']
-            if collected_msc >= virtual_clock:
+            arrival_msc = tick_copy.get('collected_msc', 0)
+            if not arrival_msc:
+                arrival_msc = tick_copy['time_msc']
+                timed_on_event += 1
+            if arrival_msc >= virtual_clock:
                 tick_copy['is_clipped'] = False
-                virtual_clock = collected_msc + budget_ms
+                virtual_clock = arrival_msc + budget_ms
                 ticks_kept += 1
             else:
                 tick_copy['is_clipped'] = True
@@ -626,6 +620,11 @@ class SharedDataPreparator:
         ticks_clipped = ticks_total - ticks_kept
         clipping_rate = (ticks_clipped / ticks_total *
                          100) if ticks_total > 0 else 0.0
+        if timed_on_event:
+            self._logger.info(
+                f'⏱️  Budget for {symbol}: {timed_on_event:,} of {ticks_total:,} ticks timed on '
+                f'their event time — their files record no usable arrival time'
+            )
 
         # Return all ticks with is_clipped flags — counts reflect full dataset
         flagged_result = {
@@ -851,11 +850,18 @@ class SharedDataPreparator:
             # quote marks its rows, one byte each, so the sort below carries the mark along
             # (#602) — exact where a time range would have to guess at a shared second.
             no_quote_paths = self._no_quote_paths(broker_type, symbol)
+            # A backtest orders ticks by when they arrived (#460) — only where the file recorded
+            # that. A reconstructed arrival time, or one a drifting clock set off, is read as
+            # none, so the tick falls back to its event time everywhere: the order, the due times
+            # and the processing budget.
+            untrusted_arrival_paths = self._untrusted_arrival_paths(broker_type, symbol)
             dfs = []
             for file_path in relevant_files:
                 df = read_tick_parquet(file_path)
                 if 'timestamp' in df.columns:
                     df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+                if 'collected_msc' in df.columns and str(Path(file_path)) in untrusted_arrival_paths:
+                    df['collected_msc'] = 0
                 if no_quote_paths:
                     df[_WITHOUT_QUOTE] = str(Path(file_path)) in no_quote_paths
                 dfs.append(df)
@@ -974,6 +980,23 @@ class SharedDataPreparator:
         return {str(Path(entry['path']))
                 for entry in self.tick_index_manager.get_symbol_entries(broker_type, symbol)
                 if DataDeficiency.NO_QUOTE in entry.get('deficiencies', [])}
+
+    def _untrusted_arrival_paths(self, broker_type: str, symbol: str) -> Set[str]:
+        """
+        The paths of the symbol's tick files whose arrival time does not say when a tick arrived.
+
+        Args:
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+
+        Returns:
+            Their paths as strings — every file with a deficiency that leaves its arrival
+            untrusted (`DataDeficiency.leaves_arrival_untrusted`)
+        """
+        return {str(Path(entry['path']))
+                for entry in self.tick_index_manager.get_symbol_entries(broker_type, symbol)
+                if any(deficiency.leaves_arrival_untrusted()
+                       for deficiency in entry.get('deficiencies', []))}
 
     def _model_quote(
         self,

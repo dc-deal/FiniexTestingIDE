@@ -120,6 +120,8 @@ so two consumers grouping the same rows cannot arrive at two answers.
 | Field | Meaning |
 |---|---|
 | `ticks_processed` | how many ticks reached the strategy |
+| `algo_passes` | how often the strategy computed — a backtest computes once for the ticks that arrived in one millisecond, so this can be below `ticks_processed`; null in a scenario recorded before contract 57, which did not count it |
+| `ghost_passes` | how often a heartbeat strategy's decision ran between two ticks; null before contract 57 |
 | `first_tick_time` · `last_tick_time` | ISO-8601 UTC; empty where there was no tick |
 | `tick_timespan_seconds` | the market time those ticks span |
 | `execution_time_ms` | wall time the scenario took, preparation to result, on a monotonic clock |
@@ -142,7 +144,9 @@ backtest, because counting sits on the hot path. A `0` is a count; null is the a
 
 `non_flat_signals` is the decisions that asked to buy or sell — the buy and the sell signals
 together — and `non_flat_signal_pct` and `trades_requested_pct` give it and `trades_requested` per
-tick processed, in percent; `0.0` over no tick, null where the decisions were not counted. On the
+pass, in percent: per algo pass and heartbeat pass together, because the strategy decides at most
+once in each; `0.0` over no pass, null where the decisions were not counted. A scenario recorded
+before contract 57 divides by its ticks, each of which was one pass. On the
 report, `scenario_count`, `failed_scenario_count` (a status other than `success`) and
 `completed_scenario_count` count the rows — every scenario that ran, a failed one included, unlike
 the run summary's `unit_count`, which counts the units that produced figures.

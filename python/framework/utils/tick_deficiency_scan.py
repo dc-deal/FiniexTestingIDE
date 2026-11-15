@@ -28,6 +28,12 @@ _SECOND_END_SHARE = 0.99
 # The Kraken reconstruction copied the event time for ticker ticks (~53 % of rows, median lag
 # 0 ms); recorded data shows a receive lag of about 15 ms.
 _COPIED_EVENT_TIME_SHARE = 0.25
+# A delivery takes milliseconds: recorded Kraken data shows a median lag of 13–27 ms, recorded MT5
+# data from September 2026 on 14 ms. MT5 files from March to August 2026 show medians of 2.9 to
+# 9.9 s per month, single files up to 30 s and some below zero — a device clock that drifted
+# between the collector's restarts, which the import tolerates, not a delivery (measured
+# 2026-11-13 over every recorded file).
+_DELIVERY_LAG_MS = (0.0, 1_000.0)
 
 
 def measure_tick_deficiencies(df: pd.DataFrame) -> TickDeficiencyMeasurement:
@@ -47,6 +53,8 @@ def measure_tick_deficiencies(df: pd.DataFrame) -> TickDeficiencyMeasurement:
         found.append(DataDeficiency.NO_ARRIVAL_TIME)
     elif _arrival_time_reconstructed(df):
         found.append(DataDeficiency.ARRIVAL_TIME_RECONSTRUCTED)
+    elif _arrival_time_offset(df):
+        found.append(DataDeficiency.ARRIVAL_TIME_OFFSET)
 
     gaps = measure_trade_id_gaps(df)
     if gaps is not None and gaps.is_a_hole():
@@ -154,6 +162,26 @@ def _arrival_time_reconstructed(df: pd.DataFrame) -> bool:
         if (lag == 0).mean() >= _COPIED_EVENT_TIME_SHARE and float(lag.median()) == 0.0:
             return True
     return False
+
+
+def _arrival_time_offset(df: pd.DataFrame) -> bool:
+    """
+    Whether the recorded arrival times sit too far from the event times to be a delivery.
+
+    A backtest orders a file by its arrival times (#460), so they must say when a tick reached
+    us; a median outside the delivery range says a clock was off instead.
+
+    Args:
+        df: The file's ticks, arrival time present and not reconstructed
+
+    Returns:
+        True when the median lag lies outside the delivery range
+    """
+    if 'time_msc' not in df.columns or len(df) < _MIN_ROWS_FOR_LAG:
+        return False
+    lag = df['collected_msc'].fillna(0).astype('int64') - df['time_msc'].astype('int64')
+    median = float(lag.median())
+    return not _DELIVERY_LAG_MS[0] <= median <= _DELIVERY_LAG_MS[1]
 
 
 def _event_msc(df: pd.DataFrame) -> np.ndarray:

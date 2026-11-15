@@ -58,7 +58,7 @@ the field to branch on. The same is true of the per-scenario signal counters —
 `sell_signals`, `flat_signals`, `trades_requested` — which are null for the same reason.
 
 Two worker figures are null for a narrower reason worth knowing, because both have a plausible
-wrong reading: `compute_ratio_pct` is null when no tick was processed at all, and `ticks_idle`
+wrong reading: `compute_ratio_pct` is null when the algorithm never computed, and `ticks_idle`
 is null when the worker never computed. The second one previously read `0`, which says "it
 computed on every tick" — the exact opposite of what happened.
 

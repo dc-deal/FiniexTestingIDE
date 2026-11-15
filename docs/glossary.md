@@ -97,6 +97,12 @@ is read. The decision trading API hands out masks, never the engine's own object
 engine gains reaches no algo until a mask declares it (#653). Not a pandas boolean mask. See
 [Algo Masks](user_guides/algo_masks.md).
 
+**algo pass** (`algo_passes` in the scenario details and the worker-decision report) — One
+computation of the algo on a tick: in a backtest once per *data slice* with an unclipped tick, on
+its last tick (#460). Not a tick: a sweep through the book is one algo pass over several ticks, and
+`ticks_processed` still counts the ticks. A figure per pass divides by algo passes. See *ghost pass*
+and [The Loop Core](architecture/loop_core_architecture.md#the-backtests-timeline-460).
+
 **alive stamp** (`FiniexTickCollector.<symbol>`) — The value an MT5 `TickCollector` writes every
 second into a global variable of its terminal: the computer's UTC time. The terminal's keepalive
 reads it before each ping and pings only while every collected symbol's stamp is fresh, so a
@@ -301,10 +307,12 @@ the operating system's home directory (`~`), where the list of what runs on the 
 `development`, `unknown`, `external`) with its evidence grade, stamped at import and carried into
 every run's consumption record. Not the *broker*. See [Data Provenance](architecture/data_provenance.md).
 
-**data slice** (`DataSliceEvent`) — Every tick of one instant, as one event of the loop core: the
-ticks that share the stamp the run orders by. A sweep through the book prints several trades with one
-stamp, and as one slice the broker path still sees each of them while the algo computes once. See
-[Loop Event Tests](tests/framework/loop_events_tests.md).
+**data slice** (`DataSliceEvent`) — Every tick of one *instant*, as one event of the loop core: the
+ticks that share the stamp the run orders by — in a backtest, the ticks that arrived in one
+millisecond (#460); an AutoTrader session still hands over one tick per slice, and its algo
+computes on each, until its timeline driver (#461). A sweep through the book prints several trades
+with one stamp, and as one slice the broker path still sees each of them while the algo computes
+once. See [Loop Event Tests](tests/framework/loop_events_tests.md).
 
 **data source** — One of the inputs a scenario reads, named by its key: its *data broker* for the
 ticks, its `data_sentiment_type` for the signals. A stale-data stress event names the one it makes
@@ -340,7 +348,8 @@ test's fixtures, and held at boot to the conditions that keep it from being mist
 See [AutoTrader Configuration](autotrader/autotrader_configuration.md).
 
 **deficiency** (`DataDeficiency`; `deficiencies` in the tick index) — What an archived file LACKS:
-`no_quote`, `no_arrival_time`, `arrival_time_reconstructed`, `missing_trades`, `synthetic`. Measured
+`no_quote`, `no_arrival_time`, `arrival_time_reconstructed`, `arrival_time_offset`, `missing_trades`,
+`synthetic`. Measured
 from the data, never inferred from a format version, and counted once per run. Not a gap in time,
 and not a property of the venue. See [Data Provenance](architecture/data_provenance.md).
 
@@ -491,6 +500,11 @@ rewritten, so an old run keeps saying what it used. Not the fee seed's `_fee_str
 which records when a declared fee rate was set, and not a *golden sample*'s freeze, which copies a
 fixture production into the code tree. See [Introduction](introduction_to_the_ide.md).
 
+**ghost pass** (`ghost_passes`) — A heartbeat logic's decision between two ticks, on the loop's
+heartbeat: it runs with no tick and the workers' last results. Only a logic that opts in
+(`wants_heartbeat()`) gets one, and a backtest makes none across a gap longer than the gap
+threshold. Not an *algo pass*. See [Simulation vs AutoTrader Flow](architecture/simulation_vs_autotrader_flow.md).
+
 **golden sample** — A fixture-catalog entry's production frozen into `tests/fixtures/golden_samples/`
 by `fixture_catalog_cli.py freeze`: its runs' report sections, ledger and run-index rows and the
 read-time views composed from them, with the code and the time they came from. A suite rebuilds
@@ -534,6 +548,11 @@ output read by a decision. See [Indicator series](consumer/indicator-series.md).
 
 **initiator** (`initiator`) — Who ended an order that did not fill — `strategy`, `framework` or
 `venue` — and, on a cancel request in the order-event stream, who asked for it. See *end reason*.
+
+**instant** (of the loop's timeline) — Everything the loop's timeline holds at one stamp, handed
+over and run together: a *data slice*, a fill or a scheduled change coming due, a timer — or
+several of them. In a backtest the clock jumps from one instant to the next (#460). The plain word
+keeps its ordinary meaning elsewhere. See [The Loop Core](architecture/loop_core_architecture.md).
 
 **journal · ledger · closing** — The three bookkeeping levels. The *journal* is every booking in
 order (the trade records); the *ledger* holds the period summaries (one row per booking period, in
@@ -1083,17 +1102,19 @@ row and the trade are made in the same step; the row does not carry the trade's 
 **trade window basis** — Whether a trade is placed in a window by its entry or its exit.
 
 **ts_event** (on a loop event) — The source stamp of an event, in UTC epoch milliseconds: a tick's
-venue stamp, a timer's due instant. A backtest orders the loop's timeline by it. Not the order
-history's *event time*, which is a row's instant on the *canonical clock*. See *ts_init*.
+venue stamp, a timer's due instant. No pipeline orders the loop's timeline by it since #460; a
+backtest falls back to it only for a tick whose file recorded no arrival it can trust. Not the
+order history's *event time*, which is a row's instant on the *canonical clock*. See *ts_init*.
 
 **ts_init** (on an order event) — When this process saw the step, on the *wall clock*. Live only;
 empty in a backtest, which has to come out the same every time it runs. Kept beside the step's own
 time on the *canonical clock*, never in its place.
 
 **ts_init** (on a loop event) — The receipt stamp of an event, in UTC epoch milliseconds: when this
-process received or made it — a tick's collection stamp, or its *ts_event* where none was recorded.
-Set in a backtest too, from the recorded data, unlike the order event's, and an archived tick's is
-the recording collector's. A live session orders the loop's timeline by it. See *ts_event*.
+process received or made it — a tick's collection stamp, or its *ts_event* where none was recorded
+or data preparation cleared one it cannot trust. Set in a backtest too, from the recorded data,
+unlike the order event's, and an archived tick's is the recording collector's. Both pipelines order
+the loop's timeline by it — a backtest by the receipt it recorded (#460). See *ts_event*.
 
 **unaccounted** (an order status and an order event) — We stopped asking about an order and do not
 know how it ended: its answer was lost and the venue was asked until the resolution ran out, or the

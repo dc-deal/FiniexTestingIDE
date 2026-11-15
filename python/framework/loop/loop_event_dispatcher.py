@@ -6,13 +6,11 @@ handed an event. The order IS the behaviour both pipelines are held to — a div
 what produced the #293 bug class — so it is written as code, one entry per kind of pass, and never
 as a table.
 
-Each runner keeps its drive — the backtest walks its tick array, the AutoTrader takes ticks off its
-queue and runs a pass of its own when none came — and hands each pass to an entry here. The two
-runners order their passes differently today — where the equity is sampled, how often the decision
-events drain around a ghost pass — and the entries keep each runner's order exactly, so every
-result stays as it was. The phase order of an instant (`InstantPhase`, #457) takes over with the
-timeline drivers (#460, #461), which feed whole instants and are measured against the parity
-record.
+Each runner keeps its drive and hands each pass to an entry here. The backtest's drive is its
+timeline intake (#460), which hands over one instant at a time, and its entry runs the instant in
+the phases of `InstantPhase` (#457). The AutoTrader takes ticks off its queue and runs a pass of its
+own when none came; its entries keep the session's order of today exactly, until its timeline
+driver (#461) gives it the phases too.
 
 A pass ends with its last engine step. What a runner does after it — a state frame, the live
 export, the session-end check, its timing — stays in the runner, in its order.
@@ -20,197 +18,189 @@ export, the session-end check, its timing — stays in the runner, in its order.
 
 import time
 import traceback
-from datetime import datetime, timezone
-from typing import Callable, List, Optional, Tuple
+from datetime import datetime
+from typing import Optional, Tuple
 
-from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.loop.abstract_backtest_pass_hooks import AbstractBacktestPassHooks
 from python.framework.loop.abstract_live_pass_hooks import AbstractLivePassHooks
 from python.framework.loop.blocks.algo_compute_block import execute_algo_path
 from python.framework.loop.blocks.algo_heartbeat_block import run_ghost_pass
 from python.framework.loop.blocks.bar_render_block import render_bars_for_tick
 from python.framework.loop.loop_context import LoopContext
-from python.framework.reporting.booking_period_recorder import BookingPeriodRecorder
-from python.framework.reporting.builders.booking_period_builder import PeriodSnapshot
-from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
-from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
+from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
 from python.framework.types.decision_logic_types import DecisionLogicAction
-from python.framework.types.loop_types.loop_event_types import DataSliceEvent
+from python.framework.types.loop_types.backtest_pass_kind_types import BacktestPassKind
+from python.framework.types.loop_types.loop_event_types import (
+    DataSliceEvent,
+    LoopEvent,
+    TimeEvent,
+)
 from python.framework.types.loop_types.loop_pass_record_types import LoopPassRecord
-from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
-from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
-def dispatch_backtest_slice(
-    event: DataSliceEvent,
+def dispatch_backtest_instant(
+    events: Tuple[LoopEvent, ...],
+    simulator: TradeSimulator,
     ctx: LoopContext,
     hooks: AbstractBacktestPassHooks,
     record: LoopPassRecord,
-) -> bool:
+) -> BacktestPassKind:
     """
-    A backtest's tick pass, in the order the backtest has always run it.
+    One instant of a backtest, in the phases of `InstantPhase` (#457, #460).
 
-    The slice holds one tick: the backtest's drive hands each tick over on its own (`slice_of_tick`),
-    so its algo computes once per tick as before. Each step is timed under its own profiling key,
-    and the keys are the ones the reports and the benchmark read.
+    The instant is what the timeline intake handed over: a slice of the ticks that arrived in one
+    millisecond, a due time, a heartbeat logic's timer — or several of them at one stamp. The
+    clock moves to the stamp once. The world moves first: every tick of the slice reaches the
+    broker path, the bars and the equity sample, in order, so a stop inside a sweep triggers.
+    Then what came due resolves once, at the instant's prices; the decision events are delivered;
+    the algo computes once, on the slice's last tick, when any of its ticks is unclipped (the
+    most recent state, as a live algo meets it after a long computation) — or, at a timer, the
+    heartbeat logic's decision runs; what it sent is executed and its events delivered.
 
     Args:
-        event: The tick, as a slice of one
+        events: The instant's events, all with one stamp on the arrival axis
+        simulator: The scenario's executor — the same object as `ctx.executor`, typed as the
+            simulation's, whose instant-level resolution this entry drives
         ctx: The scenario's collaborators
-        hooks: The backtest's own steps inside the pass
-        record: What the pass leaves for the drive
+        hooks: The backtest's own steps inside the instant
+        record: What the instant leaves for the drive
 
     Returns:
-        True when the pass ran to its end; False when the clipping gate stopped it after the
-        broker path and the bars, and the drive goes on to the next tick
+        What the instant did with the algo
     """
-    # Exactly one tick, or this raises: a slice of several would need every tick on the broker
-    # path and the bars, which this pass does not do (#460 feeds whole instants)
-    (tick,) = event.ticks
-    executor = ctx.executor
+    stamp = events[0].ts_init
+    data: Optional[DataSliceEvent] = None
+    timer = False
+    for event in events:
+        if isinstance(event, DataSliceEvent):
+            data = event
+        elif isinstance(event, TimeEvent):
+            timer = True
     profiling_enabled = ctx.profiling_enabled
     profile_times = ctx.profile_times
     profile_counts = ctx.profile_counts
 
-    # #476: the trading day ends BEFORE the tick that crosses its boundary is applied —
-    # the seal reads the account as the previous tick left it, stamps the boundary, and
-    # this tick's fills, trades and valuation open the new day. The canonical clock moves
-    # to the tick's instant first (on_tick keeps it there) and the boundary is checked on
-    # it — the clock of the event about to be applied. Exact without heartbeats too: a
-    # quiet stretch across the boundary is sealed at the boundary, as a live session's
-    # heartbeat seals it. Measured 2026-10-25: 95 ns per tick for the extra set.
-    executor.set_current_time(tick.timestamp)
-    ctx.booking.check_boundary(executor.get_current_time(), ctx.seal_source)
+    # The clock moves to the instant once, and the trading day is checked on it BEFORE anything
+    # of the instant applies (#476): the seal reads the account as the previous instant left it,
+    # and this instant's fills, trades and valuation open the new day.
+    simulator.begin_instant(stamp)
+    ctx.booking.check_boundary(simulator.get_current_time(), ctx.seal_source)
 
-    # === 1. Trade Executor (BROKER PATH — all ticks) ===
-    # Broker sees every tick regardless of algo processing budget.
-    # Pending order fills, SL/TP triggers, limit/stop monitoring
-    # all operate on the full tick stream.
+    # === MARKET_DATA ===
+    # A modify or cancel due by now applies before the first trigger check, so a cancelled order
+    # does not fill in this instant (#318). Then every tick of the slice, in arrival order: the
+    # broker path sees each — resting orders and the levels positions carry are checked per tick,
+    # clipped or not — the bars aggregate each, and the equity is sampled after each (#497).
     if profiling_enabled: started = time.perf_counter()
-    executor.on_tick(tick)
-    record.ticks_applied += 1
+    simulator.resolve_scheduled(stamp)
     if profiling_enabled:
         profile_times['trade_simulator'] += (time.perf_counter() - started) * 1000
-        profile_counts['trade_simulator'] += 1
+    if data is not None:
+        for tick in data.ticks:
+            if profiling_enabled: started = time.perf_counter()
+            simulator.apply_tick(tick)
+            record.ticks_applied += 1
+            if profiling_enabled:
+                profile_times['trade_simulator'] += (time.perf_counter() - started) * 1000
+                profile_counts['trade_simulator'] += 1
+                started = time.perf_counter()
+            record.current_bars = render_bars_for_tick(tick, ctx.bar_controller)
+            if profiling_enabled:
+                profile_times['bar_rendering'] += (time.perf_counter() - started) * 1000
+                profile_counts['bar_rendering'] += 1
+            hooks.observe_market()
+        # #579 part B item 3: which bars the slice closed — read before the algo path consumes
+        # them, and only when the scenario records frames or series
+        record.closed_timeframes = (ctx.bar_controller.get_pending_closed_timeframes()
+                                    if ctx.reads_closed_bars else frozenset())
 
-    # === 2. Bar Rendering (all ticks — shared block, #303) ===
-    # Bars must reflect the complete market data stream — including
-    # clipped ticks. Clipping simulates "algo was too slow to react",
-    # NOT "market data was incomplete". Same ordering as AutoTrader.
+    # === SIGNALS === none on a backtest's timeline yet (#463)
+
+    # === BROKER_RESOLUTIONS === what the latency queue has due by now, at the instant's prices
     if profiling_enabled: started = time.perf_counter()
-    record.current_bars = render_bars_for_tick(tick, ctx.bar_controller)
+    simulator.resolve_due(stamp)
     if profiling_enabled:
-        profile_times['bar_rendering'] += (time.perf_counter() - started) * 1000
-        profile_counts['bar_rendering'] += 1
-    # #579 part B item 3: which bars this tick closed — read before the algo path
-    # consumes them, and only when the scenario records frames
-    record.closed_timeframes = (ctx.bar_controller.get_pending_closed_timeframes()
-                                if ctx.reads_closed_bars else frozenset())
+        profile_times['trade_simulator'] += (time.perf_counter() - started) * 1000
 
-    # === 2b. Equity sample (#497) — before the clipping gate ===
-    hooks.observe_market()
+    # === EVENT_DELIVERY === the fills and cancels of this instant reach the hooks before the
+    # decision does; a hook that asks for the session end ends it here, before the algo
+    _drain(ctx)
+    if simulator.is_session_end_requested():
+        return BacktestPassKind.NO_PASS
 
-    # === CLIPPING GATE ===
-    # Ticks flagged by tick processing budget skip the algo path.
-    # The broker and bar rendering already processed them above.
-    if tick.is_clipped:
-        return False
-
-    # === ALGO PATH (non-clipped ticks only) ===
-    # #436 + #451: the planned stale windows and the market-data status, BEFORE the decision
-    # computes — status + edge hook are visible this pass.
-    hooks.prepare_algo(tick)
-
-    # === 3+4. Bar History + Worker Processing + Decision (shared block, #303) ===
-    # 'worker_decision' also covers the (tiny) bar-history retrieval — the former
-    # 'bar_history' timer had no report consumer.
-    if profiling_enabled: started = time.perf_counter()
-    decision = execute_algo_path(
-        tick=tick,
-        current_bars=record.current_bars,
-        bar_controller=ctx.bar_controller,
-        worker_orchestrator=ctx.orchestrator,
-        symbol=ctx.symbol,
-    )
-    if profiling_enabled:
-        profile_times['worker_decision'] += (time.perf_counter() - started) * 1000
-        profile_counts['worker_decision'] += 1
-
-    # === 5. Order Execution ===
-    if profiling_enabled: started = time.perf_counter()
-    try:
-        order_result = ctx.decision_logic.execute_decision(decision, tick)
-    except Exception as e:
-        raise RuntimeError(
-            f'Order execution failed: {e} \n{traceback.format_exc()}')
-    if profiling_enabled:
-        profile_times['order_execution'] += (time.perf_counter() - started) * 1000
-        profile_counts['order_execution'] += 1
-
-    # === 5b. Decision Event Drain (#348) ===
-    # Events buffered during on_tick (fills, partial closes, cancels)
-    # are delivered to the algo hooks here, before the next tick.
-    decision_event_dispatcher = ctx.decision_event_dispatcher
-    if decision_event_dispatcher is not None:
+    # === ALGO_PASS → ORDER_EXECUTION → TRAILING_DRAIN ===
+    if data is not None:
+        slice_ticks = data.ticks
+        # A slice of one tick is nearly every instant on data whose ticks rarely share a stamp
+        if len(slice_ticks) == 1:
+            ticks = 0 if slice_ticks[0].is_clipped else 1
+        else:
+            ticks = sum(1 for tick in slice_ticks if not tick.is_clipped)
+        if ticks == 0:
+            return BacktestPassKind.CLIPPED
+        tick = data.ticks[-1]
+        # #436 + #451: the planned stale windows and the market-data status, before the decision
+        # computes — status and edge hook are visible this pass
+        hooks.prepare_algo(tick, ticks)
+        # 'worker_decision' also covers the (tiny) bar-history retrieval
         if profiling_enabled: started = time.perf_counter()
-        decision_event_dispatcher.drain()
+        decision = execute_algo_path(
+            tick=tick,
+            current_bars=record.current_bars,
+            bar_controller=ctx.bar_controller,
+            worker_orchestrator=ctx.orchestrator,
+            symbol=ctx.symbol,
+            tick_weight=ticks,
+        )
         if profiling_enabled:
-            profile_times['decision_events'] += (time.perf_counter() - started) * 1000
-            profile_counts['decision_events'] += 1
+            profile_times['worker_decision'] += (time.perf_counter() - started) * 1000
+            profile_counts['worker_decision'] += 1
+            started = time.perf_counter()
+        try:
+            order_result = ctx.decision_logic.execute_decision(decision, tick)
+        except Exception as e:
+            raise RuntimeError(
+                f'Order execution failed: {e} \n{traceback.format_exc()}')
+        if profiling_enabled:
+            profile_times['order_execution'] += (time.perf_counter() - started) * 1000
+            profile_counts['order_execution'] += 1
+        _drain(ctx)
+        record.decision = decision
+        record.order_result = order_result
+        return BacktestPassKind.TICK_PASS
 
-    record.decision = decision
-    record.order_result = order_result
-    return True
+    if timer:
+        # #360: the heartbeat logic acts between ticks with the workers' cached results — no bar
+        # render and no tick counter
+        decision = run_ghost_pass(ctx.orchestrator)
+        ghost_order = None
+        if decision is not None:
+            ghost_order = ctx.decision_logic.execute_decision(decision, tick=None)
+        _drain(ctx)
+        record.ghost_order = ghost_order
+        return BacktestPassKind.GHOST_PASS
+    return BacktestPassKind.NO_PASS
 
 
-def dispatch_backtest_heartbeat(
-    ghost_msc: int,
-    trade_simulator: AbstractTradeExecutor,
-    worker_coordinator: WorkerOrchestrator,
-    decision_logic: AbstractDecisionLogic,
-    decision_event_dispatcher: Optional[DecisionEventDispatcher],
-    booking: BookingPeriodRecorder,
-    seal_source: Callable[[], Tuple[List[TradeRecord], PeriodSnapshot]],
-) -> Optional[AlgoOrderResult]:
+def _drain(ctx: LoopContext) -> None:
     """
-    A backtest's ghost pass at one instant between two ticks (#360), in its order.
-
-    Its drive is still the gap walk that generates the ghost instants, which hands each one over
-    by its millisecond; the timeline driver (#460) makes them time events. No bar render and no
-    tick counter: tick state stays untouched.
+    Deliver the buffered decision events to the logic's hooks (#348), timed as the backtest's
+    'decision_events' step.
 
     Args:
-        ghost_msc: The ghost instant, in UTC epoch milliseconds
-        trade_simulator: The executor — the clock and the ghost broker resolution
-        worker_coordinator: The orchestrator, serving the workers' cached results to the decision
-        decision_logic: The opt-in decision logic, which executes the ghost action
-        decision_event_dispatcher: The decision event channel (#348), drained around the ghost
-            compute, or None
-        booking: The scenario's booking period recorder — the trading-day boundary is checked at
-            every ghost instant, because these passes are the only thing that advances the
-            canonical clock across a quiet stretch and a fill can resolve at any of them (#537)
-        seal_source: What a seal reads at its instant
-
-    Returns:
-        What the ghost decision sent, or None
+        ctx: The scenario's collaborators; nothing happens without a decision event channel
     """
-    trade_simulator.set_current_time(
-        datetime.fromtimestamp(ghost_msc / 1000.0, tz=timezone.utc))
-    # BEFORE the resolutions of this instant, so the boundary is the cut: what closed
-    # earlier is sealed into the day that is ending, and a fill resolving AT this instant
-    # falls into the day that is opening (the window is end-exclusive).
-    booking.check_boundary(trade_simulator.get_current_time(), seal_source)
-    trade_simulator.heartbeat()
-    if decision_event_dispatcher is not None:
-        decision_event_dispatcher.drain()
-    decision = run_ghost_pass(worker_coordinator)
-    ghost_order = None
-    if decision is not None:
-        ghost_order = decision_logic.execute_decision(decision, tick=None)
-    if decision_event_dispatcher is not None:
-        decision_event_dispatcher.drain()
-    return ghost_order
+    dispatcher = ctx.decision_event_dispatcher
+    if dispatcher is None:
+        return
+    if ctx.profiling_enabled:
+        started = time.perf_counter()
+        dispatcher.drain()
+        ctx.profile_times['decision_events'] += (time.perf_counter() - started) * 1000
+        ctx.profile_counts['decision_events'] += 1
+        return
+    dispatcher.drain()
 
 
 def dispatch_live_slice(

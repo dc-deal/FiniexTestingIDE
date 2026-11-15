@@ -89,6 +89,34 @@ def provider():
     return make_provider(snapshot(utc(2026, 1, 15, 8, 0), 0.1, 0.5, signal='HOLD'))
 
 
+class TestTheTelemetryCountsTicks:
+    """
+    A backtest computes the algo once on the ticks that arrived in one millisecond and hands the
+    pass their count (#460). The #420 cadence telemetry and the resolution counters stay in ticks:
+    a compute is recorded at the ticks processed so far, never at the passes.
+    """
+
+    def test_a_compute_is_recorded_at_the_tick_count_not_the_pass_count(self, mock_logger,
+                                                                         provider):
+        # A slice of three ticks, then one of two. The SIGNAL worker computes on the first pass
+        # only — the second brings no new snapshot — so it stands at tick 3, idle for 2 ticks:
+        # counted in passes it would read 1 and 1
+        orchestrator = _orchestrator(mock_logger, provider)
+        orchestrator.process_tick(make_tick(utc(2026, 1, 15, 8, 11)), current_bars={},
+                                  tick_weight=3)
+        orchestrator.process_tick(make_tick(utc(2026, 1, 15, 8, 12)), current_bars={},
+                                  tick_weight=2)
+
+        coordination = orchestrator.get_coordination_statistics()
+        assert (coordination.ticks_processed, coordination.algo_passes) == (5, 2)
+        worker, = orchestrator.get_worker_statistics()
+        assert worker.worker_call_count == 1
+        assert worker.worker_last_compute_tick == 3
+        assert coordination.ticks_processed - worker.worker_last_compute_tick == 2
+        stats = _stats(orchestrator)
+        assert stats.fresh_ticks + stats.stale_ticks + stats.blind_ticks == 5
+
+
 class TestMergeOnly:
     """The tick path merges and lets the existing worker pass do the rest."""
 

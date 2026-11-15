@@ -9,6 +9,7 @@ logics that opt in via wants_heartbeat(), invoking compute_heartbeat (the HEARTB
 pass-trigger handler) with cached worker results (workers are never recomputed).
 """
 
+from types import SimpleNamespace
 from typing import Dict, Optional
 
 from python.framework.testing.mock_broker_adapter import MockExecutionMode
@@ -63,12 +64,14 @@ class _StubDecisionLogic:
         return Decision(action=DecisionLogicAction.FLAT, outputs={})
 
 
-def _orchestrator_with(decision_logic) -> WorkerOrchestrator:
+def _orchestrator_with(decision_logic,
+                       stats: Optional[SimpleNamespace] = None) -> WorkerOrchestrator:
     """Build a process_heartbeat-ready orchestrator without the heavy constructor."""
     orch = object.__new__(WorkerOrchestrator)
     orch.is_initialized = True
     orch.decision_logic = decision_logic
     orch._worker_results = {'rsi': WorkerResult(outputs={'value': 1.0})}
+    orch._coordination_stats = stats or SimpleNamespace(ghost_passes=0)
     return orch
 
 
@@ -78,15 +81,19 @@ class TestProcessHeartbeat:
     def test_no_opt_in_returns_none_and_skips_compute(self):
         """A logic that does not opt in is never run on the heartbeat."""
         dl = _StubDecisionLogic(wants=False)
-        orch = _orchestrator_with(dl)
+        stats = SimpleNamespace(ghost_passes=0)
+        orch = _orchestrator_with(dl, stats)
         assert orch.process_heartbeat() is None
+        assert stats.ghost_passes == 0, 'a pass that did not run was counted'
         assert dl.heartbeat_calls == []
 
     def test_opt_in_runs_compute_heartbeat_with_cached_results(self):
         """An opt-in logic's compute_heartbeat runs with the cached worker results."""
         dl = _StubDecisionLogic(wants=True)
-        orch = _orchestrator_with(dl)
+        stats = SimpleNamespace(ghost_passes=0)
+        orch = _orchestrator_with(dl, stats)
         decision = orch.process_heartbeat()
         assert decision is not None
         assert len(dl.heartbeat_calls) == 1
+        assert stats.ghost_passes == 1, 'the ghost pass was not counted (#460)'
         assert dl.heartbeat_calls[0] is orch._worker_results  # cached, not recomputed

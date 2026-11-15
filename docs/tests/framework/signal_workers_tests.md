@@ -106,7 +106,9 @@ What the tests pin, and the second half matters as much as the first:
 - an unknown source is ignored;
 - **the three resolution counters stay tick-weighted** — an off-tick refresh increments
   `off_tick_arrivals` only, because the ledger's `signal_fresh_ratio` is defined on the tick base.
-  Changing that base is #463's job;
+  Changing that base is #463's job. `TestTheTelemetryCountsTicks` pins it for a backtest's slices
+  (#460): two passes standing for 3 and 2 ticks count 5 ticks and 2 passes, and a worker that
+  computed on the first only stands at tick 3, idle for 2 ticks — the #420 telemetry is in ticks;
 - an empty drain does nothing at all — which is the simulation's and a mock session's case on
   every single pass, and is what keeps both bit-identical.
 

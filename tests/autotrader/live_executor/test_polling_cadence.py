@@ -22,6 +22,7 @@ from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, Mock
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
+from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
 from python.framework.types.live_types.live_execution_types import (
     BrokerOrderStatus,
     BrokerResponse,
@@ -108,8 +109,6 @@ class TestHeartbeat:
 
     def test_heartbeat_sim_is_noop(self):
         """TradeSimulator inherits the default no-op heartbeat — no errors, no state change."""
-        from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
-
         adapter = MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL)
         broker_config = BrokerConfig(BrokerType.KRAKEN_SPOT, adapter)
         sim = TradeSimulator(

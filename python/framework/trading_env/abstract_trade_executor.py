@@ -877,28 +877,41 @@ class AbstractTradeExecutor(ABC):
 
     def on_tick(self, tick: TickData) -> None:
         """
-        Unified tick lifecycle — the ONLY method process_tick_loop calls.
+        Unified tick lifecycle: the market moves, then the pending orders are processed.
 
         Handles price updates and mode-specific order processing in one call.
         Subclasses implement _process_pending_orders() for their specific logic.
         """
-        self._current_tick = tick
-        self._tick_counter += 1
         # Real-tick clock: the tick carries its own time. The loop injects the
         # between-tick (ghost/heartbeat) time separately via set_current_time (#360).
         # Forward only, and this is the side the backwards step comes from: live, the
         # heartbeat injects our WALL clock while the tick carries the VENUE's event time,
         # which is earlier by the feed latency (see set_current_time for what that cost the
-        # booking periods). In the simulation the stamps are monotonic anyway, so the clamp
-        # is invisible there.
+        # booking periods).
         self._clock_time = self._forward_only(tick.timestamp)
+        self._apply_market_tick(tick)
+        self._process_pending_orders()
+
+    def _apply_market_tick(self, tick: TickData) -> None:
+        """
+        What a tick moves before any order is looked at: the current tick, the prices, the
+        portfolio's valuation mark and the broker adapter.
+
+        The clock is the caller's: `on_tick` moves it to the tick's own time, while on the
+        backtest's timeline the instant has set it already (#460) — a tick the venue stamped
+        after its recorded arrival must not carry the clock past the instant.
+
+        Args:
+            tick: The tick that is arriving
+        """
+        self._current_tick = tick
+        self._tick_counter += 1
         self._current_prices[tick.symbol] = (tick.bid, tick.ask)
         self.portfolio.mark_dirty(tick)
         # Forward tick to broker adapter — mock/simulation adapters need
         # the current market to fill orders at realistic prices. Real
         # adapters default to a no-op.
         self.broker.adapter.on_tick(tick)
-        self._process_pending_orders()
 
     @abstractmethod
     def _process_pending_orders(self) -> None:

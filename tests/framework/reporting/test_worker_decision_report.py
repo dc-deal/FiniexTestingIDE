@@ -292,9 +292,26 @@ class TestTheFiguresTheConsolePrintsAreFolded:
         assert (row.algo_time_ms, row.algo_avg_per_tick_ms) == (60.0, 0.6)
         assert row.non_flat_signals == 15
 
+    def test_the_algo_time_per_pass_divides_by_the_algo_and_the_heartbeat_passes(self):
+        # 100 ticks in 25 slices and 5 heartbeat passes: the algo ran 30 times (#460)
+        coordination = WorkerCoordinatorPerformanceStats(
+            ticks_processed=100, algo_passes=25, ghost_passes=5)
+        row = build_worker_decision_report(_RUN_ID, [_unit(
+            workers=[_ws('a', 30.0), _ws('b', 10.0)], decision=_decided('s1', 20.0, 0.2),
+            coordination=coordination)]).units[0]
+        assert row.algo_avg_per_tick_ms == 0.6                  # 60 / 100
+        assert row.algo_avg_per_pass_ms == 2.0                  # 60 / 30
+
+    def test_a_record_written_before_contract_56_has_no_time_per_pass(self):
+        row = WorkerDecisionUnitRow(name='s1', symbol='EURUSD', ticks_processed=100,
+                                    decision_total_time_ms=60.0)
+        assert row.algo_avg_per_tick_ms == 0.6
+        assert row.algo_avg_per_pass_ms is None
+
     def test_an_untracked_unit_has_no_algo_time(self):
         row = build_worker_decision_report(_RUN_ID, [_unit(workers=[], coordination=_ticks(100))]).units[0]
         assert (row.algo_time_ms, row.algo_avg_per_tick_ms, row.non_flat_signals) == (None, None, None)
+        assert row.algo_avg_per_pass_ms is None
 
     def test_the_decision_totals_over_the_tracked_units(self):
         report = build_worker_decision_report(_RUN_ID, [

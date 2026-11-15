@@ -18,7 +18,7 @@ Usage:
     # Place an order
     result = executor.open_order(OpenOrderRequest(symbol="BTCUSD", ...))
 
-    # Feed another tick to trigger _process_pending_orders()
+    # Feed another tick to resolve what is pending
     mock.feed_tick(executor, symbol="BTCUSD", bid=50100.0, ask=50102.0)
 
     # Check results
@@ -142,7 +142,8 @@ class MockOrderExecution:
         timestamp: Optional[datetime] = None,
     ) -> TickData:
         """
-        Feed a tick to the executor (triggers on_tick → _process_pending_orders).
+        Feed a tick to the executor: its on_tick resolves what is pending — the simulator in
+        the timeline's order (#460), the live executor through _process_pending_orders.
 
         Before delivering the tick, blocks until any in-flight async submit
         jobs in the worker outbox have been processed. This makes the

@@ -60,11 +60,14 @@ restore passing state.
 One trade parity test per pair, in the same file as the bar parity test.
 
 **Fixture:** flat-price ticks (`make_flat_btcusd_ticks` / `make_flat_ethusd_ticks`) — constant
-bid/ask. Eliminates the 1-tick fill-timing asymmetry between pipelines: simulation fills at tick
-N+1, AutoTrader at tick N. Constant price → same fill price regardless of timing.
+bid/ask, so the comparison does not depend on when each pipeline fills. The simulation fills an
+order at its due time, 1 ms after the tick it was sent on (#460); the AutoTrader's mock fills when
+its order query answers, which real compute time decides (#461) — on the BTCUSD fixture about 53 s
+later (measured 2026-11-14). Constant price → same fill price regardless of timing; the tests
+compare prices, P&L and portfolio figures, not fill times.
 
 **Executors:**
-- Simulation: `TradeSimulator` with `MockBrokerAdapter`, zero latency (`min=max=0 ms`)
+- Simulation: `TradeSimulator` with `MockBrokerAdapter`, the least latency a run accepts (`min=max=1 ms`)
 - AutoTrader: `LiveTradeExecutor` with `MockBrokerAdapter(INSTANT_FILL)`
 
 `MockBrokerAdapter` provides built-in `SymbolSpecification` for BTCUSD and ETHUSD.

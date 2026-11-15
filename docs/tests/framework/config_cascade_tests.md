@@ -59,6 +59,7 @@ still hold as long as the merged result is correct.
 | `test_sub_group_per_key_merge` | #137 — nested `performance_tracking` sub-group merges per-key: scenario overrides `worker_decision_tracking`, `tick_loop_profiling` is inherited from global |
 | `test_unknown_key_hard_fails_with_provenance` | Safety net — typo in `global.execution_config` raises `ValueError` with full provenance string, before any merge happens |
 | `test_a_misspelt_global_section_hard_fails_rather_than_read_as_absent` | The section names under `global` are checked too: `execution_confg` raises `Unknown keys in global`, where it used to load with its whole block silently not applied |
+| `TestAnOrderHasLatency` | An order's inbound latency is at least 1 ms and its greatest no less than its least (#460): a set asking for 0 ms, globally or for one scenario alone, refuses to load and names the key, the value and the reason; so does a greatest below the least; 1 ms loads; the app default is held to the same rule, and a simulator built directly refuses 0, a negative value and an inverted range too |
 
 ## Fixtures (conftest.py)
 

@@ -47,18 +47,24 @@ _RUN_ID = '20260830_120000_a1b2c3d4'
 _DT = datetime(2025, 10, 13, tzinfo=timezone.utc)
 
 
-def _ppd(times, ticks, intervals=None) -> ProcessProfileData:
-    """Raw profile payload: per-op total times (+ the special total_per_tick) and counts."""
+def _ppd(times, ticks, intervals=None, passes=None) -> ProcessProfileData:
+    """
+    Raw profile payload: per-op total times (+ the special total_per_tick) and counts, and where
+    `passes` is given — (count, time) — the special total of the algo passes (#460).
+    """
     profile_times = dict(times)
     profile_times['total_per_tick'] = sum(times.values())
+    profile_counts = {op: ticks for op in times}
+    if passes is not None:
+        profile_counts['total_per_algo_pass'], profile_times['total_per_algo_pass'] = passes
     return ProcessProfileData(
-        profile_times=profile_times, profile_counts={op: ticks for op in times},
+        profile_times=profile_times, profile_counts=profile_counts,
         inter_tick_intervals_ms=intervals, gap_threshold_s=300.0, ticks_total=0)
 
 
-def _result(name, idx, times, ticks, intervals=None) -> ProcessResult:
+def _result(name, idx, times, ticks, intervals=None, passes=None) -> ProcessResult:
     tick_loop = ProcessTickLoopResult(
-        profiling_data=_ppd(times, ticks, intervals),
+        profiling_data=_ppd(times, ticks, intervals, passes),
         coordination_statistics=WorkerCoordinatorPerformanceStats(ticks_processed=ticks))
     return ProcessResult(success=True, scenario_name=name, scenario_index=idx,
                          tick_loop_results=tick_loop)
@@ -91,6 +97,24 @@ class TestBuild:
         assert round(row.operations[0].pct, 1) == 60.0         # 600 / 1000
         assert round(row.operations[0].avg_time_ms, 3) == 0.12  # 600 / 5000
         assert row.bottleneck_operation == 'live_update' and round(row.bottleneck_pct, 1) == 60.0
+
+    def test_the_time_of_one_algo_pass_beside_the_time_per_tick(self):
+        # Five ticks reached the algo path in three passes: the ticks that arrived in one
+        # millisecond are computed once, so a pass takes longer than a tick (#460)
+        batch = _batch([_result('s1', 0, {'worker_decision': 90.0}, 5, passes=(3, 84.0))],
+                       [_scenario('s1', 0)])
+        row = build_profiling_report_from_batch(_RUN_ID, batch).units[0]
+        assert row.avg_per_tick_ms == 18.0                      # 90 / 5
+        assert row.algo_passes == 3 and row.algo_pass_ms == 84.0
+        assert row.avg_per_algo_pass_ms == 28.0                 # 84 / 3
+        # Both totals time whole instants: neither is listed as an operation
+        assert [o.operation for o in row.operations] == ['worker_decision']
+
+    def test_no_pass_time_where_the_algo_never_computed(self):
+        batch = _batch([_result('s1', 0, {'trade_simulator': 10.0}, 0)], [_scenario('s1', 0)])
+        row = build_profiling_report_from_batch(_RUN_ID, batch).units[0]
+        assert row.algo_passes == 0
+        assert row.avg_per_algo_pass_ms is None
 
     def test_inter_tick_mapped(self):
         batch = _batch(
@@ -131,12 +155,16 @@ class TestBuild:
 
 
 class TestAggregate:
-    def _unit(self, name, ops, ticks, total_ms, bottleneck, p5):
+    def _unit(self, name, ops, ticks, total_ms, bottleneck, p5, passes=None):
+        """A unit row; `passes` = (count, time) of its algo passes, absent on an older record."""
+        pass_fields = {} if passes is None else {
+            'algo_passes': passes[0], 'algo_pass_ms': passes[1],
+            'avg_per_algo_pass_ms': passes[1] / passes[0]}
         return ProfilingUnitRow(
             name=name, symbol='EURUSD', total_ticks=ticks, total_ms=total_ms,
             avg_per_tick_ms=total_ms / ticks, bottleneck_operation=bottleneck,
             operations=[ProfilingOperationRow(operation=o, avg_time_ms=a) for o, a in ops],
-            inter_tick=InterTickStatsRow(p5_ms=p5))
+            inter_tick=InterTickStatsRow(p5_ms=p5), **pass_fields)
 
     def test_aggregate_basics(self):
         u1 = self._unit('s1', [('live_update', 0.8), ('worker_decision', 0.3)], 1000, 1000.0, 'live_update', 1.0)
@@ -170,6 +198,44 @@ class TestAggregate:
         agg = aggregate_profiling([u], budget_active=False)
         assert agg.p95_processing_ms == 1.2                  # only avg/tick
         assert agg.suggested_budget_ms == round(1.2 * 1.1, 3)  # P95 + 10%
+
+    def test_the_budget_is_taken_per_algo_pass(self):
+        # 1,000 ticks in 400 passes: 1.2 ms a tick is 3.0 ms a pass, and a pass is what a budget
+        # clips (#460). Per tick the unit fits its P5 of 2.0 ms; per pass it does not.
+        u = self._unit('s1', [('worker_decision', 0.3)], 1000, 1200.0, 'worker_decision', 2.0,
+                       passes=(400, 1200.0))
+        agg = aggregate_profiling([u], budget_active=False)
+        assert agg.p95_processing_ms == 3.0
+        assert agg.suggested_budget_ms == 3.3
+        assert agg.scenarios_over_p5 == 1
+
+    def test_the_time_of_one_pass_over_the_units_from_their_sums(self):
+        u1 = self._unit('s1', [('worker_decision', 0.3)], 1000, 1200.0, 'worker_decision', 1.0,
+                        passes=(400, 1200.0))
+        u2 = self._unit('s2', [('worker_decision', 0.3)], 500, 600.0, 'worker_decision', 1.0,
+                        passes=(100, 600.0))
+        agg = aggregate_profiling([u1, u2], budget_active=False)
+        assert agg.total_algo_passes == 500
+        # 1,800 ms over 500 passes — not the mean of 3.0 and 6.0
+        assert agg.avg_per_algo_pass_ms == 3.6
+
+    def test_a_record_written_before_contract_56_keeps_its_budget_per_tick(self):
+        u = self._unit('s1', [('worker_decision', 0.3)], 1000, 1200.0, 'worker_decision', 2.0)
+        agg = aggregate_profiling([u], budget_active=False)
+        assert agg.total_algo_passes is None and agg.avg_per_algo_pass_ms is None
+        assert agg.p95_processing_ms == 1.2
+        assert agg.scenarios_over_p5 == 0
+
+    def test_a_unit_whose_algo_never_computed_takes_no_part_in_the_budget(self):
+        # A contract-57 unit with no pass: no time per pass, and no per-tick stand-in for it —
+        # its 5.0 ms a tick would otherwise be the P95 and a second unit over its P5
+        quiet = self._unit('quiet', [('trade_simulator', 0.1)], 1000, 5000.0, 'trade_simulator', 2.0
+                           ).model_copy(update={'algo_passes': 0, 'algo_pass_ms': 0.0})
+        busy = self._unit('busy', [('worker_decision', 0.3)], 1000, 1200.0, 'worker_decision', 2.0,
+                          passes=(400, 1200.0))
+        agg = aggregate_profiling([quiet, busy], budget_active=False)
+        assert agg.p95_processing_ms == 3.0
+        assert agg.scenarios_over_p5 == 1
 
     def test_clipping_totals(self):
         u = ProfilingUnitRow(
@@ -241,6 +307,29 @@ class TestTheVerdictsLeftThePrintout:
         """A validator reports what fails; 'all is well' is the renderer showing an absence."""
         out = self._render([self._unit('fast', total_ms=500.0, p5=1.0)])
         assert 'no clipping risk detected' in out
+
+    def _render_scenario(self, unit) -> str:
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            ProfilingSummary(ProfilingReport(
+                run_id=_RUN_ID, units=[unit],
+                aggregate=aggregate_profiling([unit], budget_active=False))).render_per_scenario(
+                    ConsoleRenderer())
+        return re.sub(r'\x1b\[[0-9;]*m', '', buf.getvalue())
+
+    def test_the_time_of_one_pass_is_printed_beside_the_time_per_tick(self):
+        unit = self._unit().model_copy(update={
+            'algo_passes': 400, 'algo_pass_ms': 3000.0, 'avg_per_algo_pass_ms': 7.5})
+        assert 'Avg/Tick: 3.000ms  |  Avg/Pass: 7.500ms  |  Total: 3000.00ms' in (
+            self._render_scenario(unit))
+        aggregated = self._render([unit])
+        assert 'Avg/Tick: 3.000ms  |  Avg/Pass: 7.500ms' in aggregated
+        assert 'P95 time per algo pass: 7.500ms' in aggregated
+
+    def test_a_record_written_before_contract_56_prints_no_pass_time(self):
+        out = self._render_scenario(self._unit())
+        assert 'Avg/Tick: 3.000ms  |  Total: 3000.00ms' in out
+        assert 'Avg/Pass' not in out
 
 
 class TestRenderWarmup:

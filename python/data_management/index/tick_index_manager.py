@@ -45,7 +45,7 @@ vLog = get_global_logger()
 # by nothing; giving it a read path is what makes a column addition safe to deploy.
 # The proper mechanism is `AbstractStoreIndex.LOGIC_VERSION`, which these three legacy managers
 # do not have — adopting it is #583's, and this is the stopgap until then.
-INDEX_SCHEMA_VERSION = b'2.4'
+INDEX_SCHEMA_VERSION = b'2.5'
 
 # How many file checks an update runs at once. A check is one stat; on a mounted drive each waits
 # milliseconds and in parallel the waits overlap — measured 2026-11-09 on this container's bridged

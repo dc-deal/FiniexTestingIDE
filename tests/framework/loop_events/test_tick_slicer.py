@@ -83,14 +83,14 @@ class TestTheOrderingDecidesTheGrouping:
 
     TICKS = [_tick(5_000, collected_msc=5_120), _tick(5_000, collected_msc=5_160)]
 
-    def test_a_backtest_groups_by_the_source_stamp(self):
+    def test_the_source_ordering_groups_by_the_source_stamp(self):
         slices = _slices(self.TICKS, EventOrdering.BY_TS_EVENT)
 
         assert len(slices) == 1
         assert (slices[0].ts_event, slices[0].ts_init) == (5_000, 5_160), (
             'the instant was complete when its last tick arrived')
 
-    def test_a_live_session_groups_by_the_receipt_stamp(self):
+    def test_the_receipt_ordering_groups_by_the_receipt_stamp(self):
         slices = _slices(self.TICKS, EventOrdering.BY_TS_INIT)
 
         assert [(each.ts_event, each.ts_init) for each in slices] == [(5_000, 5_120), (5_000, 5_160)]

@@ -14,9 +14,9 @@ it.
 ## The contract in five sentences
 
 - Every event carries two stamps, in UTC epoch milliseconds: `ts_event`, the stamp it carries from
-  its source, and `ts_init`, the stamp this process gave it on receipt. A backtest orders by the
-  first, a live session by the second (`EventOrdering.pick` is the one place that says so), and the
-  other one travels as data.
+  its source, and `ts_init`, the stamp this process gave it on receipt. Both pipelines order by the
+  second since #460 — a backtest by the receipt it recorded — and the other one travels as data;
+  `EventOrdering.pick` is the one place that says which stamp an ordering takes.
 - The timeline hands out the earliest stamp first, then the submission order (`seq`). No kind of
   event ever goes before another.
 - Events sharing a stamp are one instant and leave together. The phases of an instant
@@ -35,7 +35,7 @@ it.
 |---|---|
 | `test_the_kinds_and_the_event_classes_match_both_ways` | Each `EventKind` is carried by exactly one event class, and each class names a kind |
 | `test_an_event_says_its_kind` | `event.kind` answers from the class |
-| `test_every_ordering_picks_one_of_the_two` · `test_a_backtest_goes_by_the_source_stamp_and_a_live_session_by_its_receipt` | Every `EventOrdering` declares its stamp, and the two declare the right one |
+| `test_every_ordering_picks_one_of_the_two` · `test_the_source_ordering_takes_the_source_stamp_and_the_receipt_ordering_the_receipt` | Every `EventOrdering` declares its stamp, and the two declare the right one |
 | `test_a_slice_without_a_tick_is_refused` | An instant without data carries no data slice |
 | `test_the_declaration_order_is_the_phase_order` | The seven phases of an instant, in the order #457 fixes them |
 | `test_prices_are_applied_before_any_resolution` | Market data before broker resolutions before the algo pass |
@@ -50,8 +50,8 @@ it.
 | `test_a_clipped_slice_leaves_with_the_fill_due_beside_it` | A clipped slice and a resolution at one stamp leave as one instant; clipping never drops an event |
 | `test_no_kind_goes_before_another` | The same two kinds at one stamp, made in both orders: the submission order decides each time |
 | `test_two_events_of_one_kind_at_one_stamp_leave_by_seq` | `pop` hands out equal stamps by `seq` |
-| `test_a_backtest_orders_by_when_it_happened` · `test_a_live_session_orders_by_when_it_arrived` · `test_the_other_stamp_travels_as_data` | A fill executed at .300 and received at .450 against a timer due at .400: first in a backtest, second live, with both stamps kept |
-| `test_a_live_instant_is_what_arrived_together` · `test_a_backtest_instant_is_what_happened_together` | With the two stamps disagreeing, an instant is cut by the receipt stamp live and by the source stamp in a backtest |
+| `test_by_the_source_stamp_it_orders_by_when_it_happened` · `test_by_receipt_it_orders_by_when_it_arrived` · `test_the_other_stamp_travels_as_data` | A fill executed at .300 and received at .450 against a timer due at .400: first by the source stamp, second by receipt, with both stamps kept |
+| `test_by_receipt_an_instant_is_what_arrived_together` · `test_by_the_source_stamp_an_instant_is_what_happened_together` | With the two stamps disagreeing, an instant is cut by the receipt stamp or by the source stamp, as the ordering says |
 | `test_an_event_stamped_before_the_last_instant_is_refused` · `test_a_single_pop_counts_as_handed_over_too` | Once an instant is handed over, an earlier stamp is refused in both orderings and nothing is taken |
 | `test_an_event_at_the_stamp_just_handed_over_forms_a_later_instant` | An equal stamp is taken and leaves as a later instant — what a dispatcher does with it is #458's to settle |
 
@@ -63,7 +63,7 @@ it.
 | `test_a_new_stamp_starts_a_new_slice` · `test_a_slice_never_reaches_back` | Consecutive equal stamps group; equal stamps that are not neighbours stay apart, because the input is a stream |
 | `test_a_clipped_tick_stays_in_its_slice` | Clipping never drops data |
 | `test_each_slice_takes_the_next_number` | A slice takes its `seq` from the run's sequencer when it is made |
-| `test_a_backtest_groups_by_the_source_stamp` · `test_a_live_session_groups_by_the_receipt_stamp` | Two trades the venue stamped alike and received 40 ms apart: one slice by source stamp, two by receipt stamp |
+| `test_the_source_ordering_groups_by_the_source_stamp` · `test_the_receipt_ordering_groups_by_the_receipt_stamp` | Two trades the venue stamped alike and received 40 ms apart: one slice by source stamp, two by receipt stamp |
 | `test_a_receipt_slice_takes_the_latest_source_stamp_of_its_ticks` | A slice's stamp not ordering the run is the latest of its ticks', whatever order they came in |
 | `test_the_source_stamp_is_the_venue_stamp_not_the_timestamp` · `test_a_tick_without_a_venue_stamp_takes_its_timestamp_to_the_millisecond` | A tick's source stamp is its venue stamp, otherwise its timestamp converted exactly |
 | `test_the_receipt_stamp_is_the_collection_stamp` · `test_a_tick_recorded_without_its_arrival_was_received_when_it_happened` · `test_a_tick_with_neither_stamp_takes_its_timestamp_for_both` | A tick's receipt stamp is its collection stamp; without one, its source stamp stands in |

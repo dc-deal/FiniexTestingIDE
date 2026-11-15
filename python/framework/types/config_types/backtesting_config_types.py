@@ -4,7 +4,7 @@ Pydantic models for the app_config.json::backtesting section.
 """
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     IndicatorSeriesDefaults,
@@ -44,6 +44,33 @@ class BacktestingExecutionConfig(StrictConfigModel):
     default_scenario_execution_config: DefaultScenarioExecutionConfig = DefaultScenarioExecutionConfig()
 
 
+# The least inbound latency an order may have, in ms: live, every order travels to the venue, and
+# an order sent with none would fill at the very price its decision saw (#460)
+MIN_INBOUND_LATENCY_MS = 1
+
+
+def inbound_latency_range_problem(min_ms: int, max_ms: int) -> Optional[str]:
+    """
+    What is wrong with an order's inbound latency range, if anything — the one check both the
+    configuration and the simulator hold a range to.
+
+    Args:
+        min_ms: The configured least latency
+        max_ms: The configured greatest latency
+
+    Returns:
+        The reason the range is refused, or None for a range that may run
+    """
+    if min_ms < MIN_INBOUND_LATENCY_MS:
+        return (f'inbound_latency_min_ms is {min_ms} — an order\'s latency is at least '
+                f'{MIN_INBOUND_LATENCY_MS} ms: live, every order travels to the venue, and an order '
+                f'sent with none would fill at the very price its decision saw')
+    if max_ms < min_ms:
+        return (f'inbound_latency_max_ms is {max_ms}, below inbound_latency_min_ms {min_ms} — '
+                f'the greatest latency cannot be less than the least')
+    return None
+
+
 class TradeSimulatorSeeds(StrictConfigModel):
     """RNG seeds for deterministic simulation."""
     inbound_latency_seed: int = 42
@@ -70,11 +97,28 @@ class TradeSimulatorDefaults(StrictConfigModel):
     # Declared so the strict model accepts it on the SCENARIO level, where it is really used.
     # None = the account currency is derived from the symbol's quote currency (#265).
     account_currency: Optional[str] = None
+    # At least MIN_INBOUND_LATENCY_MS, and the greatest no less than the least: a run refuses to
+    # start otherwise
     inbound_latency_min_ms: int = 20
     inbound_latency_max_ms: int = 80
     # The share of the estimated spread a tick without a quote is given as its quote (#602):
     # 1.0 charges the estimate, 0 leaves bid = ask = the traded price as recorded
     modelled_spread_factor: float = Field(1.0, ge=0.0)
+
+    @model_validator(mode='after')
+    def _refuses_an_order_without_latency(self) -> 'TradeSimulatorDefaults':
+        """
+        Refuse a latency range an order cannot have — at any level of the cascade, before a
+        scenario runs.
+
+        Returns:
+            The validated block
+        """
+        problem = inbound_latency_range_problem(
+            self.inbound_latency_min_ms, self.inbound_latency_max_ms)
+        if problem is not None:
+            raise ValueError(problem)
+        return self
 
 
 class DetailedLiveStatsExports(StrictConfigModel):

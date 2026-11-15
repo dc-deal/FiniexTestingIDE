@@ -96,7 +96,8 @@ class AbstractLivePassHooks(ABC):
     @abstractmethod
     def count_ghost_pass(self) -> None:
         """
-        Count a decision that ran between two ticks (#360).
+        Count a ghost pass that returned a decision (#360) — not every pass: one whose
+        decision is None is not counted.
         """
 
     @abstractmethod

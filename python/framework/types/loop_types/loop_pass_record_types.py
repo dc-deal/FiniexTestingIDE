@@ -31,9 +31,11 @@ class LoopPassRecord:
             records state frames or indicator series, and empty otherwise
         decision: The last tick pass's decision
         order_result: What the last tick pass's decision sent, if anything
+        ghost_order: What the last heartbeat pass's decision sent, if anything
     """
     ticks_applied: int = 0
     current_bars: Dict[str, FormingBar] = field(default_factory=dict)
     closed_timeframes: FrozenSet[str] = frozenset()
     decision: Optional[Decision] = None
     order_result: Optional[AlgoOrderResult] = None
+    ghost_order: Optional[AlgoOrderResult] = None

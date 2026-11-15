@@ -9,7 +9,7 @@ with the run. Whatever gets past the start is refused at order time, on every en
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List
@@ -756,12 +756,13 @@ class TestASimulationEnforcesTheLevelsPositionsCarry:
                 BrokerType.KRAKEN_SPOT, MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL)),
             initial_balance=10000.0, account_currency='USD',
             logger=GlobalLogger('OrderFeatures'), seeds={'inbound_latency_seed': 42},
-            inbound_latency_min_ms=0, inbound_latency_max_ms=0, spot_mode=spot_mode,
+            inbound_latency_min_ms=1, inbound_latency_max_ms=1, spot_mode=spot_mode,
             # A short at spot sells coins it has to hold
             initial_balances={'USD': 10000.0, 'BTC': 0.02} if spot_mode else None)
 
-    def _tick(self, bid: float, ask: float) -> TickData:
-        return TickData(timestamp=_T0, symbol='BTCUSD', bid=bid, ask=ask, volume=1.0)
+    def _tick(self, bid: float, ask: float, after_ms: int) -> TickData:
+        return TickData(timestamp=_T0 + timedelta(milliseconds=after_ms), symbol='BTCUSD',
+                        bid=bid, ask=ask, volume=1.0)
 
     def _breach(self, spot_mode: bool, direction: OrderDirection, level: Dict[str, float],
                 breach: tuple) -> Any:
@@ -778,13 +779,14 @@ class TestASimulationEnforcesTheLevelsPositionsCarry:
             The simulator and the one trade it booked
         """
         sim = self._simulator(spot_mode)
-        sim.on_tick(self._tick(50000.0, 50001.0))
+        sim.on_tick(self._tick(50000.0, 50001.0, after_ms=0))
         sim.open_order(OpenOrderRequest(symbol='BTCUSD', order_type=OrderType.MARKET,
                                         direction=direction, lots=0.01, **level))
-        sim.on_tick(self._tick(50000.0, 50001.0))
+        # The order's 1 ms of latency has passed by the next tick, which fills it
+        sim.on_tick(self._tick(50000.0, 50001.0, after_ms=10))
         assert len(sim.get_open_positions()) == 1
 
-        sim.on_tick(self._tick(*breach))
+        sim.on_tick(self._tick(*breach, after_ms=20))
 
         trade, = sim.portfolio.get_trade_history()
         return sim, trade

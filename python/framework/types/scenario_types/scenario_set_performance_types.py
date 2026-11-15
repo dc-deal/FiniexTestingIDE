@@ -19,6 +19,11 @@ from python.framework.types.performance_types.performance_metrics_types import (
 # bottleneck. Single source of truth for the profiling presenter + the post-run advisory validator.
 EXPECTED_OPERATIONS = {'worker_decision', 'order_execution'}
 
+# The profiling keys that time whole instants rather than one operation: every instant the algo
+# was not clipped out of, and apart from it the instants the algo computed in (#460). A reader
+# that lists operations leaves them out — a total is no operation and would top every listing.
+PROFILE_TOTAL_KEYS = frozenset({'total_per_tick', 'total_per_algo_pass'})
+
 
 @dataclass
 class OperationTiming:
@@ -65,12 +70,16 @@ class ProfilingData:
     Attributes:
         operations: Map of operation_name -> OperationTiming
         total_per_tick_ms: Total time per tick across all operations
+        total_per_algo_pass_ms: The time of the instants the algo computed in (#460)
+        algo_passes: How many such instants were timed
     """
     operations: Dict[str, OperationTiming]
     total_per_tick_ms: float
     interval_stats: Optional[InterTickIntervalStats] = None
     # Total ticks in loop (including clipped). 0 = no clipping active.
     ticks_total: int = 0
+    total_per_algo_pass_ms: float = 0.0
+    algo_passes: int = 0
 
     def get_operation_time(self, operation_name: str) -> float:
         """
@@ -84,6 +93,15 @@ class ProfilingData:
         """
         timing = self.operations.get(operation_name)
         return timing.total_time_ms if timing else 0.0
+
+    def avg_per_algo_pass_ms(self) -> Optional[float]:
+        """
+        The time of one algo pass: an instant the algo computed in, timed whole (#460).
+
+        Returns:
+            Milliseconds per pass; None where the algo never computed
+        """
+        return self.total_per_algo_pass_ms / self.algo_passes if self.algo_passes > 0 else None
 
     @classmethod
     def from_dicts(
@@ -110,19 +128,20 @@ class ProfilingData:
         Returns:
             ProfilingData instance
         """
-        # Extract total_per_tick (special key) — non-destructive read: the input
+        # Extract the totals (special keys) — non-destructive read: the input
         # dict is left intact so the same profile_times can be derived more than
         # once (e.g. by multiple report consumers), without depending on call order.
         total_per_tick = profile_times.get('total_per_tick', 0.0)
+        total_per_algo_pass = profile_times.get('total_per_algo_pass', 0.0)
 
-        # Build operations map (exclude the special key)
+        # Build operations map (exclude the special keys: totals over the operations, not one)
         operations = {
             name: OperationTiming(
                 total_time_ms=time_ms,
                 call_count=profile_counts.get(name, 0)
             )
             for name, time_ms in profile_times.items()
-            if name != 'total_per_tick'
+            if name not in PROFILE_TOTAL_KEYS
         }
 
         # Build inter-tick interval stats
@@ -136,7 +155,9 @@ class ProfilingData:
             operations=operations,
             total_per_tick_ms=total_per_tick,
             interval_stats=interval_stats,
-            ticks_total=ticks_total
+            ticks_total=ticks_total,
+            total_per_algo_pass_ms=total_per_algo_pass,
+            algo_passes=profile_counts.get('total_per_algo_pass', 0)
         )
 
     @staticmethod

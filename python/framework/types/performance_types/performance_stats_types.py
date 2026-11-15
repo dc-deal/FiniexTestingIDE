@@ -88,9 +88,14 @@ class WorkerCoordinatorPerformanceStats:
     Minimal structure - calculations done in reporting layer.
 
     Args:
-        ticks_processed: Number of ticks processed
+        ticks_processed: The unclipped ticks of the passes the algo computed on — a pass over a
+            slice of several ticks counts each of them (#460)
+        algo_passes: How many times the algo computed on a tick or a slice
+        ghost_passes: How many times a heartbeat logic's decision ran between ticks (#360)
         parallel_time_saved_ms: Total time saved by parallel execution
     """
     parallel_workers: bool = False
     ticks_processed: int = 0
+    algo_passes: int = 0
+    ghost_passes: int = 0
     parallel_time_saved_ms: float = 0.0

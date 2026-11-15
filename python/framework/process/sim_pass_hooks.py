@@ -70,12 +70,13 @@ class SimPassHooks(AbstractBacktestPassHooks):
             return
         self._booking.observe_tick(self._portfolio.sample_equity())
 
-    def prepare_algo(self, tick: TickData) -> None:
+    def prepare_algo(self, tick: TickData, ticks: int) -> None:
         """
         Advance the planned stale windows (#436) and record the resulting market-data status (#451).
 
         Args:
-            tick: The tick the algo is about to see
+            tick: The tick the algo is about to see — the last of its slice
+            ticks: The slice's unclipped ticks, which the status counts
         """
         driver = self._stale_stress_driver
         if driver is not None:
@@ -84,4 +85,5 @@ class SimPassHooks(AbstractBacktestPassHooks):
             tick.timestamp,
             self._trade_simulator.get_market_data_status(),
             driver.get_active_label() if driver else '',
+            ticks,
         )

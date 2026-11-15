@@ -28,22 +28,27 @@ class EventOrdering(Enum):
     """
     Which of an event's two stamps orders the timeline.
 
-    A backtest replays recorded time: it orders by the stamp each event carries from its source
-    (`ts_event`), and its clock follows that stamp. A live session cannot order by clocks it does
-    not own without inserting an event before one it has already processed, so it orders by its
-    own receipt stamp (`ts_init`). That holds only while the receipt stamps a live session gives
-    its events never decrease in the order the events arrive — the live intake's to guarantee
-    (#461). Both stamps travel on every event either way, and the one not ordering is kept as data.
+    Both pipelines order by receipt (`ts_init`). A live session cannot order by clocks it does
+    not own without inserting an event before one it has already processed; that holds only while
+    the receipt stamps it gives its events never decrease in the order they arrive — the live
+    intake's to guarantee (#461). A backtest orders by the receipt it recorded, so its algo sees a
+    tick no earlier than a live session would have; a file that recorded no receipt it can trust
+    orders by the source stamp instead (#460). Both stamps travel on every event either way, and the
+    one not ordering is kept as data. Ordering by the source stamp (`ts_event`) was the backtest's
+    until #460, and no pipeline orders by it now.
     """
-    BY_TS_EVENT = 'ts_event'      # a backtest
-    BY_TS_INIT = 'ts_init'        # a live session
+    BY_TS_EVENT = 'ts_event'      # the source's order; no pipeline orders by it since #460
+    BY_TS_INIT = 'ts_init'        # both pipelines
 
     def pick(self, ts_event: _Stamp, ts_init: _Stamp) -> _Stamp:
         """
-        Choose, of a pair, the one this ordering goes by — the one place that says which.
+        Choose, of a pair, the one this ordering goes by.
 
         The pair can be the two stamps of an event or the two functions that read them from a
-        tick, so a caller resolves its choice once rather than on every item.
+        tick, so a caller resolves its choice once rather than on every item. The backtest's
+        intake does not ask it: it reads the receipt stamp directly (`tick_receipt_msc`), because
+        its direct merge cost less than the generic timeline (#460); whether this ordering and
+        the timeline it serves stay is #461's to decide.
 
         Args:
             ts_event: The counterpart of the source stamp

@@ -192,9 +192,10 @@ backtest and is reported; in a session it is the session-end policy's, and not r
   — `autotrader_main.py` (AutoTrader) and `process_main.py` (sim). Returns `None` when
   the logic subscribes to nothing.
 - Drained inside each pass by the loop core (`loop/loop_event_dispatcher.py`, the one place
-  that orders a pass): after compute/execute in the tick pass of both pipelines
-  (`dispatch_backtest_slice`, `dispatch_live_slice`), around the ghost pass of a heartbeat
-  (`dispatch_backtest_heartbeat`, `dispatch_live_timer`) and in a stop's wait
+  that orders a pass): in a backtest's instant once after what came due resolves and once more
+  after compute/execute (`dispatch_backtest_instant`, #460), so a fill of the instant reaches its
+  hook before the decision computes; in the AutoTrader's tick pass after compute/execute
+  (`dispatch_live_slice`), around its ghost pass (`dispatch_live_timer`) and in a stop's wait
   (`dispatch_live_order_wait`). The AutoTrader's tick loop keeps only the drain of a stop's
   give-up. The final `SESSION_END` is drained once the loop ends.
 

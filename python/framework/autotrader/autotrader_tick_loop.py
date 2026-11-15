@@ -622,9 +622,10 @@ class AutotraderTickLoop(AbstractLivePassHooks):
         self.push_last_display_frame(ticks_processed)
 
         # #360 ghost-pass observability — proves the idle decision pass fired
-        # (and acted) over the session. Machine-parseable.
+        # (and acted) over the session. Machine-parseable. ghost_decisions counts the passes that
+        # returned a decision; the worker-decision report's ghost_passes counts every pass (#460)
         self._logger.info(
-            f'[GHOST] ghost_passes={self._ghost_pass_count} '
+            f'[GHOST] ghost_decisions={self._ghost_pass_count} '
             f'ghost_actions={self._ghost_action_count} ticks={ticks_processed}')
 
         # #444: close a window still active at session end, so the episode span reaches the
@@ -896,7 +897,7 @@ class AutotraderTickLoop(AbstractLivePassHooks):
         self._reconcile_if_due(self._ticks_processed)
 
     def count_ghost_pass(self) -> None:
-        """Count a decision that ran between two ticks (#360), for the session's GHOST line."""
+        """Count a ghost pass that returned a decision (#360), for the session's GHOST line."""
         self._ghost_pass_count += 1
 
     def record_ghost_order(self, order_result: Optional[AlgoOrderResult],

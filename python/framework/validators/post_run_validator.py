@@ -37,6 +37,7 @@ from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.run_origin_types import CodeIdentity
 from python.framework.types.scenario_types.scenario_set_performance_types import (
     EXPECTED_OPERATIONS,
+    PROFILE_TOTAL_KEYS,
     ProfilingData,
 )
 from python.framework.types.validation_types import (
@@ -374,28 +375,30 @@ class PostRunValidator:
                 f'`python python/cli/broker_config_cli.py sync --force` before a comparison backtest'))
 
     def _check_budget(self) -> None:
-        """Warn when avg tick processing exceeds the P5 interval (consider setting a budget)."""
+        """Warn when an algo pass takes longer than the P5 tick interval (consider setting a budget)."""
         # When budget is already active, clipping is being simulated — warning is redundant
         if self._batch.clipping_stats_map:
             return
 
+        # One algo pass is the unit a budget clips: a slice of ticks that arrived in one
+        # millisecond is computed once, so the time per tick would understate it (#460)
         warning_count = 0
         for result in self._batch.process_result_list:
             profiling = self._profiling(result)
             if not profiling or not profiling.interval_stats:
                 continue
-            ticks = result.tick_loop_results.coordination_statistics.ticks_processed
-            if ticks == 0:
+            avg_ms = profiling.avg_per_algo_pass_ms()
+            if avg_ms is None:
                 continue
-            avg_ms = profiling.total_per_tick_ms / ticks
             if avg_ms > profiling.interval_stats.p5_ms:
                 warning_count += 1
 
         if warning_count == 0:
             return
         self._add('budget', ValidationDomain.PROFILING, (
-            f'Tick processing budget: {warning_count} scenario(s) exceed P5 tick interval '
-            f'— consider setting tick_processing_budget_ms (see Profiling Analysis)'))
+            f'Tick processing budget: in {warning_count} scenario(s) an algo pass takes longer '
+            f'than the P5 tick interval — consider setting tick_processing_budget_ms '
+            f'(see Profiling Analysis)'))
 
     def _check_budget_granularity(self) -> None:
         """Warn when an active budget is below data granularity (no effect with integer-ms collected_msc)."""
@@ -427,10 +430,10 @@ class PostRunValidator:
             profiling = self._profiling(result)
             if not profiling:
                 continue
-            ticks = result.tick_loop_results.coordination_statistics.ticks_processed
-            if ticks == 0:
+            avg_ms = profiling.avg_per_algo_pass_ms()
+            if avg_ms is None:
                 continue
-            avg_times.append(profiling.total_per_tick_ms / ticks)
+            avg_times.append(avg_ms)
 
         if not avg_times:
             return
@@ -491,7 +494,7 @@ class PostRunValidator:
     @staticmethod
     def _bottleneck_operation(profiling_data) -> str:
         """The operation with the largest total time (the scenario's bottleneck), or '' if none."""
-        ops = {n: t for n, t in profiling_data.profile_times.items() if n != 'total_per_tick'}
+        ops = {n: t for n, t in profiling_data.profile_times.items() if n not in PROFILE_TOTAL_KEYS}
         return max(ops, key=ops.get) if ops else ''
 
     def _check_parallel_penalty(self) -> None:

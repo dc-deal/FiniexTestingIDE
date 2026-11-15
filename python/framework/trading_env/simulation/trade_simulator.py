@@ -14,9 +14,11 @@ Key Simulation Features:
 - Fill processing: Inherited from AbstractTradeExecutor (shared with live)
 """
 from bisect import bisect_right
+from datetime import datetime, timezone
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.loop.tick_slicer import tick_receipt_msc
 from python.framework.stress_test.stress_test_rejection import StressTestRejection
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.broker_config import BrokerConfig
@@ -154,7 +156,8 @@ class TradeSimulator(AbstractTradeExecutor):
         #
         # Modify/cancel of orders in _active_limit_orders / _active_stop_orders
         # is scheduled via the PendingOrder.execution_state.in_flight_operation flag and resolved
-        # in _resolve_pending_operations() at the start of each tick (Phase 0).
+        # in _resolve_pending_operations() when it comes due, before the trigger checks of that
+        # instant (resolve_scheduled, #460).
         # No separate index needed — the resolve loop iterates the active lists
         # directly and applies the modification or removes the cancelled order.
         #
@@ -166,6 +169,10 @@ class TradeSimulator(AbstractTradeExecutor):
         # the synchronous portfolio.modify_position call (current behavior).
         self._pending_position_modifications: Dict[str, ModificationRequest] = {}
         self._modify_cancel_delay_msc: int = 1  # cosmetic single-msc delay default
+        # The instant orders are sent at and due times are timed from, on the arrival axis the
+        # backtest orders by (#460): the timeline driver sets it per instant; a tick pass driven
+        # tick by tick takes its tick's arrival
+        self._instant_msc: int = 0
 
         # Positions whose breached level the simulated venue refused to fill — a stop it could
         # not fund (#639). The level is not tried again: a venue cancels such an order once,
@@ -198,13 +205,104 @@ class TradeSimulator(AbstractTradeExecutor):
 
     def on_tick(self, tick: TickData) -> None:
         """
-        Run the shared tick pass, then check the levels positions carry.
+        A tick handed over on its own, outside the timeline — the simulator's own tests and the
+        mock order execution drive it this way. It is an instant of its own, in the timeline's
+        order (#460): what was scheduled applies, the tick moves the market and is checked against
+        the resting orders and the levels positions carry, then what came due by its arrival fills
+        at its prices. The clock moves to the tick's own time, as the base class's tick moves it.
 
         Args:
             tick: The tick that is arriving
         """
-        super().on_tick(tick)
+        stamp = tick_receipt_msc(tick)
+        self._instant_msc = stamp
+        self._clock_time = self._forward_only(tick.timestamp)
+        self.resolve_scheduled(stamp)
+        self.apply_tick(tick)
+        self.resolve_due(stamp)
+
+    # ============================================
+    # The timeline driver's instant (#460)
+    # ============================================
+
+    def begin_instant(self, instant_msc: int) -> None:
+        """
+        Start an instant of the timeline: the canonical clock and the sending instant move to it.
+
+        Args:
+            instant_msc: The instant's stamp, on the arrival axis
+        """
+        self._instant_msc = instant_msc
+        self.set_current_time(datetime.fromtimestamp(instant_msc / 1000.0, tz=timezone.utc))
+
+    def apply_tick(self, tick: TickData) -> None:
+        """
+        Apply one tick of an instant's slice: the market moves, resting orders and the levels
+        positions carry are checked against it. What came due is not resolved here — the instant
+        resolves it once (`resolve_scheduled` before its first tick, `resolve_due` after its last).
+
+        Args:
+            tick: The tick, in arrival order within the slice
+        """
+        self._apply_market_tick(tick)
+        self._monitor_price_triggers()
         self._check_sl_tp_triggers(tick)
+
+    def resolve_scheduled(self, up_to_msc: int) -> None:
+        """
+        Apply the modifies and cancels due by an instant, before its first trigger check — a
+        cancel due now keeps the order from filling in this instant.
+
+        Args:
+            up_to_msc: The instant's stamp
+        """
+        # Nothing scheduled is the common case and runs at every instant (#460)
+        if not (self._active_limit_orders or self._active_stop_orders
+                or self._pending_position_modifications):
+            return
+        self._resolve_pending_operations(up_to_msc)
+
+    def resolve_due(self, up_to_msc: int) -> None:
+        """
+        Fill what the latency queue has due by an instant, at the instant's prices — the last
+        tick applied.
+
+        Args:
+            up_to_msc: The instant's stamp
+        """
+        if self._current_tick is None:
+            return
+        self._fill_resolved_orders(self.latency_simulator.process_up_to_msc(up_to_msc))
+
+    def peek_next_due_msc(self) -> Optional[int]:
+        """
+        When the next order or scheduled operation comes due, resolving nothing — so the timeline
+        driver can place an instant there.
+
+        Returns:
+            The earliest due stamp on the arrival axis, or None when nothing is in flight
+        """
+        due = self.latency_simulator.peek_next_due_msc()
+        # Asked at every instant: nothing resting and nothing scheduled is the common case
+        if not (self._active_limit_orders or self._active_stop_orders
+                or self._pending_position_modifications):
+            return due
+        for active in (self._active_limit_orders, self._active_stop_orders):
+            for pending in active:
+                state = pending.execution_state
+                if (state.in_flight_operation == PendingOperation.PENDING_MODIFY
+                        and state.pending_modification is not None):
+                    at = state.pending_modification.apply_at_msc
+                elif (state.in_flight_operation == PendingOperation.PENDING_CANCEL
+                        and state.cancel_apply_at_msc is not None):
+                    at = state.cancel_apply_at_msc
+                else:
+                    continue
+                due = at if due is None else min(due, at)
+        for modification in self._pending_position_modifications.values():
+            due = (modification.apply_at_msc if due is None
+                   else min(due, modification.apply_at_msc))
+        return due
 
     def _check_sl_tp_triggers(self, tick: TickData) -> None:
         """
@@ -289,38 +387,22 @@ class TradeSimulator(AbstractTradeExecutor):
 
     def _process_pending_orders(self) -> None:
         """
-        Four-phase pending order processing.
-
-        Phase 0: Resolve scheduled modify/cancel operations from previous ticks
-          (#318). Applies modifications and removes cancelled orders BEFORE
-          price triggers are checked, so the updated entry_price / SL / TP is
-          in effect for the current tick.
-
-        Phase 1: Drain latency queue (broker accepted orders after delay).
-          - MARKET OPEN → fill immediately at current tick price
-          - LIMIT OPEN → check if price already reached → fill LIMIT_IMMEDIATE,
-            else move to _active_limit_orders for price monitoring
-          - STOP OPEN → check if stop already triggered → fill at market,
-            else move to _active_stop_orders for trigger monitoring
-          - STOP_LIMIT OPEN → check if stop already triggered → convert to limit,
-            else move to _active_stop_orders for trigger monitoring
-          - CLOSE → fill immediately
-
-        Phase 2: Check active limit orders for price trigger.
-          - LONG limit: ask <= limit_price → fill at limit_price
-          - SHORT limit: bid >= limit_price → fill at limit_price
-
-        Phase 3: Check active stop orders for trigger price.
-          - STOP: trigger reached → fill at current market price
-          - STOP_LIMIT: trigger reached → convert to limit order (→ Phase 2)
+        The base class's pending-order step, which its `on_tick` calls. The simulation resolves in
+        the timeline's order instead — its own `on_tick` and an instant's `resolve_scheduled` /
+        `resolve_due` (#460) — so nothing on its paths calls this; it resolves what is due by the
+        current instant, as an instant does after its ticks.
         """
-        # === Phase 0: Resolve scheduled modify/cancel ops (#318) ===
-        self._resolve_pending_operations()
+        self.resolve_scheduled(self._instant_msc)
+        self.resolve_due(self._instant_msc)
 
-        # === Phase 1: Latency queue drain ===
-        self._fill_resolved_orders(
-            self.latency_simulator.process_tick(self._current_tick))
-
+    def _monitor_price_triggers(self) -> None:
+        """
+        The resting limit and stop orders, checked against the current tick — every tick of a
+        slice (#460).
+          - LONG limit: ask <= limit_price → fill at limit_price; SHORT: bid >= limit_price
+          - STOP: trigger reached → fill at the current market price
+          - STOP_LIMIT: trigger reached → convert to a limit order, checked as one
+        """
         # === Phase 2: Active limit order price monitoring ===
         if self._active_limit_orders and self._current_tick:
             remaining: List[PendingOrder] = []
@@ -382,11 +464,16 @@ class TradeSimulator(AbstractTradeExecutor):
 
     def _fill_resolved_orders(self, filled_orders: List[PendingOrder]) -> None:
         """
-        Fill / queue orders the latency simulator has resolved (Phase 1 body).
-
-        Shared by on_tick (resolved at the tick msc) and the heartbeat ghost-pass
-        (resolved at an intermediate simulated msc, #360). Fills use the current
-        tick price (last-known on a ghost-pass).
+        Fill / queue orders the latency simulator has resolved — the body of `resolve_due`, which
+        resolves at the instant an order comes due (#460), between two ticks too. Fills use the
+        prices of the last tick applied.
+          - MARKET OPEN → fill at the current price
+          - LIMIT OPEN → price already reached → fill LIMIT_IMMEDIATE, else rest in
+            _active_limit_orders for price monitoring
+          - STOP OPEN → stop already triggered → fill at market, else rest in _active_stop_orders
+          - STOP_LIMIT OPEN → stop already triggered → convert to limit, else rest in
+            _active_stop_orders
+          - CLOSE → fill at the current price
 
         Args:
             filled_orders: PendingOrders whose latency delay has elapsed
@@ -466,25 +553,6 @@ class TradeSimulator(AbstractTradeExecutor):
                 case PendingOrderAction.CLOSE:
                     self._fill_close_order(pending_order)
 
-    def heartbeat(self) -> None:
-        """
-        Ghost-pass broker resolution at the injected simulated clock (#360).
-
-        Mirror of the live heartbeat for the sim pipeline: resolves scheduled
-        modify/cancel ops and the latency queue up to the current `_clock_time`
-        (an intermediate moment BETWEEN two replayed data ticks), so a fill that
-        lands in a gap reaches the decision on a ghost-pass — not only at the next
-        data tick. Fills use the last-known tick price (`_current_tick`). Price
-        triggers (limit/stop) are NOT re-checked here — no new market data between
-        ticks. Does NOT mutate tick state (see AbstractTradeExecutor.heartbeat).
-        """
-        if self._current_tick is None or self._clock_time is None:
-            return
-        self._resolve_pending_operations()
-        ghost_msc = int(self._clock_time.timestamp() * 1000)
-        self._fill_resolved_orders(
-            self.latency_simulator.process_up_to_msc(ghost_msc))
-
     # ============================================
     # Stress Test: Seeded Rejection (config-driven)
     # ============================================
@@ -519,7 +587,8 @@ class TradeSimulator(AbstractTradeExecutor):
         Send order to broker simulation.
 
         Validates order parameters, then submits to latency simulator.
-        Order will be filled after deterministic delay via _process_pending_orders().
+        Order will be filled after its deterministic delay, at the instant it comes due
+        (resolve_due, #460).
 
         Args:
             request: OpenOrderRequest with all order parameters
@@ -571,6 +640,8 @@ class TradeSimulator(AbstractTradeExecutor):
                 order_id=order_id,
                 request=request,
                 tick=self._current_tick,
+                placed_msc=self._instant_msc,
+                placed_at=self.get_current_time(),
             )
             # Return PENDING status
             result = OrderResult(
@@ -592,6 +663,8 @@ class TradeSimulator(AbstractTradeExecutor):
                 order_id=order_id,
                 request=request,
                 tick=self._current_tick,
+                placed_msc=self._instant_msc,
+                placed_at=self.get_current_time(),
             )
             # Return PENDING status
             result = OrderResult(
@@ -614,6 +687,8 @@ class TradeSimulator(AbstractTradeExecutor):
                 order_id=order_id,
                 request=request,
                 tick=self._current_tick,
+                placed_msc=self._instant_msc,
+                placed_at=self.get_current_time(),
             )
             result = OrderResult(
                 order_id=order_id,
@@ -635,6 +710,8 @@ class TradeSimulator(AbstractTradeExecutor):
                 order_id=order_id,
                 request=request,
                 tick=self._current_tick,
+                placed_msc=self._instant_msc,
+                placed_at=self.get_current_time(),
             )
             result = OrderResult(
                 order_id=order_id,
@@ -724,6 +801,7 @@ class TradeSimulator(AbstractTradeExecutor):
         order_id = self.latency_simulator.submit_close_order(
             position_id=position_id,
             tick=self._current_tick,
+            placed_msc=self._instant_msc,
             symbol=position.symbol,
             close_lots=lots,
             close_reason=close_reason,
@@ -821,7 +899,7 @@ class TradeSimulator(AbstractTradeExecutor):
                 # The amend moves a stop that has fired. It is one request, as it is sent to a
                 # venue, and the trigger it names no longer exists, so all of it is refused —
                 # applied anyway, it wrote the new trigger into the limit price. A cancel on
-                # its way stays: Phase 0 cancels the limit the order has become.
+                # its way stays: when it comes due it cancels the limit the order has become.
                 self._record_order_event(
                     OrderEventType.MODIFY_REJECTED, pending=pending,
                     message='the stop triggered before the amend took effect')
@@ -864,8 +942,8 @@ class TradeSimulator(AbstractTradeExecutor):
 
         Sets the order's `in_flight_operation = PENDING_CANCEL` and stores the
         resolve trigger on `cancel_apply_at_msc` (current_msc + 1 by default).
-        The actual removal from `_active_limit_orders` happens at the next
-        tick's Phase 0 (_resolve_pending_operations).
+        The actual removal from `_active_limit_orders` happens when the cancel
+        comes due, before that instant's trigger checks (resolve_scheduled, #460).
 
         Args:
             order_id: Order ID to cancel
@@ -968,9 +1046,9 @@ class TradeSimulator(AbstractTradeExecutor):
         if rejection is not None:
             return ModificationResult(success=False, rejection_reason=rejection)
 
-        # Schedule the modification — Phase 0 of next tick applies it.
-        # Effective values are captured here; resolve writes them as-is to the
-        # PendingOrder. UNSET semantics are baked in via the merge above.
+        # Schedule the modification — it applies when it comes due, before that instant's
+        # trigger checks (#460). Effective values are captured here; resolve writes them as-is
+        # to the PendingOrder. UNSET semantics are baked in via the merge above.
         current_msc = self._get_current_msc()
         pending.execution_state.in_flight_operation = PendingOperation.PENDING_MODIFY
         pending.execution_state.pending_modification = ModificationRequest(
@@ -1194,8 +1272,8 @@ class TradeSimulator(AbstractTradeExecutor):
         if rejection is not None:
             return ModificationResult(success=False, rejection_reason=rejection)
 
-        # Schedule the modification — Phase 0 of next tick applies it.
-        # Effective values captured here; resolve writes them as-is.
+        # Schedule the modification — it applies when it comes due, before that instant's
+        # trigger checks (#460). Effective values captured here; resolve writes them as-is.
         current_msc = self._get_current_msc()
         pending.execution_state.in_flight_operation = PendingOperation.PENDING_MODIFY
         pending.execution_state.pending_modification = ModificationRequest(
@@ -1238,8 +1316,9 @@ class TradeSimulator(AbstractTradeExecutor):
 
         Routing depends on adapter capability `native_position_sl_tp`:
         - True  (e.g. MT5, future #209): async-pending pattern. Schedule the
-                modification in `_pending_position_modifications`; resolve at
-                next tick's Phase 0 via `portfolio.modify_position`. Returns
+                modification in `_pending_position_modifications`; it resolves when
+                it comes due — on the timeline at its own instant, before that
+                instant's trigger checks (#460) — via `portfolio.modify_position`. Returns
                 ModificationResult(PENDING).
         - False (e.g. Kraken Spot, default Mock): synchronous fallback. Direct
                 call to `portfolio.modify_position` — current behavior preserved.
@@ -1309,21 +1388,19 @@ class TradeSimulator(AbstractTradeExecutor):
     # ============================================
 
     def _get_current_msc(self) -> int:
-        """Current tick millisecond timestamp (collected_msc preferred, time_msc fallback)."""
-        tick = self._current_tick
-        if tick.collected_msc > 0:
-            return tick.collected_msc
-        return tick.time_msc
+        """The current instant on the arrival axis — what a scheduled operation's due time and a
+        submission count from (#460)."""
+        return self._instant_msc
 
     def _resolve_pending_operations(self, up_to_msc: Optional[int] = None) -> None:
         """
-        Phase 0 of _process_pending_orders — apply scheduled modify/cancel
-        operations whose apply_at_msc has been reached.
+        Apply the scheduled modify/cancel operations whose apply_at_msc has been
+        reached — the first step of an instant (resolve_scheduled, #460).
 
-        Runs BEFORE Phase 1 (latency drain) and Phase 2/3 (price triggers) so
-        that a modification's new entry_price / SL / TP is in effect for the
-        current tick's trigger checks. Cancellations also fire before triggers
-        — a cancelled order will not be filled on the same tick.
+        Runs BEFORE the instant's ticks are checked against the resting orders and
+        before its latency fills, so that a modification's new entry_price / SL /
+        TP is in effect for the instant's trigger checks. Cancellations also fire
+        before triggers — a cancelled order will not be filled in the same instant.
 
         Position modifications resolve via `portfolio.modify_position`.
 

@@ -344,6 +344,53 @@ def test_expected_bottleneck_no_warning():
     r = _result_prof('s1', 0, {'worker_decision': 80.0, 'live_update': 20.0, 'total_per_tick': 100.0})
     assert 'bottleneck' not in _warnings(_batch_results([r]))
 
+
+def test_the_total_of_the_algo_passes_is_no_bottleneck():
+    # It times whole instants like the total per tick (#460): read as an operation, it would top
+    # every scenario and name itself an infrastructure bottleneck
+    r = _result_prof('s1', 0, {'worker_decision': 80.0, 'live_update': 20.0,
+                               'total_per_tick': 100.0, 'total_per_algo_pass': 95.0})
+    assert 'bottleneck' not in _warnings(_batch_results([r]))
+
+
+class TestTheBudgetIsHeldToAnAlgoPass:
+    """
+    The ticks that arrived in one millisecond are one slice, and the algo computes once on it —
+    so what a processing budget is held to is one algo pass, not one tick (#460). Here 300 ticks
+    run in 100 passes of 3.0 ms: 1.0 ms a tick, against a P5 interval of 2.0 ms.
+    """
+
+    def _result(self) -> ProcessResult:
+        tlr = ProcessTickLoopResult(
+            profiling_data=ProcessProfileData(
+                profile_times={'worker_decision': 300.0, 'total_per_tick': 300.0,
+                               'total_per_algo_pass': 300.0},
+                profile_counts={'worker_decision': 100, 'total_per_algo_pass': 100},
+                inter_tick_intervals_ms=[2.0] * 100, gap_threshold_s=300.0),
+            coordination_statistics=WorkerCoordinatorPerformanceStats(ticks_processed=300))
+        return ProcessResult(success=True, scenario_name='s1', scenario_index=0,
+                             tick_loop_results=tlr)
+
+    def _with_budget(self, budget_ms) -> BatchExecutionSummary:
+        return BatchExecutionSummary(
+            batch_execution_time=0.0, batch_warmup_time=0.0, batch_tickrun_time=0.0,
+            process_result_list=[self._result()],
+            clipping_stats_map={0: ClippingStats(
+                ticks_total=300, ticks_kept=300, ticks_clipped=0, budget_ms=budget_ms)})
+
+    def test_a_pass_slower_than_the_p5_interval_is_warned_about(self):
+        out = _warnings(_batch_results([self._result()]))
+        assert 'budget' in out
+        assert 'an algo pass takes longer than the P5 tick interval' in out['budget']
+
+    def test_a_budget_within_twice_the_pass_time_is_not_called_too_high(self):
+        # 5.0 ms is more than twice the time per tick, and less than twice the time per pass
+        assert 'budget_too_high' not in _warnings(self._with_budget(5.0))
+
+    def test_a_budget_above_twice_the_pass_time_is(self):
+        out = _warnings(self._with_budget(7.0))
+        assert 'budget_too_high' in out and '(3.000ms)' in out['budget_too_high']
+
 class TestThePerformanceVerdictsLiveHere:
     """
     The performance report used to print the parallel-penalty judgement as an inline

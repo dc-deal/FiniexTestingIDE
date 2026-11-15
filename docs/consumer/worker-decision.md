@@ -69,6 +69,8 @@ request, not an execution.
 | Field | Meaning |
 |---|---|
 | `ticks_processed` | the ticks that reached the algorithm — counted whether or not tracking was on |
+| `algo_passes` | how often the algorithm computed — once for the ticks a backtest received in one millisecond; null in a unit recorded before contract 57, which did not count it |
+| `ghost_passes` | how often a heartbeat logic's decision ran between two ticks; null before contract 57 |
 | `parallel_workers` | whether this unit's workers ran in parallel |
 | `parallel_time_saved_ms` | the time that parallelism saved over the unit |
 | `parallel_avg_saved_per_tick_ms` | that saving divided by `ticks_processed` |
@@ -90,7 +92,7 @@ cadence computes far less often than ticks arrive, so a `call_count` well below 
 
 | Field | Meaning | Null when |
 |---|---|---|
-| `compute_ratio_pct` | `call_count` as a percentage of the unit's `ticks_processed` | no tick was processed |
+| `compute_ratio_pct` | `call_count` as a percentage of the unit's `algo_passes` — its `ticks_processed` in a unit recorded before contract 57 | no tick was processed |
 | `ticks_idle` | ticks since the worker's last real compute | the worker never computed |
 
 `last_compute_tick` is the tick index of that last real compute, and reads `-1` where the worker
@@ -117,9 +119,15 @@ A unit row carries `timed_worker_count` — the workers it timed, 0 where it did
 configured count is `worker_count` on [scenario details](/api/v1/docs/scenario-details) — and its
 workers together: `worker_call_count` and `worker_time_ms`. Where the unit tracked its decisions it
 carries the algo path's own time too — `algo_time_ms`, the workers' time and the decision time,
-`algo_avg_per_tick_ms` that per tick — and `non_flat_signals`, the decisions that asked to buy or
-sell. Those three are null where nothing was tracked. All of them are read from the row itself, so
-an older run answers them too.
+`algo_avg_per_tick_ms` that per tick, `algo_avg_per_pass_ms` that per pass — and
+`non_flat_signals`, the decisions that asked to buy or sell. They are null where nothing was
+tracked. All of them are read from the row itself, so an older run answers them too — except
+`algo_avg_per_pass_ms`, which is also null on a run recorded before contract 57.
+
+A pass is one computation of the algo: one on each slice of ticks that arrived in the same
+millisecond, `algo_passes`, and one on each heartbeat, `ghost_passes`. `algo_avg_per_pass_ms`
+divides by both. Where ticks arrive in bursts it is larger than the time per tick, and it is the
+one to hold against the time the market leaves between ticks.
 
 ## Over the tracked units: the decision totals and the slowest performers
 

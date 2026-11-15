@@ -271,8 +271,8 @@ def _spot_simulator(usd: float = 1000.0, btc: float = 0.0) -> TradeSimulator:
         account_currency='USD',
         logger=GlobalLogger('CommittedFundsSim'),
         seeds={'inbound_latency_seed': 42},
-        inbound_latency_min_ms=0,
-        inbound_latency_max_ms=0,
+        inbound_latency_min_ms=1,
+        inbound_latency_max_ms=1,
         spot_mode=True,
         initial_balances={'USD': usd, 'BTC': btc},
     )
@@ -609,7 +609,7 @@ class TestASpotCloseIsCheckedLikeASell:
                                        MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL)),
             initial_balance=1000.0, account_currency='USD',
             logger=GlobalLogger('CommittedFundsMargin'), seeds={'inbound_latency_seed': 42},
-            inbound_latency_min_ms=0, inbound_latency_max_ms=0, spot_mode=False)
+            inbound_latency_min_ms=1, inbound_latency_max_ms=1, spot_mode=False)
         _feed_sim_tick(sim, msc=1000)
         sim.open_order(_market(OrderDirection.LONG, 0.01))
         _feed_sim_tick(sim, msc=1001)

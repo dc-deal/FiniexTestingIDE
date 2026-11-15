@@ -234,6 +234,10 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         'Some tick files the run read carry an arrival time that was reconstructed after the '
         'fact rather than recorded on arrival.'),
     ValidationCheckInfo(
+        'data_arrival_time_offset', 'Arrival time offset',
+        'Some tick files the run read carry an arrival time whose clock was off from the event '
+        'time by more than a delivery takes, so the backtest orders them by the event time.'),
+    ValidationCheckInfo(
         'data_missing_trades', 'Trades missing from the data',
         "Some tick files the run read miss more of the venue's trades than reconnect noise "
         'explains.'),

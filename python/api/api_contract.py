@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 56
+API_CONTRACT_VERSION = 57
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,20 +36,19 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'runs: total_units, failed_count and succeeded_count on every row (new) — how many units the '
-    'run had and how many of them failed or did not, as its warnings-errors outcome counts them; '
-    'null on a run recorded before this contract, while a session runs, and on a run that died '
-    'before its close',
-    'sweeps: best_combinations on every row (new) — the first-ranked combination in each account '
-    'currency, by the same rule the sweep detail ranks with; best_combinations_key names currency; '
-    'none for a sweep whose recorded objective cannot rank',
-    "sweep detail: total_units, failed_count and succeeded_count on every combination (new) — the "
-    "run's unit counts, as on the run list; a sweep whose recorded objective cannot rank is "
-    'refused with 409 sweep_objective_unrankable (new), where it was a server error',
-    "sweep detail: total_final_equity and total_initial_balance on every combination (new) — what "
-    "the run's accounts in that currency held at its end and started with, each summed; a sweep "
-    'may rank by it; null on a run recorded before this contract and while a session runs',
-    'sweeps: an objective that is not a number no longer ranks; such a sweep is refused like one '
-    'ranked by a figure a run can leave undefined',
+    'scenario-details: algo_passes and ghost_passes (new) — a backtest computes the algo once per '
+    'arrival millisecond, so its passes can fall below its ticks; null before this contract; '
+    'non_flat_signal_pct and trades_requested_pct are per pass, algo and heartbeat, a changed '
+    'meaning',
+    'worker-decision: algo_passes and ghost_passes on a unit row (new), and algo_avg_per_pass_ms '
+    "(new), the algo path's time per pass; compute_ratio_pct is a worker's calls per algo pass, a "
+    'changed meaning',
+    'profiling: algo_passes, algo_pass_ms and avg_per_algo_pass_ms on a unit row, total_algo_passes '
+    'and avg_per_algo_pass_ms on the aggregate (new); p95_processing_ms, suggested_budget_ms and '
+    'scenarios_over_p5 are taken per algo pass, and inter_tick counts one interval per arrival — '
+    'the ticks of one millisecond once — changed meanings',
+    'validation-checks: a new id, data_arrival_time_offset',
+    'a backtest orders its ticks by when they arrived and fills an order at its due time, so a '
+    'backtest recorded from this contract on can differ from one recorded before over the same data',
 ]
 

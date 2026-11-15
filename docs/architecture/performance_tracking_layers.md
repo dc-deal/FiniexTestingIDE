@@ -25,7 +25,9 @@
 
 **Where:** `process_tick_loop.py` body — operation-level timers bracketed by `time.perf_counter()`
 between every loop step (`trade_simulator`, `bar_rendering`, `bar_history`, `worker_decision`,
-`order_execution`, `live_update`, plus `total_per_tick` and `inter_tick_intervals_ms`).
+`order_execution`, `live_update`, plus two totals over whole instants — `total_per_tick`, and
+`total_per_algo_pass` for the instants the algo computed in (#460) — and `inter_tick_intervals_ms`,
+one interval per arrival, the ticks of one millisecond counted once (#450)).
 
 **Output sections (consume Layer B):**
 - ⚡ PROFILING ANALYSIS (per scenario)

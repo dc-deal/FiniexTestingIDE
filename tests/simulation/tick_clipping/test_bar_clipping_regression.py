@@ -96,6 +96,10 @@ def _build_mocks():
     # as a wrong bar volume — three tests red for one missing stub.
     trade_simulator.get_current_time.return_value = BAR_START
     trade_simulator.portfolio.sample_equity.return_value = None
+    # The backtest's timeline asks the simulator for its next due time after every instant
+    # (#460); nothing is in flight here
+    trade_simulator.peek_next_due_msc.return_value = None
+    trade_simulator.is_session_end_requested.return_value = False
 
     worker_coordinator = MagicMock()
     worker_coordinator.process_tick.return_value = MagicMock()
@@ -168,7 +172,7 @@ def test_volume_aggregation_includes_clipped_ticks():
     )
 
     # Sanity: broker path saw all ticks, algo path only non-clipped ticks.
-    assert trade_simulator.on_tick.call_count == len(ticks)
+    assert trade_simulator.apply_tick.call_count == len(ticks)
     non_clipped = sum(1 for t in ticks if not t.is_clipped)
     assert worker_coordinator.process_tick.call_count == non_clipped
 

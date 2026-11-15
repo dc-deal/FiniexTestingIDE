@@ -66,6 +66,9 @@ def _to_unit_row(unit: RunUnit) -> WorkerDecisionUnitRow:
     decision = unit.decision_statistics
     coordination = unit.coordination_statistics
     ticks = coordination.ticks_processed if coordination else 0
+    # A worker computes at most once per algo pass (#460); a unit recorded before passes were
+    # counted had one pass per tick
+    passes = (coordination.algo_passes or coordination.ticks_processed) if coordination else 0
     counted = decision is not None and decision.tracked
     workers = [
         WorkerStatRow(
@@ -74,7 +77,7 @@ def _to_unit_row(unit: RunUnit) -> WorkerDecisionUnitRow:
             avg_time_ms=w.worker_avg_time_ms, min_time_ms=w.worker_min_time_ms,
             max_time_ms=w.worker_max_time_ms,
             compute_basis=w.worker_compute_basis, last_compute_tick=w.worker_last_compute_tick,
-            compute_ratio_pct=(w.worker_call_count / ticks * 100) if ticks > 0 else None,
+            compute_ratio_pct=(w.worker_call_count / passes * 100) if passes > 0 else None,
             ticks_idle=((ticks - w.worker_last_compute_tick)
                         if ticks > 0 and w.worker_last_compute_tick >= 0 else None))
         for w in unit.worker_statistics
@@ -95,6 +98,8 @@ def _to_unit_row(unit: RunUnit) -> WorkerDecisionUnitRow:
         decision_min_time_ms=decision.decision_min_time_ms if counted else None,
         decision_max_time_ms=decision.decision_max_time_ms if counted else None,
         ticks_processed=coordination.ticks_processed if coordination else 0,
+        algo_passes=coordination.algo_passes if coordination else None,
+        ghost_passes=coordination.ghost_passes if coordination else None,
         parallel_workers=coordination.parallel_workers if coordination else False,
         parallel_time_saved_ms=coordination.parallel_time_saved_ms if coordination else 0.0,
         parallel_avg_saved_per_tick_ms=(

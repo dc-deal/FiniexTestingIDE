@@ -28,11 +28,8 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.loop.event_sequencer import EventSequencer
 from python.framework.loop.loop_context import LoopContext
-from python.framework.loop.loop_event_dispatcher import (
-    dispatch_backtest_heartbeat,
-    dispatch_backtest_slice,
-)
-from python.framework.loop.tick_slicer import slice_of_tick
+from python.framework.loop.loop_event_dispatcher import dispatch_backtest_instant
+from python.framework.loop.sim_event_intake import SimEventIntake
 from python.framework.process.indicator_series_recorder import IndicatorSeriesRecorder
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
 from python.framework.process.process_live_export import process_live_export, process_live_setup
@@ -46,9 +43,11 @@ from python.framework.stress_test.stale_data_stress_driver import (
     StaleDataStressDriver,
     build_stale_stress_driver,
 )
-from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
+from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
 from python.framework.types.decision_logic_types import Decision
+from python.framework.types.loop_types.backtest_pass_kind_types import BacktestPassKind
+from python.framework.types.loop_types.loop_event_types import DataSliceEvent
 from python.framework.types.loop_types.loop_pass_record_types import LoopPassRecord
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
@@ -65,76 +64,10 @@ from python.framework.utils.process_debug_info_utils import (
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
-def _run_sim_heartbeats(
-    prev_msc: int,
-    current_msc: int,
-    config: ProcessScenarioConfig,
-    trade_simulator: AbstractTradeExecutor,
-    worker_coordinator: WorkerOrchestrator,
-    decision_logic: AbstractDecisionLogic,
-    decision_event_dispatcher: Optional[DecisionEventDispatcher],
-    booking: BookingPeriodRecorder,
-    seal_source,
-    state_frames: Optional[StateFrameRecorder] = None,
-    ticks_processed: int = 0,
-    last_decision: Optional[Decision] = None,
-) -> bool:
-    """
-    Drive decision ghost-passes in the simulated-time gap between two data ticks (#360).
-
-    Hard-gated by the caller on decision_logic.wants_heartbeat(). Fires a ghost-pass
-    every config.heartbeat_interval_ms of simulated time strictly inside
-    (prev_msc, current_msc), resolving broker fills at each ghost moment via
-    TradeSimulator.heartbeat() so an opt-in algo reacts between ticks at the same
-    relative point as live. No bar render, no tick counter — tick state untouched.
-
-    Correctness gate (#208): no ghost-passes across a gap longer than
-    inter_tick_gap_threshold_s — across a data/weekend gap the market says nothing,
-    so synthesizing heartbeats there would fabricate activity.
-
-    Args:
-        prev_msc: Previous data tick timestamp (ms)
-        current_msc: Current data tick timestamp (ms)
-        config: Scenario config (heartbeat_interval_ms, inter_tick_gap_threshold_s)
-        trade_simulator: Executor (clock injection + ghost broker resolution)
-        worker_coordinator: Orchestrator (process_heartbeat → cached worker results)
-        decision_logic: Opt-in decision (executes the ghost action)
-        decision_event_dispatcher: #348 channel (drained around the ghost compute)
-        booking: The unit's period recorder — the trading-day boundary is checked at EVERY
-            ghost instant, because these passes are the only thing that advances the canonical
-            clock across a quiet stretch and a fill can resolve at any of them (#537)
-        seal_source: Callable handing the recorder its records + snapshot when a seal happens
-        state_frames: The scenario's state-frame recorder, or None when it records none
-        ticks_processed: The scenario's tick counter, for the frames
-        last_decision: The last tick's decision — what a heartbeat frame records, as live
-
-    Returns:
-        True if the algo requested session end during a ghost-pass (caller stops)
-    """
-    interval_ms = config.heartbeat_interval_ms
-    gap_ms = current_msc - prev_msc
-    if gap_ms <= interval_ms or gap_ms > config.inter_tick_gap_threshold_s * 1000.0:
-        return False
-
-    k = 1
-    while prev_msc + k * interval_ms < current_msc:
-        ghost_order = dispatch_backtest_heartbeat(
-            prev_msc + k * interval_ms, trade_simulator, worker_coordinator, decision_logic,
-            decision_event_dispatcher, booking, seal_source)
-        # #579 part B item 3: a heartbeat fills the slot it reaches, with the last tick's decision
-        # and no closed bar — as a live session's heartbeat does
-        if state_frames is not None:
-            state_frames.on_pass(ticks_processed, last_decision, on_tick=False, order=ghost_order)
-        if trade_simulator.is_session_end_requested():
-            return True
-        k += 1
-    return False
-
-
 def execute_tick_loop(
     config: ProcessScenarioConfig,
     worker_coordinator: WorkerOrchestrator,
-    trade_simulator: AbstractTradeExecutor,
+    trade_simulator: TradeSimulator,
     bar_rendering_controller: BarRenderingController,
     decision_logic: AbstractDecisionLogic,
     scenario_logger: ScenarioLogger,
@@ -147,7 +80,9 @@ def execute_tick_loop(
     """
     Execute tick processing loop with live update support.
 
-    MAIN PROCESSING: Iterate through ticks, process each.
+    MAIN PROCESSING: the scenario's timeline (#460) hands over one instant at a time — the ticks
+    that arrived in one millisecond, a due time, a heartbeat logic's timer — and the loop core runs
+    each; this drive runs what follows an instant.
     LIVE UPDATES: Send periodic updates via queue (time-based).
 
     Args:
@@ -279,81 +214,87 @@ def execute_tick_loop(
             scenario_logger.info(
                 f'🔄 Starting tick loop ({live_setup.tick_count:,} ticks)')
 
-        # === TICK LOOP ===
-        # The log's event-time column needs no per-tick feeding: the logger pulls the canonical
-        # clock, which on_tick and the ghost pass both advance.
-        for tick_idx, tick in enumerate(ticks):
-            if profiling_enabled: tick_start = time.perf_counter()
-            current_tick = tick
-            current_index = tick_idx
+        # === TIMELINE (#460) ===
+        # The ticks by arrival, the simulator's due times and a heartbeat logic's timers, one
+        # instant at a time. The log's event-time column needs no feeding: the logger pulls the
+        # canonical clock, which the loop core moves to every instant.
+        intake = SimEventIntake(
+            ticks, trade_simulator, sequencer,
+            timer_interval_ms=(config.heartbeat_interval_ms
+                               if decision_logic.wants_heartbeat() else 0),
+            gap_threshold_ms=config.inter_tick_gap_threshold_s * 1000.0)
+        for events in intake:
+            if profiling_enabled: instant_start = time.perf_counter()
 
-            # Inter-tick interval: use collected_msc (monotonic) when available,
-            # fall back to time_msc for pre-V1.3.0 data (with negative-diff skip)
-            current_msc = tick.collected_msc if tick.collected_msc > 0 else tick.time_msc
-            if profiling_enabled and prev_interval_msc > 0 and current_msc > 0:
-                delta = current_msc - prev_interval_msc
-                if tick.collected_msc > 0 or delta >= 0:
-                    inter_tick_intervals.append(float(delta))
+            # #458 + #460: the instant itself — the broker path and the bars for every tick, the
+            # equity sample, the resolutions due, the delivery, the algo once, the execution and
+            # the trailing delivery — runs in the loop core, in the phases of an instant
+            pass_kind = dispatch_backtest_instant(
+                events, trade_simulator, loop_context, pass_hooks, pass_record)
 
-            # #360: drive decision ghost-passes across the simulated gap to the
-            # previous tick — opt-in algos only (hard-gated, absent otherwise).
-            # prev_interval_msc still holds the previous tick here (updated below).
-            if (decision_logic.wants_heartbeat()
-                    and config.heartbeat_interval_ms > 0
-                    and prev_interval_msc > 0 and current_msc > 0):
-                # #537: the boundary is checked on the heartbeat too — the ghost passes resolve
-                # fills between two ticks, and one resolved after the boundary belongs to the
-                # day it opened. The check therefore lives INSIDE the ghost loop: called here it
-                # would run on the clock the PREVIOUS tick already checked, which is no check at
-                # all, and that fill would be booked into the day before it (#539 audit). The
-                # boundary's stamp does not depend on it any more (#476).
-                if _run_sim_heartbeats(
-                        prev_interval_msc, current_msc, config, trade_simulator,
-                        worker_coordinator, decision_logic, decision_event_dispatcher,
-                        booking, seal_source, state_frames, pass_record.ticks_applied,
-                        last_decision):
-                    scenario_logger.info(
-                        f'🛑 Session end requested: {trade_simulator.get_session_end_reason()}')
-                    break
+            data = events[0] if isinstance(events[0], DataSliceEvent) else None
+            if data is not None:
+                current_tick = data.ticks[-1]
+                current_index = intake.get_last_tick_index()
+                # Inter-tick interval: one per slice, from the slice's ordering stamp — the
+                # recorded arrival, or the event time where its file records none it can trust.
+                # The ticks that arrived in one millisecond are one arrival, so the gap is the
+                # time the market left between two algo passes (#450); slice stamps only rise
+                if profiling_enabled:
+                    if prev_interval_msc > 0:
+                        inter_tick_intervals.append(float(data.ts_init - prev_interval_msc))
+                    prev_interval_msc = data.ts_init
 
-            prev_interval_msc = current_msc
+            if pass_kind is BacktestPassKind.TICK_PASS:
+                # === 5c. State Frame (#579 part B item 3) — at the end of the pass, before an end ===
+                if state_frames is not None:
+                    state_frames.on_pass(pass_record.ticks_applied, pass_record.decision,
+                                         on_tick=True,
+                                         closed_timeframes=pass_record.closed_timeframes,
+                                         order=pass_record.order_result)
+                # #379: each drawing worker's value for a bar that closed, in the same place
+                if indicator_series is not None:
+                    indicator_series.on_pass(pass_record.closed_timeframes,
+                                             pass_record.current_bars)
+                last_decision = pass_record.decision
+            elif pass_kind is BacktestPassKind.GHOST_PASS:
+                # #579 part B item 3: a heartbeat fills the slot it reaches, with the last tick's
+                # decision and no closed bar — as a live session's heartbeat does
+                if state_frames is not None:
+                    state_frames.on_pass(pass_record.ticks_applied, last_decision, on_tick=False,
+                                         order=pass_record.ghost_order)
 
-            # #458: the pass itself — the broker path, the bars, the equity sample, the clipping gate,
-            # the algo, the execution and the drain — runs in the loop core, in this runner's order
-            if not dispatch_backtest_slice(slice_of_tick(tick, sequencer), loop_context, pass_hooks,
-                                           pass_record):
-                continue
-
-            # === 5c. State Frame (#579 part B item 3) — at the end of the pass, before an end ===
-            if state_frames is not None:
-                state_frames.on_pass(pass_record.ticks_applied, pass_record.decision, on_tick=True,
-                                     closed_timeframes=pass_record.closed_timeframes,
-                                     order=pass_record.order_result)
-            # #379: each drawing worker's value for a bar that closed, in the same place
-            if indicator_series is not None:
-                indicator_series.on_pass(pass_record.closed_timeframes, pass_record.current_bars)
-            last_decision = pass_record.decision
-
-            if decision_event_dispatcher is not None and trade_simulator.is_session_end_requested():
+            # A session end asked for anywhere in the instant — a hook in the delivery, the
+            # decision, a heartbeat pass — ends the run after it (#348)
+            if trade_simulator.is_session_end_requested():
                 scenario_logger.info(
                     f'🛑 Session end requested: {trade_simulator.get_session_end_reason()}')
                 break
 
+            if pass_kind is BacktestPassKind.CLIPPED:
+                continue
 
-            # === 6. LIVE UPDATES (Time-based) ===
-            if profiling_enabled: t11 = time.perf_counter()
-            live_updated = process_live_export(
-                live_setup, config, tick_idx, tick, portfolio, worker_coordinator,
-                pass_record.current_bars)
-            if (live_updated):
-                live_update_count += 1
-            if profiling_enabled:
-                profile_times['live_update'] += (time.perf_counter() - t11) * 1000
-                profile_counts['live_update'] += 1
+            if pass_kind is BacktestPassKind.TICK_PASS:
+                # === 6. LIVE UPDATES (Time-based) ===
+                if profiling_enabled: t11 = time.perf_counter()
+                live_updated = process_live_export(
+                    live_setup, config, current_index, current_tick, portfolio,
+                    worker_coordinator, pass_record.current_bars)
+                if (live_updated):
+                    live_update_count += 1
+                if profiling_enabled:
+                    profile_times['live_update'] += (time.perf_counter() - t11) * 1000
+                    profile_counts['live_update'] += 1
 
-            # Total tick time
+            # Total time of the instants the algo was not clipped out of, and apart from it the
+            # instants the algo computed in: one computation each, what a processing budget is
+            # held to (#460)
             if profiling_enabled:
-                profile_times['total_per_tick'] += (time.perf_counter() - tick_start) * 1000
+                instant_ms = (time.perf_counter() - instant_start) * 1000
+                profile_times['total_per_tick'] += instant_ms
+                if pass_kind is BacktestPassKind.TICK_PASS:
+                    profile_times['total_per_algo_pass'] += instant_ms
+                    profile_counts['total_per_algo_pass'] += 1
 
         # #436: close a stale window still active at scenario end (episode
         # span reaches the pot even without a recovery tick).

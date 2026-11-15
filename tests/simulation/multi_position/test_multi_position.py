@@ -546,11 +546,10 @@ class TestMultiPositionMetadata:
 
     def test_tick_count_matches_config(
         self,
-        probe_metadata: ProbeMetadata,
+        tick_loop_results: ProcessTickLoopResult,
         scenario_config: Dict
     ):
-        """Tick count should match config max_ticks."""
+        """Every configured tick reaches the algo path; a pass counts each tick of its slice (#460)."""
         expected = scenario_config['scenarios'][0]['max_ticks']
-        assert probe_metadata.tick_count == expected, (
-            f'Expected {expected} ticks, got {probe_metadata.tick_count}'
-        )
+        actual = tick_loop_results.coordination_statistics.ticks_processed
+        assert actual == expected, f'Expected {expected} ticks, got {actual}'

@@ -19,6 +19,7 @@ def execute_algo_path(
     bar_controller: BarRenderingController,
     worker_orchestrator: WorkerOrchestrator,
     symbol: str,
+    tick_weight: int = 1,
 ) -> Decision:
     """
     Steps 3–4 — bar history retrieval + worker/decision compute.
@@ -34,6 +35,8 @@ def execute_algo_path(
         bar_controller: Bar rendering controller (history source)
         worker_orchestrator: Orchestrator (workers + decision compute)
         symbol: Trading symbol for bar history retrieval
+        tick_weight: The unclipped ticks this pass computes for — more than one where a backtest's
+            slice holds several (#460)
 
     Returns:
         Decision from worker_orchestrator.process_tick
@@ -45,4 +48,5 @@ def execute_algo_path(
         current_bars=current_bars,
         bar_history=bar_history,
         bar_render_state=bar_render_state,
+        tick_weight=tick_weight,
     )

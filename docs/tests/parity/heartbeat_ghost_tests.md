@@ -2,14 +2,15 @@
 
 ## Overview
 
-Validates the simulation-side decision ghost-pass (#360 Stage 2): the sim pipeline drives
-ghost-passes in the simulated-time gap between two replayed data ticks, so an opt-in algo
-(`wants_heartbeat()`) reacts between ticks at the same relative point as in an AutoTrader session.
+Validates the simulation-side decision ghost-pass (#360 Stage 2): the backtest's timeline makes a
+timer every heartbeat interval in the quiet stretch between two replayed data ticks (#460), so an
+opt-in algo (`wants_heartbeat()`) reacts between ticks at the same relative point as in an
+AutoTrader session.
 
 **Location:** `tests/parity/test_heartbeat_ghost_parity.py`
 
 Fully deterministic — no broker, no network. Three layers: the latency-resolution mechanism,
-the driver cadence + gates, and the end-to-end loop wiring.
+the timers' cadence and gates in the timeline intake, and the end-to-end loop wiring.
 
 ---
 
@@ -18,17 +19,17 @@ the driver cadence + gates, and the end-to-end loop wiring.
 | Class | Focus |
 |-------|-------|
 | `TestLatencyResolutionByMsc` | `OrderLatencySimulator.process_up_to_msc(msc)` resolves a queued order exactly when its `broker_fill_msc` is reached and removes it (the mechanism that lets a fill landing in a gap be resolved on a ghost-pass) |
-| `TestSimHeartbeatDriver` | `_run_sim_heartbeats` fires one ghost-pass per `heartbeat_interval_ms` within a sub-threshold gap (9 passes for a 10 s gap at 1 s), fires **none** across a gap over `inter_tick_gap_threshold_s` (#208 weekend-gap correctness gate), and short-circuits when the algo requests session end |
-| `TestSimGhostPassLoop` | End-to-end via `execute_tick_loop` with a real `TradeSimulator`: an opt-in decision fires the expected ghost-passes between two ticks; a **non-opt-in** decision fires **none** (hard gate); an over-threshold gap fires none |
+| `TestTheIntakeTimers` | The timeline intake (`SimEventIntake`) makes one timer per `heartbeat_interval_ms` within a sub-threshold gap (9 for a 10 s gap at 1 s), **none** across a gap over `inter_tick_gap_threshold_s` (#208 weekend-gap correctness gate), and none for a logic that takes no heartbeat |
+| `TestSimGhostPassLoop` | End-to-end via `execute_tick_loop` with a real `TradeSimulator`: an opt-in decision fires the expected ghost-passes between two ticks; a **non-opt-in** decision fires **none** (hard gate); an over-threshold gap fires none; a session end asked for in a ghost pass ends the run after it, before the next tick reaches the algo; so does one asked for in a tick pass without a decision event channel, since the loop checks after every instant (#460) |
 
 ---
 
 ## Key Mechanisms Tested
 
 ### Hard gate
-The sim heartbeat path is completely absent unless `decision_logic.wants_heartbeat()` is True —
-all current algos return False, so the loop is byte-for-byte unchanged for them (zero overhead,
-zero behavior change). The test proves both the opt-in (fires) and non-opt-in (silent) paths.
+The intake makes no timer unless `decision_logic.wants_heartbeat()` is True, so a logic that takes
+no heartbeat sees only data instants and the instants its orders come due at. The test proves both
+the opt-in (fires) and non-opt-in (silent) paths.
 
 ### Weekend-gap correctness gate (#208)
 No ghost-passes are synthesized across a gap longer than `inter_tick_gap_threshold_s` (default
@@ -44,6 +45,6 @@ pipelines — the foundation the #294 matrix extends for a heartbeat algo.
 
 ## Fixtures (conftest.py)
 
-No shared fixtures. The latency test instantiates `OrderLatencySimulator` directly; the driver
-test calls `_run_sim_heartbeats` with `MagicMock` collaborators; the loop test wires a real
-`TradeSimulator` + a `MagicMock` orchestrator/decision into `execute_tick_loop`.
+No shared fixtures. The latency test instantiates `OrderLatencySimulator` directly; the timer
+tests run `SimEventIntake` against a stand-in that has nothing in flight; the loop test wires a
+real `TradeSimulator` + a `MagicMock` orchestrator/decision into `execute_tick_loop`.

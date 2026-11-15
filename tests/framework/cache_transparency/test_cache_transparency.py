@@ -34,13 +34,15 @@ from tests.shared.fixture_helpers import (
 MARGIN_FIXTURE = Path('configs/scenario_sets/backtesting/backtesting_validation_test.json')
 SPOT_FIXTURE = Path('configs/scenario_sets/backtesting/spot_sell_test.json')
 
-# An open on a tick, an open on a heartbeat, a partial close, and both positions closed again
+# An open on a tick, an open on a heartbeat, a partial close, and both positions closed again. The
+# steps count tick passes, and the fixture's 3,000 ticks make 2,109 of them since the algo computes
+# once per millisecond of arrival (#460, measured 2026-11-13)
 SPOT_PLAN = [
     {'trigger': 'tick', 'at': 100, 'action': 'open', 'direction': 'LONG', 'lots': 0.01},
     {'trigger': 'heartbeat', 'at': 300, 'action': 'open', 'direction': 'LONG', 'lots': 0.01},
     {'trigger': 'tick', 'at': 1500, 'action': 'partial_close', 'position_index': 0, 'lots': 0.004},
-    {'trigger': 'tick', 'at': 2200, 'action': 'close', 'position_index': 1},
-    {'trigger': 'tick', 'at': 2800, 'action': 'close', 'position_index': 0},
+    {'trigger': 'tick', 'at': 1800, 'action': 'close', 'position_index': 1},
+    {'trigger': 'tick', 'at': 2000, 'action': 'close', 'position_index': 0},
     {'trigger': 'tick', 'at': 600, 'action': 'rest_limit', 'direction': 'LONG', 'lots': 0.01,
      'offset': 0.2},
     {'trigger': 'tick', 'at': 1200, 'action': 'cancel_resting', 'resting_index': 0},

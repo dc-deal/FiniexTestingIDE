@@ -5,7 +5,7 @@ The step recorder both pass-order suites write into: a spy patched onto a collab
 appends a short step name and calls the real method, so the run behaves as it would without it.
 """
 
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, Optional, Tuple
 from unittest.mock import MagicMock
 
 import pytest
@@ -27,6 +27,8 @@ class PassSteps:
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._monkeypatch = monkeypatch
         self.names: List[str] = []
+        # The tick each algo pass computed on, and how many ticks it stood for (#460)
+        self.algo_ticks: List[Tuple[Any, int]] = []
 
     def spy(self, owner: type, method: str, step: str) -> None:
         """
@@ -73,8 +75,9 @@ class PassSteps:
             orchestrator = MagicMock()
 
             def process_tick(tick: Any, current_bars: Any, bar_history: Any,
-                             bar_render_state: Any = None) -> Decision:
+                             bar_render_state: Any = None, tick_weight: int = 1) -> Decision:
                 self.names.append('algo')
+                self.algo_ticks.append((tick, tick_weight))
                 return logic.compute_tick(tick, {})
 
             def process_heartbeat() -> Optional[Decision]:

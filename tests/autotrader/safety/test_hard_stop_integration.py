@@ -117,7 +117,7 @@ def _run(spot_mode: bool, liquidate: bool = False) -> Tuple[
         order_guard_config=None))
     orchestrator = MagicMock()
     orchestrator.process_tick.side_effect = (
-        lambda tick, current_bars, bar_history, bar_render_state=None:
+        lambda tick, current_bars, bar_history, bar_render_state=None, tick_weight=1:
         logic.compute_tick(tick, {}))
     tick_source = MagicMock()
     tick_source.is_exhausted.return_value = True

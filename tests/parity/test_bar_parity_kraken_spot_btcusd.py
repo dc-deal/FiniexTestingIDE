@@ -104,6 +104,10 @@ def _run_simulation(ticks):
     # with the first tick's time, which is what a real executor holds before the first on_tick.
     trade_simulator.get_current_time.return_value = ticks[0].timestamp
     trade_simulator.portfolio.sample_equity.return_value = None
+    # The backtest's timeline asks for the next due time after every instant (#460); nothing
+    # is in flight here
+    trade_simulator.peek_next_due_msc.return_value = None
+    trade_simulator.is_session_end_requested.return_value = False
 
     worker_coordinator = MagicMock()
     worker_coordinator.process_tick.return_value = MagicMock()
@@ -255,8 +259,8 @@ def _run_simulation_trades(ticks):
         account_currency='USD',
         logger=logger,
         seeds={'inbound_latency_seed': 42},
-        inbound_latency_min_ms=0,
-        inbound_latency_max_ms=0,
+        inbound_latency_min_ms=1,
+        inbound_latency_max_ms=1,
         spot_mode=True,
         initial_balances={'USD': 10000.0, 'BTC': 0.0},
     )
@@ -268,7 +272,8 @@ def _run_simulation_trades(ticks):
     # do not call decision_logic.compute_tick() directly.
     worker_coordinator = MagicMock()
     worker_coordinator.process_tick.side_effect = (
-        lambda tick, current_bars, bar_history, bar_render_state=None: decision_logic.compute_tick(tick, {})
+        lambda tick, current_bars, bar_history, bar_render_state=None, tick_weight=1:
+        decision_logic.compute_tick(tick, {})
     )
 
     execute_tick_loop(
@@ -324,7 +329,8 @@ def _run_autotrader_trades(ticks):
 
     worker_orchestrator = MagicMock()
     worker_orchestrator.process_tick.side_effect = (
-        lambda tick, current_bars, bar_history, bar_render_state=None: decision_logic.compute_tick(tick, {})
+        lambda tick, current_bars, bar_history, bar_render_state=None, tick_weight=1:
+        decision_logic.compute_tick(tick, {})
     )
 
     tick_source = MagicMock()
@@ -374,10 +380,12 @@ def test_bar_parity_kraken_spot_btcusd():
 def test_trade_parity_kraken_spot_btcusd():
     """Both pipelines produce identical trades and portfolio stats for BTCUSD.
 
-    Uses 1000 flat-price ticks (bid=94500, ask=94507) to eliminate the 1-tick
-    fill-timing asymmetry: simulation fills at tick N+1, AutoTrader fills at
-    tick N — with a constant price both pipelines record identical entry/exit
-    prices.
+    Uses 1000 flat-price ticks (bid=94500, ask=94507) so the comparison does not
+    depend on when each pipeline fills: the simulation fills an order at its due
+    time, 1 ms after the tick it was sent on (#460), the AutoTrader's mock when its
+    order query answers, which real compute time decides (#461; on this fixture
+    about 53 s later, measured 2026-11-14). With a constant price both pipelines
+    record identical entry and exit prices.
 
     DeterministicProbe opens LONG at tick 200, closes at tick 700 (hold 500).
     Expected: entry=94507.0, exit=94500.0, P&L = -0.07 USD (spread cost), same on

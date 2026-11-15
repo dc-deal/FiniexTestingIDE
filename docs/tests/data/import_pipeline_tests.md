@@ -194,7 +194,10 @@ What a tick file LACKS, measured from its rows when the tick index scans it (#56
 - **TestWhatAFileLacksIsMeasured** — a recorded, quoted file lacks nothing; bid = ask throughout is
   `no_quote`; an absent or zeroed arrival column is `no_arrival_time`; both reconstruction
   fingerprints (every multi-tick second ending on .999, the arrival copied from the event time) are
-  `arrival_time_reconstructed`
+  `arrival_time_reconstructed`; a median arrival lag outside 0–1,000 ms — seconds behind the event,
+  or before it — is `arrival_time_offset`, a lag of milliseconds is none (#460)
+- **TestWhichDeficienciesLeaveTheArrivalUntrusted** — exactly the three arrival deficiencies make a
+  backtest order a file by its event time (#460)
 - **TestMissingTradesAreCountedAlways** — a few missing trade ids are a count, not a deficiency; a
   run of missing ids spanning more than five minutes is one; no trade ids means "not measurable"
 - **TestTheIndexCarriesThem** — a file imported without a quote and without an arrival time is

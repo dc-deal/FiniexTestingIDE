@@ -30,8 +30,21 @@ class DataDeficiency(str, Enum):
     NO_QUOTE = 'no_quote'
     NO_ARRIVAL_TIME = 'no_arrival_time'
     ARRIVAL_TIME_RECONSTRUCTED = 'arrival_time_reconstructed'
+    ARRIVAL_TIME_OFFSET = 'arrival_time_offset'
     MISSING_TRADES = 'missing_trades'
     SYNTHETIC = 'synthetic'
+
+    def leaves_arrival_untrusted(self) -> bool:
+        """
+        Whether a file with this deficiency carries no arrival time that says when a tick arrived
+        — none recorded, one reconstructed, or one a drifting clock set off. A backtest orders such
+        a file's ticks by their event time and times its processing budget on it (#460).
+
+        Returns:
+            True for no_arrival_time, arrival_time_reconstructed and arrival_time_offset
+        """
+        return self in (DataDeficiency.NO_ARRIVAL_TIME, DataDeficiency.ARRIVAL_TIME_RECONSTRUCTED,
+                        DataDeficiency.ARRIVAL_TIME_OFFSET)
 
 
 @dataclass(frozen=True)
@@ -75,6 +88,14 @@ DEFICIENCY_DECLARATIONS: Dict[DataDeficiency, DeficiencyDeclaration] = {
                     'multi-tick second ending at .999, or the arrival time copied from the '
                     'event time with no receive lag',
         consequence='collected_msc was reconstructed after the fact, not recorded on arrival',
+        severity=Severity.WARNING),
+    DataDeficiency.ARRIVAL_TIME_OFFSET: DeficiencyDeclaration(
+        check='data_arrival_time_offset',
+        title='ARRIVAL TIME OFFSET',
+        established='measured: the median of arrival time minus event time lies outside '
+                    '0–1,000 ms — a collector clock that drifted or was set off, not a delivery',
+        consequence='collected_msc does not say when a tick reached us: a backtest orders the '
+                    'file by its event time, and a tick-processing budget is timed on it too',
         severity=Severity.WARNING),
     DataDeficiency.MISSING_TRADES: DeficiencyDeclaration(
         check='data_missing_trades',

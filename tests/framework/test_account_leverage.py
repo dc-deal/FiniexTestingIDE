@@ -28,8 +28,8 @@ def test_the_account_leverage_is_the_broker_configuration_s(broker_type):
         account_currency='USD',
         logger=GlobalLogger('AccountLeverage'),
         seeds={'inbound_latency_seed': 42},
-        inbound_latency_min_ms=0,
-        inbound_latency_max_ms=0,
+        inbound_latency_min_ms=1,
+        inbound_latency_max_ms=1,
     )
 
     api = DecisionTradingApi(simulator, required_order_types=[])

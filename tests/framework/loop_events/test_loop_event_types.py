@@ -59,7 +59,8 @@ class TestEachOrderingNamesItsStamp:
         for ordering in EventOrdering:
             assert ordering.pick('source', 'receipt') in ('source', 'receipt'), ordering
 
-    def test_a_backtest_goes_by_the_source_stamp_and_a_live_session_by_its_receipt(self):
+    def test_the_source_ordering_takes_the_source_stamp_and_the_receipt_ordering_the_receipt(
+            self):
         assert EventOrdering.BY_TS_EVENT.pick('source', 'receipt') == 'source'
         assert EventOrdering.BY_TS_INIT.pick('source', 'receipt') == 'receipt'
 

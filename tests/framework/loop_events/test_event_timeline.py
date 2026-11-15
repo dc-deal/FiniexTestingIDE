@@ -1,7 +1,8 @@
 """
 The loop's one timeline (#457): earliest stamp first, then submission order, never a kind first.
 
-The stamp is `ts_event` in a backtest and `ts_init` live. Events sharing a stamp are one instant
+The stamp is the one the ordering picks: `ts_init` in both pipelines since #460, `ts_event` the
+alternative the timeline still supports. Events sharing a stamp are one instant
 and leave together, in the order they were submitted, and time handed over never runs backwards.
 """
 
@@ -147,8 +148,8 @@ class TestOneStampIsOneInstant:
 
 class TestTheTwoStamps:
     """
-    A fill the venue executed at .300 that reached us at .450, and a timer due at .400. A backtest
-    replays when things happened; a live session can only order by what it has received.
+    A fill the venue executed at .300 that reached us at .450, and a timer due at .400. Ordered by
+    the source stamp, the timeline replays when things happened; ordered by receipt, what arrived.
     """
 
     @staticmethod
@@ -157,7 +158,7 @@ class TestTheTwoStamps:
         timer = TimeEvent(ts_event=400, ts_init=400, seq=1)
         return fill, timer
 
-    def test_a_backtest_orders_by_when_it_happened(self):
+    def test_by_the_source_stamp_it_orders_by_when_it_happened(self):
         fill, timer = self._events()
         timeline = EventTimeline(EventOrdering.BY_TS_EVENT)
         timeline.push(timer)
@@ -165,7 +166,7 @@ class TestTheTwoStamps:
 
         assert [timeline.pop(), timeline.pop()] == [fill, timer]
 
-    def test_a_live_session_orders_by_when_it_arrived(self):
+    def test_by_receipt_it_orders_by_when_it_arrived(self):
         fill, timer = self._events()
         timeline = EventTimeline(EventOrdering.BY_TS_INIT)
         timeline.push(fill)
@@ -182,8 +183,8 @@ class TestTheTwoStamps:
         assert (popped.ts_event, popped.ts_init) == (300, 450)
         assert timeline.get_ordering() is EventOrdering.BY_TS_INIT
 
-    def test_a_live_instant_is_what_arrived_together(self):
-        """Events received in one millisecond are one instant live, whatever their source stamps."""
+    def test_by_receipt_an_instant_is_what_arrived_together(self):
+        """Events received in one millisecond are one instant, whatever their source stamps."""
         arrived_together_a = ResolutionEvent(ts_event=100, ts_init=900, seq=0)
         arrived_together_b = TimeEvent(ts_event=500, ts_init=900, seq=1)
         arrived_later = ResolutionEvent(ts_event=500, ts_init=950, seq=2)
@@ -195,7 +196,7 @@ class TestTheTwoStamps:
         assert timeline.pop_instant() == (arrived_later,)
         assert timeline.pop_instant() == ()
 
-    def test_a_backtest_instant_is_what_happened_together(self):
+    def test_by_the_source_stamp_an_instant_is_what_happened_together(self):
         """The same three events, ordered by their source stamps, cut into other instants."""
         happened_first = ResolutionEvent(ts_event=100, ts_init=900, seq=0)
         happened_together_a = TimeEvent(ts_event=500, ts_init=900, seq=1)

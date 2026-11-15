@@ -73,7 +73,10 @@ class ScenarioDetailsSummary(AbstractBatchSummarySection):
         timespan = format_tick_timespan(
             self._parse(unit.first_tick_time), self._parse(unit.last_tick_time),
             unit.tick_timespan_seconds)
-        print(f'   Duration: {duration} | Ticks: {unit.ticks_processed:,} | {timespan}')
+        # The algo computes once per arrival millisecond (#460): its passes, where they differ
+        passes = (f' | Passes: {unit.algo_passes:,}'
+                  if unit.algo_passes and unit.algo_passes != unit.ticks_processed else '')
+        print(f'   Duration: {duration} | Ticks: {unit.ticks_processed:,}{passes} | {timespan}')
         if unit.trades_requested is None:
             print(f'   Signals: not counted (decision tracking off) | Worker: {unit.worker_count}')
         else:

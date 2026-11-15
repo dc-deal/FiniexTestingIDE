@@ -179,27 +179,30 @@ class TestEdgeCases:
         assert stats.ticks_clipped == 0
         assert stats.budget_ms == 2.0
 
-    def test_pre_v13_data_skips_filtering(self, preparator, pre_v13_ticks):
-        """Pre-V1.3.0 data (collected_msc=0) skips flagging, returns unchanged."""
+    def test_data_without_an_arrival_time_is_timed_on_its_event_time(
+            self, preparator, pre_v13_ticks):
+        """
+        Ticks whose files record no usable arrival time (collected_msc=0: none recorded, or one
+        data preparation cleared, #460) are budgeted on their event time: 1000, 1001, 1002 at
+        2 ms keep the first and the third.
+        """
         scenario_ticks = make_scenario_ticks(SYMBOL, pre_v13_ticks)
         filtered, stats = preparator._apply_tick_budget(scenario_ticks, SYMBOL, 2.0)
 
         assert stats.ticks_total == 3
-        assert stats.ticks_kept == 3
-        assert stats.ticks_clipped == 0
-        assert stats.budget_ms == 2.0
+        assert stats.ticks_kept == 2
+        assert stats.ticks_clipped == 1
+        assert [tick['is_clipped'] for tick in filtered['ticks'][SYMBOL]] == [False, True, False]
 
-        # All original ticks preserved (no is_clipped flag — data returned unchanged)
-        assert len(filtered['ticks'][SYMBOL]) == 3
-
-    def test_pre_v13_logs_warning(self, preparator, pre_v13_ticks, mock_logger):
-        """Data without an arrival time must log a warning naming the deficiency."""
+    def test_data_timed_on_its_event_time_is_said_so(self, preparator, pre_v13_ticks,
+                                                     mock_logger):
+        """The log says how many ticks were budgeted on their event time."""
         scenario_ticks = make_scenario_ticks(SYMBOL, pre_v13_ticks)
         preparator._apply_tick_budget(scenario_ticks, SYMBOL, 2.0)
 
-        mock_logger.warning.assert_called_once()
-        call_args = mock_logger.warning.call_args[0][0]
-        assert 'no_arrival_time' in call_args
+        mock_logger.warning.assert_not_called()
+        assert any('3 of 3 ticks timed on their event time' in call.args[0]
+                   for call in mock_logger.info.call_args_list)
 
     def test_sub_ms_budget_no_clipping(self, preparator, regular_ticks):
         """

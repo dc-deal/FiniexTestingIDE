@@ -122,7 +122,10 @@ def _to_unit_row(
     return ProfilingUnitRow(
         name=result.scenario_name, symbol=scenario.symbol,
         total_ticks=ticks, avg_per_tick_ms=(total_ms / ticks) if ticks > 0 else 0.0,
-        total_ms=total_ms, bottleneck_operation=bottleneck_operation, bottleneck_pct=bottleneck_pct,
+        total_ms=total_ms,
+        algo_passes=profiling.algo_passes, algo_pass_ms=profiling.total_per_algo_pass_ms,
+        avg_per_algo_pass_ms=profiling.avg_per_algo_pass_ms(),
+        bottleneck_operation=bottleneck_operation, bottleneck_pct=bottleneck_pct,
         operations=operations, inter_tick=inter_tick, clipping=clipping)
 
 

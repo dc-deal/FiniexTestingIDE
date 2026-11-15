@@ -522,6 +522,43 @@ factors are three scenario sets.
    └─ trade_simulator_config.balances: {'EUR': 10000} → {'JPY': 50000}
 ```
 
+#### An order's latency
+
+`inbound_latency_min_ms` and `inbound_latency_max_ms` are the range an order's latency is drawn
+from — seeded, one draw for each order and each close; a modify or a cancel takes 1 ms. The order
+fills at the instant it comes due, at the prices standing then
+([Pending Orders](architecture/pending_order_architecture.md)). **The least a run accepts is 1 ms,
+and the greatest may not be below the least.** Live, every order travels to the venue; an order
+sent with no latency would fill at the very price its decision saw, which no session can do. A
+scenario set asking for less, at any level of the cascade, refuses to load before a scenario runs,
+and the message names the scenario, the key, the value and the reason:
+
+```
+Type error in trade_simulator_config[eurusd_week_01]: 1 validation error for TradeSimulatorDefaults
+  Value error, inbound_latency_min_ms is 0 — an order's latency is at least 1 ms: live, every order
+  travels to the venue, and an order sent with none would fill at the very price its decision saw
+```
+
+**Why not zero, when established backtesters start there?** Their default follows the time grid
+they work on:
+
+| System | What an order waits for by default |
+|---|---|
+| QuantConnect LEAN | Nothing: "If your algorithm places a market order at 10 AM, it fills at 10 AM", at the most recent tick or the bar's close. An order whose latest data is more than a bar old waits for the next bar ([Immediate Model](https://www.quantconnect.com/docs/v2/writing-algorithms/reality-modeling/trade-fills/supported-models/immediate-model), [stale fills](https://www.quantconnect.com/docs/v2/writing-algorithms/reality-modeling/trade-fills/key-concepts)) |
+| nautilus_trader | Nothing, unless the venue is given a latency model; with one, "a LatencyModel places each command in the venue's inflight queue with an arrival timestamp", and the command waits there until it is due ([execution flow](https://nautilustrader.io/docs/nightly/concepts/backtesting/execution-flow/)) |
+| hftbacktest | A modelled latency: constant, interpolated from order latencies measured at the venue, or derived from the feed's latency — "Latency is an important factor that you need to take into account when you backtest your HFT strategy" ([latency models](https://hftbacktest.readthedocs.io/en/latest/latency_models.html)) |
+| Bar-based systems | One bar: a decision taken on a bar's close is sent "next bar at market", the convention of the strategy code in Kevin Davey's *Building Winning Algorithmic Trading Systems* |
+
+On minute or daily bars a millisecond lies below what the data can show: the delay that matters
+there is a whole bar, and a fill model without latency loses nothing a bar could resolve. This
+project replays ticks by their recorded arrival, to the millisecond, so an order's latency lies
+inside what the data resolves and decides the price the order fills at. That places it beside
+hftbacktest, which works on the same grid, rather than beside a bar-based default: the difference
+from LEAN's default follows from the data, not from a disagreement with it. In one point this
+project is stricter than all of them — they accept zero, a run here refuses it. That is a
+deliberate choice, not established practice: comparing a backtest with a live session is what a
+backtest here is for, and no live order arrives without latency.
+
 ---
 
 ### 5. `stress_test_config` (Per-Parameter Merge)

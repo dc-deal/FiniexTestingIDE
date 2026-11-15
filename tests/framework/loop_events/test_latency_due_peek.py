@@ -81,15 +81,19 @@ class TestTheNextDueOrder:
         assert simulator.peek_next_due_msc() == _BASE_MSC + 80
 
     def test_an_order_sent_through_the_simulator_is_due_after_its_latency(self):
-        """The seeded path end to end: a market open placed at a tick comes due within its range."""
+        """
+        The seeded path end to end: a market open sent in an instant comes due within its range,
+        counted from the instant (#460).
+        """
         simulator = OrderLatencySimulator(
             seeds={'inbound_latency_seed': 42}, logger=GlobalLogger(name='DuePeekTest'),
             inbound_latency_min_ms=20, inbound_latency_max_ms=80)
+        tick = _tick(_BASE_MSC)
         simulator.submit_open_order(
             order_id='o1',
             request=OpenOrderRequest(symbol='BTCUSD', order_type=OrderType.MARKET,
                                      direction=OrderDirection.LONG, lots=0.01),
-            tick=_tick(_BASE_MSC))
+            tick=tick, placed_msc=_BASE_MSC, placed_at=tick.timestamp)
 
         assert _BASE_MSC + 20 <= simulator.peek_next_due_msc() <= _BASE_MSC + 80
 

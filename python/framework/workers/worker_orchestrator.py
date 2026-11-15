@@ -402,16 +402,19 @@ class WorkerOrchestrator:
         current_bars: Dict[str, FormingBar],
         bar_history: Optional[Mapping[str, Tuple[Bar, ...]]] = None,
         bar_render_state: Optional[BarRenderState] = None,
+        tick_weight: int = 1,
     ) -> Decision:
         """
         Process tick through all workers and generate decision.
 
         Args:
-            tick: Current tick data
+            tick: Current tick data — in a backtest the last tick of its slice (#460)
             current_bars: Current bars per timeframe
             bar_history: Historical bars per timeframe
             bar_render_state: Bar-lifecycle transitions for this pass (close set);
                 drives ON_BAR_CLOSE worker recompute. Defaults to no closes.
+            tick_weight: How many unclipped ticks this pass computes for — one, except where a
+                backtest's slice holds several; the tick counts add it
 
         Returns:
             Decision object (from DecisionLogic)
@@ -419,8 +422,9 @@ class WorkerOrchestrator:
         if not self.is_initialized:
             raise RuntimeError('Coordinator not initialized')
 
-        # Track tick processing
-        self._coordination_stats.ticks_processed += 1
+        # Track tick processing: the ticks this pass stands for, and the pass itself (#460)
+        self._coordination_stats.ticks_processed += tick_weight
+        self._coordination_stats.algo_passes += 1
 
         bar_history = bar_history or {}
         closed_timeframes = (
@@ -449,7 +453,7 @@ class WorkerOrchestrator:
         # on fresh→stale transitions (#434) BEFORE the decision computes, so it
         # reacts in this pass.
         if self._signal_workers:
-            self._process_signal_pass(tick.timestamp)
+            self._process_signal_pass(tick.timestamp, counted_ticks=tick_weight)
 
         # ============================================
         # Delegate to DecisionLogic
@@ -505,7 +509,7 @@ class WorkerOrchestrator:
         return MappingProxyType(masks)
 
     def _process_signal_pass(
-        self, tick_time: datetime, count_tick: bool = True
+        self, tick_time: datetime, counted_ticks: int = 1
     ) -> None:
         """
         The per-tick SIGNAL pass: count the resolution, track the outage episode,
@@ -532,10 +536,11 @@ class WorkerOrchestrator:
 
         Args:
             tick_time: Current moment (canonical clock) — the episode axis
-            count_tick: Whether this pass is a TICK. False for an off-tick arrival
-                (#141 Part 2a): the episode and the stale edge are evaluated exactly the
-                same way, but the three resolution counters are not touched, because they
-                are contracted to sum to the run's tick count.
+            counted_ticks: How many ticks this pass counts for — the unclipped ticks of the slice
+                it computes on (#460), and 0 for an off-tick arrival (#141 Part 2a): the episode
+                and the stale edge are evaluated exactly the same way, but the three resolution
+                counters are not touched, because they are contracted to sum to the run's tick
+                count.
         """
         self._last_signal_pass_time = tick_time
 
@@ -545,14 +550,14 @@ class WorkerOrchestrator:
                 continue
 
             stats = self._signal_resolution_stats[name]
-            if count_tick:
+            if counted_ticks:
                 resolution = worker.get_last_resolution()
                 if resolution == SignalResolution.FRESH:
-                    stats.fresh_ticks += 1
+                    stats.fresh_ticks += counted_ticks
                 elif resolution == SignalResolution.STALE:
-                    stats.stale_ticks += 1
+                    stats.stale_ticks += counted_ticks
                 else:
-                    stats.blind_ticks += 1
+                    stats.blind_ticks += counted_ticks
 
             is_stale = result.is_stale
             if is_stale != self._signal_stale_state.get(name, False):
@@ -746,7 +751,7 @@ class WorkerOrchestrator:
                     tick_index=self._coordination_stats.ticks_processed,
                 )
 
-        self._process_signal_pass(now, count_tick=False)
+        self._process_signal_pass(now, counted_ticks=0)
         return merged
 
     def process_heartbeat(self) -> Optional[Decision]:
@@ -773,6 +778,7 @@ class WorkerOrchestrator:
         if not self.decision_logic.wants_heartbeat():
             return None
 
+        self._coordination_stats.ghost_passes += 1
         decision_start = time.perf_counter()
         decision = self.decision_logic.compute_heartbeat(
             worker_results=self._worker_results

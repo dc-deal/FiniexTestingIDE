@@ -60,7 +60,8 @@ def _orchestrator(workers: List[_SlowWorker], parallel: bool) -> WorkerOrchestra
     orchestrator.workers = {worker.name: worker for worker in workers}
     orchestrator._worker_results = {}
     orchestrator._thread_pool = ThreadPoolExecutor(max_workers=len(workers)) if parallel else None
-    orchestrator._coordination_stats = SimpleNamespace(parallel_time_saved_ms=0.0, ticks_processed=0)
+    orchestrator._coordination_stats = SimpleNamespace(parallel_time_saved_ms=0.0, ticks_processed=0,
+                                                       algo_passes=0)
     orchestrator.logger = MagicMock()
     orchestrator._worker_needs_recompute = lambda *args: True
     orchestrator._filter_bar_history_for_worker = lambda worker, bar_history: bar_history

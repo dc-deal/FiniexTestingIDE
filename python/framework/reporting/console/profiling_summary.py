@@ -161,17 +161,22 @@ class ProfilingSummary(AbstractBatchSummarySection):
         # Header
         print(f"{renderer.bold('Scenario:')} {renderer.blue(unit.name)}")
 
-        # Tick count line — with clipping info if budget was active
+        # Tick count line — with clipping info if budget was active; the time of one algo pass
+        # beside the time per tick where the record has it (#460)
         clipping = unit.clipping
+        per_pass = (f"{renderer.gray('Avg/Pass:')} {unit.avg_per_algo_pass_ms:.3f}ms  |  "
+                    if unit.avg_per_algo_pass_ms is not None else '')
         if clipping and clipping.ticks_clipped > 0:
             print(f"{renderer.gray('Ticks:')} {unit.total_ticks:,} / {clipping.ticks_total:,} "
                   f"{renderer.yellow(f'(clipped: {clipping.ticks_clipped:,} = {clipping.clipping_rate_pct:.1f}%)')}  |  "
                   f"{renderer.gray('Budget:')} {clipping.budget_ms}ms  |  "
                   f"{renderer.gray('Avg/Tick:')} {unit.avg_per_tick_ms:.3f}ms  |  "
+                  f"{per_pass}"
                   f"{renderer.gray('Total:')} {unit.total_ms:.2f}ms")
         else:
             print(f"{renderer.gray('Ticks:')} {unit.total_ticks:,}  |  "
                   f"{renderer.gray('Avg/Tick:')} {unit.avg_per_tick_ms:.3f}ms  |  "
+                  f"{per_pass}"
                   f"{renderer.gray('Total:')} {unit.total_ms:.2f}ms")
         print()
 
@@ -253,17 +258,20 @@ class ProfilingSummary(AbstractBatchSummarySection):
         print(f'  Intervals: {stats.interval_count:,}{gaps_info}')
         print(renderer.gray(
             '  Note: P5 = fastest 5% of tick arrivals. '
-            'If avg processing > P5, the algorithm can\'t keep up with peak tick rate.'))
+            'If an algo pass takes longer than P5, the algorithm can\'t keep up with peak tick rate.'))
 
     def _render_aggregated_details(self, renderer):
         """Render aggregated profiling statistics from the model aggregate."""
         agg = self._report.aggregate
 
         # Summary
+        per_pass = (f"  |  {renderer.bold('Avg/Pass:')} {agg.avg_per_algo_pass_ms:.3f}ms"
+                    if agg.avg_per_algo_pass_ms is not None else '')
         print(f"{renderer.bold('Scenarios:')} {agg.scenarios}  |  "
               f"{renderer.bold('Ticks:')} {agg.total_ticks:,}  |  "
               f"{renderer.bold('Time:')} {agg.total_time_s:.2f}s  |  "
-              f"{renderer.bold('Avg/Tick:')} {agg.avg_per_tick_ms:.3f}ms")
+              f"{renderer.bold('Avg/Tick:')} {agg.avg_per_tick_ms:.3f}ms"
+              f"{per_pass}")
         print()
 
         # Bottleneck
@@ -331,7 +339,7 @@ class ProfilingSummary(AbstractBatchSummarySection):
             return
 
         print(f"  {renderer.bold('💡 Tick Processing Budget Recommendation:')} ")
-        print(f'     P95 processing time: {agg.p95_processing_ms:.3f}ms')
+        print(f'     P95 time per algo pass: {agg.p95_processing_ms:.3f}ms')
         print(f'     Suggested budget: {agg.suggested_budget_ms:.3f}ms (P95 + 10% safety margin)')
         if not agg.budget_active:
             print(renderer.gray(
