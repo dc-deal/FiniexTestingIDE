@@ -26,7 +26,10 @@ An event is one thing that happened, placed on the loop's timeline (`types/loop_
 Every event carries two stamps in UTC epoch milliseconds — `ts_event`, the stamp it carries from
 its source, and `ts_init`, the stamp this process gave it on receipt — and a submission number
 `seq`. A backtest orders by `ts_event`, a live session by `ts_init` (`EventOrdering.pick` is the
-one place that says so), and the other stamp travels as data.
+one place that says so), and the other stamp travels as data. The backtest's timeline driver (#460)
+changes the backtest's side: it orders by the recorded receipt (`ts_init`), and by the venue stamp
+only where a file records no arrival time, so the algo sees a tick when it would have seen it live —
+the way nautilus_trader orders its backtests, by when a datum became available.
 
 The timeline (`loop/event_timeline.py`) hands out the earliest stamp first, then by `seq`, and never
 one kind before another. Events sharing a stamp form one **instant** and leave together; the seven

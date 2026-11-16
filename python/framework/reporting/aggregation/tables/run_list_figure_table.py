@@ -66,7 +66,7 @@ def _agreed_on(column: str) -> Callable[[Dict[str, Any], Sequence[Any]], Any]:
 
 
 _RUN_LEVEL_COLUMNS = ('run_outcome', 'error_count', 'warning_count', 'log_warning_count',
-                      'tick_timespan_seconds')
+                      'tick_timespan_seconds', 'total_units', 'failed_count')
 
 RUN_LIST_TABLE = FoldTable(
     name='run_list',

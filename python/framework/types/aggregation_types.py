@@ -174,7 +174,8 @@ _SELECTING: FrozenSet[Reduction] = frozenset({
 class NullMeaning(Enum):
     """
     What the empty cell of a nullable figure means — declared per figure in the figure catalog
-    (`FigureDeclaration.null_meaning`), which a test holds to the nullable figures.
+    (`FigureDeclaration.null_meaning`), which a test holds to the nullable figures and to the
+    descriptions a ranking may order by.
 
     A null can mean two things, and a reader who takes one for the other decides wrongly: a
     ranking that leaves out the runs whose profit factor is undefined drops the runs that never
@@ -235,7 +236,8 @@ class FigureDeclaration:
             carry it, saying how many it left out. Where a null can mean both — a set that can be
             empty, or a row from before the column — it is declared UNDEFINED, because leaving
             out the runs that never lost is the worse mistake. None for a figure the row model
-            never leaves empty, and for a description
+            never leaves empty, and for a description — unless a ranking may order by it, as by a
+            run-level total repeated on each of the run's rows
         companion_of: The column a COMPANION is reduced with — the one whose winning row
             supplies it. None for every other reduction
         weighted_by: For a mean, the count it was taken over. The combined mean is weighted by

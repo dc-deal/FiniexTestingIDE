@@ -5,7 +5,8 @@ STRUCTURAL fail-fast validation of a sweep grid BEFORE any batch runs: every dot
 must have a valid shape (`decision_logic_config.<param>[.<sub>…]` or
 `workers.<instance>.<param>[.<sub>…]` — nested paths allowed, e.g. `workers.macd_main.periods.M5`)
 and a non-empty list of values. A spec-structure error affects all combinations and is a
-clear typo → abort the whole sweep early.
+clear typo → abort the whole sweep early. The same holds for the objective: one the ranking
+refuses would leave every combination run and the sweep unrankable at its end.
 
 Parameter EXISTENCE and value RANGE are deliberately NOT checked here. Both are now a per-run
 concern: the grid only writes values into the scenario's strategy_config, and the run's
@@ -18,6 +19,7 @@ that is left out of the ranking (#1) — the other combinations keep running (§
 from typing import Any, Dict, List
 
 from python.framework.logging.abstract_logger import AbstractLogger
+from python.framework.optimization.optimization_analysis import objective_refusal
 
 
 def validate_sweep_grid(
@@ -38,6 +40,21 @@ def validate_sweep_grid(
         if not isinstance(values, list) or not values:
             raise ValueError(f"Grid path '{path}' must map to a non-empty list of values")
         _check_path_shape(path)
+
+
+def validate_sweep_objective(objective: str) -> None:
+    """
+    Refuse an objective the ranking cannot order by, before the first combination runs.
+
+    Args:
+        objective: The RunResultRow field the spec ranks by
+
+    Raises:
+        ValueError: When the ranking would refuse it, with the ranking's reason
+    """
+    refusal = objective_refusal(objective)
+    if refusal is not None:
+        raise ValueError(f'Sweep objective refused: {refusal}')
 
 
 def _check_path_shape(path: str) -> None:

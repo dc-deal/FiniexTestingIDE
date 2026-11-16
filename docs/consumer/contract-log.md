@@ -33,6 +33,37 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 56 — 2026-11-15 (#666)
+
+A list says what a reader opens a run or a sweep to find out.
+
+- [Runs](/api/v1/docs/runs): **`total_units`**, **`failed_count`** and **`succeeded_count`** on
+  every row (new) — how many units the run had, its scenarios in a backtest or the session in live,
+  and how many of them failed or did not, as the run's
+  [warnings-errors](/api/v1/docs/warnings-errors) outcome counts them; the same three names mean
+  the same there. Null on a run recorded before this contract, while a session still runs, and on
+  a run that died before its close.
+- [Sweeps](/api/v1/docs/sweeps): **`best_combinations`** on every row of the list (new) — the
+  first-ranked combination in each account currency, with its `run_id`, its `objective_value` and
+  its `sweep_params`, by the same rule the sweep detail ranks with. `best_combinations_key` names
+  what keys it: `currency`. None for a sweep whose recorded objective cannot rank.
+- [Sweeps](/api/v1/docs/sweeps), the detail: **`total_units`**, **`failed_count`** and
+  **`succeeded_count`** on every combination (new) — the run's unit counts, as on the run list;
+  null where not recorded. A sweep
+  whose recorded objective cannot rank its combinations is refused with **`409
+  sweep_objective_unrankable`** (new, see [errors](/api/v1/docs/errors)), where it was a server
+  error.
+- [Sweeps](/api/v1/docs/sweeps), the detail: **`total_final_equity`** and
+  **`total_initial_balance`** on every combination (new) — what the run's accounts in that currency
+  held at its end and started with, each summed over its accounts, so a combination of several
+  scenarios has an end equity where `final_equity` is null. A sweep may rank by it. Null on a run
+  recorded before this contract and while a session runs.
+- [Sweeps](/api/v1/docs/sweeps): a figure that is not a number — a name, a flag — no longer ranks
+  a sweep; such a sweep is refused like one ranked by a figure a run can leave undefined.
+
+Fields added on two lists and the sweep detail, one error code added, an objective that is no
+number refused; nothing removed or renamed.
+
 ## Version 55 — 2026-11-12 (#379)
 
 A worker can draw its outputs on a run's chart, as an indicator pane: one value per closed bar of its
@@ -128,26 +159,13 @@ the slowest profiled unit, `worker_decision_breakdowns`, a warmup phase's `pct` 
 
 Nothing removed or renamed; no meaning changed.
 
-## Version 51 — 2026-11-05 (#646)
-
-A deployment no longer reads twice in the list, once of the two rows empty.
-
-- [Deployments](/api/v1/docs/deployments), a changed shape: the sessions without booked figures —
-  failed before they measured anything, or not booked yet — no longer stand in a row of their own
-  beside the deployment's booked rows. Each booked row counts them: **`sessions_without_figures`**,
-  and **`sessions_failed`** for those that failed. The counts describe the deployment; on a
-  deployment with two currency rows they repeat and are never added across rows.
-- Deployments: the row with `currency: null` is served only for a deployment that has booked
-  nothing, and carries the same two counts. The key stays `["deployment_id", "currency"]`.
-
-Nothing removed or renamed; two fields added.
-
-## Versions 50 and earlier
+## Versions 51 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 51** — 2026-11-05 (#646): A deployment no longer reads twice in the list: the sessions without booked figures stand in no row of their own, each booked row of [deployments](/api/v1/docs/deployments) counts them as `sessions_without_figures` and `sessions_failed`, and the row with `currency: null` is served only for a deployment that has booked nothing.
 - **Version 50** — 2026-11-04 (#646): A run that failed before it measured anything no longer reads like a session that traded and broke even — such a [deployments](/api/v1/docs/deployments) session serves no figure and no currency (null, not `0.0` and the empty string), every session in the detail carries `booking_state` (`booked`, `failed`, `not_booked_yet`), and a [sweep](/api/v1/docs/sweeps) combination's figures are nullable in the schema while a ranked one never carries null.
 - **Version 49** — 2026-11-02 (#645): A deployment is listed from its first session's start — sessions without a sealed day stand in the list and the detail without figures, in a row of their own with `currency: null`; `net_pnl` and `currency` nullable; `/deployments/{deployment_id}` and its booking periods answer 200 for such a deployment, and `deployment_not_found` means no run and no ledger row names it.
 - **Version 48** — 2026-11-01: The installation answering names itself on `/health` — `host_id`, the key, the same value as `origin_host` on activities and runs, and `host_name`, for people to read and no key.

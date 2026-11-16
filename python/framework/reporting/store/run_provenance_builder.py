@@ -380,12 +380,15 @@ def _run_counts(report: Optional[WarningsErrorsReport]) -> Dict[str, Any]:
     """
     if report is None:
         return {'run_outcome': None, 'error_count': None,
-                'warning_count': None, 'log_warning_count': None}
+                'warning_count': None, 'log_warning_count': None,
+                'total_units': None, 'failed_count': None}
     outcome = report.outcome
     return {'run_outcome': outcome.run_outcome,
             'error_count': outcome.error_count,
             'warning_count': outcome.warning_count,
-            'log_warning_count': outcome.log_warning_count}
+            'log_warning_count': outcome.log_warning_count,
+            'total_units': outcome.total_units,
+            'failed_count': outcome.failed_count}
 
 
 def _run_status(report: Optional[WarningsErrorsReport]) -> Tuple[str, Optional[str]]:

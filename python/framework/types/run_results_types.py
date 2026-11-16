@@ -145,6 +145,9 @@ class RunProvenance:
     error_count: Optional[int] = None       # ERROR records in the error pot
     warning_count: Optional[int] = None     # Tier-1 findings (validator-produced)
     log_warning_count: Optional[int] = None # Tier-2 WARNING records in the log pot
+    # How many units the run had and how many of them failed, from the same outcome (#666)
+    total_units: Optional[int] = None
+    failed_count: Optional[int] = None
     # WHAT the run ran with (#547), carried onto every row (#476): the run-config store id of its
     # rendered configuration as its header names it, and of the broker configuration it froze —
     # comma-joined where a backtest traded under several. A session books its trading days

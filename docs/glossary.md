@@ -1073,7 +1073,8 @@ every run header. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run
 
 **total final equity** (`total_final_equity`) — The closing equities of several *accounts* added
 up, beside `total_initial_balance`: a total no single account held. On a run with one account it
-equals that account's `final_equity`.
+equals that account's `final_equity`. The results ledger carries it per run and currency, so a
+sweep can rank by its combinations' end equity.
 
 **trade** — One close of a position, as the trade history records it: a full close books one, each
 partial close one more, so a trade is not its position. Its key is the unit, the position and the

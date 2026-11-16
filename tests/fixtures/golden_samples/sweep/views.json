@@ -12,7 +12,9 @@
    "error_count": 0,
    "warning_count": 3,
    "log_warning_count": 0,
-   "tick_timespan_seconds": 835201.829
+   "tick_timespan_seconds": 835201.829,
+   "total_units": null,
+   "failed_count": null
   },
   "20261110_144027_8ce50d80": {
    "results": [
@@ -26,7 +28,9 @@
    "error_count": 0,
    "warning_count": 3,
    "log_warning_count": 0,
-   "tick_timespan_seconds": 835201.829
+   "tick_timespan_seconds": 835201.829,
+   "total_units": null,
+   "failed_count": null
   },
   "20261110_144145_e110f331": {
    "results": [
@@ -40,7 +44,9 @@
    "error_count": 0,
    "warning_count": 3,
    "log_warning_count": 0,
-   "tick_timespan_seconds": 835201.829
+   "tick_timespan_seconds": 835201.829,
+   "total_units": null,
+   "failed_count": null
   },
   "20261110_144251_f0c97147": {
    "results": [
@@ -54,7 +60,9 @@
    "error_count": 0,
    "warning_count": 3,
    "log_warning_count": 0,
-   "tick_timespan_seconds": 835201.829
+   "tick_timespan_seconds": 835201.829,
+   "total_units": null,
+   "failed_count": null
   },
   "20261110_144405_e497d2c5": {
    "results": [
@@ -68,7 +76,9 @@
    "error_count": 0,
    "warning_count": 3,
    "log_warning_count": 0,
-   "tick_timespan_seconds": 835201.829
+   "tick_timespan_seconds": 835201.829,
+   "total_units": null,
+   "failed_count": null
   },
   "20261110_144521_980e96ce": {
    "results": [
@@ -82,7 +92,9 @@
    "error_count": 0,
    "warning_count": 3,
    "log_warning_count": 0,
-   "tick_timespan_seconds": 835201.829
+   "tick_timespan_seconds": 835201.829,
+   "total_units": null,
+   "failed_count": null
   },
   "20261110_144630_939d29c3": {
    "results": [
@@ -96,7 +108,9 @@
    "error_count": 0,
    "warning_count": 3,
    "log_warning_count": 0,
-   "tick_timespan_seconds": 835201.829
+   "tick_timespan_seconds": 835201.829,
+   "total_units": null,
+   "failed_count": null
   },
   "20261110_144744_4869f8de": {
    "results": [
@@ -110,7 +124,9 @@
    "error_count": 0,
    "warning_count": 3,
    "log_warning_count": 0,
-   "tick_timespan_seconds": 835201.829
+   "tick_timespan_seconds": 835201.829,
+   "total_units": null,
+   "failed_count": null
   },
   "20261110_144852_e6ac50d2": {
    "results": [
@@ -124,7 +140,9 @@
    "error_count": 0,
    "warning_count": 3,
    "log_warning_count": 0,
-   "tick_timespan_seconds": 835201.829
+   "tick_timespan_seconds": 835201.829,
+   "total_units": null,
+   "failed_count": null
   }
  },
  "deployments": [],
@@ -146,7 +164,18 @@
    ],
    "objective": "net_pnl",
    "maximize": true,
-   "features_beyond_venue": ""
+   "features_beyond_venue": "",
+   "best_combinations": [
+    {
+     "currency": "USD",
+     "run_id": "20261110_144630_939d29c3",
+     "objective_value": -32.64000000000786,
+     "sweep_params": {
+      "decision_logic_config.sl_mult": 1.5,
+      "decision_logic_config.tp_mult": 1.5
+     }
+    }
+   ]
   }
  ],
  "sweep_details": {
@@ -212,6 +241,10 @@
      "warning_count": 3,
      "log_warning_count": 0,
      "tick_timespan_seconds": 835201.829,
+     "total_units": null,
+     "failed_count": null,
+     "total_final_equity": null,
+     "total_initial_balance": null,
      "records_pruned_at": "",
      "unit_name": "EURUSD_sweep_w1",
      "period_no": 5,
@@ -268,7 +301,8 @@
      "orders_unaccounted": 0,
      "sl_tp_triggered": 17,
      "signal_fresh_ratio": null,
-     "run_kind": "sweep"
+     "run_kind": "sweep",
+     "succeeded_count": null
     },
     {
      "logic_version": 21,
@@ -323,6 +357,10 @@
      "warning_count": 3,
      "log_warning_count": 0,
      "tick_timespan_seconds": 835201.829,
+     "total_units": null,
+     "failed_count": null,
+     "total_final_equity": null,
+     "total_initial_balance": null,
      "records_pruned_at": "",
      "unit_name": "EURUSD_sweep_w1",
      "period_no": 5,
@@ -379,7 +417,8 @@
      "orders_unaccounted": 0,
      "sl_tp_triggered": 17,
      "signal_fresh_ratio": null,
-     "run_kind": "sweep"
+     "run_kind": "sweep",
+     "succeeded_count": null
     },
     {
      "logic_version": 21,
@@ -434,6 +473,10 @@
      "warning_count": 3,
      "log_warning_count": 0,
      "tick_timespan_seconds": 835201.829,
+     "total_units": null,
+     "failed_count": null,
+     "total_final_equity": null,
+     "total_initial_balance": null,
      "records_pruned_at": "",
      "unit_name": "EURUSD_sweep_w1",
      "period_no": 5,
@@ -490,7 +533,8 @@
      "orders_unaccounted": 0,
      "sl_tp_triggered": 17,
      "signal_fresh_ratio": null,
-     "run_kind": "sweep"
+     "run_kind": "sweep",
+     "succeeded_count": null
     },
     {
      "logic_version": 21,
@@ -545,6 +589,10 @@
      "warning_count": 3,
      "log_warning_count": 0,
      "tick_timespan_seconds": 835201.829,
+     "total_units": null,
+     "failed_count": null,
+     "total_final_equity": null,
+     "total_initial_balance": null,
      "records_pruned_at": "",
      "unit_name": "EURUSD_sweep_w1",
      "period_no": 5,
@@ -601,7 +649,8 @@
      "orders_unaccounted": 0,
      "sl_tp_triggered": 53,
      "signal_fresh_ratio": null,
-     "run_kind": "sweep"
+     "run_kind": "sweep",
+     "succeeded_count": null
     },
     {
      "logic_version": 21,
@@ -656,6 +705,10 @@
      "warning_count": 3,
      "log_warning_count": 0,
      "tick_timespan_seconds": 835201.829,
+     "total_units": null,
+     "failed_count": null,
+     "total_final_equity": null,
+     "total_initial_balance": null,
      "records_pruned_at": "",
      "unit_name": "EURUSD_sweep_w1",
      "period_no": 5,
@@ -712,7 +765,8 @@
      "orders_unaccounted": 0,
      "sl_tp_triggered": 53,
      "signal_fresh_ratio": null,
-     "run_kind": "sweep"
+     "run_kind": "sweep",
+     "succeeded_count": null
     },
     {
      "logic_version": 21,
@@ -767,6 +821,10 @@
      "warning_count": 3,
      "log_warning_count": 0,
      "tick_timespan_seconds": 835201.829,
+     "total_units": null,
+     "failed_count": null,
+     "total_final_equity": null,
+     "total_initial_balance": null,
      "records_pruned_at": "",
      "unit_name": "EURUSD_sweep_w1",
      "period_no": 5,
@@ -823,7 +881,8 @@
      "orders_unaccounted": 0,
      "sl_tp_triggered": 53,
      "signal_fresh_ratio": null,
-     "run_kind": "sweep"
+     "run_kind": "sweep",
+     "succeeded_count": null
     },
     {
      "logic_version": 21,
@@ -878,6 +937,10 @@
      "warning_count": 3,
      "log_warning_count": 0,
      "tick_timespan_seconds": 835201.829,
+     "total_units": null,
+     "failed_count": null,
+     "total_final_equity": null,
+     "total_initial_balance": null,
      "records_pruned_at": "",
      "unit_name": "EURUSD_sweep_w1",
      "period_no": 5,
@@ -934,7 +997,8 @@
      "orders_unaccounted": 0,
      "sl_tp_triggered": 452,
      "signal_fresh_ratio": null,
-     "run_kind": "sweep"
+     "run_kind": "sweep",
+     "succeeded_count": null
     },
     {
      "logic_version": 21,
@@ -989,6 +1053,10 @@
      "warning_count": 3,
      "log_warning_count": 0,
      "tick_timespan_seconds": 835201.829,
+     "total_units": null,
+     "failed_count": null,
+     "total_final_equity": null,
+     "total_initial_balance": null,
      "records_pruned_at": "",
      "unit_name": "EURUSD_sweep_w1",
      "period_no": 5,
@@ -1045,7 +1113,8 @@
      "orders_unaccounted": 0,
      "sl_tp_triggered": 452,
      "signal_fresh_ratio": null,
-     "run_kind": "sweep"
+     "run_kind": "sweep",
+     "succeeded_count": null
     },
     {
      "logic_version": 21,
@@ -1100,6 +1169,10 @@
      "warning_count": 3,
      "log_warning_count": 0,
      "tick_timespan_seconds": 835201.829,
+     "total_units": null,
+     "failed_count": null,
+     "total_final_equity": null,
+     "total_initial_balance": null,
      "records_pruned_at": "",
      "unit_name": "EURUSD_sweep_w1",
      "period_no": 5,
@@ -1156,7 +1229,8 @@
      "orders_unaccounted": 0,
      "sl_tp_triggered": 452,
      "signal_fresh_ratio": null,
-     "run_kind": "sweep"
+     "run_kind": "sweep",
+     "succeeded_count": null
     }
    ],
    "count": 9,

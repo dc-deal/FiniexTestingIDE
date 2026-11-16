@@ -631,6 +631,62 @@ def test_an_older_fragment_claims_no_trial_count(tmp_path, tmp_ledger, make_run_
     assert tmp_ledger.read_rows()[0].trial_count is None
 
 
+def test_an_older_fragment_counts_no_units(tmp_path, tmp_ledger, make_run_summary,
+                                           make_provenance):
+    # Written before #666's columns existed: the run's units are not known, never 0 of 0
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='old', total_units=3,
+                                                          failed_count=1))
+    fragment = next(Path(tmp_path / 'run_results').glob('*_old.parquet'))
+    frame = pd.read_parquet(fragment).drop(columns=['total_units', 'failed_count'])
+    frame.to_parquet(fragment, index=False)
+    tmp_ledger._index.rebuild()
+    row = tmp_ledger.read_rows()[0]
+    assert (row.total_units, row.failed_count, row.succeeded_count) == (None, None, None)
+
+
+def test_a_row_counts_the_units_that_did_not_fail(tmp_ledger, make_run_summary, make_provenance):
+    # The run list's three names, on the row a sweep's combination is served from (#666)
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='two_of_three', total_units=3,
+                                                          failed_count=1))
+    row = tmp_ledger.read_rows()[0]
+    assert (row.total_units, row.failed_count, row.succeeded_count) == (3, 1, 2)
+
+
+def test_every_row_of_a_run_carries_what_its_accounts_held_at_the_end(
+        tmp_ledger, make_run_summary, make_provenance):
+    # #32-E: two scenarios, two accounts. Each period row keeps its own account's equity, and
+    # every row repeats the run's sum over both beside the capital they started from
+    periods = [
+        derive_booking_period(
+            unit, 1, _MON, _MON + timedelta(days=1), PeriodCloseReason.ANCHOR, [],
+            PeriodSnapshot(currency='USD', final_equity=equity, account_max_drawdown=0.0,
+                           max_equity=equity, account_max_dd_pct=0.0),
+            tick_count=10)
+        for unit, equity in (('week_1', 10_020.0), ('week_2', 10_030.0))]
+    tmp_ledger.append(
+        make_run_summary(total_final_equity=20_050.0, total_initial_balance=20_000.0),
+        make_provenance(run_id='two_scenarios'), periods)
+
+    rows = tmp_ledger.read_rows()
+
+    assert [(row.unit_name, row.final_equity, row.total_final_equity, row.total_initial_balance)
+            for row in rows] == [('week_1', 10_020.0, 20_050.0, 20_000.0),
+                                 ('week_2', 10_030.0, 20_050.0, 20_000.0)]
+
+
+def test_an_older_fragment_records_no_closing_sums(tmp_path, tmp_ledger, make_run_summary,
+                                                   make_provenance):
+    # Written before #32-E's columns existed: not measured, never an account worth nothing
+    tmp_ledger.append(make_run_summary(total_final_equity=20_050.0, total_initial_balance=20_000.0),
+                      make_provenance(run_id='old'))
+    fragment = next(Path(tmp_path / 'run_results').glob('*_old.parquet'))
+    frame = pd.read_parquet(fragment).drop(columns=['total_final_equity', 'total_initial_balance'])
+    frame.to_parquet(fragment, index=False)
+    tmp_ledger._index.rebuild()
+    row = tmp_ledger.read_rows()[0]
+    assert (row.total_final_equity, row.total_initial_balance) == (None, None)
+
+
 def test_a_fresh_row_claims_no_pruning(tmp_ledger, make_run_summary, make_provenance):
     tmp_ledger.append(make_run_summary(), make_provenance())
     assert tmp_ledger.read_rows()[0].records_pruned_at == ''
@@ -769,8 +825,8 @@ def test_a_sealed_row_leaves_exactly_the_run_end_columns_empty(
     """
     prov = make_provenance(run_id='live', run_type=RUN_TYPE_AUTOTRADER, status='error',
                            error='boom', run_outcome=RunOutcome.FAILED, error_count=1,
-                           warning_count=2, log_warning_count=3)
-    summary = make_run_summary()
+                           warning_count=2, log_warning_count=3, total_units=1, failed_count=1)
+    summary = make_run_summary(total_final_equity=1_000.0, total_initial_balance=1_000.0)
     summary.signal_fresh_ratio = 0.9
     summary.tick_timespan_seconds = 86_400.0
     sealed = RunResultsLedger(tmp_path / 'sealed')
@@ -790,17 +846,28 @@ def test_every_nullable_figure_declares_what_its_null_means():
     An empty cell means one of two things, and a ranking decides on it: a figure that can be
     undefined for a run is refused as an objective, one that was only not measured is ranked over
     the rows that carry it. Held both ways, so a figure widened to Optional cannot arrive without
-    an answer, and the map cannot outlive a field.
+    an answer, and the map cannot outlive a field. A description declares one only where a ranking
+    may order by it, a run-level total repeated on each row (#32-E).
     """
-    nullable_figures = {
+    nullable = {
         name for name, field in RunResultRow.model_fields.items()
-        if type(None) in get_args(field.annotation) and name in COLUMN_REDUCTION
-        and COLUMN_REDUCTION[name].figure_kind() is not FigureKind.DESCRIPTION}
+        if type(None) in get_args(field.annotation) and name in COLUMN_REDUCTION}
+    nullable_figures = {
+        name for name in nullable
+        if COLUMN_REDUCTION[name].figure_kind() is not FigureKind.DESCRIPTION}
+
+    # A description a ranking may order by is a number; a name or a set declaring a null meaning
+    # would only widen what the ranking takes
+    numeric = {
+        name for name in nullable
+        if set(get_args(RunResultRow.model_fields[name].annotation)) - {type(None)} <= {int, float}}
 
     undeclared = sorted(nullable_figures - set(COLUMN_NULL_MEANING))
-    stale = sorted(set(COLUMN_NULL_MEANING) - nullable_figures)
+    stale = sorted(set(COLUMN_NULL_MEANING) - nullable)
+    not_a_number = sorted(set(COLUMN_NULL_MEANING) - nullable_figures - numeric)
     assert undeclared == [], f'{undeclared} can be null and do not say what their null means'
-    assert stale == [], f'{stale} declare a null meaning and are no nullable figure'
+    assert stale == [], f'{stale} declare a null meaning and cannot be null'
+    assert not_a_number == [], f'{not_a_number} are descriptions no ranking can order by'
 
 
 def test_a_code_stand_reads_back_typed(tmp_ledger, make_run_summary, make_provenance):

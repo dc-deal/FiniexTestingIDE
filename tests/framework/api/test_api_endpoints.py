@@ -495,6 +495,19 @@ class TestReportRuns:
         assert data['runs'][0]['group'] == 'autotrader'
         assert data['runs'][0]['name'] == 'my_profile'
 
+    def test_a_row_says_how_many_of_its_units_succeeded(self, client):
+        """The run list serves the unit counts and what did not fail (#666), null where unknown."""
+        store = MagicMock()
+        store.list_runs_with_results.return_value = [
+            RunInfo(run_id='20260615_130000', group='simulation', name='my_set', total_units=3,
+                    failed_count=1),
+            RunInfo(run_id='20260615_120000', group='autotrader', name='my_profile'),
+        ]
+        with patch('python.api.endpoints.reports_router.ReportStore', return_value=store):
+            runs = client.get('/api/v1/reports/runs').json()['runs']
+        assert [(run['total_units'], run['failed_count'], run['succeeded_count'])
+                for run in runs] == [(3, 1, 2), (None, None, None)]
+
     def test_no_persisted_run_is_not_an_error(self, client):
         """An empty store is a legitimate empty index, never a 404."""
         store = MagicMock()
@@ -542,7 +555,7 @@ class TestSweeps:
         with patch('python.api.endpoints.sweeps_router._ledger', return_value=ledger):
             r = client.get('/api/v1/sweeps')
         assert r.status_code == 200
-        assert r.json() == {'key': ['sweep_id'], 'sweeps': [], 'count': 0}
+        assert r.json() == {'key': ['sweep_id'], 'best_combinations_key': ['currency'], 'sweeps': [], 'count': 0}
 
     def test_combinations_are_ranked_by_the_sweeps_own_objective(self, client):
         """Ranked, not alphabetical — the question a sweep answers is which combination won."""
@@ -576,12 +589,53 @@ class TestSweeps:
         assert [c['run_id'] for c in data['combinations']] == ['r2']
         assert (data['count'], data['unranked']) == (1, 1)
 
+    def test_a_sweep_ranks_by_what_its_accounts_hold_at_the_end(self, client):
+        """#32-E: the run's summed end equity ranks, and each combination serves it with its start."""
+        rows = [row.model_copy(update={'sweep_objective': 'total_final_equity',
+                                       'total_final_equity': equity,
+                                       'total_initial_balance': 20_000.0})
+                for row, equity in zip(self._rows(), (20_050.0, 19_960.0))]
+        ledger = MagicMock()
+        ledger.read_rows.return_value = rows
+        with patch('python.api.endpoints.sweeps_router._ledger', return_value=ledger):
+            data = client.get('/api/v1/sweeps/sweep_1').json()
+        # r1 leads by net_pnl (30 over 10); by the end equity r2 does
+        assert [(c['run_id'], c['total_final_equity'], c['total_initial_balance'])
+                for c in data['combinations']] == [('r2', 20_050.0, 20_000.0),
+                                                   ('r1', 19_960.0, 20_000.0)]
+
+    def test_a_combination_counts_its_units_as_the_run_list_does(self, client):
+        """The same three names on both lists (#666)."""
+        rows = [row.model_copy(update={'total_units': 3, 'failed_count': 1}) for row in self._rows()]
+        ledger = MagicMock()
+        ledger.read_rows.return_value = rows
+        with patch('python.api.endpoints.sweeps_router._ledger', return_value=ledger):
+            data = client.get('/api/v1/sweeps/sweep_1').json()
+        assert {(c['total_units'], c['failed_count'], c['succeeded_count'])
+                for c in data['combinations']} == {(3, 1, 2)}
+
     def test_unknown_sweep_is_a_404(self, client):
         ledger = MagicMock()
         ledger.read_rows.return_value = []
         with patch('python.api.endpoints.sweeps_router._ledger', return_value=ledger):
             r = client.get('/api/v1/sweeps/nope')
         assert r.status_code == 404
+
+    @pytest.mark.parametrize('objective', ['no_such_figure', 'scenario_set_name'])
+    def test_a_sweep_whose_objective_cannot_rank_is_refused_by_name(self, client, objective):
+        """A figure unknown or no number cannot order the combinations: a named 409, not a 500."""
+        rows = [row.model_copy(update={'sweep_objective': objective}) for row in self._rows()]
+        ledger = MagicMock()
+        ledger.read_rows.return_value = rows
+        with patch('python.api.endpoints.sweeps_router._ledger', return_value=ledger):
+            detail = client.get('/api/v1/sweeps/sweep_1')
+            listing = client.get('/api/v1/sweeps')
+        assert detail.status_code == 409
+        assert detail.json()['error'] == 'sweep_objective_unrankable'
+        assert objective in detail.json()['detail']
+        # The list stands, and shows the sweep with no best combination
+        assert listing.status_code == 200
+        assert listing.json()['sweeps'][0]['best_combinations'] == []
 
 
 class TestTheContractSaysWhatItIs:

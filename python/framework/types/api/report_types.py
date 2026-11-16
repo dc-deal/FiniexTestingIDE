@@ -1368,6 +1368,20 @@ class RunResultFigures(BaseModel):
     total_trades: int
 
 
+def succeeded_units(total_units: int, failed_count: int) -> int:
+    """
+    How many of a run's units did not fail — the one rule every surface that serves it applies.
+
+    Args:
+        total_units: The run's units: its scenarios in a backtest, the session in live
+        failed_count: How many of them failed
+
+    Returns:
+        The units that did not fail
+    """
+    return total_units - failed_count
+
+
 class RunListFigures(BaseModel):
     """
     What a run DID, as the run-results ledger recorded it at the run's close — the part of a run
@@ -1388,6 +1402,10 @@ class RunListFigures(BaseModel):
     # The market time the run processed, overlap counted once (contract 17); None where not
     # recorded.
     tick_timespan_seconds: Optional[float] = None
+    # How many units the run had and how many of them failed (#666) — None on a row recorded
+    # before contract 56, and while a session still runs.
+    total_units: Optional[int] = None
+    failed_count: Optional[int] = None
 
 
 class RunInfo(BaseModel):
@@ -1485,6 +1503,24 @@ class RunInfo(BaseModel):
     # The market time the run processed — its units' tick timespans covered together, so a
     # stretch two scenarios share counts once (contract 17). None where not recorded.
     tick_timespan_seconds: Optional[float] = None
+    # How many units the run had — its scenarios in a backtest, the session in live — and how many
+    # of them failed, as its warnings-errors outcome counted them (#666). None where not known: a
+    # run recorded before contract 56, a session still running, a run that died before its close.
+    total_units: Optional[int] = None
+    failed_count: Optional[int] = None
+
+    @computed_field
+    @property
+    def succeeded_count(self) -> Optional[int]:
+        """
+        How many of the run's units did not fail — what "2 of 3" reads (#666).
+
+        Returns:
+            The units that did not fail; None where either count is not known
+        """
+        if self.total_units is None or self.failed_count is None:
+            return None
+        return succeeded_units(self.total_units, self.failed_count)
 
     @computed_field
     @property
@@ -1946,6 +1982,14 @@ class RunResultRow(BaseModel):
     warning_count: int | None = None        # Tier-1 findings (validator-produced)
     log_warning_count: int | None = None    # Tier-2 WARNING records in the log pot
     tick_timespan_seconds: float | None = None   # the run's covered market time (contract 17)
+    # How many units the run had and how many failed, from the same outcome (#666)
+    total_units: int | None = None
+    failed_count: int | None = None
+    # What the run's accounts in this currency held at its end and started with, each summed
+    # (#32-E) — what a sweep ranks by when it asks for the end equity, since `final_equity` is one
+    # account's. None on a fragment written before the columns existed and while a session runs
+    total_final_equity: float | None = None
+    total_initial_balance: float | None = None
     # WHEN this row's run directory was deleted by a prune, empty while it was not. The row
     # outlives its evidence on purpose; this is what stops it from silently claiming its figures
     # can still be checked against the records they came from (§48).
@@ -2058,6 +2102,20 @@ class RunResultRow(BaseModel):
             return 'continuous'
         return 'single_run'
 
+    @computed_field
+    @property
+    def succeeded_count(self) -> Optional[int]:
+        """
+        How many of the run's units did not fail — the run list's third count, under the same
+        name and by the same rule (#666).
+
+        Returns:
+            The units that did not fail; None where either count is not known
+        """
+        if self.total_units is None or self.failed_count is None:
+            return None
+        return succeeded_units(self.total_units, self.failed_count)
+
     def measured_nothing(self) -> bool:
         """
         Whether this is the row of a run that measured nothing (#646).
@@ -2070,6 +2128,19 @@ class RunResultRow(BaseModel):
             True for an error row without a currency
         """
         return self.status == 'error' and not self.currency
+
+
+class SweepBestCombination(BaseModel):
+    """
+    A sweep's first-ranked combination in one account currency (#666) — the head of what
+    `GET /sweeps/{sweep_id}` ranks, by the same rule, so a list can show it without the detail.
+    """
+    currency: str
+    run_id: str
+    # The combination's value for the sweep's objective; None only where the objective is a
+    # figure the run did not measure — such a run is never ranked first
+    objective_value: Optional[float] = None
+    sweep_params: dict[str, Any] | None = None   # the parameter values this combination ran with
 
 
 class SweepSummary(BaseModel):
@@ -2092,11 +2163,16 @@ class SweepSummary(BaseModel):
     objective: str = ''
     maximize: bool = True
     features_beyond_venue: str = ''      # what its set allowed beyond the venue (comma-joined)
+    # Its first-ranked combination in each account currency, by its own objective (#666); a
+    # currency in which no combination carries a value for the objective has none
+    best_combinations: list[SweepBestCombination] = []
 
 
 class SweepListResponse(BaseModel):
     """Every recorded sweep, newest first."""
     key: list[str] = ['sweep_id']
+    # A sweep's best combinations are one per account currency
+    best_combinations_key: list[str] = ['currency']
     sweeps: list[SweepSummary]
     count: int
 
@@ -3739,7 +3815,7 @@ class WarningsErrorsOutcome(BaseModel):
         Returns:
             All units less the failed ones
         """
-        return self.total_units - self.failed_count
+        return succeeded_units(self.total_units, self.failed_count)
 
     @computed_field
     @property

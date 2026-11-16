@@ -74,7 +74,16 @@ LEDGER_FIGURES: Dict[str, FigureDeclaration] = {
     'error_count': FigureDeclaration(Reduction.IDENTITY),
     'warning_count': FigureDeclaration(Reduction.IDENTITY),
     'log_warning_count': FigureDeclaration(Reduction.IDENTITY),
+    # The run's units and its failed ones (#666) — run-level like the counts above
+    'total_units': FigureDeclaration(Reduction.IDENTITY),
+    'failed_count': FigureDeclaration(Reduction.IDENTITY),
     'tick_timespan_seconds': FigureDeclaration(Reduction.IDENTITY),
+    # What the run's accounts held at its end and started with, summed per currency (#32-E) —
+    # run-level like the counts above. A ranking may order by them, so they say what their empty
+    # cell means: every finished run has both, so it is a row from before the column or a session
+    # still running — left out of a ranking and counted, never a reason to refuse it
+    'total_final_equity': FigureDeclaration(Reduction.IDENTITY, NullMeaning.UNMEASURED),
+    'total_initial_balance': FigureDeclaration(Reduction.IDENTITY, NullMeaning.UNMEASURED),
     # Every row of one sweep was selected from the same search, so the rows agree by
     # construction. Across sweeps the figure is not combinable at all — two searches of 500 are
     # not a search of 1000, and adding them would claim a selection nobody performed.

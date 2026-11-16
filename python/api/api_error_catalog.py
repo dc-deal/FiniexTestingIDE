@@ -98,6 +98,10 @@ DEPLOYMENT_NOT_FOUND = ApiErrorKind(
     'ledger names it')
 SWEEP_NOT_FOUND = ApiErrorKind(
     404, 'sweep_not_found', "No sweep '{sweep_id}' in the run-results ledger")
+SWEEP_OBJECTIVE_UNRANKABLE = ApiErrorKind(
+    409, 'sweep_objective_unrankable',
+    "Sweep '{sweep_id}' recorded '{objective}' as the figure to rank by, and that figure cannot "
+    "order its combinations: it is not a number, or a run can leave it undefined")
 
 # --- Directory: every configuration that can start a run --------------------------------------
 
@@ -137,7 +141,7 @@ API_ERRORS: Tuple[ApiErrorKind, ...] = (
     BROKER_NOT_FOUND, SYMBOL_NOT_FOUND, NO_BARS_INDEXED, TIMEFRAME_NOT_RENDERED,
     COVERAGE_REPORT_UNAVAILABLE, NO_BARS_IN_RANGE, INVALID_TIMEFRAME, INVALID_LIMIT,
     INVALID_PERIOD, INVALID_RANGE, MARKET_TYPE_NOT_CONFIGURED,
-    DEPLOYMENT_NOT_FOUND, SWEEP_NOT_FOUND,
+    DEPLOYMENT_NOT_FOUND, SWEEP_NOT_FOUND, SWEEP_OBJECTIVE_UNRANKABLE,
     CONFIG_FILE_NOT_FOUND,
     DOCUMENT_NOT_FOUND, EMPTY_QUERY, QUERY_TOO_LONG,
     ACTIVITY_REGISTRY_UNREADABLE,

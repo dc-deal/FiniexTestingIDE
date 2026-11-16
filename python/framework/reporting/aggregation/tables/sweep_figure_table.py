@@ -113,4 +113,8 @@ SWEEP_SUMMARY_TABLE = FoldTable(
     grain=('sweep_id',),
     row_model=RunResultRow,
     served_as=SweepSummary,
+    outside_the_fold={
+        'best_combinations': 'ranked, not folded: the head of each currency of the ranking '
+                             'GET /sweeps/{sweep_id} serves (#666)',
+    },
 )

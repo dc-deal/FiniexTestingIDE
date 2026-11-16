@@ -28,7 +28,11 @@ from python.framework.exceptions.store_errors import LedgerRowUnreadableError
 from python.framework.reporting.aggregation.figure_catalog import COLUMN_REDUCTION
 from python.framework.reporting.store.run_ledger_index import RunLedgerIndex
 from python.framework.types.aggregation_types import FigureKind
-from python.framework.types.api.report_types import RunResultRow, RunSummary
+from python.framework.types.api.report_types import (
+    RunResultRow,
+    RunSummary,
+    RunSummaryCurrency,
+)
 from python.framework.types.run_results_types import BookingPeriod, RunProvenance
 from python.framework.types.trading_env_types.trading_env_stats_types import EXECUTION_COUNT_FIELDS
 from python.framework.utils.atomic_file_utils import write_file_atomic
@@ -114,10 +118,17 @@ LEDGER_COLUMNS: List[str] = [
     # without opening it. Run-level values, repeated on every row of the run. Appended, so older
     # fragments read back None: not recorded, never a clean run.
     'run_outcome', 'error_count', 'warning_count', 'log_warning_count',
+    # How many units the run had and how many of them failed (#666), from the same outcome —
+    # so a run list can read "2 of 3" without opening the run. Run-level like the four above.
+    'total_units', 'failed_count',
     # The market time the run processed — its units' tick timespans covered together, overlap
     # once (contract 17). Run-level like the four above, so the run list serves it from the
     # same read. None where it was not recorded.
     'tick_timespan_seconds',
+    # What the run's accounts in this currency held at its end and started with, summed (#32-E):
+    # a TOTAL over separate accounts, so a sweep can rank its combinations by their end equity —
+    # `final_equity` is one account's and empty over several. Run-level like the counts above.
+    'total_final_equity', 'total_initial_balance',
     # WHAT the run ran with (#547): the run-config store ids of its rendered configuration and of
     # the broker configuration it froze. On every row since a session books its trading days
     # while it runs (#476): a session killed on day 29 names its configuration in the rows it
@@ -195,7 +206,8 @@ LEDGER_COLUMNS: List[str] = [
 # ended is the row its close wrote (`run_completion_audit.closes_its_run`), never its status.
 RUN_END_COLUMNS: Tuple[str, ...] = (
     'status', 'error', 'run_outcome', 'error_count', 'warning_count', 'log_warning_count',
-    'signal_fresh_ratio', 'tick_timespan_seconds',
+    'total_units', 'failed_count', 'signal_fresh_ratio', 'tick_timespan_seconds',
+    'total_final_equity', 'total_initial_balance',
 )
 
 
@@ -514,6 +526,8 @@ class RunResultsLedger:
             'error_count': p.error_count,
             'warning_count': p.warning_count,
             'log_warning_count': p.log_warning_count,
+            'total_units': p.total_units,
+            'failed_count': p.failed_count,
             'rendered_config_id': p.rendered_config_id,
             'broker_config_id': p.broker_config_id,
             'code_stand': (json.dumps(p.code_stand.model_dump(), sort_keys=True)
@@ -575,6 +589,7 @@ class RunResultsLedger:
             # different fresh ratios compares runs that saw different signal.
             'signal_fresh_ratio': run_summary.signal_fresh_ratio,
             'tick_timespan_seconds': run_summary.tick_timespan_seconds,
+            **_run_end_equity(currency),
         }
 
     def _period_row(
@@ -610,6 +625,9 @@ class RunResultsLedger:
             # the whole run saw, and the market time it covered, are not properties of one day.
             'signal_fresh_ratio': run_summary.signal_fresh_ratio,
             'tick_timespan_seconds': run_summary.tick_timespan_seconds,
+            # The run's closing sums in this period's currency — of the run, never of the period
+            **_run_end_equity(next((currency for currency in run_summary.currencies
+                                    if currency.currency == period.figures.currency), None)),
         }
 
     def _sealed_period_row(self, p: RunProvenance, period: BookingPeriod) -> Dict[str, Any]:
@@ -650,6 +668,22 @@ class RunResultsLedger:
             'error': error,
             'currency': '',
         }
+
+
+def _run_end_equity(currency: Optional[RunSummaryCurrency]) -> Dict[str, Any]:
+    """
+    The run's closing equity and starting capital in one currency, each summed over its accounts.
+
+    Args:
+        currency: The run summary's row for the currency, or None when it has none
+
+    Returns:
+        The two run-level columns, empty when the run summary holds no row for the currency
+    """
+    return {
+        'total_final_equity': currency.total_final_equity if currency else None,
+        'total_initial_balance': currency.total_initial_balance if currency else None,
+    }
 
 
 def period_ledger_fields(period: BookingPeriod) -> Dict[str, Any]:

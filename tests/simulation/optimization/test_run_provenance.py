@@ -28,7 +28,11 @@ from python.framework.reporting.store.run_provenance_builder import (
     build_run_provenance_from_session,
     consumption_record,
 )
-from python.framework.types.api.report_types import RunHeader, WarningsErrorsReport
+from python.framework.types.api.report_types import (
+    RunHeader,
+    WarningsErrorsOutcome,
+    WarningsErrorsReport,
+)
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.git_info_types import GitInfo
@@ -127,6 +131,24 @@ class TestSessionProvenance:
         assert p.status == 'ok'
         assert p.error is None
 
+    def test_no_report_counts_no_units(self):
+        p = _session_provenance(_config())
+        assert (p.total_units, p.failed_count) == (None, None)
+
+    def test_a_failed_session_is_one_failed_unit(self):
+        # The counts come from the warnings-errors outcome, the one the route serves (#666)
+        result = AutoTraderResult(emergency_reason='boom', shutdown_mode='emergency')
+        report = build_warnings_errors_report_from_session(_RUN_ID, result, 'my_profile', 'BTCUSD')
+        p = _session_provenance(_config(), report)
+        assert (p.total_units, p.failed_count) == (
+            report.outcome.total_units, report.outcome.failed_count) == (1, 1)
+
+    def test_a_clean_session_is_one_unit_none_failed(self):
+        result = AutoTraderResult()
+        report = build_warnings_errors_report_from_session(_RUN_ID, result, 'my_profile', 'BTCUSD')
+        p = _session_provenance(_config(), report)
+        assert (p.total_units, p.failed_count) == (1, 0)
+
     def test_status_error_on_emergency(self):
         # An emergency session (every unit failed) → a status='error' ledger row, never absent.
         result = AutoTraderResult(emergency_reason='boom', shutdown_mode='emergency')
@@ -170,6 +192,27 @@ class TestWhereTheOrdersWent:
             scenario_set, _RUN_ID)
 
         assert provenance.orders_to is OrdersTo.SIMULATED
+
+    def test_a_backtest_counts_its_units_from_its_outcome(self, tmp_path):
+        # Three scenarios, one failed: the counts the warnings-errors outcome holds, on the
+        # provenance the ledger row is written from (#666)
+        scenario = SingleScenario(
+            name='s0', scenario_index=0, symbol='BTCUSD', data_broker_type='kraken_spot',
+            start_date='2026-01-01',
+            strategy_config={'decision_logic_type': 'CORE/aggressive_trend',
+                             'worker_instances': {}})
+        scenario_set = SimpleNamespace(
+            logger=SimpleNamespace(get_log_dir=lambda: tmp_path),
+            printed_summary_logger=get_global_logger(), run_timestamp=_TS,
+            scenario_set_name='my_set')
+        report = WarningsErrorsReport(
+            run_id=_RUN_ID, outcome=WarningsErrorsOutcome(total_units=3, failed_count=1))
+
+        provenance = build_run_provenance(
+            SimpleNamespace(single_scenario_list=[scenario], broker_scenario_map={}),
+            scenario_set, _RUN_ID, warnings_errors_report=report)
+
+        assert (provenance.total_units, provenance.failed_count) == (3, 1)
 
 
 class TestWhatARunConsumed:

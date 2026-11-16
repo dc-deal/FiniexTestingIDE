@@ -25,7 +25,7 @@ served from the run-results ledger, which is where a sweep's identity and its KP
 ## The list
 
 ```json
-{ "key": ["sweep_id"], "sweeps": [ ... ], "count": 4 }
+{ "key": ["sweep_id"], "best_combinations_key": ["currency"], "sweeps": [ ... ], "count": 4 }
 ```
 
 Newest first, one row per sweep:
@@ -42,6 +42,15 @@ Newest first, one row per sweep:
 | `base_config` | the scenario set that was swept, with the sweep's own tag stripped off |
 | `symbols` | the symbols its runs read |
 | `objective` · `maximize` | the KPI it ranks by, and the direction |
+| `best_combinations` | its first-ranked combination in each account currency: `currency`, `run_id`, `objective_value`, `sweep_params` |
+
+`best_combinations` is the head of what the sweep's own route below ranks, by the same rule and
+the same tie-break, so a list can show a sweep as its best combination without asking for each
+sweep. There is one per account currency, keyed by `currency` as `best_combinations_key` says,
+because a money objective in two currencies is not one scale. A currency in which no combination
+carries a value for the objective has no entry, and a sweep whose recorded objective cannot rank
+at all — unknown, or a figure that can be undefined for a run — has none: its own route below says
+why, and one such sweep does not take the list down.
 
 `duration_s` is the spread of the **starts**, not how long the sweep took: it is computed from
 the run starts alone, so the last run's own duration falls outside it. It is `0.0` where there is
@@ -62,6 +71,18 @@ objective and the direction **the sweep declared**, because ranking by anything 
 a question the sweep never asked. Where a sweep recorded neither, the response says what was used
 instead — `net_pnl`, maximized — in its own `objective` and `maximize` fields, so you are
 never left to assume.
+
+Each combination is its run's ledger row, folded to one per account currency. It carries the run's
+unit counts as the run list does — `total_units`, `failed_count` and `succeeded_count`, null on a
+run recorded before contract 56.
+
+It also carries what the run's accounts in that currency held at its end, **`total_final_equity`**,
+beside the capital they started with, **`total_initial_balance`** — each summed over the run's
+accounts, so a combination of several scenarios has one even though `final_equity`, the reading of
+one account, is null there. The end equity includes what is still open, so ranking by it can order
+two combinations differently from `net_pnl`: one that closed +50 and holds nothing ends above one
+that closed +80 and still holds a position 120 under water. A sweep may declare it as its
+objective. Null on a run recorded before contract 56.
 
 **Combinations are ranked within each account currency, currencies in order.** A money objective
 in two currencies is not one scale: one list ranking EUR rows against USD rows by `net_pnl`
@@ -188,5 +209,8 @@ involved at all — deliberately not `1.0`, which would claim a perfect feed. Se
 
 ## Errors
 
-An unknown sweep id is `404 sweep_not_found`. The whole refusal vocabulary is in
-[errors](/api/v1/docs/errors).
+An unknown sweep id is `404 sweep_not_found`. A sweep that recorded a figure to rank by that cannot
+order its combinations — one the ranking does not know, one that is not a number, or one that can
+be undefined for a run — is `409 sweep_objective_unrankable`: its combinations cannot be put in an
+order, and the list shows it with no best combination. A sweep started since contract 56 cannot
+record such a figure: it is refused before its first combination runs. The whole refusal vocabulary is in [errors](/api/v1/docs/errors).

@@ -69,7 +69,7 @@ identity), so those combinations reload instead of reusing the mount (#419 cold 
 |---|---|
 | `base_scenario_set` | the scenario set the grid varies (resolved like any set: path → user algo dirs → `configs/scenario_sets/`) |
 | `grid` | dotted path → list of candidate values; expands to the Cartesian product |
-| `objective` | `RunSummary` currency KPI to rank by (default `net_pnl`). Must be a KPI that cannot be undefined for a run — see below |
+| `objective` | `RunSummary` currency KPI to rank by (default `net_pnl`). Must be a number a run cannot leave undefined — see below; `total_final_equity` ranks by what the accounts hold at the end |
 | `objective_currency` | required only when a run produces more than one account currency |
 | `maximize` | rank direction (set `false` e.g. for `max_drawdown`) |
 
@@ -90,8 +90,20 @@ optional drops out of the rankable set unless the ledger declares its empty cell
 keeping its own exits, is left out of the ranking and counted in `unranked`, so a sweep over such a
 logic ranks nothing by it. That is why `net_pnl` is the default. An R for own exits is #618's.
 
+**The end equity ranks through a run-level total (#32-E).** `final_equity` is one account's
+reading, so it is null on a combination of several scenarios and refused as an objective. The run
+therefore writes `total_final_equity` — its accounts' closing equities summed per currency — beside
+`total_initial_balance` on every ledger row, and a sweep ranks by that. It is not `net_pnl` under
+another name: since nothing is force-closed at a run's end (#492), the end equity includes what is
+still open. Both columns repeat one run-level value on each row, so they declare their empty cell
+*unmeasured* although they are no figure of their own kind — a row from before the columns, or a
+session still running. A field that is not a number at all — a name, a flag, a structure — is
+refused as an objective too.
+
 **Validation — structural fail-fast, parameter errors per-combination:** before any batch runs,
-`sweep_grid_validator.py` checks the grid **structurally only** — every dotted path must have a valid
+`sweep_grid_validator.py` checks the objective by the ranking's own rule — one it would refuse
+stops the sweep before its first combination, rather than leaving every combination run and the
+sweep unrankable at its end — and the grid **structurally only** — every dotted path must have a valid
 shape (`decision_logic_config.<param>[.<sub>…]` or `workers.<instance>.<param>[.<sub>…]`) and a non-empty value list; a
 malformed path or empty list is a spec typo affecting all combinations → abort early. Parameter
 **existence / range / type** are NOT checked here: the grid only writes values into each combination's

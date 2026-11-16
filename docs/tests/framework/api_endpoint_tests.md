@@ -36,6 +36,7 @@ Tests for all FiniexTestingIDE HTTP API endpoints. Uses `FastAPI TestClient` wit
 | `TestBars` | `test_from_after_to_returns_400` | 400 + `error: invalid_range` |
 | `TestBars` | `test_unknown_broker_returns_404` | 404 + `error: broker_not_found` |
 | `TestReportRuns` | `test_list_runs` | Run index: `count`, newest-first order, `group` + `name` per row |
+| `TestReportRuns` | `test_a_row_says_how_many_of_its_units_succeeded` | Each row serves `total_units`, `failed_count` and `succeeded_count` — 3, 1, 2 — and null for a run whose counts nobody recorded (#666) |
 | `TestReportRuns` | `test_no_persisted_run_is_not_an_error` | Empty store returns `200` with an empty index, not 404 |
 
 ## Authentication (`test_api_auth.py`)
@@ -272,6 +273,9 @@ and what the sweep view must:
 |------|-------------|
 | `test_lists_recorded_sweeps` | `/sweeps` groups the ledger rows into one row per sweep |
 | `test_no_sweep_is_not_an_error` | An empty ledger is a legitimate empty list, never a 404 |
+| `test_a_combination_counts_its_units_as_the_run_list_does` | Each combination of the sweep detail serves `total_units`, `failed_count` and `succeeded_count`, the run list's three names (#666) |
+| `test_a_sweep_ranks_by_what_its_accounts_hold_at_the_end` | A sweep ranked by `total_final_equity` orders its combinations by the run's summed end equity — the other way round from `net_pnl` here — and each combination serves it with `total_initial_balance` (#32-E) |
+| `test_a_sweep_whose_objective_cannot_rank_is_refused_by_name` | A sweep that recorded a figure that cannot order its combinations — unknown, or no number — answers `409 sweep_objective_unrankable` naming it, where it raised a server error; the list still answers and shows that sweep with no best combination (#666) |
 | `test_combinations_are_ranked_by_the_sweeps_own_objective` | `/sweeps/{id}` ranks by the objective the spec declared — ranking by anything else answers a question the sweep did not ask |
 | `test_each_combination_carries_its_run_id` | The hinge into the report routes; without it a sweep view is a dead end |
 | `test_a_combination_without_a_value_for_the_objective_is_counted_not_ranked` | A combination that measured no drawdown is left out of a ranking by drawdown and counted in `unranked` (#476) — a shorter list would otherwise read as the whole sweep |

@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 55
+API_CONTRACT_VERSION = 56
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,15 +36,20 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'drawing-types: new open route serving the JSON Schema of a drawn indicator series and its '
-    'style vocabulary',
-    'recorded-streams timeline: one row per drawing worker, stream_kind indicator_series, named '
-    'for its worker instance, its time in bar_time, its cadence the finest timeframe the worker '
-    'draws on; recording null for a unit that records no state frames',
-    'recorded-streams window: indicator_series (new), one entry per series with the bars of its own '
-    'timeframe in parallel times and data arrays, keyed by layer; limit, matched, returned and '
-    'next_from now count over every stream of the unit, merged by time',
-    'recorded-streams: streams_not_recorded and state_frame_not_written_yet also cover a unit that '
-    'records only indicator series',
-    "runs: stream_files also names a session's indicator series files, one per drawing worker",
+    'runs: total_units, failed_count and succeeded_count on every row (new) — how many units the '
+    'run had and how many of them failed or did not, as its warnings-errors outcome counts them; '
+    'null on a run recorded before this contract, while a session runs, and on a run that died '
+    'before its close',
+    'sweeps: best_combinations on every row (new) — the first-ranked combination in each account '
+    'currency, by the same rule the sweep detail ranks with; best_combinations_key names currency; '
+    'none for a sweep whose recorded objective cannot rank',
+    "sweep detail: total_units, failed_count and succeeded_count on every combination (new) — the "
+    "run's unit counts, as on the run list; a sweep whose recorded objective cannot rank is "
+    'refused with 409 sweep_objective_unrankable (new), where it was a server error',
+    "sweep detail: total_final_equity and total_initial_balance on every combination (new) — what "
+    "the run's accounts in that currency held at its end and started with, each summed; a sweep "
+    'may rank by it; null on a run recorded before this contract and while a session runs',
+    'sweeps: an objective that is not a number no longer ranks; such a sweep is refused like one '
+    'ranked by a figure a run can leave undefined',
 ]
+

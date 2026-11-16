@@ -59,6 +59,7 @@ that is not safelisted, so they are published deliberately.
 | 404 | `no_bars_in_range` | bars exist, but none in the requested window |
 | 404 | `deployment_not_found` | no session in the run index and no row in the run-results ledger names that deployment |
 | 404 | `sweep_not_found` | no such sweep in the run-results ledger |
+| 409 | `sweep_objective_unrankable` | the sweep recorded a figure to rank by that cannot order its combinations — not a number, or one a run can leave undefined — so they cannot be ranked |
 | 404 | `config_file_not_found` | the configuration directory lists no such file |
 | 404 | `document_not_found` | no document goes by that name — `/api/v1/docs` lists them |
 | 409 | `artifact_unreadable` | a report artifact exists but no longer matches its model, usually its age |

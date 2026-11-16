@@ -66,8 +66,8 @@ def test_the_computed_column_reaches_the_file(sweep_root):
 
     header = csv.DictReader(path.open()).fieldnames
     assert 'run_kind' in header
-    assert len(header) == len(RunResultRow.model_fields) + 1, (
-        'the header should carry every declared field plus the computed one')
+    assert set(header) == set(RunResultRow.model_fields) | set(RunResultRow.model_computed_fields), (
+        'the header should carry every declared field and every computed one')
 
 
 def test_an_empty_ranking_still_writes_a_header(sweep_root):

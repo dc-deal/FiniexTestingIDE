@@ -14,12 +14,14 @@ from pathlib import Path
 
 from fastapi import APIRouter
 
-from python.api.api_error_catalog import SWEEP_NOT_FOUND, api_error
+from python.api.api_error_catalog import SWEEP_NOT_FOUND, SWEEP_OBJECTIVE_UNRANKABLE, api_error
 from python.api.api_route_documents import describes
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.optimization.optimization_analysis import (
     compose_sweep_detail,
     compose_sweep_list,
+    objective_refusal,
+    sweep_objective,
 )
 from python.framework.reporting.store.run_results_ledger import RunResultsLedger
 from python.framework.types.api.report_types import SweepDetailResponse, SweepListResponse
@@ -56,7 +58,14 @@ def get_sweep(sweep_id: str) -> SweepDetailResponse:
     Returns:
         The ranked combinations, best first within each account currency
     """
-    detail = compose_sweep_detail(sweep_id, _ledger().read_rows(sweep_id=sweep_id))
+    rows = _ledger().read_rows(sweep_id=sweep_id)
+    if rows:
+        # A sweep recorded with a figure nothing ranks by is refused by name, never as a server
+        # error (#666); the list shows such a sweep with no best combination
+        objective, _ = sweep_objective(rows)
+        if objective_refusal(objective) is not None:
+            raise api_error(SWEEP_OBJECTIVE_UNRANKABLE, sweep_id=sweep_id, objective=objective)
+    detail = compose_sweep_detail(sweep_id, rows)
     if detail is None:
         raise api_error(SWEEP_NOT_FOUND, sweep_id=sweep_id)
     return detail

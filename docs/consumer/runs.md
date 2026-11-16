@@ -162,6 +162,14 @@ and `log_warning_count`, warnings the run itself logged. The two warning channel
 deliberately separate; [warnings and errors](/api/v1/docs/warnings-errors) explains them. All
 four are null where they were not recorded, and **not recorded is not the same as clean**.
 
+`total_units`, `failed_count` and `succeeded_count` say how many units the run had — its
+scenarios in a backtest, the session in live — and how many of them failed or did not, so a row
+can read "2 of 3" without opening the run. They are the run's
+[warnings-errors](/api/v1/docs/warnings-errors) outcome counts, the same three names with the same
+meaning. A scenario refused before it ran counts as a failed unit. All three are null where they
+are not known: on a run recorded before contract 56, while a session still runs — its sealed days
+carry no count until its close — and on a run that died before its close.
+
 `tick_timespan_seconds` is the **market** time the run's units processed, covered together so a
 stretch two scenarios share counts once. It is neither wall-clock time nor a sum over the units,
 and it is null where it was not recorded — the figure arrived in contract 17.
