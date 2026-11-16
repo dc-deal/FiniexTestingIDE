@@ -110,6 +110,8 @@ class LiveSessionCapture:
             be read
         code_identity: Which code it ran — the framework, the strategy's repository and every
             component's digest — from its header; None where the header cannot be read
+        broker_config_document: Its frozen broker configuration as it was frozen, from the
+            run-config store; None where the session froze none or it cannot be read
         unreadable: What could not be read, by what it is, with the reason — a record named here
             is not checked, never absent
     """
@@ -132,6 +134,7 @@ class LiveSessionCapture:
     warmup_reach: Optional[timedelta] = None
     rendered_strategy_config: Optional[Dict[str, Any]] = None
     code_identity: Optional[CodeIdentity] = None
+    broker_config_document: Optional[Dict[str, Any]] = None
     unreadable: Dict[str, str] = field(default_factory=dict)
 
     def get_began(self) -> Optional[datetime]:

@@ -32,6 +32,7 @@ from tests.shared.divergence_gate_pair import (
     WINDOW_END,
     backtest_row,
     backtest_scenario,
+    broker_document,
     code_identity,
     empty_tree,
     gate_backtest,
@@ -145,6 +146,45 @@ class TestTheBrokerDocument:
     def test_a_session_without_one_is_refused(self):
         session = dataclasses.replace(gate_session(), broker_config_id='')
         assert _refusals(_gate(sessions=[session]), BROKER_CONFIG_CHECK)
+
+
+class TestAConfigurationFetchedAgain:
+    """A session that restarts fetches the venue again and freezes a document of its own: only
+    what it trades with is compared, never when it was fetched."""
+
+    REFETCHED = '2026-11-10T00:05:01Z'
+
+    def _second(self, **document):
+        return gate_session('s2', broker_config_id='broker_refetched',
+                            document=broker_document(fetched=self.REFETCHED, **document))
+
+    def test_one_that_differs_only_in_its_stamps_is_advice_and_refuses_nothing(self):
+        result = _gate(sessions=[gate_session(), self._second()])
+        assert result.is_comparable(), result.findings
+        advice, = _refusals(result, BROKER_CONFIG_CHECK)
+        assert advice.severity is Severity.WARNING
+        assert '2026-10-30T13:01:27Z' in advice.message and self.REFETCHED in advice.message
+
+    def test_another_fee_is_refused_and_named(self):
+        refusal, = _refusals(_gate(sessions=[gate_session(), self._second(taker_fee=0.26)]),
+                             BROKER_CONFIG_CHECK)
+        assert refusal.severity is Severity.ERROR
+        assert 'fee_structure.taker_fee' in refusal.message and 's2' in refusal.message
+
+    def test_a_symbol_the_session_did_not_trade_is_not_compared(self):
+        assert _gate(sessions=[gate_session(), self._second(other_volume_min=1.0)]).is_comparable()
+
+    def test_a_stamp_the_gate_does_not_know_is_compared_and_refuses(self):
+        second = self._second()
+        second.broker_config_document['fetched_by'] = 'another exporter'
+        refusal, = _refusals(_gate(sessions=[gate_session(), second]), BROKER_CONFIG_CHECK)
+        assert 'fetched_by' in refusal.message
+
+    def test_one_that_cannot_be_read_is_refused_with_why(self):
+        second = dataclasses.replace(self._second(), broker_config_document=None,
+                                     unreadable={'broker_config': 'no such document'})
+        refusal, = _refusals(_gate(sessions=[gate_session(), second]), BROKER_CONFIG_CHECK)
+        assert 'no such document' in refusal.message
 
 
 class TestTheWindow:

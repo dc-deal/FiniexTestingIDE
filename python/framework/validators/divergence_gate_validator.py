@@ -10,7 +10,8 @@ value or the instant that refuses it:
    session's, is unchanged, changed in docstrings only, or declared for the session's release;
 2. strategy — every component the same code, the strategy's repositories on the same commit;
 3. strategy configuration — the same rendered value at every path;
-4. broker document — the same frozen broker configuration;
+4. broker document — the same frozen broker configuration, by what it trades with, never by when
+   it was fetched;
 5. window — the backtest read the window as it was measured, not to a tick limit;
 6. no order feature allowed beyond the venue, and every scenario recorded its state frames.
 
@@ -18,6 +19,7 @@ A backtest records an order event only where an order moved, so a missing order-
 an answer — no order — and is never refused here.
 """
 
+import copy
 from datetime import timedelta
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -71,6 +73,13 @@ FRAMES_MISSING_CHECK = 'divergence_gate_frames_missing'
 
 # How many differing values of one configuration a refusal names before it only counts the rest
 _NAMED_CONFIG_PATHS = 10
+
+# What a frozen broker configuration records about its own making rather than about the venue:
+# when and by what it was fetched and exported, and the hashes derived from it. A comparison
+# never decides on them — two documents that differ only here were read from the same venue at
+# different times. A key not named here is compared, so a new stamp refuses until it is named.
+_BROKER_DOCUMENT_PROVENANCE_KEYS = frozenset({'_comment', '_config_meta', 'export_info'})
+_BROKER_SYMBOL_PROVENANCE_KEYS = frozenset({'_last_fetched'})
 
 # A source tree read at one commit: path → text, None where the repository does not hold it
 TreeReader = Callable[[str], Optional[Dict[str, str]]]
@@ -523,22 +532,102 @@ def _differing_paths(session: Any, backtest: Any, path: str) -> List[str]:
 def _check_broker_config(sessions: Sequence[LiveSessionCapture], backtest: BacktestRunCapture,
                          findings: List[ValidationFinding]) -> None:
     """
-    Check 4: the same frozen broker configuration.
+    Check 4: the same broker configuration, by what it trades with — never by when it was fetched.
+
+    The backtest trades with the configuration one session froze, so its id names that session's
+    document. Another session that froze a document of its own — a restart that fetched the venue
+    again — is compared by content: two documents that differ only in their fetch and export stamps
+    were read from the same venue at different times, and that is advice, not a refusal.
 
     Args:
         sessions: The window's sessions
         backtest: The backtest run
-        findings: Where a refusal is added
+        findings: Where a refusal or the advice is added
     """
     backtest_ids = sorted({config_id for row in backtest.rows
                            for config_id in row.broker_config_id.split(',') if config_id})
+    traded = next((session for session in sessions if session.broker_config_id
+                   and backtest_ids == [session.broker_config_id]), None)
+    refetched: List[LiveSessionCapture] = []
     for session in sessions:
-        if backtest_ids != [session.broker_config_id] or not session.broker_config_id:
+        if traded is None or not session.broker_config_id:
             findings.append(_refusal(
                 BROKER_CONFIG_CHECK, ValidationDomain.BROKER,
                 f'The session {session.run_id} traded under the broker configuration '
                 f'{session.broker_config_id or "(none recorded)"}, the backtest under '
                 f'{", ".join(backtest_ids) or "(none recorded)"}.', session.run_id))
+            continue
+        if session.broker_config_id == traded.broker_config_id:
+            continue
+        if session.broker_config_document is None or traded.broker_config_document is None:
+            cause = (session.unreadable.get('broker_config')
+                     or traded.unreadable.get('broker_config') or 'a document cannot be read')
+            findings.append(_refusal(
+                BROKER_CONFIG_CHECK, ValidationDomain.BROKER,
+                f'The session {session.run_id} froze the broker configuration '
+                f'{session.broker_config_id}, the backtest traded with {traded.broker_config_id}, '
+                f'and the two cannot be compared by content: {cause}.', session.run_id))
+            continue
+        paths = _differing_paths(_trading_content(session.broker_config_document, session.symbol),
+                                 _trading_content(traded.broker_config_document, traded.symbol),
+                                 '')
+        if paths:
+            named = ', '.join(paths[:_NAMED_CONFIG_PATHS])
+            more = len(paths) - _NAMED_CONFIG_PATHS
+            findings.append(_refusal(
+                BROKER_CONFIG_CHECK, ValidationDomain.BROKER,
+                f'The session {session.run_id} traded under a broker configuration that differs '
+                f"from the backtest's at {named}" + (f' and {more} more' if more > 0 else '') + '.',
+                session.run_id))
+            continue
+        refetched.append(session)
+    if refetched and traded is not None:
+        fetched = ', '.join(f'{session.run_id} {_fetched_at(session.broker_config_document)}'
+                            for session in [traded] + refetched)
+        findings.append(_advice(
+            BROKER_CONFIG_CHECK, ValidationDomain.BROKER,
+            f'{len(refetched) + 1} sessions each froze a broker configuration of their own, and the '
+            f'documents differ only in when they were fetched ({fetched}): the backtest trades '
+            f'with what every one of them traded with.'))
+
+
+def _trading_content(document: Mapping[str, Any], symbol: Optional[str]) -> Dict[str, Any]:
+    """
+    What a frozen broker configuration trades with: the document without what it records about its
+    own making, and of its symbols only the one the session traded.
+
+    Args:
+        document: The frozen document
+        symbol: The symbol the session traded; None leaves every symbol in
+
+    Returns:
+        A copy to compare, the fetch and export stamps left out
+    """
+    content = {key: copy.deepcopy(value) for key, value in document.items()
+               if key not in _BROKER_DOCUMENT_PROVENANCE_KEYS}
+    symbols = content.get('symbols')
+    if isinstance(symbols, dict):
+        content['symbols'] = {
+            name: ({key: value for key, value in entry.items()
+                    if key not in _BROKER_SYMBOL_PROVENANCE_KEYS}
+                   if isinstance(entry, dict) else entry)
+            for name, entry in symbols.items() if symbol is None or name == symbol}
+    return content
+
+
+def _fetched_at(document: Optional[Mapping[str, Any]]) -> str:
+    """
+    When a frozen broker configuration was fetched, as its own metadata states it.
+
+    Args:
+        document: The frozen document
+
+    Returns:
+        The stamp as written; 'fetched at an unrecorded time' where it states none
+    """
+    meta = document.get('_config_meta') if document is not None else None
+    stamp = meta.get('last_fetched') if isinstance(meta, Mapping) else None
+    return f'fetched {stamp}' if stamp else 'fetched at an unrecorded time'
 
 
 def _check_window(backtest: BacktestRunCapture, window: CompareWindow,
@@ -648,6 +737,24 @@ def _refusal(check: str, domain: ValidationDomain, message: str,
         The finding, an error
     """
     return ValidationFinding(severity=Severity.ERROR, check=check, domain=domain,
+                             message=message, scope=scope)
+
+
+def _advice(check: str, domain: ValidationDomain, message: str,
+            scope: str = '') -> ValidationFinding:
+    """
+    One piece of advice beside the comparison, which refuses nothing.
+
+    Args:
+        check: The check's id
+        domain: The area it belongs to
+        message: What a reader should know, for a person
+        scope: What it concerns; '' for the pair as a whole
+
+    Returns:
+        The finding, a warning
+    """
+    return ValidationFinding(severity=Severity.WARNING, check=check, domain=domain,
                              message=message, scope=scope)
 
 

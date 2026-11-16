@@ -23,7 +23,7 @@ from python.framework.types.run_origin_types import (
     ComponentRole,
     RepositoryState,
 )
-from tests.shared.divergence_live_chain import FIRST_DAY, FIRST_TICK, days_from, session
+from tests.shared.divergence_live_chain import FIRST_DAY, FIRST_TICK, SYMBOL, days_from, session
 
 RELEASE = '1.5.0'
 SESSION_COMMIT = 'a1b2c3d4e5f6'
@@ -66,16 +66,41 @@ def code_identity(framework_commit: str = SESSION_COMMIT, framework_dirty: bool 
                               package_digest=WORKER_DIGEST)])
 
 
+def broker_document(fetched: str = '2026-10-30T13:01:27Z', taker_fee: float = 0.8,
+                    other_volume_min: float = 0.5) -> Dict[str, Any]:
+    """A frozen broker configuration as a venue fetch writes it: its stamps, the traded symbol and
+    one the session does not trade."""
+    return {
+        '_comment': 'Live broker config fetched from the venue',
+        '_config_meta': {'config_hash': 'abc12345', 'last_fetched': fetched,
+                         'schema_version': '2.0', 'symbols_hash': 'def67890'},
+        '_version': '1.1',
+        'broker_type': 'kraken_spot',
+        'export_info': {'exporter_version': '1.01', 'source': 'venue REST API',
+                        'timestamp': fetched},
+        'fee_structure': {'model': 'maker_taker', 'maker_fee': 0.4, 'taker_fee': taker_fee,
+                          'fee_currency': 'quote'},
+        'symbols': {
+            SYMBOL: {'_active': True, '_last_fetched': fetched, 'volume_min': 0.002,
+                     'volume_step': 1e-08, 'digits': 2},
+            'XYZUSD': {'_active': True, '_last_fetched': fetched, 'volume_min': other_volume_min,
+                       'volume_step': 0.1, 'digits': 4},
+        },
+    }
+
+
 def gate_session(run_id: str = 's1', release: Optional[str] = RELEASE,
                  identity: Optional[CodeIdentity] = None,
                  strategy: Optional[Dict[str, Any]] = None,
-                 broker_config_id: str = BROKER_CONFIG) -> LiveSessionCapture:
+                 broker_config_id: str = BROKER_CONFIG,
+                 document: Optional[Dict[str, Any]] = None) -> LiveSessionCapture:
     """A booked session of the window, with what the gate reads of it."""
     return dataclasses.replace(
         session(run_id, FIRST_TICK, days_from(FIRST_DAY, 3)),
         app_version=release, broker_config_id=broker_config_id,
         rendered_strategy_config=copy.deepcopy(strategy or RENDERED_STRATEGY),
-        code_identity=identity if identity is not None else code_identity())
+        code_identity=identity if identity is not None else code_identity(),
+        broker_config_document=copy.deepcopy(document or broker_document()))
 
 
 def backtest_scenario(name: str = SCENARIO, first_tick: Optional[datetime] = FIRST_TICK,

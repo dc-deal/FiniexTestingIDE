@@ -330,7 +330,9 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         'backtest.'),
     ValidationCheckInfo(
         'divergence_gate_broker_config', 'Broker configuration differs',
-        'The session and the backtest did not trade under the same frozen broker configuration.'),
+        'The session and the backtest did not trade under the same broker configuration — compared '
+        'by what it trades with, its fetch and export stamps left out; documents that differ only '
+        'in those stamps are named as advice and refuse nothing.'),
     ValidationCheckInfo(
         'divergence_gate_window', 'Window not read as measured',
         "A backtest scenario did not read the compared window from its start to its end, or ran "

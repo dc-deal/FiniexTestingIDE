@@ -259,7 +259,7 @@ class LiveSideCollector:
         symbols = identity['symbols'] or []
         symbol = symbols[0] if symbols else None
         broker_config_id = identity['broker_config_id'] or ''
-        lot_step, base_currency = self._symbol_facts(
+        lot_step, base_currency, broker_document = self._symbol_facts(
             broker_config_id, identity['data_broker_type'] or '', symbol, unreadable)
         start = run.start_time if run is not None and run.start_time else (
             rows[0].run_timestamp if rows else '')
@@ -279,12 +279,15 @@ class LiveSideCollector:
             rendered_strategy_config=self._rendered_strategy(
                 identity['rendered_config_id'] or '', unreadable),
             code_identity=self._code_identity(run_id, unreadable),
+            broker_config_document=broker_document,
             unreadable=unreadable)
 
     def _symbol_facts(self, broker_config_id: str, broker_type: str, symbol: Optional[str],
-                      unreadable: Dict[str, str]) -> Tuple[Optional[float], Optional[str]]:
+                      unreadable: Dict[str, str]
+                      ) -> Tuple[Optional[float], Optional[str], Optional[Dict[str, Any]]]:
         """
-        The symbol's lot increment and base currency in the broker configuration a session froze.
+        The symbol's lot increment and base currency in the broker configuration a session froze,
+        and that configuration as it was frozen.
 
         A venue's runtime cache names its broker type; a static seed is typed by the folder it lives
         in, which its frozen copy no longer sits in — so the session's own broker names it.
@@ -296,19 +299,21 @@ class LiveSideCollector:
             unreadable: Where a failed read is named
 
         Returns:
-            (the lot step, the base currency), each None where it could not be read
+            (the lot step, the base currency, the frozen document), each None where it could not
+            be read
         """
         if not broker_config_id or not broker_type or symbol is None:
-            return None, None
+            return None, None, None
         try:
-            document = copy.deepcopy(self._read_broker_config(broker_config_id))
+            frozen = self._read_broker_config(broker_config_id)
+            document = copy.deepcopy(frozen)
             broker_config = BrokerConfigFactory.from_serialized_dict(
                 BrokerType(document.get('broker_type', broker_type)), document)
             spec = broker_config.get_symbol_specification(symbol)
         except _UNREADABLE as e:
             unreadable['broker_config'] = str(e)
-            return None, None
-        return spec.volume_step, spec.base_currency
+            return None, None, None
+        return spec.volume_step, spec.base_currency, copy.deepcopy(frozen)
 
     def _rendered_strategy(self, rendered_config_id: str,
                            unreadable: Dict[str, str]) -> Optional[Dict[str, Any]]:

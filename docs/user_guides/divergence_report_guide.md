@@ -150,6 +150,26 @@ declares it, so the comparison is told. A stop you made by hand is declared with
 `--declared-stop <instant>,<changed|unchanged>[,<note>]`, so the comparison knows whether the
 account was changed in it.
 
+**The comparison never decides on the wall clock.** A record carries two kinds of time. The time
+of its events — a tick, a bar's close, a decision, a fill — is what the comparison measures. The
+stamps that say when something was fetched, written, exported or copied are the clock of the
+machine that did it: they tell where a record came from, not what it holds, so they never make two
+records count as different. A session that restarts fetches the venue's configuration again and
+freezes a document of its own. The gate compares that document with the one the backtest trades
+with by what it trades with — the traded symbol's specification and everything else, the fetch and
+export stamps left out:
+
+```
+  Gate: comparable · release 1.5.0 · session 33989482 · backtest a1be0c79
+    warning divergence_gate_broker_config: 2 sessions each froze a broker configuration of their
+      own, and the documents differ only in when they were fetched (… fetched 2026-10-30T13:01:27Z,
+      … fetched 2026-11-10T00:05:01Z): the backtest trades with what every one of them traded with.
+```
+
+A changed fee or lot size still refuses, and the refusal names where the documents differ. A stamp
+is read on purpose in one place only, and there it can only refuse: the A/A is *not checked* where
+a bar file was rendered between its two runs, because a new render may be a new input.
+
 ## Reading the result
 
 Each measure ends *passed*, *failed* or *not checked*, always with its reason. **Passed means no
