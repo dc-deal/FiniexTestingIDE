@@ -264,7 +264,7 @@ hidden.
 | | |
 |---|---|
 | **VS Code** | `📈 Run Index: Prune (preview)` |
-| **CLI** | `python run_index_cli.py prune [--orphans] [--keep-last N] [--older-than AGE] [--release-fixtures] [--apply]` |
+| **CLI** | `python run_index_cli.py prune [--orphans] [--keep-last N] [--older-than AGE] [--release-fixtures] [--keep RUN_ID] [--apply]` |
 | **Purpose** | Remove what the run tree no longer needs — after showing exactly what that is |
 
 **The preview is the default and it IS the product.** Without `--apply` nothing is touched. A run
@@ -305,7 +305,7 @@ catalog production is kept, whatever the selectors and flags say — it is what 
 and to drop one, produce the entry again ([Fixture Catalog](architecture/fixture_catalog.md)). An
 entry the catalog no longer declares has no current production, so its runs count as superseded. A
 SUPERSEDED production that passed its check is kept too, because a consumer may still pin it until
-they have moved to the new ids; the selectors reach it only with `--release-fixtures`, given once
+they have moved to the new ids; only `--release-fixtures` removes it, given once
 the consumer has re-pinned. A production that failed its check protects nothing.
 
 **The selectors** (`--keep-last`, `--older-than` and `--orphans` are opt-in; the last one is
@@ -316,7 +316,8 @@ always on):
 | `--keep-last N` | per scenario set / AutoTrader profile, all but the N newest complete runs. **A sweep is the unit, not the combination** — the N newest sweeps survive WHOLE, the rest go WHOLE, because a half-pruned sweep leaves a `ranked.csv` ranking runs that no longer exist |
 | `--older-than AGE` | runs that started longer ago than `AGE`, written as whole days or hours (`30d`, `12h`). The age comes from the run header's own start time; a run that records none is KEPT and reported separately, because an age nobody can measure is not a reason to delete |
 | `--orphans` | directories that are not runs: no header, not in the index, and no run anywhere below them — a set's directory holding a stray file beside its runs is never one. Never sweep directories (correctly header-less) and never a run's own `io/`, `scenario_logs/`, … |
-| `--release-fixtures` | nothing by itself — it lets the selectors above reach the runs of the fixture catalog's superseded productions; a current production is never released |
+| `--release-fixtures` | the runs of the fixture catalog's superseded productions, and only those — given alone, it leaves every other run of their families in place; a current production is never released |
+| `--keep RUN_ID` | nothing — it keeps the named run whatever the selectors say, for a run a consumer still reads outside the catalog; repeat it for several |
 | *(always on)* | `reporting=none` with no artifacts — commissioned to produce nothing, and it did not |
 
 **`--keep-last` and `--older-than` compose as KEEP rules, not as delete rules.** "Keep the

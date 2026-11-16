@@ -179,7 +179,7 @@ class RunIndexCli:
 
     def cmd_prune(self, orphans: bool, keep_last: int,
                   older_than: Optional[timedelta], apply: bool,
-                  release_fixtures: bool = False) -> int:
+                  release_fixtures: bool = False, keep_run_ids: Optional[List[str]] = None) -> int:
         """
         Remove what the run tree no longer needs — showing it first, deleting only on request.
 
@@ -189,15 +189,17 @@ class RunIndexCli:
             older_than: Keep runs that started within this window (None = selector off).
                 Composes with keep_last as a second KEEP rule — see PruneSelectors
             apply: Actually delete; without it nothing is touched
-            release_fixtures: Let the selectors reach the runs of the fixture catalog's
-                superseded productions (#576); a current production is never released
+            release_fixtures: Remove the runs of the fixture catalog's superseded productions
+                (#576), and only those; a current production is never released
+            keep_run_ids: Runs no selector may remove, named by id
 
         Returns:
             Process exit code
         """
         selectors = PruneSelectors(
             keep_last=keep_last if keep_last > 0 else None,
-            older_than=older_than, orphans=orphans, release_fixtures=release_fixtures)
+            older_than=older_than, orphans=orphans, release_fixtures=release_fixtures,
+            keep_run_ids=frozenset(keep_run_ids or ()))
         pruner = RunTreePruner()
 
         # PREVIEW, not 'dry run': in this project `dry_run` names exactly one thing — a
@@ -226,6 +228,8 @@ class RunIndexCli:
                           self._redundancy_reason(keep_last, older_than))
         self._print_group('DELETE', report.to_delete_uncommissioned,
                           'reporting=none, produced nothing')
+        self._print_group('DELETE', report.to_delete_superseded_fixture,
+                          'superseded catalog fixtures, released by --release-fixtures')
         self._print_group('DELETE', report.emptied_sweep_dirs,
                           'sweep directories left without a single combination')
         self._print_group('KEEP', report.kept_incomplete,
@@ -235,6 +239,7 @@ class RunIndexCli:
                           'hold field_study.jsonl (evidence behind a release gate)', names=False)
         self._print_group('KEEP', report.kept_certificate,
                           'certificate runs — never deleted, by any selector', names=False)
+        self._print_group('KEEP', report.kept_named, 'named with --keep')
         self._print_group('KEEP', report.kept_unreadable_header,
                           'a header that cannot be read — no guard can clear it')
         self._print_group('KEEP', report.kept_current_fixture,
@@ -388,9 +393,13 @@ def main() -> int:
              '--keep-last: a run goes only when BOTH release it')
     prune_parser.add_argument(
         '--release-fixtures', action='store_true', default=False,
-        help="Let the selectors reach the runs of the fixture catalog's SUPERSEDED productions, "
+        help="Remove the runs of the fixture catalog's SUPERSEDED productions, and only those, "
              'once the consumer has moved to the current ones. A current production is never '
              'released')
+    prune_parser.add_argument(
+        '--keep', action='append', default=[], metavar='RUN_ID',
+        help='Keep this run whatever the selectors say — a run a consumer still reads outside '
+             'the catalog. Repeat for several')
     prune_parser.add_argument(
         '--apply', action='store_true', default=False,
         help='Actually delete. Without it nothing is touched — a run directory is the only '
@@ -411,7 +420,7 @@ def main() -> int:
     cli = RunIndexCli()
     if args.command == 'prune':
         return cli.cmd_prune(args.orphans, args.keep_last, args.older_than, args.apply,
-                             args.release_fixtures)
+                             args.release_fixtures, args.keep)
     if args.command == 'deployments':
         return cli.cmd_deployments(args.id)
     return {'rebuild': cli.cmd_rebuild, 'status': cli.cmd_status}[args.command]()
