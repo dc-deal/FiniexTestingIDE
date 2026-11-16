@@ -551,7 +551,9 @@ in as the steps run:
 - **The estimate comes from earlier imports.** After a complete import into the production
   archive, each step's rate is stored in `data/runtime/import_timings.json` — seconds per MB of
   JSON, per index file, per million ticks at a given worker count, per bar file for the caches —
-  as a moving average. The next import multiplies the rates by what its scan found and shows the
+  as a moving average. A measurement more than twice the stored rate, or under half of it, starts
+  the rate again: a step that changed that much changed for a reason, such as new code or another
+  machine. The next import multiplies the rates by what its scan found and shows the
   remaining time, the whole import's estimated duration and the time it should end. Without that
   file, the first time, the screen shows `remaining —`. Once a step is past 5 % of its work, its
   own progress decides. A step that ended ❌ — an index that could not be rebuilt, a render in
@@ -561,7 +563,8 @@ in as the steps run:
   Layout](../architecture/data_storage_layout.md#an-imports-log-and-its-timings).
 - **The summary checks the estimate.** When steps had an estimate, the summary lists each one as
   it stood once the scan had run against what the step took, with the deviation, and the same
-  summed over the steps that ran and had an estimate — a skipped or stopped step is not an
+  summed over the steps that ran and had an estimate, the package fetch included although it runs
+  before the scan — a skipped or stopped step is not an
   estimate error, and the label says when the total covers fewer steps than were planned:
   ```
   ⏱  Estimated at the start → took:

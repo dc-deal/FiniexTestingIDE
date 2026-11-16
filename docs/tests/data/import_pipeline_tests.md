@@ -508,6 +508,8 @@ estimate and past it extrapolates its own progress, pinned with exact numbers on
 moves by hand, and the step carries the same figure the header sums; a pending step carries its
 estimate, a finished one none; the frame carries the whole import's estimated duration and end
 time while it runs; the comparison holds each step's estimate at the start against its duration,
+the package fetch's too although it is done before the plan completes (the scan, never
+estimated, stays out),
 and its total sums only the steps that ran and had an estimate, saying so when that is not every
 planned step; only finished steps yield a rate to store; the newest counted issue is pinned by its
 first line, without the emoji variation selector; worker lines follow their events, leave with

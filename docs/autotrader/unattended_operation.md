@@ -380,6 +380,15 @@ short shows only in the data. A refused ping URL stops the pings — the monitor
 session silent, which is the right answer to a check that no longer exists; a refused fail URL
 stops only the fail pings, and the ordinary pings go on.
 
+**Measured on an unattended dry-run session on a small server (November 2026, period 10 min, grace
+30 min).** A session frozen with `kill -STOP` raised nothing itself: its own watch was frozen with
+it. The process stayed listed as running, and the run list read `recording: stopped` after about
+three minutes. The monitor raised its alarm 40 minutes after the last ping, which is how long a hung
+session went unnoticed. Resumed, the session reported the stall at once, with the time it had
+stood, reconnected its feed within 11 s and pinged again a minute later; the monitor's own "back up"
+message counts from its alarm, not from the freeze. The check was then shortened to a period of
+5 min and a grace of 10 min, which brings the same alarm to about 15 minutes.
+
 With the ping off and Telegram on, the same watch runs without pinging: a stalled loop still
 reaches the operator. What it cannot report is a process that died — that silence is the ping's.
 
@@ -432,6 +441,15 @@ hung process lives on, two units for one bot, or a deploy's new code tree starte
 session has ended. The lock lies beside the bot's carry-over and is held until the session has
 written its last record; the kernel drops it with the process however that ends, so there is
 never a stale lock to clear.
+
+**Measured on the same session (November 2026, the systemd unit above).** `kill -9` ended the
+process at once (exit 137), with no record of its end. systemd started the session again exactly
+60 s later, and its tick loop ran 4 s after that; the lock was free, because the kernel had dropped
+it with the process. The new session continued the carry-over the old one had last written at the
+day boundary and took the next decision on time. The monitor raised no alarm, since a gap of about a
+minute lies far inside period and grace, so the kill shows in the data only: the day's seal covers
+the new session's part of that day, and what the old session recorded that day before the kill
+stays unsealed in its run.
 
 **The restart and the adoption are one decision.** A session that starts restores the previous
 session's position book whatever the adoption mode (at spot, in a real-money session — a dry run
@@ -522,6 +540,12 @@ the new tree in the same step and names the same home, so a store's reader and i
 run two versions. Going back is the same steps with the old tree. The stop must finish inside
 systemd's stop timeout (`TimeoutStopSec`, 90 s by default); a kill after that costs the session
 its ledger row, never its carry-over.
+
+**Measured on the same session (November 2026): a stop and a start 15 minutes apart.** The stop
+ended the session with exit 0 within 1.3 s of the signal, its booking period sealed and its
+carry-over written. The started session named the carry-over it continued (the run that wrote it,
+and when) and took its first decision 11 s after the start. Each start added about 2.4 KB to
+`logs/global.log`, all of it at boot.
 
 ## A restart under a changed configuration
 

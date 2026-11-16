@@ -432,7 +432,8 @@ from (`data/runtime/import_timings.json`):
   temporary file behind
 - a second measurement is averaged into the first, and a step not measured again keeps its rate
 - a new unit or worker count starts the average again, because averaging two different
-  quantities would describe neither
+  quantities would describe neither; so does a measurement more than twice or under half the
+  stored rate, in both directions
 - the file keeps the mode an ordinary write would give it, although it is written through an
   owner-only temporary file
 - another schema version, or a file that is not JSON, yields no rates — the estimate is a
