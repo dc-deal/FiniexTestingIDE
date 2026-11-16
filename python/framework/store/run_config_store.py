@@ -121,8 +121,11 @@ class RunConfigStore:
         Record a document the run produced rather than read — a rendered profile, a broker
         configuration — freezing it if its content is new.
 
-        Content-addressed like `register`, so a session that restarts on an unchanged
-        configuration names the same id and writes no second copy. The source columns stay
+        Content-addressed like `register`: the same content names the same id and writes no
+        second copy. A document that records its own making changes with it — a broker
+        configuration carries the instant it was fetched and exported — so a session that fetches
+        the venue again at its restart names a new id where nothing it trades with changed. A
+        comparison therefore reads such documents by content, never by id. The source columns stay
         EMPTY on purpose: they mean "the file a caller asks for", and a rendered document must
         never answer a lookup by file name — `resolve()` and `history()` would otherwise hand it
         back as the newest version of the profile it was rendered from. It is found by its id,
