@@ -33,19 +33,19 @@ class ArtifactSpec(Generic[T]):
     model: Type[T]
 
 
-def write_artifact(report: T, run_dir: Path, spec: ArtifactSpec[T]) -> Path:
+def write_artifact(report: T, io_dir: Path, spec: ArtifactSpec[T]) -> Path:
     """
-    Persist a report as JSON in the run directory (the API's source).
+    Persist a report as JSON in the run's io/ directory (the API's source).
 
     Args:
         report: The built report
-        run_dir: The run's io/ directory
+        io_dir: The run's io/ directory — not the run directory itself, where no reader looks
         spec: Which artifact this is
 
     Returns:
         Path of the written artifact
     """
-    path = Path(run_dir) / spec.filename
+    path = Path(io_dir) / spec.filename
     path.write_text(report.model_dump_json(indent=2), encoding='utf-8')
     return path
 

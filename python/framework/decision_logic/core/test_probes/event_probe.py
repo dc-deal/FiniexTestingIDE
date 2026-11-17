@@ -34,6 +34,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
+from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.decision_event_types import (
     DecisionEventType,
     OrderCancelledEvent,
@@ -103,6 +104,14 @@ class EventProbe(AbstractDecisionLogic):
     # ============================================
     # Class Methods (Factory Interface)
     # ============================================
+
+    @classmethod
+    def get_metadata(cls) -> ComponentMetadata:
+        """CORE test probe metadata."""
+        return ComponentMetadata(
+            version='1.0.0',
+            doc_link='docs/tests/simulation/event_channel_tests.md',
+        )
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:

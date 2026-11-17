@@ -43,6 +43,7 @@ from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
 )
+from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.decision_event_types import (
     DecisionEventType,
     OrderCancelledEvent,
@@ -127,6 +128,14 @@ class ObserverProbe(AbstractDecisionLogic):
     # ============================================
     # Class Methods (Factory Interface)
     # ============================================
+
+    @classmethod
+    def get_metadata(cls) -> ComponentMetadata:
+        """CORE test probe metadata."""
+        return ComponentMetadata(
+            version='1.0.0',
+            doc_link='docs/tests/framework/cache_transparency_tests.md',
+        )
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:

@@ -28,6 +28,7 @@ from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.persistence_types import AccountDrawdownCarryOver
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.trading_env_types.order_types import OrderDirection
+from tests.shared.null_logger import NullLogger
 
 _MT5_CONFIG = 'configs/brokers/mt5/mt5_broker_config.json'
 _SYMBOL = 'EURUSD'
@@ -35,16 +36,6 @@ _ENTRY = 1.10
 _LOTS = 1.0
 _BALANCE = 10_000.0
 _CLOCK = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
-
-
-class _NullLogger:
-    """Minimal duck-typed logger — the arithmetic under test does not log."""
-
-    def verbose(self, *args, **kwargs): pass
-    def debug(self, *args, **kwargs): pass
-    def info(self, *args, **kwargs): pass
-    def warning(self, *args, **kwargs): pass
-    def error(self, *args, **kwargs): pass
 
 
 def _fixed_clock() -> datetime:
@@ -69,7 +60,7 @@ def _portfolio(
         A PortfolioManager with the clock given
     """
     return PortfolioManager(
-        logger=_NullLogger(), initial_balance=_BALANCE, account_currency='USD',
+        logger=NullLogger(), initial_balance=_BALANCE, account_currency='USD',
         broker_config=BrokerConfigFactory.build_broker_config(_MT5_CONFIG),
         leverage=500, margin_call_level=50.0, stop_out_level=20.0,
         spot_mode=spot_mode,

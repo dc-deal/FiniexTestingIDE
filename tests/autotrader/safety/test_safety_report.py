@@ -43,19 +43,10 @@ from python.framework.types.persistence_types import (
     RiskBaseline,
 )
 from python.framework.utils.console_renderer import ConsoleRenderer
+from tests.shared.null_logger import NullLogger
 from tests.shared.operator_alert_recorder import OperatorAlertRecorder
 
 _DEPLOY = datetime(2026, 9, 10, 8, 0, tzinfo=timezone.utc)
-
-
-class _NullLogger:
-    """The observation path does not log; the block path logs and is not asserted here."""
-
-    def verbose(self, m, *a, **k): pass
-    def debug(self, m, *a, **k): pass
-    def info(self, m, *a, **k): pass
-    def warning(self, m, *a, **k): pass
-    def error(self, m, *a, **k): pass
 
 
 class _LoopStub:
@@ -77,7 +68,7 @@ class _LoopStub:
     ):
         self._config = AutoTraderConfig(safety=safety or SafetyConfig())
         self._trading_model = trading_model
-        self._logger = _NullLogger()
+        self._logger = NullLogger()
         self._operator_alerts = OperatorAlertRecorder()   # #235 — the breaker alerts out of band
         self._all_clear_after_s = 300.0
         self._safety_alert = AlertEpisode(self._all_clear_after_s)
@@ -88,7 +79,7 @@ class _LoopStub:
             self._risk_baseline = RiskBaselineTracker(
                 mode=baseline.kind, restored=baseline, spot_mode=False,
                 exclusive_account=False, clock_fn=lambda: self._now,
-                logger=_NullLogger())
+                logger=NullLogger())
 
         self._safety_blocked = False
         self._safety_reason = ''

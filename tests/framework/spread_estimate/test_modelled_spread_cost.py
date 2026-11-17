@@ -22,6 +22,7 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.trading_env_types.order_types import OrderDirection
 from python.framework.utils.trading_math.pnl_math import gross_pnl_from_price_diff
+from tests.shared.null_logger import NullLogger
 
 _MT5_CONFIG = 'configs/brokers/mt5/mt5_broker_config.json'
 _SYMBOL = 'EURUSD'
@@ -31,15 +32,6 @@ _DIGITS = 5
 _ENTRY_BID, _ENTRY_ASK = 99.98, 100.02
 _EXIT_BID, _EXIT_ASK = 100.98, 101.02
 _NOW = datetime(2026, 9, 8, 12, 0, tzinfo=timezone.utc)
-
-
-class _NullLogger:
-    """Minimal duck-typed logger — the arithmetic under test does not log."""
-    def verbose(self, *args, **kwargs): pass
-    def debug(self, *args, **kwargs): pass
-    def info(self, *args, **kwargs): pass
-    def warning(self, *args, **kwargs): pass
-    def error(self, *args, **kwargs): pass
 
 
 def _close(spot_mode: bool, partial: bool, modelled: bool):
@@ -55,7 +47,7 @@ def _close(spot_mode: bool, partial: bool, modelled: bool):
         (trade record, cost breakdown)
     """
     portfolio = PortfolioManager(
-        logger=_NullLogger(), initial_balance=10_000.0, account_currency='USD',
+        logger=NullLogger(), initial_balance=10_000.0, account_currency='USD',
         broker_config=BrokerConfigFactory.build_broker_config(_MT5_CONFIG),
         leverage=500, margin_call_level=50.0, stop_out_level=20.0,
         spot_mode=spot_mode, clock_fn=lambda: _NOW,

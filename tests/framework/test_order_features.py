@@ -79,6 +79,7 @@ from python.framework.validators.order_feature_validator import (
 from python.framework.validators.scenario_validator import ScenarioValidator
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from python.scenario.scenario_strategy_runner import initialize_batch_and_run
+from tests.shared.null_logger import NullLogger
 from tests.shared.recording_logger import RecordingLogger
 
 _T0 = datetime(2026, 1, 5, 9, 0, tzinfo=timezone.utc)
@@ -427,11 +428,6 @@ def _checks_of(scenario) -> List[str]:
             for finding in result.findings]
 
 
-class _NullLogger:
-    def __getattr__(self, name):
-        return lambda *args, **kwargs: None
-
-
 _WITH_STOP = {'trade_sequence': [{'tick_number': 1, 'stop_loss': 95.0}]}
 
 
@@ -441,7 +437,7 @@ class TestTheBatchRefusesInItsMainProcess:
         refused = _scenario('with_stop', _WITH_STOP)
         clean = _scenario('without', {})
 
-        ScenarioValidator.validate_order_features([refused, clean], _NullLogger(), _broker_map())
+        ScenarioValidator.validate_order_features([refused, clean], NullLogger(), _broker_map())
 
         assert _checks_of(refused) == ['order_feature_refused']
         assert _checks_of(clean) == []
@@ -449,35 +445,35 @@ class TestTheBatchRefusesInItsMainProcess:
     def test_the_sentence_tells_a_backtest_of_the_exception(self):
         refused = _scenario('with_stop', _WITH_STOP)
 
-        ScenarioValidator.validate_order_features([refused], _NullLogger(), _broker_map())
+        ScenarioValidator.validate_order_features([refused], NullLogger(), _broker_map())
 
         assert 'features_beyond_venue' in refused.validation_result[0].findings[0].message
 
     def test_a_venue_that_holds_it_passes(self):
         scenario = _scenario('with_stop', _WITH_STOP)
 
-        ScenarioValidator.validate_order_features([scenario], _NullLogger(), _broker_map(_BOTH))
+        ScenarioValidator.validate_order_features([scenario], NullLogger(), _broker_map(_BOTH))
 
         assert _checks_of(scenario) == []
 
     def test_the_exception_lets_it_through(self):
         scenario = _scenario('with_stop', _WITH_STOP, beyond=[OrderFeature.STOP_LOSS])
 
-        ScenarioValidator.validate_order_features([scenario], _NullLogger(), _broker_map())
+        ScenarioValidator.validate_order_features([scenario], NullLogger(), _broker_map())
 
         assert _checks_of(scenario) == []
 
     def test_an_exception_no_logic_needs_is_refused(self):
         scenario = _scenario('without', {}, beyond=[OrderFeature.STOP_LOSS])
 
-        ScenarioValidator.validate_order_features([scenario], _NullLogger(), _broker_map())
+        ScenarioValidator.validate_order_features([scenario], NullLogger(), _broker_map())
 
         assert _checks_of(scenario) == ['feature_beyond_venue_unneeded']
 
     def test_an_exception_for_what_the_venue_holds_is_refused(self):
         scenario = _scenario('with_stop', _WITH_STOP, beyond=[OrderFeature.STOP_LOSS])
 
-        ScenarioValidator.validate_order_features([scenario], _NullLogger(), _broker_map(_BOTH))
+        ScenarioValidator.validate_order_features([scenario], NullLogger(), _broker_map(_BOTH))
 
         assert _checks_of(scenario) == ['feature_beyond_venue_unneeded']
 
@@ -485,7 +481,7 @@ class TestTheBatchRefusesInItsMainProcess:
         needs = _scenario('with_stop', _WITH_STOP, beyond=[OrderFeature.STOP_LOSS])
         does_not = _scenario('without', {}, beyond=[OrderFeature.STOP_LOSS])
 
-        ScenarioValidator.validate_order_features([needs, does_not], _NullLogger(), _broker_map())
+        ScenarioValidator.validate_order_features([needs, does_not], NullLogger(), _broker_map())
 
         assert _checks_of(needs) == []
         assert _checks_of(does_not) == []
@@ -495,7 +491,7 @@ class TestTheBatchRefusesInItsMainProcess:
         needs = _excluded(_scenario('with_stop', _WITH_STOP, beyond=[OrderFeature.STOP_LOSS]))
         does_not = _scenario('without', {}, beyond=[OrderFeature.STOP_LOSS])
 
-        ScenarioValidator.validate_order_features([needs, does_not], _NullLogger(), _broker_map())
+        ScenarioValidator.validate_order_features([needs, does_not], NullLogger(), _broker_map())
 
         assert _checks_of(needs) == ['some_earlier_check'], 'one reason is enough for an excluded one'
         assert _checks_of(does_not) == []
@@ -505,7 +501,7 @@ class TestTheBatchRefusesInItsMainProcess:
         unknown.strategy_config['decision_logic_type'] = 'CORE/no_such_logic'
         does_not = _scenario('without', {}, beyond=[OrderFeature.STOP_LOSS])
 
-        ScenarioValidator.validate_order_features([unknown, does_not], _NullLogger(), _broker_map())
+        ScenarioValidator.validate_order_features([unknown, does_not], NullLogger(), _broker_map())
 
         assert _checks_of(does_not) == []
 
@@ -531,7 +527,7 @@ class TestTheBatchRefusesInItsMainProcess:
         does_not = _scenario('without', {}, beyond=[OrderFeature.STOP_LOSS])
 
         ScenarioValidator.validate_order_features(
-            [does_not], _NullLogger(), _broker_map(), exception_held_narrow=False)
+            [does_not], NullLogger(), _broker_map(), exception_held_narrow=False)
 
         assert _checks_of(does_not) == []
 
@@ -539,7 +535,7 @@ class TestTheBatchRefusesInItsMainProcess:
         needs = _scenario('with_stop', _WITH_STOP)
 
         ScenarioValidator.validate_order_features(
-            [needs], _NullLogger(), _broker_map(), exception_held_narrow=False)
+            [needs], NullLogger(), _broker_map(), exception_held_narrow=False)
 
         assert _checks_of(needs) == ['order_feature_refused']
 

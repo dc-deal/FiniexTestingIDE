@@ -45,6 +45,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderType,
 )
+from tests.shared.null_logger import NullLogger
 
 _KRAKEN_CONFIG = 'configs/brokers/kraken/kraken_spot_broker_config.json'
 _MT5_CONFIG = 'configs/brokers/mt5/mt5_broker_config.json'
@@ -63,16 +64,6 @@ _MT5_PRICE = 1.10
 _BALANCE = 10_000.0
 
 
-class _NullLogger:
-    """Minimal duck-typed logger — the arithmetic under test does not log."""
-
-    def verbose(self, *args, **kwargs): pass
-    def debug(self, *args, **kwargs): pass
-    def info(self, *args, **kwargs): pass
-    def warning(self, *args, **kwargs): pass
-    def error(self, *args, **kwargs): pass
-
-
 def _spot_portfolio(balances: Optional[Dict[str, float]] = None) -> PortfolioManager:
     """
     A Kraken spot portfolio — leverage 1, contract size 1, margin declared in the quote.
@@ -84,7 +75,7 @@ def _spot_portfolio(balances: Optional[Dict[str, float]] = None) -> PortfolioMan
         A PortfolioManager in spot mode with a fixed clock
     """
     return PortfolioManager(
-        logger=_NullLogger(), initial_balance=_START_QUOTE, account_currency=_QUOTE,
+        logger=NullLogger(), initial_balance=_START_QUOTE, account_currency=_QUOTE,
         broker_config=BrokerConfigFactory.build_broker_config(_KRAKEN_CONFIG),
         leverage=1, margin_call_level=50.0, stop_out_level=20.0,
         spot_mode=True,
@@ -200,7 +191,7 @@ class TestFreeEntryCapitalAnswersPerWorld:
         """A Kraken spot simulator, marked at the working price. Returns: the simulator."""
         simulator = TradeSimulator(
             broker_config=BrokerConfigFactory.build_broker_config(_KRAKEN_CONFIG),
-            initial_balance=_START_QUOTE, account_currency=_QUOTE, logger=_NullLogger(),
+            initial_balance=_START_QUOTE, account_currency=_QUOTE, logger=NullLogger(),
             spot_mode=True,
             initial_balances=balances if balances is not None else {_QUOTE: _START_QUOTE})
         simulator.on_tick(TickData(
@@ -212,7 +203,7 @@ class TestFreeEntryCapitalAnswersPerWorld:
         """An MT5 margin simulator, marked at the working price. Returns: the simulator."""
         simulator = TradeSimulator(
             broker_config=BrokerConfigFactory.build_broker_config(_MT5_CONFIG),
-            initial_balance=_BALANCE, account_currency=_QUOTE, logger=_NullLogger())
+            initial_balance=_BALANCE, account_currency=_QUOTE, logger=NullLogger())
         simulator.on_tick(TickData(
             timestamp=_CLOCK, symbol=_MT5_SYMBOL, bid=_MT5_PRICE, ask=_MT5_PRICE))
         return simulator

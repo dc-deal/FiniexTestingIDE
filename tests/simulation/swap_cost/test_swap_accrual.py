@@ -18,18 +18,9 @@ from python.framework.types.config_types.market_config_types import SwapRollover
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.trading_env_types.broker_types import FeeType, SwapMode
 from python.framework.types.trading_env_types.order_types import OrderDirection
+from tests.shared.null_logger import NullLogger
 
 _MT5_CONFIG = 'configs/brokers/mt5/mt5_broker_config.json'
-
-
-class _NullLogger:
-    """Minimal duck-typed logger — the accrual path does not log."""
-
-    def verbose(self, *args, **kwargs): pass
-    def debug(self, *args, **kwargs): pass
-    def info(self, *args, **kwargs): pass
-    def warning(self, *args, **kwargs): pass
-    def error(self, *args, **kwargs): pass
 
 
 class _Clock:
@@ -52,7 +43,7 @@ def _utc(year, month, day, hour, minute=0):
 def _portfolio(clock: _Clock, spot_mode: bool = False) -> PortfolioManager:
     broker_config = BrokerConfigFactory.build_broker_config(_MT5_CONFIG)
     return PortfolioManager(
-        logger=_NullLogger(), initial_balance=10_000.0, account_currency='USD',
+        logger=NullLogger(), initial_balance=10_000.0, account_currency='USD',
         broker_config=broker_config, leverage=500,
         margin_call_level=50.0, stop_out_level=20.0,
         spot_mode=spot_mode, clock_fn=clock.now,

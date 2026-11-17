@@ -68,6 +68,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
 from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
+from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
@@ -177,6 +178,14 @@ class MultiPositionProbe(AbstractDecisionLogic):
     # ============================================
     # Class Methods (Factory Interface)
     # ============================================
+
+    @classmethod
+    def get_metadata(cls) -> ComponentMetadata:
+        """CORE test probe metadata."""
+        return ComponentMetadata(
+            version='1.0.0',
+            doc_link='docs/tests/simulation/multi_position_tests.md',
+        )
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:

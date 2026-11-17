@@ -96,6 +96,7 @@ from python.framework.types.autotrader_types.cold_start_types import (
     ColdStartSituation,
     ColdStartVerdict,
 )
+from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
@@ -212,6 +213,14 @@ class DeterministicProbe(AbstractDecisionLogic):
     # ============================================
     # Required Abstract Methods
     # ============================================
+
+    @classmethod
+    def get_metadata(cls) -> ComponentMetadata:
+        """CORE test probe metadata."""
+        return ComponentMetadata(
+            version='1.0.0',
+            doc_link='docs/tests/framework/worker_tests.md',
+        )
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
