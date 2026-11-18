@@ -6,16 +6,16 @@ instant with ticks, and a time, which is a timer on the session's timeline. Whic
 a run starts the timer again from now, so the two never fire back to back; a gate that did not
 open leaves the timer where it is.
 
-The loop is exercised through `__new__`: the methods under test read a handful of collaborators,
-and building a real event loop would drag in a queue, workers and a decision logic without testing
-any of them.
+The event loop's cadence work is exercised through `__new__`: the methods under test read a
+handful of collaborators, and building a real one would drag in an executor, a store and a
+reconciler without testing any of them.
 """
 
 from datetime import datetime, timezone
 from typing import List, Tuple
 from unittest.mock import MagicMock
 
-from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
+from python.framework.autotrader.event_loop.autotrader_cadence_work import AutotraderCadenceWork
 from python.framework.types.live_types.reconciliation_types import ReconciliationResult
 from python.framework.types.loop_types.timer_kind_types import TimerKind
 
@@ -64,13 +64,11 @@ class _StateStore:
         return 30.0
 
 
-def _loop(reconciler=None, state_store=None) -> Tuple[AutotraderEventLoop, _ArmingIntake]:
+def _loop(reconciler=None, state_store=None) -> Tuple[AutotraderCadenceWork, _ArmingIntake]:
     intake = _ArmingIntake()
-    loop = AutotraderEventLoop.__new__(AutotraderEventLoop)
-    loop._tick_source = MagicMock()
-    loop._tick_source.get_idle_pass_time.return_value = _NOW
-    loop._replay = False
-    loop._intake = intake
+    loop = AutotraderCadenceWork.__new__(AutotraderCadenceWork)
+    loop._axis_now_msc = lambda: _NOW_MSC
+    loop._intake = lambda: intake
     loop._reconciler = reconciler
     loop._state_store = state_store
     loop._executor = MagicMock()
@@ -85,7 +83,7 @@ class TestTheReconcileTimer:
         reconciler = _Reconciler(due=True)
         loop, intake = _loop(reconciler=reconciler)
 
-        loop._reconcile_if_due(100)
+        loop.reconcile_if_due(100)
 
         assert reconciler.runs == 1
         assert intake.armed == [(TimerKind.RECONCILE, _NOW_MSC + 60_000)]
@@ -94,7 +92,7 @@ class TestTheReconcileTimer:
         reconciler = _Reconciler(due=False)
         loop, intake = _loop(reconciler=reconciler)
 
-        loop._reconcile_if_due(100)
+        loop.reconcile_if_due(100)
 
         assert (reconciler.runs, intake.armed) == (0, [])
 
@@ -105,7 +103,7 @@ class TestThePersistenceTimer:
         store = _StateStore(due=True)
         loop, intake = _loop(state_store=store)
 
-        loop._persist_state_if_due(500)
+        loop.persist_state_if_due(500)
 
         assert store.saves == 1
         assert intake.armed == [(TimerKind.PERSISTENCE, _NOW_MSC + 30_000)]
@@ -114,7 +112,7 @@ class TestThePersistenceTimer:
         store = _StateStore(due=False)
         loop, intake = _loop(state_store=store)
 
-        loop._persist_state_now(7)
+        loop.persist_state_now(7)
 
         assert store.saves == 1
         assert intake.armed == [(TimerKind.PERSISTENCE, _NOW_MSC + 30_000)]

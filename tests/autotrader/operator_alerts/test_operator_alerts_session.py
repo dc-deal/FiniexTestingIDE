@@ -16,7 +16,7 @@ import pytest
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader import autotrader_main as autotrader_main_module
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
+from python.framework.autotrader.event_loop.autotrader_pass_hooks import AutotraderPassHooks
 from python.framework.autotrader.cold_start.cold_start_setup import ColdStartSetup
 from python.framework.autotrader.operator_alerts.liveness_pinger import LivenessPinger
 from python.framework.autotrader.operator_alerts.loop_progress import LoopProgress
@@ -133,18 +133,18 @@ def test_a_crash_in_the_loop_reports_how_far_the_session_got(recorded, monkeypat
     read where the crash happens rather than derived from the passes.
     """
     channel, _, _ = recorded
-    drain = AutotraderEventLoop._drain_signal_inbox
+    drain = AutotraderPassHooks._drain_signal_inbox
     seen = {'slices': 0, 'ticks': 0}
 
     def fall_after_some_slices(self, off_tick):
         if not off_tick:
             seen['slices'] += 1
             if seen['slices'] > CRASH_AFTER:
-                seen['ticks'] = self._ticks_processed
+                seen['ticks'] = self._state.ticks_processed
                 raise RuntimeError('provoked in the event loop')
         return drain(self, off_tick)
 
-    monkeypatch.setattr(AutotraderEventLoop, '_drain_signal_inbox', fall_after_some_slices)
+    monkeypatch.setattr(AutotraderPassHooks, '_drain_signal_inbox', fall_after_some_slices)
     trader = AutotraderMain(load_autotrader_config(FRAMES_PROFILE))
     try:
         result = trader.run()

@@ -15,7 +15,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
+from python.framework.autotrader.event_loop.autotrader_market_data_watch import (
+    AutotraderMarketDataWatch,
+)
 from python.framework.autotrader.operator_alerts.alert_episode import AlertEpisode
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
@@ -25,6 +27,7 @@ from python.framework.stress_test.stale_data_stress_driver import (
     warn_events_outside_range,
 )
 from python.framework.trading_env.order_guard import OrderGuard
+from python.framework.types.autotrader_types.autotrader_loop_state_types import AutotraderLoopState
 from python.framework.types.autotrader_types.operator_alert_types import OperatorAlertKind
 from python.framework.types.disturbance_episode_types import DisturbanceOrigin
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
@@ -88,19 +91,19 @@ class _StubTickSource:
 
 def _make_loop(stale_after_s: float, last_tick_wall: float,
                now: datetime, tick_source=None, stress_driver=None):
-    """Bare loop carrying only the #436/#451/#444 state (ctor bypassed)."""
-    loop = object.__new__(AutotraderEventLoop)
+    """Bare market data watch carrying only the #436/#451/#444 state (ctor bypassed)."""
+    loop = object.__new__(AutotraderMarketDataWatch)
     loop._operator_alerts = OperatorAlertRecorder()
-    loop._all_clear_after_s = 300.0
-    loop._market_data_alert = AlertEpisode(loop._all_clear_after_s)
-    loop._loop_started_monotonic = 0.0
+    loop._market_data_alert = AlertEpisode(300.0)
+    loop._state = AutotraderLoopState()
+    loop._state.loop_started_monotonic = 0.0
     loop._market_data_stale_after_s = stale_after_s
     loop._market_stale = False
     loop._market_stale_since = None
     loop._last_reconnect_count = 0
-    loop._last_real_tick_wall_time = last_tick_wall
+    loop._state.last_real_tick_wall_time = last_tick_wall
     # The canonical time of the last tick; unset here, so the alert names the flip for both
-    loop._last_tick_time = None
+    loop._state.last_tick_time = None
     loop._tick_source = tick_source or _StubTickSource()
     loop._executor = _StubExecutor(now)
     loop._decision_logic = _HookRecorder()
@@ -112,18 +115,9 @@ def _make_loop(stale_after_s: float, last_tick_wall: float,
 
 
 def _observe_tick(loop, now: datetime) -> None:
-    """The loop's tick-path observation, in the order run() performs it."""
+    """The tick path's observation of the market data, as a pass with a tick performs it."""
     loop._executor._now = now
-    if loop._market_stale:
-        loop._end_market_stale_episode()
-    elif loop._last_real_tick_wall_time <= 0 and loop._market_data_alert.is_open():
-        loop._market_data_alert.clears(now)
-    if loop._market_data_alert.is_open():
-        loop._send_market_data_all_clear_if_due()
-    if loop._stale_stress_driver is not None:
-        loop._stale_stress_driver.on_tick(now)
-    loop._market_data_tracker.on_tick(
-        now, loop._executor.get_market_data_status(), loop._injected_outage_label())
+    loop.on_tick()
 
 
 class TestLoopEvaluation:
@@ -133,7 +127,7 @@ class TestLoopEvaluation:
         loop = _make_loop(300.0, last_tick_wall=1000.0, now=_utc(2026, 1, 15, 8, 0))
         monkeypatch.setattr(time_module, 'time', lambda: 1301.0)
 
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
         assert loop._market_stale is True
         assert loop._executor.get_market_data_status().is_stale is True
         assert len(loop._decision_logic.calls) == 1
@@ -142,16 +136,16 @@ class TestLoopEvaluation:
 
         # Still stale — no re-fire, but the readable status keeps growing
         monkeypatch.setattr(time_module, 'time', lambda: 1400.0)
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
         assert len(loop._decision_logic.calls) == 1
         assert loop._executor.get_market_data_status().seconds_since_last_tick == 400.0
 
     def test_the_warning_names_the_last_tick_and_the_flip(self, monkeypatch):
         """One episode, two instants: when the feed fell silent, and when entries were blocked."""
         loop = _make_loop(300.0, last_tick_wall=1000.0, now=_utc(2026, 1, 15, 8, 0))
-        loop._last_tick_time = _utc(2026, 1, 15, 7, 55)
+        loop._state.last_tick_time = _utc(2026, 1, 15, 7, 55)
         monkeypatch.setattr(time_module, 'time', lambda: 1301.0)
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
         warning = loop._logger.warning.call_args[0][0]
         assert 'Market data stale since 08:00:00' in warning
         assert 'no tick since 07:55:00' in warning
@@ -159,7 +153,7 @@ class TestLoopEvaluation:
     def test_below_threshold_stays_fresh(self, monkeypatch):
         loop = _make_loop(300.0, last_tick_wall=1000.0, now=_utc(2026, 1, 15, 8, 0))
         monkeypatch.setattr(time_module, 'time', lambda: 1200.0)
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
         assert loop._market_stale is False
         assert loop._executor.get_market_data_status().is_stale is False
         assert loop._decision_logic.calls == []
@@ -167,27 +161,27 @@ class TestLoopEvaluation:
     def test_disabled_contract_never_fires(self, monkeypatch):
         loop = _make_loop(0.0, last_tick_wall=1000.0, now=_utc(2026, 1, 15, 8, 0))
         monkeypatch.setattr(time_module, 'time', lambda: 99999.0)
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
         assert loop._market_stale is False
         assert loop._decision_logic.calls == []
 
     def test_startup_without_tick_is_not_an_outage(self, monkeypatch):
         loop = _make_loop(300.0, last_tick_wall=0.0, now=_utc(2026, 1, 15, 8, 0))
         monkeypatch.setattr(time_module, 'time', lambda: 99999.0)
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
         assert loop._market_stale is False
 
     def test_a_first_tick_that_never_comes_is_said_once(self, monkeypatch):
         """#235: a feed that never starts must not leave 'Session started' as the last word."""
         loop = _make_loop(300.0, last_tick_wall=0.0, now=_utc(2026, 1, 15, 8, 0))
-        loop._loop_started_monotonic = 500.0
+        loop._state.loop_started_monotonic = 500.0
         monkeypatch.setattr(time_module, 'monotonic', lambda: 700.0)
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
         assert loop._operator_alerts.kinds == []                  # inside the threshold
 
         monkeypatch.setattr(time_module, 'monotonic', lambda: 801.0)
-        loop._evaluate_market_data_staleness()
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
+        loop.evaluate_staleness()
 
         assert loop._operator_alerts.kinds == [OperatorAlertKind.MARKET_DATA_STALE]
         loop._logger.warning.assert_called_once()
@@ -197,12 +191,12 @@ class TestLoopEvaluation:
 
     def test_the_first_tick_ends_that_wait(self, monkeypatch):
         loop = _make_loop(300.0, last_tick_wall=0.0, now=_utc(2026, 1, 15, 8, 0))
-        loop._loop_started_monotonic = 500.0
+        loop._state.loop_started_monotonic = 500.0
         monkeypatch.setattr(time_module, 'monotonic', lambda: 801.0)
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
 
         _observe_tick(loop, _utc(2026, 1, 15, 8, 1))              # the first tick
-        loop._last_real_tick_wall_time = 1000.0
+        loop._state.last_real_tick_wall_time = 1000.0
         _observe_tick(loop, _utc(2026, 1, 15, 8, 6, 1))           # fresh for longer than 300 s
 
         assert loop._operator_alerts.kinds == [
@@ -215,7 +209,7 @@ class TestLoopEvaluation:
         _observe_tick(loop, _utc(2026, 1, 15, 7, 55))
 
         monkeypatch.setattr(time_module, 'time', lambda: 1301.0)
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
 
         monkeypatch.setattr(time_module, 'time', lambda: 1400.0)
         _observe_tick(loop, _utc(2026, 1, 15, 8, 5))
@@ -232,9 +226,9 @@ class TestLoopEvaluation:
         assert episodes[0].origin == DisturbanceOrigin.LIVE_REAL
 
         # Next silence flips (and notifies) again — edge was reset
-        loop._last_real_tick_wall_time = 2000.0
+        loop._state.last_real_tick_wall_time = 2000.0
         monkeypatch.setattr(time_module, 'time', lambda: 2301.0)
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
         assert len(loop._decision_logic.calls) == 2
 
         # The operator heard it once (#235): the second silence came before the data had
@@ -245,7 +239,7 @@ class TestLoopEvaluation:
         """#235: stale once, then fresh again only after the quiet period — one pair."""
         loop = _make_loop(300.0, last_tick_wall=1000.0, now=_utc(2026, 1, 15, 8, 0))
         monkeypatch.setattr(time_module, 'time', lambda: 1301.0)
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
 
         _observe_tick(loop, _utc(2026, 1, 15, 8, 5))          # fresh again
         assert loop._operator_alerts.kinds == [OperatorAlertKind.MARKET_DATA_STALE]
@@ -262,9 +256,9 @@ class TestLoopEvaluation:
 
         # Threshold trips two heartbeats later; no tick is counted meanwhile
         monkeypatch.setattr(time_module, 'time', lambda: 1301.0)
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
         monkeypatch.setattr(time_module, 'time', lambda: 1400.0)
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
 
         monkeypatch.setattr(time_module, 'time', lambda: 1500.0)
         _observe_tick(loop, _utc(2026, 1, 15, 8, 8))
@@ -285,7 +279,7 @@ class TestLoopEvaluation:
         _observe_tick(loop, _utc(2026, 1, 15, 8, 0))
 
         monkeypatch.setattr(time_module, 'time', lambda: 1301.0)
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
 
         source.injected_label = ''            # drill over, ticks resume
         monkeypatch.setattr(time_module, 'time', lambda: 1350.0)
@@ -300,11 +294,11 @@ class TestLoopEvaluation:
         loop = _make_loop(300.0, last_tick_wall=1000.0,
                           now=_utc(2026, 1, 15, 8, 0), tick_source=source)
         monkeypatch.setattr(time_module, 'time', lambda: 1001.0)
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
         assert loop._last_reconnect_count == 2
         assert 'reconnected' in loop._logger.warning.call_args_list[0].args[0]
         # No re-warn without a new delta
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
         assert loop._logger.warning.call_count == 1
 
     def test_the_recovered_status_counts_the_outage_that_just_ended(self, monkeypatch):
@@ -316,7 +310,7 @@ class TestLoopEvaluation:
         monkeypatch.setattr(time_module, 'time', lambda: 1000.0)
         _observe_tick(loop, _utc(2026, 1, 15, 7, 55))
         monkeypatch.setattr(time_module, 'time', lambda: 1301.0)
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
 
         source.reconnects = 1
         monkeypatch.setattr(time_module, 'time', lambda: 1400.0)
@@ -644,7 +638,7 @@ class TestInjectedWindowOnTheLiveLoop:
 
         # Far past the threshold: a heartbeat here would flip on its own.
         monkeypatch.setattr(time_module, 'time', lambda: 99999.0)
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
 
         assert loop._market_stale is False
         assert len(loop._decision_logic.calls) == 1, 'the wall clock fired a second episode'
@@ -659,7 +653,7 @@ class TestInjectedWindowOnTheLiveLoop:
         _observe_tick(loop, _utc(2026, 4, 27, 6, 21))
 
         monkeypatch.setattr(time_module, 'time', lambda: 99999.0)
-        loop._evaluate_market_data_staleness()
+        loop.evaluate_staleness()
 
         assert loop._market_stale is True
         assert len(loop._decision_logic.calls) == 2

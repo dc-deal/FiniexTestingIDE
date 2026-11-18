@@ -205,6 +205,19 @@ timer writes the cadence frame through the recorder's own gate, unless a hook en
 that instant's delivery. The clipping monitor counts every
 tick of a slice.
 
+**Where the AutoTrader's work lives** (`python/framework/autotrader/event_loop/`). The event loop,
+`AutotraderEventLoop`, holds the loop itself: `run()`, the timeline, what follows an instant and
+the session's end. The rest is in units of its own, which share the loop's running state
+(`AutotraderLoopState` — the tick counts, the tick span, the last tick the algo ran on):
+
+| Unit | What it does |
+|---|---|
+| `AutotraderPassHooks` | the session's steps the dispatcher calls inside a pass — signals, the market and the account after a tick, the safety layer after the decision, what a decision sent |
+| `AutotraderMarketDataWatch` | the market-data staleness contract and its episodes (#436, #451) |
+| `AutotraderCadenceWork` | the reconcile, the algo state's save and the carry-over, each behind its tick gate and its timer |
+| `AutotraderTradingDays` | what a booking period's seal sets off — the safety day's roll, the ledger, the streams' day records, the log rotation, the operator's day-close message |
+| `AutotraderStopWait` | a normal stop's wait for the orders on their way (#630) |
+
 **What the intake counts** (`LiveIntakeStats`): the instants, the coalesced slices, the largest
 slice and the longest-waiting one, the reordered stamps, the answers on the execution lane and the timers
 fired. Live, lateness is a measurement and never an input.

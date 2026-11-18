@@ -27,7 +27,7 @@ import pytest
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
+from python.framework.autotrader.event_loop.autotrader_event_loop import AutotraderEventLoop
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.shutdown_status_holder import ShutdownStatusHolder
 from python.framework.autotrader.stop_budget import StopBudget

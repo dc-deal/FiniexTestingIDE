@@ -26,7 +26,7 @@ from python.framework.acceptance_studies.acceptance_study_setup import (
     open_acceptance_study,
 )
 from python.framework.activities.activity_registry import ActivityRegistry
-from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
+from python.framework.autotrader.event_loop.autotrader_event_loop import AutotraderEventLoop
 from python.framework.autotrader.cold_start.carried_readings import (
     carried_readings_verdict,
     describe_readings_verdict,

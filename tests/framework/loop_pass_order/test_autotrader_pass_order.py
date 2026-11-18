@@ -23,8 +23,14 @@ from typing import Any, List, Optional, Set
 
 import pytest
 
-from python.framework.autotrader import autotrader_event_loop as event_loop_module
-from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
+from python.framework.autotrader.event_loop import autotrader_event_loop as event_loop_module
+from python.framework.autotrader.event_loop.autotrader_cadence_work import AutotraderCadenceWork
+from python.framework.autotrader.event_loop.autotrader_event_loop import AutotraderEventLoop
+from python.framework.autotrader.event_loop.autotrader_market_data_watch import (
+    AutotraderMarketDataWatch,
+)
+from python.framework.autotrader.event_loop.autotrader_pass_hooks import AutotraderPassHooks
+from python.framework.autotrader.event_loop.autotrader_trading_days import AutotraderTradingDays
 from python.framework.autotrader.safety.safety_circuit_breaker import SafetyCircuitBreaker
 from python.framework.autotrader.session_log_rotator import SessionLogRotator
 from python.framework.bars.bar_rendering_controller import BarRenderingController
@@ -98,28 +104,28 @@ def live_steps(steps: PassSteps) -> PassSteps:
     Returns:
         The recorder
     """
-    steps.spy(AutotraderEventLoop, '_drain_signal_inbox', 'signal_inbox')
+    steps.spy(AutotraderPassHooks, '_drain_signal_inbox', 'signal_inbox')
     steps.spy(LiveTradeExecutor, 'set_current_time', 'clock')
     steps.spy(BookingPeriodRecorder, 'check_boundary', 'boundary')
-    steps.spy(AutotraderEventLoop, '_close_sealed_days', 'sealed_days')
+    steps.spy(AutotraderTradingDays, '_close_sealed_days', 'sealed_days')
     steps.spy(SessionLogRotator, 'check_daily_rotation', 'log_rotation')
     steps.spy(LiveTradeExecutor, 'apply_tick', 'apply_tick')
     steps.spy(LiveTradeExecutor, 'resolve_due', 'resolve_due')
     steps.spy(LiveTradeExecutor, 'heartbeat', 'heartbeat')
     steps.spy(MarketDataEpisodeTracker, 'on_tick', 'tracker')
-    steps.spy(AutotraderEventLoop, '_observe_account_value', 'account_value')
+    steps.spy(AutotraderPassHooks, '_observe_account_value', 'account_value')
     steps.spy(BookingPeriodRecorder, 'observe_tick', 'observe')
     steps.spy(PortfolioManager, 'sample_equity', 'equity')
     steps.spy(BarRenderingController, 'process_tick', 'render')
     steps.spy(SafetyCircuitBreaker, 'check_safety', 'safety')
     steps.spy(SafetyCircuitBreaker, 'entries_blocked', 'entries_blocked')
     steps.spy(DeterministicProbe, 'execute_decision', 'execute')
-    steps.spy(AutotraderEventLoop, '_record_rejection', 'record_rejection')
+    steps.spy(AutotraderPassHooks, '_record_rejection', 'record_rejection')
     steps.spy(DecisionEventDispatcher, 'drain', 'drain')
-    steps.spy(AutotraderEventLoop, '_reconcile_if_due', 'reconcile')
-    steps.spy(AutotraderEventLoop, '_persist_state_if_due', 'persist_state')
-    steps.spy(AutotraderEventLoop, '_persist_carry_over_if_needed', 'carry_over')
-    steps.spy(AutotraderEventLoop, '_evaluate_market_data_staleness', 'staleness')
+    steps.spy(AutotraderCadenceWork, 'reconcile_if_due', 'reconcile')
+    steps.spy(AutotraderCadenceWork, 'persist_state_if_due', 'persist_state')
+    steps.spy(AutotraderCadenceWork, 'persist_carry_over_if_needed', 'carry_over')
+    steps.spy(AutotraderMarketDataWatch, 'evaluate_staleness', 'staleness')
     return steps
 
 

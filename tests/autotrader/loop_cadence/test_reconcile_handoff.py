@@ -13,7 +13,7 @@ a tick source, workers and a decision logic without testing any of them.
 
 from typing import List, Tuple
 
-from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
+from python.framework.autotrader.event_loop.autotrader_cadence_work import AutotraderCadenceWork
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
 from python.framework.types.live_types.reconciliation_types import (
     BrokerOrder,
@@ -76,12 +76,12 @@ def _pair() -> Tuple[PendingOrder, BrokerOrder]:
     return pending, broker_order
 
 
-def _loop(reconciler, executor) -> AutotraderEventLoop:
-    """An event loop with only the two collaborators this seam uses."""
-    loop = AutotraderEventLoop.__new__(AutotraderEventLoop)
+def _loop(reconciler, executor) -> AutotraderCadenceWork:
+    """The event loop's cadence work with only the two collaborators this seam uses."""
+    loop = AutotraderCadenceWork.__new__(AutotraderCadenceWork)
     loop._reconciler = reconciler
     loop._executor = executor
-    loop._intake = None
+    loop._intake = lambda: None
     return loop
 
 
@@ -93,7 +93,7 @@ class TestReconcileHandoff:
         result = ReconciliationResult(attributed_orders=[pair])
         spy = SpyExecutor()
 
-        _loop(StubReconciler(result), spy)._reconcile_if_due(7)
+        _loop(StubReconciler(result), spy).reconcile_if_due(7)
 
         assert len(spy.applied) == 1
         assert spy.applied[0] == [pair]
@@ -104,7 +104,7 @@ class TestReconcileHandoff:
         result = ReconciliationResult()
         spy = SpyExecutor()
 
-        _loop(StubReconciler(result), spy)._reconcile_if_due(7)
+        _loop(StubReconciler(result), spy).reconcile_if_due(7)
 
         assert spy.applied == []
 
@@ -114,7 +114,7 @@ class TestReconcileHandoff:
         reconciler = StubReconciler(result, due=False)
         spy = SpyExecutor()
 
-        _loop(reconciler, spy)._reconcile_if_due(7)
+        _loop(reconciler, spy).reconcile_if_due(7)
 
         assert reconciler.reconcile_calls == []
         assert spy.applied == []
@@ -123,7 +123,7 @@ class TestReconcileHandoff:
         # Mock sessions auto-disable reconciliation, so this path runs in every mock session.
         spy = SpyExecutor()
 
-        _loop(None, spy)._reconcile_if_due(7)
+        _loop(None, spy).reconcile_if_due(7)
 
         assert spy.applied == []
 
@@ -132,20 +132,20 @@ class TestReconcileHandoff:
         result = ReconciliationResult(is_clean=False, broker_truth_due=True)
         spy = SpyExecutor()
 
-        _loop(StubReconciler(result), spy)._reconcile_if_due(7)
+        _loop(StubReconciler(result), spy).reconcile_if_due(7)
 
         assert spy.truth_records == [result]
 
     def test_a_cycle_not_due_writes_no_broker_truth(self):
         spy = SpyExecutor()
 
-        _loop(StubReconciler(ReconciliationResult()), spy)._reconcile_if_due(7)
+        _loop(StubReconciler(ReconciliationResult()), spy).reconcile_if_due(7)
 
         assert spy.truth_records == []
 
     def test_the_tick_counter_reaches_the_reconciler(self):
         reconciler = StubReconciler(ReconciliationResult())
 
-        _loop(reconciler, SpyExecutor())._reconcile_if_due(4711)
+        _loop(reconciler, SpyExecutor()).reconcile_if_due(4711)
 
         assert reconciler.reconcile_calls == [4711]

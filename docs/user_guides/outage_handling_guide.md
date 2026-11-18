@@ -230,7 +230,7 @@ the loop already has:
 ```
 Tick arrives (real feed)                    Heartbeat (no tick, every ~500 ms)
 ────────────────────────                    ──────────────────────────────────
-executor.apply_tick(tick)                   _evaluate_market_data_staleness()
+executor.apply_tick(tick)                   market_watch.evaluate_staleness()
 _end_market_stale_episode()                   │  age = now − last real tick
   → status fresh, edge reset                  │  > execution.market_data_stale_after_s ?
        │                                      ▼

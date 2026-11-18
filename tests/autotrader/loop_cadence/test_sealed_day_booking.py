@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 from unittest.mock import MagicMock
 
-import python.framework.autotrader.autotrader_event_loop as event_loop_module
+import python.framework.autotrader.event_loop.autotrader_event_loop as event_loop_module
 from python.framework.autotrader.session_log_rotator import SessionLogRotator
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor

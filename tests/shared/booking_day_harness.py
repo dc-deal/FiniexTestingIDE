@@ -15,8 +15,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from unittest.mock import MagicMock
 
-from python.framework.autotrader import autotrader_event_loop as event_loop_module
-from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
+from python.framework.autotrader.event_loop import autotrader_event_loop as event_loop_module
+from python.framework.autotrader.event_loop.autotrader_event_loop import AutotraderEventLoop
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.bars.bar_rendering_controller import BarRenderingController

@@ -22,7 +22,7 @@ from typing import List, Optional
 
 import pytest
 
-import python.framework.autotrader.autotrader_event_loop as event_loop_module
+import python.framework.autotrader.event_loop.autotrader_event_loop as event_loop_module
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
 from python.framework.types.trading_env_types.trading_env_stats_types import (

@@ -248,7 +248,7 @@ Absent only when no baseline was ever taken — a session that saw no tick it co
 | File | Role |
 |------|------|
 | `python/framework/autotrader/safety/safety_circuit_breaker.py` | The breaker: soft block, hard stop, daily loss, and the record for the report |
-| `python/framework/autotrader/autotrader_event_loop.py` | Feeds it: the account value per tick, the entry block before each decision |
+| `python/framework/autotrader/event_loop/autotrader_event_loop.py` | Feeds it: the account value per tick, the entry block before each decision |
 | `python/framework/types/autotrader_types/autotrader_config_types.py` | `SafetyConfig` dataclass |
 | `python/configuration/autotrader/autotrader_config_loader.py` | Config parsing |
 | `python/system/ui/autotrader_live_display.py` | Safety status + detail line rendering |

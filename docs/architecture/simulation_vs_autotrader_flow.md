@@ -112,7 +112,7 @@ against real Kraken Spot. Ticks are pulled from a thread-safe queue fed
 by a TickSource thread (KrakenTickSource — Kraken WebSocket v2); the loop is synchronous on the main
 thread.
 
-**Entry point:** `python/framework/autotrader/autotrader_event_loop.py` → `AutotraderEventLoop.run()`
+**Entry point:** `python/framework/autotrader/event_loop/autotrader_event_loop.py` → `AutotraderEventLoop.run()`
 
 ```
 AutotraderEventLoop.run()

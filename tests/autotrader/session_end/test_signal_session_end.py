@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
+from python.framework.autotrader.event_loop.autotrader_event_loop import AutotraderEventLoop
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.shutdown_status_holder import ShutdownStatusHolder
 from python.framework.bars.bar_rendering_controller import BarRenderingController

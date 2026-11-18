@@ -20,7 +20,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
+from python.framework.autotrader.event_loop.autotrader_event_loop import AutotraderEventLoop
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.bars.bar_rendering_controller import BarRenderingController

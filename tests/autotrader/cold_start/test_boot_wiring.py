@@ -27,7 +27,7 @@ from typing import List, Optional, Set
 import pytest
 
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
+from python.framework.autotrader.event_loop.autotrader_cadence_work import AutotraderCadenceWork
 from python.framework.autotrader.cold_start.cold_start_setup import (
     ColdStartSetup,
     read_carry_over,
@@ -585,14 +585,14 @@ class TestTheEventLoopSeam:
     The seam that decides whether a pass writes the carry-over (#355 / #356).
 
     Exercised through `__new__` for the same reason the rest of this file is: the method needs
-    four attributes, and building a real event loop would drag in a broker, a tick source and a
-    decision logic without testing any of them.
+    four attributes of the event loop's cadence work, and building a real one would drag in a
+    store, a reconciler and a decision logic without testing any of them.
     """
 
     @staticmethod
     def _loop(executor, writes, drift_ticks=500, risk_baseline=None):
-        """An event loop carrying only what the carry-over seam reads."""
-        loop = AutotraderEventLoop.__new__(AutotraderEventLoop)
+        """The event loop's cadence work carrying only what the carry-over seam reads."""
+        loop = AutotraderCadenceWork.__new__(AutotraderCadenceWork)
         loop._executor = executor
         loop._persist_carry_over = lambda: writes.append(True) or True
         loop._book_watcher = PositionBookWatcher(executor.portfolio.get_open_positions())
@@ -612,8 +612,8 @@ class TestTheEventLoopSeam:
         # appearing afterwards is the change this pass sees.
         spot_executor.portfolio.restore_position_book([_note()])
 
-        loop._persist_carry_over_if_needed()
-        loop._persist_carry_over_if_needed()
+        loop.persist_carry_over_if_needed()
+        loop.persist_carry_over_if_needed()
 
         assert len(writes) == 1
 
@@ -626,9 +626,9 @@ class TestTheEventLoopSeam:
         loop._persist_carry_over = lambda: attempts.append(False) or False
         spot_executor.portfolio.restore_position_book([_note()])
 
-        loop._persist_carry_over_if_needed()
-        loop._persist_carry_over_if_needed()
-        loop._persist_carry_over_if_needed()
+        loop.persist_carry_over_if_needed()
+        loop.persist_carry_over_if_needed()
+        loop.persist_carry_over_if_needed()
 
         assert len(attempts) == 3
 
@@ -638,15 +638,15 @@ class TestTheEventLoopSeam:
         writes = []
         loop = self._loop(spot_executor, writes, drift_ticks=500)
         spot_executor.portfolio.restore_position_book([_note()])
-        loop._persist_carry_over_if_needed(ticks_processed=1)
+        loop.persist_carry_over_if_needed(ticks_processed=1)
         assert len(writes) == 1
 
         spot_executor.get_open_positions()[0].stop_loss = 60000.0
 
-        loop._persist_carry_over_if_needed(ticks_processed=2)
+        loop.persist_carry_over_if_needed(ticks_processed=2)
         assert len(writes) == 1
 
-        loop._persist_carry_over_if_needed(ticks_processed=600)
+        loop.persist_carry_over_if_needed(ticks_processed=600)
         assert len(writes) == 2
 
     def test_the_cadence_needs_no_clock(self, spot_executor):
@@ -656,7 +656,7 @@ class TestTheEventLoopSeam:
         loop = self._loop(spot_executor, writes)
         spot_executor.portfolio.restore_position_book([_note()])
 
-        loop._persist_carry_over_if_needed(ticks_processed=0)
+        loop.persist_carry_over_if_needed(ticks_processed=0)
 
         assert len(writes) == 1
 
@@ -664,7 +664,7 @@ class TestTheEventLoopSeam:
         loop = self._loop(spot_executor, [])
         loop._persist_carry_over = None
 
-        loop._persist_carry_over_if_needed()
+        loop.persist_carry_over_if_needed()
 
 
 class TestTheBaselineReachesTheDiskBeforeAHardKill:
@@ -694,8 +694,8 @@ class TestTheBaselineReachesTheDiskBeforeAHardKill:
 
     @staticmethod
     def _loop(executor, writes, tracker, drift_ticks=500, seeded=None):
-        """An event loop whose book is quiet, so only the baseline can trigger a write."""
-        loop = AutotraderEventLoop.__new__(AutotraderEventLoop)
+        """The cadence work of a loop whose book is quiet, so only the baseline can trigger a write."""
+        loop = AutotraderCadenceWork.__new__(AutotraderCadenceWork)
         loop._executor = executor
         loop._persist_carry_over = lambda: writes.append(True) or True
         loop._book_watcher = PositionBookWatcher(executor.portfolio.get_open_positions())
@@ -710,7 +710,7 @@ class TestTheBaselineReachesTheDiskBeforeAHardKill:
         writes = []
         loop = self._loop(spot_executor, writes, self._tracker(10_000.0))
 
-        loop._persist_carry_over_if_needed(ticks_processed=1)
+        loop.persist_carry_over_if_needed(ticks_processed=1)
 
         assert len(writes) == 1, (
             'the baseline reaches the disk for the first time at shutdown — a hard kill '
@@ -721,9 +721,9 @@ class TestTheBaselineReachesTheDiskBeforeAHardKill:
         writes = []
         loop = self._loop(spot_executor, writes, self._tracker(10_000.0))
 
-        loop._persist_carry_over_if_needed(ticks_processed=1)
-        loop._persist_carry_over_if_needed(ticks_processed=2)
-        loop._persist_carry_over_if_needed(ticks_processed=600)
+        loop.persist_carry_over_if_needed(ticks_processed=1)
+        loop.persist_carry_over_if_needed(ticks_processed=2)
+        loop.persist_carry_over_if_needed(ticks_processed=600)
 
         assert len(writes) == 1
 
@@ -740,7 +740,7 @@ class TestTheBaselineReachesTheDiskBeforeAHardKill:
         loop = self._loop(spot_executor, writes, tracker,
                           seeded=tracker.get_baseline())
 
-        loop._persist_carry_over_if_needed(ticks_processed=1)
+        loop.persist_carry_over_if_needed(ticks_processed=1)
 
         assert writes == []
 
@@ -757,10 +757,10 @@ class TestTheBaselineReachesTheDiskBeforeAHardKill:
                           seeded=tracker.get_baseline())
 
         tracker.observe(10_500.0)
-        loop._persist_carry_over_if_needed(ticks_processed=2)
+        loop.persist_carry_over_if_needed(ticks_processed=2)
         assert writes == [], 'a write per new peak, on every tick of a trend'
 
-        loop._persist_carry_over_if_needed(ticks_processed=600)
+        loop.persist_carry_over_if_needed(ticks_processed=600)
         assert len(writes) == 1
 
     def test_a_session_without_a_tracker_is_unaffected(self, spot_executor):
@@ -768,7 +768,7 @@ class TestTheBaselineReachesTheDiskBeforeAHardKill:
         writes = []
         loop = self._loop(spot_executor, writes, None)
 
-        loop._persist_carry_over_if_needed(ticks_processed=1)
+        loop.persist_carry_over_if_needed(ticks_processed=1)
 
         assert writes == []
 

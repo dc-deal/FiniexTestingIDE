@@ -15,7 +15,7 @@ of them.
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
+from python.framework.autotrader.event_loop.autotrader_event_loop import AutotraderEventLoop
 
 _FRONT = datetime(2026, 1, 25, 12, 0, 0, tzinfo=timezone.utc)
 _FRONT_MSC = round(_FRONT.timestamp() * 1000)
