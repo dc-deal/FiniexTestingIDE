@@ -136,6 +136,7 @@ class RunEntryMemberId(StrEnum):
     TRADES_DAY = 'trades_day'
     DIAGNOSTICS_ROWS_DAY = 'diagnostics_rows_day'
     WARMUP_HISTORY = 'warmup_history'
+    SCENARIO_WARMUP_HISTORY = 'scenario_warmup_history'
     ALGO_STATE_RESTORED = 'algo_state_restored'
     FOOTPRINT = 'footprint'
 

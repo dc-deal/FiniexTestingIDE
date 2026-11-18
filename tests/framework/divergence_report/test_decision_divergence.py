@@ -17,6 +17,7 @@ from python.framework.types.api.divergence_report_types import (
     DayOrderDivergence,
     DecisionComparisonState,
     ExplainedFlipKind,
+    OrderDivergence,
     OrderOutcome,
     TradingDayClassification,
 )
@@ -33,12 +34,13 @@ _DECIDED = _OPENING + timedelta(seconds=3)
 
 def _frame(action: DecisionLogicAction = _A.FLAT, at: datetime = _DECIDED,
            ema: float = 3000.0, equity: float = 1000.0, blocked: bool = False,
-           decision_bar: bool = True) -> StateFrame:
+           decision_bar: bool = True, budget: Optional[float] = None) -> StateFrame:
     return StateFrame(
         frame_time=at, written_at=at, written_for=StateFrameCause.BAR_CLOSE, ticks_processed=1,
         symbol='ETHUSD', account_currency='USD', last_price=3000.0, balance=equity, equity=equity,
         open_positions=[], safety_blocked=blocked, decision_action=action,
         worker_outputs={'my_trend': {'ema': ema}},
+        decision_outputs={'budget': budget if budget is not None else equity * 0.5},
         closed_bars={'D1': at - timedelta(days=1)} if decision_bar else {})
 
 
@@ -54,11 +56,24 @@ def _orders(live_only: int = 0, backtest_only: int = 0) -> DayOrderDivergence:
                               backtest_one_sided=[outcome] * backtest_only)
 
 
+def _earlier_day(execution_difference: float = 0.0, live_only: int = 0) -> DayOrderDivergence:
+    order = OrderDivergence(live=OrderOutcome(run_id='x', seq=1),
+                            backtest=OrderOutcome(run_id='b', seq=1),
+                            lots_difference=0.0, execution_difference=execution_difference)
+    return DayOrderDivergence(trading_day=_DAY - timedelta(days=1), closing=_OPENING,
+                              orders=[order],
+                              live_one_sided=[OrderOutcome(run_id='x', seq=2)] * live_only)
+
+
 def _compare(live: StateFrame, backtest: StateFrame, orders: Optional[DayOrderDivergence] = None,
-             restarts: Optional[Dict] = None, first_tick: Optional[datetime] = None):
+             restarts: Optional[Dict] = None, first_tick: Optional[datetime] = None,
+             earlier: Optional[DayOrderDivergence] = None):
+    measured = {_CLOSING: orders or _orders()}
+    if earlier is not None:
+        measured[earlier.closing] = earlier
     comparisons, table = compare_decisions(
         [_day(first=first_tick is not None)], first_tick, [live], [backtest],
-        {_CLOSING: orders or _orders()}, 'D1', restarts or {})
+        measured, 'D1', restarts or {})
     return comparisons[0], table
 
 
@@ -109,9 +124,34 @@ class TestTheProposedKind:
         assert 'unconfirmed' in comparison.detail
 
     def test_agreeing_workers_and_differing_account_values_are_the_account_value(self):
-        comparison, _ = _compare(_frame(_A.BUY, equity=1012.4), _frame(equity=1004.9))
+        comparison, _ = _compare(_frame(_A.BUY, equity=1012.4), _frame(equity=1004.9),
+                                 earlier=_earlier_day(execution_difference=0.43))
         assert comparison.proposed_kind is ExplainedFlipKind.ACCOUNT_VALUE
         assert '1012.40 live, 1004.90 backtest' in comparison.detail
+        assert '2026-11-25: order 1 filled +0.4300 apart in price' in comparison.detail
+
+    def test_an_earlier_one_sided_order_moves_the_account_values_apart(self):
+        comparison, _ = _compare(_frame(_A.BUY, equity=1012.4), _frame(equity=1004.9),
+                                 earlier=_earlier_day(live_only=1))
+        assert comparison.proposed_kind is ExplainedFlipKind.ACCOUNT_VALUE
+        assert 'a live order without a counterpart' in comparison.detail
+
+    def test_account_values_apart_with_no_earlier_order_moving_them_stay_unexplained(self):
+        comparison, _ = _compare(_frame(_A.BUY, equity=1012.4), _frame(equity=1004.9),
+                                 earlier=_earlier_day())
+        assert comparison.proposed_kind is None
+        assert 'no earlier order' in comparison.detail
+
+    def test_account_values_within_a_cent_stay_unexplained(self):
+        comparison, _ = _compare(_frame(_A.BUY, equity=1000.004), _frame(equity=1000.0),
+                                 earlier=_earlier_day(execution_difference=0.43))
+        assert comparison.proposed_kind is None and 'lie within' in comparison.detail
+
+    def test_agreeing_decision_outputs_stay_unexplained(self):
+        comparison, _ = _compare(_frame(_A.BUY, equity=1012.4, budget=500.0),
+                                 _frame(equity=1004.9, budget=500.0),
+                                 earlier=_earlier_day(execution_difference=0.43))
+        assert comparison.proposed_kind is None and 'decision outputs agree' in comparison.detail
 
     def test_a_one_sided_day_with_nothing_differing_stays_unexplained(self):
         comparison, _ = _compare(_frame(_A.BUY), _frame())

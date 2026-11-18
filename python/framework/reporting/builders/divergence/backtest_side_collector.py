@@ -6,9 +6,9 @@ The divergence gate reads what is here; the measures read more of the same run l
 derived: a record that cannot be read is named on the capture, never replaced by a default.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -16,6 +16,7 @@ import pandas as pd
 from python.configuration.app_config_manager import AppConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
+from python.framework.constants.divergence_gate_constants import GAP_BOUND_S
 from python.framework.constants.run_layout_constants import RUN_TYPE_SIMULATION
 from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
@@ -44,6 +45,7 @@ from python.framework.utils.time_utils import parse_iso_datetime
 # The tick columns a run of missing trade ids is found from — with the two the tick reader derives
 # its price from, which it cannot do without them
 _TRADE_COLUMNS = ['trade_id', 'time_msc', 'timestamp', 'bid', 'ask']
+_QUOTE_COLUMNS = ['time_msc', 'timestamp', 'bid', 'ask']
 
 # What a read can fail with when a record is missing, damaged or of a shape this reader does not
 # know — a data condition, named on the record; anything else is a fault and propagates
@@ -309,6 +311,63 @@ def window_trades(tick_index: TickIndexManager, broker_type: str, symbol: str, s
     msc = _event_msc(ticks)
     inside = (msc >= _to_msc(start)) & (msc < _to_msc(end))
     return ticks['trade_id'].to_numpy(dtype='int64')[inside], msc[inside]
+
+
+def mids_at(tick_index: TickIndexManager, broker_type: str, symbol: str,
+            instants: Sequence[datetime]) -> Dict[datetime, Optional[float]]:
+    """
+    The archive's mid at each of several instants: the last tick at or before it that carries a
+    quote, no older than the gap bound — an older one stands for a market nobody recorded.
+
+    Args:
+        tick_index: The tick index
+        broker_type: The broker
+        symbol: The symbol
+        instants: The instants, timezone-aware
+
+    Returns:
+        Instant → (bid + ask) / 2; None where no quoted tick lies within the gap bound before it
+    """
+    reach = timedelta(seconds=GAP_BOUND_S)
+    read: Dict[Path, pd.DataFrame] = {}
+    mids: Dict[datetime, Optional[float]] = {}
+    for instant in sorted(set(instants)):
+        paths = tick_index.get_relevant_files(broker_type, symbol, instant - reach, instant)
+        for path in paths:
+            if path not in read:
+                read[path] = read_tick_parquet(path, columns=_QUOTE_COLUMNS)
+        mids[instant] = _mid_before([read[path] for path in paths], _to_msc(instant),
+                                    _to_msc(instant - reach))
+    return mids
+
+
+def _mid_before(frames: Sequence[pd.DataFrame], at_msc: int, from_msc: int) -> Optional[float]:
+    """
+    The mid of the last quoted tick in a stretch, across the files that hold it.
+
+    Args:
+        frames: The tick files as read
+        at_msc: The stretch's end, inclusive, in epoch milliseconds
+        from_msc: Its start, inclusive
+
+    Returns:
+        The mid; None where no tick with a bid and an ask above zero lies in it
+    """
+    best: Optional[Tuple[int, float]] = None
+    for ticks in frames:
+        if ticks.empty or 'bid' not in ticks.columns or 'ask' not in ticks.columns:
+            continue
+        msc = _event_msc(ticks)
+        bid = ticks['bid'].to_numpy(dtype='float64')
+        ask = ticks['ask'].to_numpy(dtype='float64')
+        inside = (msc <= at_msc) & (msc >= from_msc) & (bid > 0) & (ask > 0)
+        if not inside.any():
+            continue
+        newest = msc[inside].max()
+        last = np.flatnonzero(inside & (msc == newest))[-1]
+        if best is None or newest >= best[0]:
+            best = (int(newest), (bid[last] + ask[last]) / 2.0)
+    return best[1] if best is not None else None
 
 
 def _event_msc(ticks: pd.DataFrame) -> np.ndarray:

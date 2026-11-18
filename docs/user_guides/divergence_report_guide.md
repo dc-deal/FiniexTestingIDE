@@ -109,8 +109,13 @@ Then choose a window in which the strategy trades; a window without an order com
 
 ```
 python python/cli/divergence_report_cli.py aa --deployment <id> \
-    --release-tree ../release-1.5.0 --window 2026-08-15,2026-11-06
+    --release-tree ../release-1.5.0 --window 2026-08-15,2026-11-06 \
+    --records ./copies/2026-12-24
 ```
+
+`--records` names the copy of the live system's data home, as for `compare`: the A/A reads the
+deployment's sessions from it, and without it the comparing system's own stores name no such
+deployment.
 
 ```
 A/A 20261110_200256_2a3b4c5d · deployment <id> · ETHUSD · release 33989482 against this tree a1be0c79
@@ -120,11 +125,12 @@ WINDOW 1 · 2026-08-15 00:00:00 → 2026-11-06 00:00:00 · IDENTICAL
   Bars: 8 file(s) · unchanged
 ```
 
-A window is IDENTICAL only where both runs read the same inputs on the code they claim:
+A window is IDENTICAL only where both runs read the same inputs on the code they claim, and traded:
 - the release's run on the sessions' own commit;
 - your tree on a commit with no uncommitted changes;
 - one broker document on both sides;
-- no bar file rendered between the two runs.
+- no bar file rendered between the two runs;
+- at least one fill on either run — a window in which nothing traded proves no order path.
 
 Where any of that cannot be shown, the window is *not checked*, with why, and the exit code is 2.
 Measured 2026-11-10: one twelve-week window takes about two minutes per run.
@@ -170,6 +176,27 @@ A changed fee or lot size still refuses, and the refusal names where the documen
 is read on purpose in one place only, and there it can only refuse: the A/A is *not checked* where
 a bar file was rendered between its two runs, because a new render may be a new input.
 
+**The gate pins a file's syntax tree under one Python version.** A changed file the release
+declares is held to the tree it was declared with, rendered by the gate's own code without its
+docstrings. The pins record the interpreter they were taken under; under another one the gate
+refuses once, naming both versions, rather than reading every pinned file as changed.
+
+**The backtest's warmup is checked before any decision is.** The backtest starts from the warmup
+the session recorded, and records what it injected under its scenario's name. Before measure 1 the
+two are held to each other bar by bar; a difference, or a record missing on one side, leaves
+measure 1 *not checked*. Beside it, each session's recorded warmup — the first one's, and the new
+one's after every restart — is held to the archive's bars of the same periods. That line decides
+nothing: the session warmed up on the venue's bars, the archive renders its own from the
+collector's ticks, and the line shows how far the two stand apart. A bar differs where a price
+does; the volume is shown apart, as the recorded volume over the archived one, because the venue
+counts every trade and the collector only those it received:
+
+```
+  Warmup injected: EQUAL — every bar as the session recorded it (D1 60 bars), complete at …
+  Warmup against the archive: <session> D1 · 60 compared · 1 differ in price · 0 not in the archive · volume recorded ÷ archived 1.0042
+    2026-10-03T00:00:00+00:00: high 2611.4 recorded, 2609.8 archived
+```
+
 ## Reading the result
 
 Each measure ends *passed*, *failed* or *not checked*, always with its reason. **Passed means no
@@ -188,7 +215,27 @@ SEGMENT 1 · sessions …
 ```
 
 A missing record is never a pass: a day whose decision cannot be read on one side, or an order
-whose fee the venue did not report, is *not checked*. `--reading rehearsal` reads a trial run the
+whose fee the venue did not report, is *not checked*. The floor of compared days holds each
+measure that counts days to the days it judged: a day whose decision lies in a gap is left out of
+measure 1, so measure 1 can fall below the floor where the segment does not.
+
+**Yellow passes only where each order beyond the bound is traced to its cause**, and the trace is
+printed under the order. Measure 2b traces a price to the market's move while the order waited for
+its fill: held against each side's mid at its own fill, read from the archive's quotes, the
+difference lies within the bound. Measure 2c traces a fee to the frozen maker rate: the order filled
+resting, where the backtest charges the taker rate. Measure 2d traces a size to the venue's lot
+step: the live size lies within one lot step of the backtest's, scaled by the two account values.
+An order the measure cannot trace makes its zone red, whatever the count.
+
+```
+    fee_rate 2026-12-03 2026-12-03 14:02:11 fee rate 0.4000 % against 0.8000 % …
+      traced: maker_rate — the venue charged 0.4000 %, the frozen maker rate 0.4 % — the order filled resting
+```
+
+A one-sided day whose workers agree is proposed as decided by the *account value* only where the
+account value can have decided it: the decision logic's own outputs differ, the two account values
+lie more than a cent apart, and an earlier order of the segment moved them apart — one only a side
+sent, or one whose fill differs. Otherwise the day stays unexplained. `--reading rehearsal` reads a trial run the
 same way, without the floor of compared days and with the per-order measures described rather than
 judged, because a dry run simulates its fills on both sides. The words — *reading*, *zone*,
 *divergence report*, *A/A* — are defined in the [Glossary](../glossary.md).
@@ -204,9 +251,9 @@ submission to fill, and measure 2b is shown against it:
   execution_price    reported     green   0 of 41      0.0 %    0  41 order(s) within the bound
 ```
 
-It never enters the verdict. A 2b that is yellow or red against the release's model and green
-against the measured latency says the delay explains the difference, not the simulator's pricing.
-Without a live fill it does not run, and says so.
+It never enters the verdict: it draws one latency for every order from the measured span, so it
+shows how much of the divergence the latency model explains, not why one order differed — that is
+2b's own trace, read from the order's record. Without a live fill it does not run, and says so.
 
 The exit code says the same in one number. For `compare`: 0 every segment passed, 2 a segment was
 not compared, 3 a compared segment failed or was not checked. For `aa`: 0 identical, 3 a window

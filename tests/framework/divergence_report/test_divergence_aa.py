@@ -187,6 +187,17 @@ class TestTheVerdict:
         judged = judge_aa_window(window, _SESSION_COMMIT)
         assert judged.verdict is AaVerdict.NOT_CHECKED and cause in judged.not_checked_because
 
+    def test_a_window_neither_run_filled_in_is_not_checked_never_a_pass(self):
+        window = _window(release=_run(AaStand.RELEASE, fills=0),
+                         current=_run(AaStand.CURRENT, fills=0))
+        judged = judge_aa_window(window, _SESSION_COMMIT)
+        assert judged.verdict is AaVerdict.NOT_CHECKED
+        assert 'no order path' in judged.not_checked_because
+
+    def test_a_window_only_one_run_filled_in_still_differs(self):
+        window = _window(release=_run(AaStand.RELEASE, fills=0), differences=4)
+        assert judge_aa_window(window, _SESSION_COMMIT).verdict is AaVerdict.DIFFERENT
+
     def test_not_checked_holds_even_where_values_differ(self):
         window = _window(current=_run(AaStand.CURRENT, framework_dirty=True), differences=3)
         assert judge_aa_window(window, _SESSION_COMMIT).verdict is AaVerdict.NOT_CHECKED

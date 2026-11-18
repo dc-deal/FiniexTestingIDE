@@ -14,7 +14,10 @@ from typing import Dict, Optional
 
 import pytest
 
-from python.framework.constants.divergence_gate_constants import ALLOWED_CHANGES_BY_RELEASE
+from python.framework.constants.divergence_gate_constants import (
+    ALLOWED_CHANGES_BY_RELEASE,
+    PINNED_INTERPRETER_BY_RELEASE,
+)
 from python.framework.types.divergence_gate_types import GateChangeCategory, GateFileChange
 from python.framework.utils.git_info_utils import read_tree_at_commit
 from python.framework.utils.import_closure_utils import syntax_digest
@@ -22,6 +25,7 @@ from python.framework.validators.divergence_gate_validator import (
     CODE_PATH_CHECK,
     CODE_UNKNOWN_CHECK,
     COMMIT_UNREADABLE_CHECK,
+    INTERPRETER_CHECK,
     SESSIONS_DISAGREE_CHECK,
     UNCOMMITTED_CHECK,
     check_divergence_gate,
@@ -239,6 +243,29 @@ class TestTheGateOverTheCode:
                     gate_session('s2', identity=code_identity(framework_commit=later))]
         assert SESSIONS_DISAGREE_CHECK in self._checks(self._gate(repository, sessions, later))
 
+    def _declared_gate(self, repository, pinned: Dict[str, str], interpreter: str):
+        backtest = repository.backtest({_ENGINE: _RELEASE_FILES[_ENGINE].replace('1', '2')})
+        declarations = {'1.5.0': {_ENGINE: _declared(_RELEASE_FILES[_ENGINE].replace('1', '2'))}}
+        return check_divergence_gate(
+            [gate_session(identity=code_identity(framework_commit=repository.release))],
+            gate_backtest(identity=code_identity(framework_commit=backtest)), gate_window(),
+            read_tree=repository.read, allowed_changes=declarations,
+            pinned_interpreters=pinned, interpreter=interpreter)
+
+    def test_declarations_pinned_under_this_interpreter_are_judged(self, repository):
+        result = self._declared_gate(repository, {'1.5.0': '3.12'}, '3.12')
+        assert result.is_comparable(), result.findings
+
+    def test_declarations_pinned_under_another_interpreter_are_refused_once(self, repository):
+        result = self._declared_gate(repository, {'1.5.0': '3.12'}, '3.13')
+        refusal, = result.findings
+        assert refusal.check == INTERPRETER_CHECK and result.code_path is None
+        assert 'Python 3.12' in refusal.message and 'Python 3.13' in refusal.message
+
+    def test_declarations_naming_no_interpreter_are_a_fault(self, repository):
+        with pytest.raises(ValueError, match='no interpreter'):
+            self._declared_gate(repository, {}, '3.12')
+
     def test_a_session_whose_code_cannot_be_read_is_refused(self, repository):
         unknown = dataclasses.replace(gate_session(), code_identity=None)
         assert CODE_UNKNOWN_CHECK in self._checks(
@@ -261,6 +288,11 @@ class TestTheGatesOwnDeclarations:
                 assert entry['categories'] and set(entry['categories']) <= known, path
                 assert re.fullmatch('[0-9a-f]{64}', entry['syntax_digest']), path
                 assert path.startswith('python/') and path.endswith('.py'), path
+
+    def test_every_release_names_the_interpreter_its_declarations_were_pinned_under(self):
+        assert set(PINNED_INTERPRETER_BY_RELEASE) == set(ALLOWED_CHANGES_BY_RELEASE)
+        for release, interpreter in PINNED_INTERPRETER_BY_RELEASE.items():
+            assert re.fullmatch(r'3\.\d+', interpreter), release
 
     def test_every_category_is_declared_somewhere(self):
         used = {category for files in ALLOWED_CHANGES_BY_RELEASE.values()

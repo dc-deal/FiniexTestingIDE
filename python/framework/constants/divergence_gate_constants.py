@@ -40,107 +40,111 @@ GAP_BOUND_S = 120
 # a pause shorter than the gap bound is no gap
 WINDOW_EDGE_TOLERANCE_S = GAP_BOUND_S
 
+# Release of the session → the interpreter, major.minor, its declarations' syntax trees were pinned
+# under; the report refuses to judge them under another rather than read every pin as changed
+PINNED_INTERPRETER_BY_RELEASE = {'1.5.0': '3.12'}
+
 # Release of the session → file → why it may differ, and the syntax tree it may have
 ALLOWED_CHANGES_BY_RELEASE = {
     '1.5.0': {
         'python/framework/bars/warmup_history.py': {
-            'categories': ('inputs_of_record',),
-            'syntax_digest': '562f1cf062877b88a8d99f343d834faea94a623f923a420569f999e7141737d5'},
+            'categories': ('recording_only', 'inputs_of_record'),
+            'syntax_digest': '9d261784d029d9974d7b52875fecce318c7dee7cf9e56e6c4cbded9145f8e1ce'},
         'python/framework/constants/run_layout_constants.py': {
             'categories': ('recording_only',),
-            'syntax_digest': 'f672cc94ed5a2317dbc38f47c689db65d8afd6400ce07f9c149aca08ca5c645f'},
+            'syntax_digest': 'ad1a97232778f02a14b68712727fd21f4550928a1136cf6738256e63e4144fb3'},
         'python/framework/data_preparation/broker_data_preparator.py': {
             'categories': ('inputs_of_record',),
-            'syntax_digest': '603c8e78e9170dda0450644056a724f4e919791ef6dce3860429256120595c05'},
+            'syntax_digest': 'fbbb04f3aaf74f6a6976262c635e469811399827696ed80f92b72b2a0b7f8264'},
         'python/framework/decision_logic/core/test_probes/observer_probe.py': {
             'categories': ('algo_view',),
-            'syntax_digest': '7c7116347abefdb487c18ad340ce9c719e603bd66c0a21c6461bfa30744ed539'},
+            'syntax_digest': '5931ebe13316f58b06f53440d41add644b31bbe9a03efe32884ab7bcd2018db6'},
         'python/framework/decision_logic/own_exit_levels.py': {
             'categories': ('algo_view',),
-            'syntax_digest': '1ab06d5bd40f97b00dd688b1f57b63eaec25c611ce2b6e1f89b33b24e8a28025'},
+            'syntax_digest': 'ae4551114217e0cb375a5bef192349f5d487da6d6b0783b101189fed8dd7ebae'},
         'python/framework/factory/decision_logic_factory.py': {
             'categories': ('algo_view',),
-            'syntax_digest': 'acbeb5096b1554c9c5df81c9cf0473e9533362f5e889e8e3503f849000f3bdad'},
+            'syntax_digest': 'a4684ec96fdc0160654cedf181239edddf44ff7e23c6e28a864dcbb01f407aa2'},
         'python/framework/factory/trade_simulator_factory.py': {
             'categories': ('algo_view',),
-            'syntax_digest': 'cf80a92505cca3fb015de1846a926cfa8744e9dd636164da677c76b6b2c022af'},
+            'syntax_digest': '4d560c1d6627ab388159dfd36463415f53984e299633c0b8cc47d35543ad429b'},
         'python/framework/process/process_main.py': {
             'categories': ('recording_only',),
-            'syntax_digest': '0900f14c6b9d4c4381164fe548774b1ccb7a22f4a562ca726945a3c2b78b3d43'},
+            'syntax_digest': 'bd0bc40a59adb98664e0b0ee3584f5de53e4a712cc7b2389aa9911ca07a51133'},
         'python/framework/process/process_startup_preparation.py': {
-            'categories': ('inputs_of_record',),
-            'syntax_digest': '4aa19e71f2425d68ad0a29803163e690f681a6b9652771f6eabb86c70fd061be'},
+            'categories': ('recording_only', 'inputs_of_record'),
+            'syntax_digest': '678b87a4486f349348c772d8cf03ec1dadcf248970f41fabbe5527aba3236794'},
         'python/framework/process/process_tick_loop.py': {
             'categories': ('recording_only',),
-            'syntax_digest': '43c8139e0c4d531ded98913a9eff8ae047ab939f73502903a8fafdc2d822cc62'},
+            'syntax_digest': '8c417ed000909abc92891f97d709bc3a8d93a8f2f158c56de66bf3eeac35d464'},
         'python/framework/process/state_frame_recorder.py': {
             'categories': ('recording_only',),
-            'syntax_digest': '07ee851650069f93913a1b16693b8c4b9f205be9765997997fd9852396ec0d98'},
+            'syntax_digest': '03d4c47ef36f9d8a74d2bec579adaf48ec11c50a17e141949388258a3090b683'},
         'python/framework/reporting/builders/pending_orders_report_builder.py': {
             'categories': ('recording_only',),
-            'syntax_digest': 'a7ac9c7dd87a2915bb22c9d6572a4e37eb4e0d35f50a63374174f74abe910da9'},
+            'syntax_digest': 'd141948a41075e3567deb9d0747daf9d1d3e9ed05046119c481e4b093198a201'},
         'python/framework/reporting/builders/portfolio_report_builder.py': {
             'categories': ('recording_only',),
-            'syntax_digest': 'dcf5e093f55d153b866504cff3beafa1f51fe1e784c7633bdb56e35b4180a908'},
+            'syntax_digest': 'ec2b7334c519e57121fdaed546ad7625dd6a03f30e5afa99296a14fc08220cd9'},
         'python/framework/store/entry_members/run_entry_members.py': {
             'categories': ('recording_only',),
-            'syntax_digest': '742d46f94df5353fa30518162e8fb1d495d8b490d21f05eaa66bb0c2a76a91a8'},
+            'syntax_digest': 'f75b4e8a86144082835fc8991049547519207a43ae113df8a4e4cbe8e4204ec5'},
         'python/framework/trading_env/abstract_trade_executor.py': {
             'categories': ('algo_view',),
-            'syntax_digest': 'cf5c382f62426a20a59ba18459d6d33e82051c02afaa8961f7b909dbb5fa38fb'},
+            'syntax_digest': 'af72ae6e63f10d2dd7e1f6990f350b4f9c3536f59d15952ecf0df8e9218ee698'},
         'python/framework/trading_env/algo_masks/abstract_algo_mask.py': {
             'categories': ('algo_view',),
-            'syntax_digest': '659632398a044d1574eb503ba5b476540a89267619227c31361066c664ee4f65'},
+            'syntax_digest': 'd81a3ec7e9a30caa91a412d127e031fcb9d2b87421f857870b751ffdd6589eec'},
         'python/framework/trading_env/algo_masks/algo_position.py': {
             'categories': ('algo_view',),
-            'syntax_digest': '0989e97ea653865239efe97de92703c283ef117aefcf6919e7998768f1a65493'},
+            'syntax_digest': 'd3b80c7626b5f7f7719de855fa95f0758ff46c18af5d8b40a9dac80fc695072f'},
         'python/framework/trading_env/decision_trading_api.py': {
             'categories': ('algo_view',),
-            'syntax_digest': '35e6e782bb7297382d4ce984a759a2c6b973583267ac70e80b0d372e47e9cf3d'},
+            'syntax_digest': 'f7d7cd1df7836e34cd6d34ff5d800bbcb4dbbfd2cf5e31c28be19555abb4b387'},
         'python/framework/trading_env/portfolio_manager.py': {
             'categories': ('algo_view',),
-            'syntax_digest': '051f9e120a4b2a8b4b35de5c8fa96a2ae908dc1281f12af8bbee721495c632f1'},
+            'syntax_digest': 'cc2d1752202f5aabb50c20faacc6b1228c9cc974ed574cbc9f0e5647af2ddb75'},
         'python/framework/trading_env/simulation/trade_simulator.py': {
             'categories': ('algo_view',),
-            'syntax_digest': 'b8b0d3c5dd53bdc7192e28105f50b9ea7c87e20457107a105da1f8e5f8944f57'},
+            'syntax_digest': 'eae7130def3f8663a86ad1ebab2c691da4cb9d2af2d065cb5d2e7e2e97a7a023'},
         'python/framework/types/config_types/autotrader_defaults_config_types.py': {
             'categories': ('algo_view',),
-            'syntax_digest': '14799e1e1f0aeef1772ed6303e670abd5a0ef3ce15b000c5c8794030536831ff'},
+            'syntax_digest': '7770904c2f7f1e9606ad64ecf617084c73631cc3760b7b4f5fad1288eb89fcff'},
         'python/framework/types/config_types/backtesting_config_types.py': {
             'categories': ('recording_only', 'algo_view'),
-            'syntax_digest': '0a9bf0a17b05f283737e9ef11fea4f96c8ba4e9a59ea038520420fc070c63b29'},
+            'syntax_digest': '58604a10ac29453f8ff1e08a8501e3973ebfb2c82d2b37a0745618e2d7d987fb'},
         'python/framework/types/config_types/verification_config_types.py': {
             'categories': ('algo_view',),
-            'syntax_digest': 'f2f44bec0bf82c54ce9c9329d883a059062b5ac3f5e21562e394fff9c7875086'},
+            'syntax_digest': 'a9d92fe4415c7a44dd0dccf20e73994d51f26c8fbc94d33ab4c082bbe052f1ae'},
         'python/framework/types/market_types/warmup_history_types.py': {
             'categories': ('inputs_of_record',),
-            'syntax_digest': 'd92576a7621f6f9931f34bfde85d477b0340c0ae0bce389387377aef7de2e060'},
+            'syntax_digest': '8ac700318ae4b35736ac52ef1adff195e626a135aa696446ce427791ff1feb5b'},
         'python/framework/types/portfolio_types/portfolio_types.py': {
             'categories': ('algo_view',),
-            'syntax_digest': '21615e812a50c31ea7640b5c766378b254661b48f131978dab8814e570d72afc'},
+            'syntax_digest': 'ce9b6202201b893881d7879334e715d8fdd2d2c9d941a0a327d40f3cbd2400e4'},
         'python/framework/types/probe_metadata_types.py': {
             'categories': ('algo_view',),
-            'syntax_digest': '66e28a09146f57f90031e452a1856e71cb232569ea76165d4cd6428ff7d1ea8a'},
+            'syntax_digest': '3255ff6769e2113e22b8523c2dcaac59c7f1eecfcd387e4a23b4237856f48225'},
         'python/framework/types/process_data_types.py': {
             'categories': ('recording_only', 'inputs_of_record', 'algo_view'),
-            'syntax_digest': 'ad9f90b63235b0f680cbac555ea528cc7316ae8be95ddea8f5c06517ed883591'},
+            'syntax_digest': 'd2f33eb952beb1b27a2f9af7b2c666072f381413a954a18a1345f4d545e53484'},
         'python/framework/types/process_table_types.py': {
             'categories': ('recording_only',),
-            'syntax_digest': 'c686714ca8e9ffbf28f0f27d79a5cbc28792e82a5b5ecd8f8bbb956d4a840ca1'},
+            'syntax_digest': '153a2a47bd862a3f3804837f9ca53961f544ba8ecaaafc7883bf3e572ea2a5e7'},
         'python/framework/types/scenario_types/scenario_set_types.py': {
             'categories': ('inputs_of_record',),
-            'syntax_digest': '057d0685e3160ab6867a1c65da3236d31c223bb60e4792040ab8be7ae9b80f63'},
+            'syntax_digest': '42aa1b5cc2d319b97c2147cf8d6cdeeabf064ffb4bfe5e14965337017aaf146e'},
         'python/framework/types/store_member_types.py': {
             'categories': ('recording_only',),
-            'syntax_digest': '44c3f6c5f9ea358f836e51ea0bae2ff426051e3ad4aa395f5ed9ad11d40d70b0'},
+            'syntax_digest': 'b143f6df37338a1aa1f19d44a94d9972c3a69f0c32a3ebc9ba86c13135eb04c0'},
         'python/framework/types/store_types.py': {
             'categories': ('recording_only',),
-            'syntax_digest': '0395c1e2ade00aea7ce0f55b9b850098c3f79886118038062570b4d77ba479ce'},
+            'syntax_digest': 'e0dbdcf48d1203536885443ced55a809bd00647f962b34bcea061ded5343873a'},
         'python/framework/types/trading_env_types/decision_api_method_types.py': {
             'categories': ('algo_view',),
-            'syntax_digest': '443f483d7fd55c6f78c5d480a1de828982758e745c258d9c24c522a8b3e7c7cb'},
+            'syntax_digest': 'ffb10e70bd4223e232c8794cd842f7db7e579acab6f675fb473711c09b14ec0f'},
         'python/framework/utils/process_memory_reader.py': {
             'categories': ('recording_only',),
-            'syntax_digest': '8dd074e6c4d28f3a956ca1e20d758e2a8e12b121ab8dff9d6c46a25c08171a32'},
+            'syntax_digest': 'f163215cc6c79b9f9d7ee65d2e8c7b39e8f1e1dad1fc0e58243f67f16fa13fbc'},
     },
 }

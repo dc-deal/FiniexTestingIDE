@@ -22,7 +22,9 @@ import pandas as pd
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.market_config_manager import MarketConfigManager
+from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
+from python.framework.bars.warmup_record_reader import read_warmup_record_at
 from python.framework.constants.divergence_report_constants import (
     DIVERGENCE_LATENCY_SCENARIO_SET_NAME,
     DIVERGENCE_LIVE_INDEX_FILE,
@@ -49,6 +51,7 @@ from python.framework.factory.venue_history_reader_factory import (
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.builders.divergence.backtest_side_collector import (
     BacktestSideCollector,
+    mids_at,
     window_trades,
 )
 from python.framework.reporting.builders.divergence.gap_list_builder import (
@@ -62,7 +65,9 @@ from python.framework.reporting.builders.divergence.live_segment_builder import 
 from python.framework.reporting.builders.divergence.live_side_collector import LiveSideCollector
 from python.framework.reporting.builders.divergence.order_divergence_builder import (
     measured_latency_of,
+    maker_rate_pct_of,
     taker_rate_pct_of,
+    with_fill_mids,
 )
 from python.framework.reporting.builders.divergence.segment_measures_builder import (
     measure_segment,
@@ -81,6 +86,10 @@ from python.framework.reporting.builders.divergence.venue_record_builder import 
 )
 from python.framework.reporting.builders.divergence.venue_side_collector import (
     VenueSideCollector,
+)
+from python.framework.reporting.builders.divergence.warmup_check_builder import (
+    check_warmup_injection,
+    compare_warmup_with_archive,
 )
 from python.framework.reporting.console.divergence_report_console import render_divergence_report
 from python.framework.reporting.store.divergence_report_store import (
@@ -102,6 +111,8 @@ from python.framework.types.api.divergence_report_types import (
     SegmentMeasures,
     SegmentReport,
     VenueAccountChange,
+    WarmupArchiveComparison,
+    WarmupInjectionCheck,
 )
 from python.framework.types.divergence_capture_types import (
     BacktestRunCapture,
@@ -307,9 +318,9 @@ class DivergenceReportCoordinator:
         refusal = preflight(derived, capture.broker_type, symbol)
         if refusal:
             return named.model_copy(update={'not_compared_because': refusal})
-        warmup_file = keep_warmup_record(
-            records.reader.path_of(derived.sessions[0].run_id, RunEntryMemberId.WARMUP_HISTORY),
-            report_dir, derived.index)
+        session_warmup = records.reader.path_of(derived.sessions[0].run_id,
+                                                RunEntryMemberId.WARMUP_HISTORY)
+        warmup_file = keep_warmup_record(session_warmup, report_dir, derived.index)
         named = named.model_copy(update={'warmup_record_file': warmup_file})
         run_id, refusal = self._backtest(derived, set_name, records, report_dir)
         if refusal:
@@ -349,17 +360,27 @@ class DivergenceReportCoordinator:
                              for tf in frame.closed_bars} | {self._decision_timeframe})
         stamps = backtest_collector.collect_render_stamps(capture.broker_type, symbol, timeframes)
         taker_rate = taker_rate_pct_of(broker_document)
+        maker_rate = maker_rate_pct_of(broker_document)
         measures = measure_segment(
             segment, capture, day_records, live_frames, backtest, scenario_records,
-            taker_rate, self._decision_timeframe, gaps, stamps)
+            taker_rate, self._decision_timeframe, gaps, stamps, maker_rate)
         measures, venue_unread = self.confirm_captures(measures, venue, tick_index,
                                                         capture.broker_type, symbol)
+        measures = with_archive_fill_mids(measures, tick_index, capture.broker_type, symbol)
+        measures = measures.model_copy(update={
+            'warmup_injection': warmup_injection_of(
+                session_warmup, from_store.reader.path_of(
+                    run_id, RunEntryMemberId.SCENARIO_WARMUP_HISTORY, scenario=scenario_name)),
+            'warmup_against_archive': warmup_against_archive(
+                [(s.run_id, records.reader.path_of(s.run_id, RunEntryMemberId.WARMUP_HISTORY))
+                 for s in in_window], capture.broker_type, symbol)})
         lot_step = derived.sessions[0].lot_step
         measured_latency = self._at_measured_latency(
             derived, records, report_dir, measures,
-            lambda run, scenario_records_k: measure_segment(
+            lambda run, scenario_records_k: with_archive_fill_mids(measure_segment(
                 segment, capture, day_records, live_frames, run, scenario_records_k, taker_rate,
-                self._decision_timeframe, gaps, stamps),
+                self._decision_timeframe, gaps, stamps, maker_rate),
+                tick_index, capture.broker_type, symbol),
             lot_step)
         return named.model_copy(update={
             'measures': measures, 'verdict': judge_segment(measures, self._reading, lot_step),
@@ -482,6 +503,84 @@ class DivergenceReportCoordinator:
             ids, _ = window_trades(tick_index, broker_type, symbol, bar[0], bar[1])
             decisions.append(confirm_capture(comparison, {int(i) for i in ids}, trades))
         return measures.model_copy(update={'decisions': decisions}), found.unreadable
+
+
+def with_archive_fill_mids(measures: SegmentMeasures, tick_index: TickIndexManager,
+                           broker_type: str, symbol: str) -> SegmentMeasures:
+    """
+    A segment's measures with the archive's mid at each paired order's fills — what measure 2b
+    traces an order beyond its bound by, in the verdict's backtest and beside it alike.
+
+    Args:
+        measures: The segment's measures
+        tick_index: The tick index
+        broker_type: The broker whose archive is read
+        symbol: The symbol
+
+    Returns:
+        The measures, every paired order carrying its fill mids
+    """
+    mids = mids_at(tick_index, broker_type, symbol, [
+        outcome.filled_at for day in measures.orders for order in day.orders
+        for outcome in (order.live, order.backtest) if outcome.filled_at is not None])
+    return measures.model_copy(update={
+        'orders': [with_fill_mids(day, mids) for day in measures.orders]})
+
+
+def warmup_injection_of(session_path: Optional[Path],
+                        backtest_path: Optional[Path]) -> WarmupInjectionCheck:
+    """
+    The backtest's injected warmup held to the session's record, both read from their files.
+
+    Args:
+        session_path: The session's recorded warmup; None where its run is unknown
+        backtest_path: The warmup the backtest scenario recorded as injected; None as above
+
+    Returns:
+        The check
+    """
+    session, session_unreadable = read_warmup_record_at(session_path)
+    backtest, backtest_unreadable = read_warmup_record_at(backtest_path)
+    return check_warmup_injection(
+        session, backtest, '; '.join(why for why in (session_unreadable, backtest_unreadable) if why))
+
+
+def warmup_against_archive(sessions: Sequence[Tuple[str, Optional[Path]]], broker_type: str,
+                           symbol: str, bars_index: Optional[BarsIndexManager] = None
+                           ) -> List[WarmupArchiveComparison]:
+    """
+    Each session's recorded warmup held to the archive's bars — the first session's, and after
+    every restart the new session's.
+
+    Args:
+        sessions: (the session's run id, its recorded warmup's path) in session order
+        broker_type: The broker whose archive is read
+        symbol: The symbol
+        bars_index: The bar index; the configured one, loaded, when omitted
+
+    Returns:
+        One line per session and timeframe; a session without a record has none, one whose record
+        cannot be read has one line saying so
+    """
+    lines: List[WarmupArchiveComparison] = []
+    archive: Dict[str, Optional[pd.DataFrame]] = {}
+    for run_id, path in sessions:
+        record, unreadable = read_warmup_record_at(path)
+        if record is None:
+            if unreadable:
+                lines.append(WarmupArchiveComparison(run_id=run_id, timeframe='',
+                                                     not_compared_because=unreadable))
+            continue
+        for timeframe in record.timeframes:
+            if timeframe in archive:
+                continue
+            if bars_index is None:
+                bars_index = BarsIndexManager()
+                bars_index.load_index()
+            bar_file = bars_index.get_bar_file(broker_type, symbol, timeframe)
+            archive[timeframe] = pd.read_parquet(bar_file) if bar_file is not None else None
+        lines += compare_warmup_with_archive(run_id, record, archive)
+    return lines
 
 
 def keep_warmup_record(source: Optional[Path], report_dir: Path, segment: int) -> str:

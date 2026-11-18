@@ -13,10 +13,12 @@ import pytest
 
 from python.framework.reporting.builders.divergence.order_divergence_builder import (
     decision_frame_of,
+    maker_rate_pct_of,
     measure_day_orders,
     measured_latency_of,
     order_side_of,
     taker_rate_pct_of,
+    with_fill_mids,
 )
 from python.framework.types.api.divergence_report_types import (
     DayOrderDivergence,
@@ -225,8 +227,38 @@ def test_a_close_sells_what_a_long_held_and_buys_back_what_a_short_held():
     assert order_side_of(_submitted(1, direction=OrderDirection.SHORT)) is OrderSide.SELL
 
 
+class TestTheMidAtTheFill:
+
+    _LIVE_FILL = _DECIDED + timedelta(seconds=2.1)
+    _BACKTEST_FILL = _DECIDED + timedelta(milliseconds=50)
+
+    def _order(self, mids):
+        live = [_submitted(1), _filled(2, 1, 3009.0, at=self._LIVE_FILL)]
+        backtest = [_submitted(1), _filled(2, 1, 3000.6, at=self._BACKTEST_FILL)]
+        return with_fill_mids(_day(live, backtest), mids).orders[0]
+
+    def test_the_markets_move_during_the_latency_is_taken_out(self):
+        order = self._order({self._LIVE_FILL: 3008.5, self._BACKTEST_FILL: 3000.1})
+        assert order.execution_difference_pct == pytest.approx(8.4 / 3000.0 * 100)
+        assert (order.live.fill_mid, order.backtest.fill_mid) == (3008.5, 3000.1)
+        assert order.execution_difference_at_fill_pct == pytest.approx(0.0)
+        assert order.live_market_move_pct == pytest.approx(8.5 / 3000.0 * 100)
+
+    def test_a_side_without_a_mid_at_its_fill_gives_no_figure(self):
+        order = self._order({self._LIVE_FILL: 3008.5})
+        assert order.backtest.fill_mid is None
+        assert order.execution_difference_at_fill_pct is None
+        assert order.live_market_move_pct == pytest.approx(8.5 / 3000.0 * 100)
+
+
 def test_the_taker_rate_comes_from_the_frozen_document_in_percent():
     assert taker_rate_pct_of({'fee_structure': {'model': 'maker_taker', 'maker_fee': 0.4,
                                                 'taker_fee': 0.8}}) == 0.8
     assert taker_rate_pct_of({'fee_structure': {'model': 'spread'}}) is None
     assert taker_rate_pct_of({}) is None
+
+
+def test_the_maker_rate_comes_from_the_same_document():
+    assert maker_rate_pct_of({'fee_structure': {'model': 'maker_taker', 'maker_fee': 0.4,
+                                                'taker_fee': 0.8}}) == 0.4
+    assert maker_rate_pct_of({'fee_structure': {'model': 'spread'}}) is None

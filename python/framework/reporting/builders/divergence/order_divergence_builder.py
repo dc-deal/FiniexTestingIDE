@@ -52,10 +52,38 @@ def taker_rate_pct_of(broker_document: Mapping[str, Any]) -> Optional[float]:
     Returns:
         The rate (0.8 means 0.80 %); None where it declares no maker-taker fee
     """
+    return _fee_rate_pct_of(broker_document, 'taker_fee')
+
+
+def maker_rate_pct_of(broker_document: Mapping[str, Any]) -> Optional[float]:
+    """
+    The maker rate a frozen broker configuration declares, in percent — what a venue charges an
+    order that filled resting, which measure 2c traces a fee beyond the taker bound to.
+
+    Args:
+        broker_document: The frozen broker configuration
+
+    Returns:
+        The rate (0.4 means 0.40 %); None where it declares no maker-taker fee
+    """
+    return _fee_rate_pct_of(broker_document, 'maker_fee')
+
+
+def _fee_rate_pct_of(broker_document: Mapping[str, Any], key: str) -> Optional[float]:
+    """
+    One rate of a frozen broker configuration's maker-taker fee, in percent.
+
+    Args:
+        broker_document: The frozen broker configuration
+        key: The rate's key in its fee structure
+
+    Returns:
+        The rate; None where it declares none
+    """
     fee_structure = broker_document.get('fee_structure')
     if not isinstance(fee_structure, dict):
         return None
-    rate = fee_structure.get('taker_fee')
+    rate = fee_structure.get(key)
     return float(rate) if isinstance(rate, (int, float)) else None
 
 
@@ -87,7 +115,8 @@ def measure_day_orders(trading_day: date, closing: datetime,
                        live_frames: Mapping[str, Sequence[StateFrame]],
                        backtest_run_id: str, backtest_events: Sequence[OrderEventRow],
                        backtest_frames: Sequence[StateFrame], taker_rate_pct: Optional[float],
-                       unbooked_executions: Optional[int]) -> DayOrderDivergence:
+                       unbooked_executions: Optional[int],
+                       maker_rate_pct: Optional[float] = None) -> DayOrderDivergence:
     """
     One compared day's orders on both sides, measured.
 
@@ -102,6 +131,7 @@ def measure_day_orders(trading_day: date, closing: datetime,
         backtest_frames: The backtest scenario's state frames
         taker_rate_pct: The frozen taker rate in percent; None where none is declared
         unbooked_executions: What the live day's completeness check counted
+        maker_rate_pct: The frozen maker rate in percent; None where none is declared
 
     Returns:
         The day's orders, paired and measured, and what is left over on each side
@@ -119,7 +149,8 @@ def measure_day_orders(trading_day: date, closing: datetime,
                          for event in backtest_events
                          if event.event_type is OrderEventType.SUBMITTED}
     orders = [divergence_of(live_outcomes[(pair.live_run_id, pair.live_seq)],
-                            backtest_outcomes[pair.backtest_seq], taker_rate_pct)
+                            backtest_outcomes[pair.backtest_seq], taker_rate_pct,
+                            maker_rate_pct)
               for pair in pairs.pairs]
     return DayOrderDivergence(
         trading_day=trading_day, closing=closing, orders=orders,
@@ -207,8 +238,8 @@ def outcome_of(run_id: str, seq: int, events: Sequence[OrderEventRow],
         refusal='; '.join(_refusal_text(event) for event in refusals))
 
 
-def divergence_of(live: OrderOutcome, backtest: OrderOutcome,
-                  taker_rate_pct: Optional[float]) -> OrderDivergence:
+def divergence_of(live: OrderOutcome, backtest: OrderOutcome, taker_rate_pct: Optional[float],
+                  maker_rate_pct: Optional[float] = None) -> OrderDivergence:
     """
     One order submitted on both sides, measured.
 
@@ -216,6 +247,7 @@ def divergence_of(live: OrderOutcome, backtest: OrderOutcome,
         live: The live order
         backtest: The backtest's order
         taker_rate_pct: The frozen taker rate in percent; None where none is declared
+        maker_rate_pct: The frozen maker rate in percent; None where none is declared
 
     Returns:
         The measures of 2a–2d and the delay
@@ -234,6 +266,7 @@ def divergence_of(live: OrderOutcome, backtest: OrderOutcome,
                                   if execution is not None and live.submission_mid else None),
         live_fee_rate_pct=fee_rate,
         taker_rate_pct=taker_rate_pct,
+        maker_rate_pct=maker_rate_pct,
         fee_not_checked_because=not_checked if fee_rate is None else (
             '' if taker_rate_pct is not None
             else 'the frozen broker configuration declares no taker rate'),
@@ -290,6 +323,41 @@ def decision_frame_of(order_id: str, submitted_at: Optional[datetime],
             return frames[index]
         index += 1
     return None
+
+
+def with_fill_mids(day: DayOrderDivergence,
+                   mids: Mapping[datetime, Optional[float]]) -> DayOrderDivergence:
+    """
+    A day's paired orders with the archive's mid at each side's last fill, and measure 2b held
+    against those mids: the execution difference once the market's move while each side waited
+    for its fill is taken out — what 2b traces an order beyond its bound to.
+
+    Args:
+        day: The day's measured orders
+        mids: Instant → the archive's mid then; an instant missing from it has none
+
+    Returns:
+        The day, every paired order carrying its fill mids and the two figures they give
+    """
+    orders: List[OrderDivergence] = []
+    for order in day.orders:
+        live = order.live.model_copy(update={'fill_mid': mids.get(order.live.filled_at)
+                                             if order.live.filled_at else None})
+        backtest = order.backtest.model_copy(update={
+            'fill_mid': mids.get(order.backtest.filled_at) if order.backtest.filled_at else None})
+        live_at_fill = _signed(live.order_side, live.fill_price, live.fill_mid)
+        backtest_at_fill = _signed(backtest.order_side, backtest.fill_price, backtest.fill_mid)
+        at_fill = (live_at_fill - backtest_at_fill
+                   if live_at_fill is not None and backtest_at_fill is not None else None)
+        moved = _signed(live.order_side, live.fill_mid, live.submission_mid)
+        orders.append(order.model_copy(update={
+            'live': live, 'backtest': backtest,
+            'execution_difference_at_fill_pct': (at_fill / live.submission_mid * 100.0
+                                                 if at_fill is not None and live.submission_mid
+                                                 else None),
+            'live_market_move_pct': (moved / live.submission_mid * 100.0
+                                     if moved is not None and live.submission_mid else None)}))
+    return day.model_copy(update={'orders': orders})
 
 
 def _signed(order_side: Optional[OrderSide], price: Optional[float],

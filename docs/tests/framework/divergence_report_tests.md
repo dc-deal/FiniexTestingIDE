@@ -71,7 +71,7 @@ order events and trades, event by event, as the first.
 | `TestTheBaselineIsWorthComparing` | the first run placed orders and closed trades — a comparison over nothing would prove nothing |
 | `TestFramesChangeNothing` | the frames were written (cadence, order and end frames, no memory reading); the same order events and trades with frames on as off |
 | `TestFramesChangeNothingAtSpot` | the same at spot, where a frame that re-marked a position would change what the decision reads next — trades equal, excursions included |
-| `TestTheRecordedWarmupIsTheArchiveWarmup` | the record came from the archive; the same order events, trades and probe bar snapshots when it is fed back |
+| `TestTheRecordedWarmupIsTheArchiveWarmup` | the record came from the archive; the same order events, trades and probe bar snapshots when it is fed back; the backtest records the bars it injected under its scenario's name, and its run directory holds nothing undeclared; a backtest warmed up from the archive records none |
 | `TestTheBrokerDocumentIsTheBrokerFile` | the same order events and trades with the frozen document as with the file |
 
 ### `test_live_side_days.py`
@@ -135,7 +135,7 @@ every way an import reaches a file.
 | Test | Description |
 |------|-------------|
 | `TestTheClosure` | `from a import b` reaches `a` and the module `b`, a plain import and a conditional one count; an import naming no file and a relative one add nothing; an excluded prefix is neither held nor followed; on this tree the path holds its entry points and no served model, and none of the divergence report's own modules |
-| `TestTheSyntaxTree` | docstrings, comments and layout leave the tree and its digest unchanged; a changed value and a string that is no docstring change it |
+| `TestTheSyntaxTree` | docstrings, comments and layout leave the tree and its digest unchanged; a changed value and a string that is no docstring change it; the rendering is the module's own and leaves empty fields out, pinned to one digest |
 
 ### `test_divergence_gate_code_path.py`
 
@@ -147,8 +147,8 @@ trees back through git, as the gate does.
 |------|-------------|
 | `TestReadingATreeAtACommit` | every file of the directory with the suffix, at the commit; a commit the repository does not hold reads nothing |
 | `TestTheCodePathFileByFile` | unchanged and docstring-only pass; a code change is refused undeclared and passes declared at its tree; a declared file that changed again is refused, a docstring fix keeps its declaration; a file entering the path — new or newly imported — and one leaving it are refused undeclared; a served model is outside the path; a malformed declaration is a fault |
-| `TestTheGateOverTheCode` | the release against an unchanged commit is comparable; an undeclared change is refused with the file; a release without declarations permits no change; an uncommitted session or backtest, a commit the repository does not hold, sessions on two commits, a session whose code or release cannot be read are refused |
-| `TestTheGatesOwnDeclarations` | every declaration names known categories and a full digest; every category is declared somewhere |
+| `TestTheGateOverTheCode` | the release against an unchanged commit is comparable; an undeclared change is refused with the file; a release without declarations permits no change; an uncommitted session or backtest, a commit the repository does not hold, sessions on two commits, a session whose code or release cannot be read are refused; declarations pinned under this interpreter are judged, under another refused once with both versions named, and declarations naming no interpreter are a fault |
+| `TestTheGatesOwnDeclarations` | every declaration names known categories and a full digest; every release names the interpreter its declarations were pinned under; every category is declared somewhere |
 
 ### `test_divergence_gate_checks.py`
 
@@ -177,6 +177,7 @@ writer, and its rendered scenario set in a run-config store.
 | `test_the_gate_takes_what_the_collector_read` | the gate passes the pair the collector read |
 | `test_the_render_stamps_of_the_bar_files_the_backtest_read` | each timeframe's bar file and its render stamp; an unknown stamp reads as none, a timeframe the index lacks is left out |
 | `test_the_trade_ids_of_a_windows_ticks` | the trade ids and event times of the ticks inside a window, a tick without an id left out |
+| `test_the_archives_mid_at_an_instant` | the last quoted tick at or before the instant, one without a bid skipped; none where the newest lies further back than the gap bound |
 
 ### `test_paired_difference_statistics.py`
 
@@ -194,7 +195,8 @@ One day's orders on both sides, built from the record's own types, with one thin
 | `TestWhatIsLeftOver` | an order on one side only is listed, and the fills are counted per side; an order whose record names no side measures no price |
 | `TestTheMeasuredLatency` | the span of every live order that filled, from submission to fill, in whole milliseconds, with how many measured it; no live fill measures nothing |
 | `TestTheDecisionFrame` | found by the order it names, else the order frame written when the order was submitted; no frame of the pass gives none |
-| tests at module level | a close sells what a long held and buys back what a short held; the taker rate comes from the frozen document, in percent |
+| `TestTheMidAtTheFill` | the market's move during the latency is taken out against each side's mid at its fill; a side without a mid at its fill gives no figure |
+| tests at module level | a close sells what a long held and buys back what a short held; the taker and the maker rate come from the frozen document, in percent |
 
 ### `test_equity_divergence.py`
 
@@ -252,7 +254,7 @@ Frames on both sides with a decision on the day bar's close; each test changes o
 | Test | Description |
 |------|-------------|
 | `TestTwoDecisions` | the same action and orders agree and are counted in the table; a different action is one-sided; an order one side sent alone is one-sided though the actions agree; a side without its decision frame is not checked, never agreeing |
-| `TestTheProposedKind` | the live breaker held back the backtest's order; differing workers within a restart's warmup are a re-warmup; differing workers with no restart in reach are a capture, unconfirmed; agreeing workers and differing account values are the account value; a one-sided day with nothing differing stays unexplained |
+| `TestTheProposedKind` | the live breaker held back the backtest's order; differing workers within a restart's warmup are a re-warmup; differing workers with no restart in reach are a capture, unconfirmed; agreeing workers, differing decision outputs and account values apart after an earlier order moved them — a fill apart or an order one side sent — are the account value; account values within a cent, agreeing decision outputs, or no earlier order moving them stay unexplained; a one-sided day with nothing differing stays unexplained |
 | `TestTheDecisionFrame` | a pass that closed no decision bar is no decision; the segment's first day decides on its first tick |
 
 ### `test_venue_record.py`
@@ -275,10 +277,20 @@ Measures built from the report's own types, one bound crossed at a time.
 
 | Test | Description |
 |------|-------------|
-| `TestMeasure1` | agreeing days pass; two explained flips pass and are named, a third fails; an unexplained flip fails; a capture counts as explained only once the venue confirms it; a day without a frame is never a pass |
-| `TestTheZonesOfMeasure2` | green, yellow (named with its delays, passes) and red (fails); a fee the venue did not charge is not checked; fill completeness has no zone; size beyond its bound; no order leaves the measure not checked and the cross-section out |
-| `TestTheSegment` | every measure within its bound passes and the cross-section agrees; below the floor of days a pass is not one; the rehearsal has no floor and describes measure 2; a residual beyond its bound is a defect, not a pass; excluded days and their longest run; the chances beside every measure |
+| `TestMeasure1` | agreeing days pass; two explained flips pass and are named, a third fails; an unexplained flip fails; a capture counts as explained only once the venue confirms it; agreeing days on a warmup that differs, was not checked or has no check are never a pass; a day without a frame is never a pass |
+| `TestTheZonesOfMeasure2` | green, yellow (each order traced to its cause, named with its delays, passes) and red (fails); one order not traced makes the zone red; an execution price is traced where the market's move during the latency explains it, and is red without a mid at the fill or still beyond the bound at it; a fee the venue did not charge is not checked; fill completeness has no zone; a size within one lot step of the scaled backtest size is traced to the lot step, one further apart is red; an order one side filled nothing of, refused or not, is measure 2a's and not 2d's; no order leaves the measure not checked and the cross-section out |
+| `TestTheSegment` | every measure within its bound passes and the cross-section agrees; below the floor of days a pass is not one; the floor holds measure 1 to the days it judged and the attribution to the days it took apart; a measure counts days exactly where its compared count is days; the rehearsal has no floor and describes measure 2; a residual beyond its bound is a defect, not a pass; excluded days and their longest run; the chances beside every measure |
 | `TestTheExitCode` | 0 every segment passed; 2 a segment not compared; 3 a segment failed or not checked |
+
+### `test_warmup_check.py`
+
+The warmup a backtest of a session's window started from: records built in place, one thing
+changed per test.
+
+| Test | Description |
+|------|-------------|
+| `TestTheInjectedWarmup` | the bars as recorded are equal; a changed bar is named with both values; a lost bar and a lost timeframe are named; bars complete at another instant differ; no record on either side, or on one side only, is not checked, never equal; an unreadable record is not checked; a missing file is no record, not a fault |
+| `TestTheArchiveLine` | the archive holding the same bars shows no difference and a volume ratio of one; a volume the collector saw less of is a ratio, never a difference; a differing bar is counted and named; a period the archive lacks is counted apart; a timeframe without a bar file is not compared |
 
 ### `test_session_records.py`
 
@@ -298,6 +310,7 @@ The steps of the command that join the building blocks.
 | `test_a_capture_difference_is_confirmed_by_the_trades_the_archive_lacks` | the venue's trades in the decision bar against the archive's ids |
 | `test_a_segment_not_compared_is_printed_with_why_and_kept` | the text names the cause; the record holds the report as JSON and as text, read back equal |
 | `TestTheWarmupItStartedFrom` | the session's warmup history is copied beside the comparison as `warmup_segment_<n>.json`; a session without one keeps nothing |
+| `test_every_measured_backtest_gets_the_archives_mid_at_each_fill` | the step both the verdict's backtest and the one at the measured latency go through hangs the archive's mid at each fill on both sides of a paired order |
 
 ### `test_divergence_aa.py`
 
@@ -309,7 +322,7 @@ compare is built from the stream's own record shapes.
 |------|-------------|
 | `TestTheSetBothStandsRead` | the release's set holds only the strategy, the shared execution fields, the account and the window — no recorded warmup, no frozen broker document; only the current tree's set records frames, and otherwise the two sets are equal; every shared execution field is one the comparison carries |
 | `TestTheComparison` | equal streams differ nowhere; a differing value is named with its position and both values; a value one record leaves out is null; a record only one side holds is named whole; a trade field only one stand writes is named and not compared; fills are counted, partial or whole |
-| `TestTheVerdict` | the same events on the claimed code are identical, a difference is one; the release on another commit or uncommitted, the current tree uncommitted, two broker documents, a bar rendered between the runs, no indexed bar file, an unread stream or a failed run each leave the window not checked — never a pass, even where values differ; a short and a long hash name one commit |
+| `TestTheVerdict` | the same events on the claimed code are identical, a difference is one; a window neither run filled in is not checked, never a pass, and one only one run filled in still differs; the release on another commit or uncommitted, the current tree uncommitted, two broker documents, a bar rendered between the runs, no indexed bar file, an unread stream or a failed run each leave the window not checked — never a pass, even where values differ; a short and a long hash name one commit |
 | `TestTheExitCode` | 0 every window identical; 3 a window differs; 2 refused, no window, or one not checked |
 | `TestTheRefusals` | no data home, a data home holding code, a release tree without the strategy runner, sessions on two commits — each refused before anything runs; a good setup runs |
 
@@ -324,5 +337,5 @@ deployment as the command runs it. About 50 seconds.
 |------|-------------|
 | `TestTheRecord` | the record keeps the generated set, the warmup and the report; the kept warmup is the session's own, byte for byte; the printed text is kept |
 | `TestTheLiveSide` | one segment of one session, its window opening at the first tick on the replayed day; a session on the mock adapter is asked of no venue |
-| `TestTheGateAndTheVerdict` | the gate sees the session and both froze one broker document, so its only possible refusal is uncommitted code; on a committed tree the chain reaches the verdict and the backtest of the session's own window passes, decisions and attribution included, and beside it a second backtest at the latency the session's two fills measured, with measure 2b against it |
+| `TestTheGateAndTheVerdict` | the gate sees the session and both froze one broker document, so its only possible refusal is uncommitted code; on a committed tree the chain reaches the verdict and the backtest of the session's own window passes, decisions and attribution included, on a warmup injected equal to the session's record, and beside it a second backtest at the latency the session's two fills measured, with measure 2b against it |
 

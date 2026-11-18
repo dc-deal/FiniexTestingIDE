@@ -28,6 +28,10 @@ YELLOW_ZONE_MAX_ORDERS = 2
 # currency — above it the day is not checked and named as a defect
 ATTRIBUTION_RESIDUAL_BOUND = 0.01
 
+# A one-sided day is proposed as decided by the account value only where the two account values lie
+# more than this apart, in the account currency — below it they differ by rounding, not by fills
+ACCOUNT_VALUE_FLIP_MIN_DIFFERENCE = 0.01
+
 # A measure of the run passes only over this many compared trading days of the run's thirty
 MINIMUM_COMPARED_DAYS = 25
 RUN_TRADING_DAYS = 30

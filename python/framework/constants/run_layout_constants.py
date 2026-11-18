@@ -155,6 +155,9 @@ TRADES_SCHEMA_VERSION = 1
 # run index must not count them as report artifacts.
 # The warmup history the session started from (#588).
 WARMUP_HISTORY_FILE = 'warmup_history.json'
+# The warmup history a backtest scenario injected from a session's record — the bars the divergence
+# report checks against that record before it compares decisions (#512).
+SCENARIO_WARMUP_HISTORY_FILE_PATTERN = 'warmup_history_{scenario}.json'
 # The algo state the session found at its start, taken or refused (#476).
 ALGO_STATE_RESTORED_FILE = 'algo_state_restored.json'
 # The tick stream's own outages and refused trades (#609).

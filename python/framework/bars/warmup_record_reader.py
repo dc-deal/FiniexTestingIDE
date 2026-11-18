@@ -8,7 +8,8 @@ comparison's gate holds to the session's release — never touches the run index
 """
 
 import json
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Tuple
 
 from python.framework.store.entry_members.run_entry_reader import RunEntryReader
 from python.framework.types.market_types.warmup_history_types import WarmupHistoryRecord
@@ -32,5 +33,38 @@ def read_warmup_record(run_id: str, reader: Optional[RunEntryReader] = None) -> 
             f'Run {run_id} has no recorded warmup history '
             f'({path if path is not None else "the run index does not carry the run"}) — a '
             f'session records one only when a worker requires bars.')
+    return _parsed(path)
+
+
+def read_warmup_record_at(path: Optional[Path]) -> Tuple[Optional[WarmupHistoryRecord], str]:
+    """
+    A recorded warmup history read from its file, where its absence is an answer rather than a
+    fault — a session's, or a backtest scenario's record of what it injected.
+
+    Args:
+        path: The file; None where its run is unknown
+
+    Returns:
+        (the record, ''); (None, '') where there is no such file; (None, why) where it cannot be
+        read
+    """
+    if path is None or not path.exists():
+        return None, ''
+    try:
+        return _parsed(path), ''
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        return None, f'{path.name} cannot be read: {error}'
+
+
+def _parsed(path: Path) -> WarmupHistoryRecord:
+    """
+    One warmup history file, parsed.
+
+    Args:
+        path: The file
+
+    Returns:
+        The record
+    """
     with open(path, 'r', encoding='utf-8') as handle:
         return WarmupHistoryRecord.from_dict(json.load(handle))

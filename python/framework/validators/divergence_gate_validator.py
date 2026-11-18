@@ -20,6 +20,7 @@ an answer — no order — and is never refused here.
 """
 
 import copy
+import sys
 from datetime import timedelta
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -30,6 +31,7 @@ from python.framework.constants.divergence_gate_constants import (
     GATE_EXCLUDED_PREFIXES,
     GATE_SOURCE_DIRECTORY,
     GATE_SOURCE_SUFFIX,
+    PINNED_INTERPRETER_BY_RELEASE,
     WINDOW_EDGE_TOLERANCE_S,
 )
 from python.framework.types.api.divergence_report_types import CompareWindow
@@ -64,6 +66,7 @@ UNCOMMITTED_CHECK = 'divergence_gate_uncommitted'
 SESSIONS_DISAGREE_CHECK = 'divergence_gate_sessions_disagree'
 COMMIT_UNREADABLE_CHECK = 'divergence_gate_commit_unreadable'
 CODE_PATH_CHECK = 'divergence_gate_code_path'
+INTERPRETER_CHECK = 'divergence_gate_interpreter'
 STRATEGY_CHECK = 'divergence_gate_strategy'
 STRATEGY_CONFIG_CHECK = 'divergence_gate_strategy_config'
 BROKER_CONFIG_CHECK = 'divergence_gate_broker_config'
@@ -88,7 +91,9 @@ TreeReader = Callable[[str], Optional[Dict[str, str]]]
 def check_divergence_gate(
         sessions: Sequence[LiveSessionCapture], backtest: BacktestRunCapture,
         window: CompareWindow, read_tree: Optional[TreeReader] = None,
-        allowed_changes: Mapping[str, Mapping[str, Mapping[str, Any]]] = ALLOWED_CHANGES_BY_RELEASE
+        allowed_changes: Mapping[str, Mapping[str, Mapping[str, Any]]] = ALLOWED_CHANGES_BY_RELEASE,
+        pinned_interpreters: Mapping[str, str] = PINNED_INTERPRETER_BY_RELEASE,
+        interpreter: Optional[str] = None
 ) -> DivergenceGateResult:
     """
     Whether a backtest may be compared with the sessions of one segment's window.
@@ -99,6 +104,9 @@ def check_divergence_gate(
         window: The window, as the live side placed it
         read_tree: Commit → the source tree it holds; this repository's when omitted
         allowed_changes: Release → file → its declaration; the gate's own when omitted
+        pinned_interpreters: Release → the interpreter its declarations were pinned under; the
+            gate's own when omitted
+        interpreter: The interpreter judging, major.minor; this process's when omitted
 
     Returns:
         Every refusal, and the code path judged file by file where it could be
@@ -108,7 +116,8 @@ def check_divergence_gate(
                          'was given.')
     findings: List[ValidationFinding] = []
     code_path = _check_code(sessions, backtest, read_tree or _read_framework_tree,
-                            allowed_changes, findings)
+                            allowed_changes, pinned_interpreters,
+                            interpreter or _running_interpreter(), findings)
     _check_strategy(sessions, backtest, findings)
     _check_strategy_config(sessions, backtest, findings)
     _check_broker_config(sessions, backtest, findings)
@@ -210,6 +219,7 @@ def _declaration_of(entry: Optional[Mapping[str, Any]], release: str,
 def _check_code(sessions: Sequence[LiveSessionCapture], backtest: BacktestRunCapture,
                 read_tree: TreeReader,
                 allowed_changes: Mapping[str, Mapping[str, Mapping[str, Any]]],
+                pinned_interpreters: Mapping[str, str], interpreter: str,
                 findings: List[ValidationFinding]) -> Optional[GateCodePath]:
     """
     Check 1: the backtest's code path against the session's release.
@@ -219,6 +229,8 @@ def _check_code(sessions: Sequence[LiveSessionCapture], backtest: BacktestRunCap
         backtest: The backtest run
         read_tree: Commit → its source tree
         allowed_changes: Release → file → its declaration
+        pinned_interpreters: Release → the interpreter its declarations were pinned under
+        interpreter: The interpreter judging, major.minor
         findings: Where a refusal is added
 
     Returns:
@@ -230,6 +242,11 @@ def _check_code(sessions: Sequence[LiveSessionCapture], backtest: BacktestRunCap
     if session_side is None or backtest_framework is None:
         return None
     release, session_commit = session_side
+    declarations = allowed_changes.get(release, {})
+    refusal = _interpreter_refusal(release, declarations, pinned_interpreters, interpreter)
+    if refusal is not None:
+        findings.append(refusal)
+        return None
     trees: Dict[str, Dict[str, str]] = {}
     sides = ((session_commit, 'the session'), (backtest_framework.commit, 'the backtest'))
     for commit, side in sides:
@@ -242,13 +259,56 @@ def _check_code(sessions: Sequence[LiveSessionCapture], backtest: BacktestRunCap
             return None
         trees[commit] = tree
     files = judge_code_path(release, trees[session_commit], trees[backtest_framework.commit],
-                            allowed_changes.get(release, {}))
+                            declarations)
     code_path = GateCodePath(release=release, session_commit=session_commit,
                              backtest_commit=backtest_framework.commit, files=files)
     for verdict in code_path.refused():
         findings.append(_refusal(CODE_PATH_CHECK, ValidationDomain.RELEASE,
                                  _code_path_message(verdict, release), verdict.path))
     return code_path
+
+
+def _interpreter_refusal(release: str, declarations: Mapping[str, Any],
+                         pinned_interpreters: Mapping[str, str],
+                         interpreter: str) -> Optional[ValidationFinding]:
+    """
+    Whether the declarations of a release may be judged under this interpreter: a pinned syntax
+    tree is rendered by the interpreter's parser, so under another one every pin could read as
+    changed.
+
+    Args:
+        release: The sessions' release
+        declarations: Its declarations, file by file
+        pinned_interpreters: Release → the interpreter its declarations were pinned under
+        interpreter: The interpreter judging, major.minor
+
+    Returns:
+        The refusal; None where the release declares nothing or was pinned under this interpreter
+    """
+    if not declarations:
+        return None
+    pinned = pinned_interpreters.get(release)
+    if pinned is None:
+        raise ValueError(f'The gate declarations of release {release} name no interpreter they '
+                         'were pinned under.')
+    if pinned == interpreter:
+        return None
+    return _refusal(
+        INTERPRETER_CHECK, ValidationDomain.RELEASE,
+        f'The declarations of release {release} were pinned under Python {pinned}, and this '
+        f'report runs under Python {interpreter}. A syntax tree pinned under one interpreter is '
+        'not comparable under another, so the code path is not judged. Run the report under '
+        f'Python {pinned}, or pin the declarations again under {interpreter}.')
+
+
+def _running_interpreter() -> str:
+    """
+    The interpreter this process runs.
+
+    Returns:
+        Its version, major.minor
+    """
+    return f'{sys.version_info.major}.{sys.version_info.minor}'
 
 
 def _session_code(sessions: Sequence[LiveSessionCapture],

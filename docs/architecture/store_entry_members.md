@@ -245,6 +245,7 @@ behind its `write_strategy_files` parameter.
 | [`trades_day`](run_stream_day_records.md#what-a-day-record-holds) | `days/{day}/io/trades.parquet` | day record | — | as it runs — the session reached its tick loop, and a trading day ended while the session ran | — | — |
 | [`diagnostics_rows_day`](run_stream_day_records.md#what-a-day-record-holds) | `days/{day}/diagnostics/{sink}.parquet` | day record | — | as it runs — the logic declared a diagnostics sink, and a trading day ended while the session ran | — | — |
 | [`warmup_history`](warmup_history.md#what-a-session-records) | `io/warmup_history.json` | snapshot | — | at start — a worker requires bars | — | — |
+| [`scenario_warmup_history`](warmup_history.md#what-a-session-records) | `io/warmup_history_{scenario}.json` | snapshot | at start — the scenario starts from a session's recorded warmup history | — | — | — |
 | [`algo_state_restored`](../user_guides/algo_state_persistence_guide.md#lifecycle) | `io/algo_state_restored.json` | snapshot | — | at start — the logic keeps its state and a saved state was found | — | — |
 <!-- end of generated table -->
 

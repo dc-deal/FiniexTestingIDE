@@ -21,6 +21,9 @@ from python.framework.types.api.divergence_report_types import (
 # The shortest prefix two commit hashes must share to name one commit
 _COMMIT_PREFIX = 7
 
+# Why a window in which neither run filled an order proves nothing
+_NOTHING_TRADED = 'neither run recorded a fill — the window proves no order path'
+
 
 def judge_aa_window(window: AaWindowResult, session_commit: str) -> AaWindowResult:
     """
@@ -40,6 +43,9 @@ def judge_aa_window(window: AaWindowResult, session_commit: str) -> AaWindowResu
     if reasons:
         return window.model_copy(update={'verdict': AaVerdict.NOT_CHECKED,
                                          'not_checked_because': '; '.join(reasons)})
+    if not window.difference_count and not _traded(window):
+        return window.model_copy(update={'verdict': AaVerdict.NOT_CHECKED,
+                                         'not_checked_because': _NOTHING_TRADED})
     verdict = AaVerdict.DIFFERENT if window.difference_count else AaVerdict.IDENTICAL
     return window.model_copy(update={'verdict': verdict, 'not_checked_because': ''})
 
@@ -52,7 +58,8 @@ def aa_exit_code(report: AaReport) -> int:
         report: The A/A
 
     Returns:
-        0 every window identical · 3 a window differs · 2 refused, or a window not checked
+        0 every window identical, each with fills · 3 a window differs · 2 refused, or a window
+        not checked (a window with no fill on either run is not checked)
     """
     verdicts = [window.verdict for window in report.windows]
     if AaVerdict.DIFFERENT in verdicts:
@@ -133,3 +140,16 @@ def _render_reasons(before: List[RenderStamp], after: List[RenderStamp]) -> List
         return ['a bar file was rendered between the two runs: '
                 + (', '.join(moved) or 'the indexed files changed')]
     return []
+
+
+def _traded(window: AaWindowResult) -> bool:
+    """
+    Whether either run of a window filled an order.
+
+    Args:
+        window: The window with both runs
+
+    Returns:
+        True where at least one run recorded a fill
+    """
+    return any(run.fills for run in (window.release, window.current))

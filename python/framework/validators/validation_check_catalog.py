@@ -321,6 +321,10 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         "A file the backtest's code path reaches differs from the session's release in more than "
         'its docstrings, and the release does not declare that change.'),
     ValidationCheckInfo(
+        'divergence_gate_interpreter', 'Pinned under another interpreter',
+        "The release's declarations pin each changed file's syntax tree as one Python version "
+        'parses it, and the report runs under another, so the code path is not judged.'),
+    ValidationCheckInfo(
         'divergence_gate_strategy', 'Strategy code differs',
         'A decision logic or worker, or a repository it was loaded from, is different code in the '
         'session and in the backtest.'),

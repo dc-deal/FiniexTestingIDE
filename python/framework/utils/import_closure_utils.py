@@ -8,11 +8,15 @@ counts like any other: a path that may run is a path.
 
 A file whose only change is a docstring computes what it computed before: the syntax tree is
 compared without docstrings, and a comment is never part of it in the first place.
+
+The tree is rendered by this module, not by `ast.dump`: the dump's text is the standard library's
+and changes between interpreter versions (3.13 began to leave empty fields out), so a digest taken
+under one version would read as a changed file under the next.
 """
 
 import ast
 import hashlib
-from typing import Callable, Iterable, List, Optional, Set
+from typing import Any, Callable, Iterable, List, Optional, Set
 
 # The project's own top-level package — the only imports the closure follows
 _PROJECT_PACKAGE = 'python'
@@ -81,7 +85,7 @@ def syntax_digest(source: str) -> str:
         source: The file's text
 
     Returns:
-        The SHA-256 of the tree's dump, as hex
+        The SHA-256 of the tree's own rendering, as hex
     """
     return hashlib.sha256(_tree_without_docstrings(source).encode('utf-8')).hexdigest()
 
@@ -129,13 +133,36 @@ def _tree_without_docstrings(source: str) -> str:
         source: The file's text
 
     Returns:
-        The tree's dump without line and column positions
+        The tree's rendering, without line and column positions
     """
     tree = ast.parse(source)
     for node in ast.walk(tree):
         if isinstance(node, _DOCSTRING_HOLDERS) and _opens_with_docstring(node.body):
             node.body = node.body[1:]
-    return ast.dump(tree, include_attributes=False)
+    return _rendered(tree)
+
+
+def _rendered(value: Any) -> str:
+    """
+    A syntax-tree value as text: a node as its class name and its fields sorted by name, a field
+    that is empty (None or no elements) left out, a list in order, any other value with its type.
+    Positions are attributes, not fields, so they are never part of it.
+
+    Args:
+        value: A node, a list of them, or a field's plain value
+
+    Returns:
+        The rendering
+    """
+    if isinstance(value, ast.AST):
+        fields = [f'{name}={_rendered(getattr(value, name))}' for name in sorted(value._fields)
+                  if getattr(value, name, None) is not None and getattr(value, name) != []]
+        joined = ','.join(fields)
+        return f'{type(value).__name__}({joined})'
+    if isinstance(value, list):
+        joined = ','.join(_rendered(item) for item in value)
+        return f'[{joined}]'
+    return f'{type(value).__name__}:{value!r}'
 
 
 def _opens_with_docstring(body: List[ast.stmt]) -> bool:

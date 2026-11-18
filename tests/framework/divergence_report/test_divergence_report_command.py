@@ -20,6 +20,7 @@ from python.framework.reporting.divergence_report_coordinator import (
     keep_warmup_record,
     newest_run_named,
     preflight,
+    with_archive_fill_mids,
 )
 from python.framework.reporting.store.divergence_report_store import (
     divergence_root,
@@ -29,6 +30,7 @@ from python.framework.reporting.store.divergence_report_store import (
 from python.framework.types.api.divergence_report_types import (
     CompareWindow,
     DayDecision,
+    DayOrderDivergence,
     DecisionComparison,
     DecisionComparisonState,
     DivergenceReading,
@@ -36,6 +38,8 @@ from python.framework.types.api.divergence_report_types import (
     ExplainedFlipKind,
     LiveSegment,
     LiveSide,
+    OrderDivergence,
+    OrderOutcome,
     SegmentMeasures,
     SegmentReport,
     WindowEndCause,
@@ -174,3 +178,32 @@ class TestTheWarmupItStartedFrom:
         assert keep_warmup_record(None, tmp_path, 1) == ''
         assert keep_warmup_record(tmp_path / 'missing.json', tmp_path, 1) == ''
         assert list(tmp_path.iterdir()) == []
+
+
+class _OneFile:
+    """A tick index that hands out one file."""
+
+    def __init__(self, path: Path):
+        self._path = path
+
+    def get_relevant_files(self, broker_type, symbol, start, end):
+        return [self._path]
+
+
+def test_every_measured_backtest_gets_the_archives_mid_at_each_fill(tmp_path):
+    """The verdict's backtest and the one at the measured latency both go through this step, so
+    measure 2b is traced the same way in both."""
+    filled = datetime(2026, 11, 24, 10, 0, 2, tzinfo=timezone.utc)
+    path = tmp_path / 'ETHUSD_ticks.parquet'
+    pd.DataFrame({'time_msc': [int(filled.timestamp() * 1000) - 500],
+                  'bid': [3008.0], 'ask': [3009.0]}).to_parquet(path)
+    outcome = OrderOutcome(run_id='s1', seq=1, filled_lots=0.05, fill_price=3009.0,
+                           filled_at=filled, submission_mid=3000.0)
+    day = DayOrderDivergence(trading_day=filled.date(), closing=filled + timedelta(days=1),
+                             orders=[OrderDivergence(live=outcome, backtest=outcome,
+                                                     lots_difference=0.0)])
+    measures = with_archive_fill_mids(SegmentMeasures(segment_index=1, scenario='segment_1',
+                                                      orders=[day]),
+                                      _OneFile(path), 'kraken_spot', 'ETHUSD')
+    order, = measures.orders[0].orders
+    assert order.live.fill_mid == 3008.5 and order.backtest.fill_mid == 3008.5

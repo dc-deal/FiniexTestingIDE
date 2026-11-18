@@ -39,10 +39,13 @@ from python.framework.types.api.divergence_report_types import (
     MeasureState,
     MeasureVerdict,
     OrderDivergence,
+    OrderTraceCause,
     SegmentMeasures,
     SegmentReport,
     SegmentVerdict,
     TradingDayClassification,
+    WarmupInjectionCheck,
+    WarmupInjectionState,
     Zone,
 )
 
@@ -56,6 +59,12 @@ _BINDING = {
 
 # One question a measure-2 check asks of a paired order, answered in words or None
 _OrderCheck = Callable[[OrderDivergence], Optional[str]]
+
+# The cause an order beyond its bound is traced to, with its figures; None where none holds
+_OrderTrace = Callable[[OrderDivergence], Optional[Tuple[OrderTraceCause, str]]]
+
+# Lots within one lot step and this much more are within it: a float's last digit is no lot
+_LOT_STEP_SLACK = 1e-12
 
 
 def judge_segment(measures: SegmentMeasures, reading: DivergenceReading,
@@ -78,24 +87,28 @@ def judge_segment(measures: SegmentMeasures, reading: DivergenceReading,
     order_days = [day for day in measures.orders if any(d.trading_day == day.trading_day
                                                         for d in compared)]
     verdicts = [
-        judge_decisions(measures.decisions, chances),
+        judge_decisions(measures.decisions, chances, measures.warmup_injection),
         _judge_orders(DivergenceMeasure.FILL_COMPLETENESS, order_days,
                       _refusal_or_lot_step(lot_step), _lots_beyond(lot_step), chances,
                       bound=f'filled lots equal within one lot step ({lot_step})', zones=False),
         _judge_orders(DivergenceMeasure.EXECUTION_PRICE, order_days, _execution_comparable,
                       _execution_beyond, chances,
-                      bound=f'at most {EXECUTION_PRICE_BOUND_PCT} % of the submission mid'),
+                      bound=f'at most {EXECUTION_PRICE_BOUND_PCT} % of the submission mid',
+                      trace=_market_move_trace),
         _judge_orders(DivergenceMeasure.FEE_RATE, order_days, _fee_comparable, _fee_beyond,
                       chances,
-                      bound=f'within {FEE_RATE_BOUND_PP} percentage points of the taker rate'),
+                      bound=f'within {FEE_RATE_BOUND_PP} percentage points of the taker rate',
+                      trace=_maker_rate_trace),
         _judge_orders(DivergenceMeasure.SIZE, order_days, _size_comparable, _size_beyond, chances,
-                      bound=f'lots ratio within {SIZE_BOUND_PCT} % of the equity ratio'),
+                      bound=f'lots ratio within {SIZE_BOUND_PCT} % of the equity ratio',
+                      trace=_lot_step_trace(lot_step)),
         judge_attribution(measures, compared, chances),
         _curve_tracking(measures, chances),
     ]
     binding = _BINDING[reading]
     floor = MINIMUM_COMPARED_DAYS if reading is DivergenceReading.RUN else None
-    verdicts = [_applied(verdict, verdict.measure in binding, floor, len(compared))
+    verdicts = [_applied(verdict, verdict.measure in binding, floor,
+                         verdict.compared if verdict.measure.counts_days() else len(compared))
                 for verdict in verdicts]
     judged = [verdict for verdict in verdicts if verdict.measure in binding]
     state, reason = _segment_state(judged)
@@ -107,14 +120,18 @@ def judge_segment(measures: SegmentMeasures, reading: DivergenceReading,
         notes=_notes(measures, reading))
 
 
-def judge_decisions(decisions: Sequence[DecisionComparison],
-                    chances: MeasureChances) -> MeasureVerdict:
+def judge_decisions(decisions: Sequence[DecisionComparison], chances: MeasureChances,
+                    warmup: Optional[WarmupInjectionCheck] = None) -> MeasureVerdict:
     """
-    Measure 1: no one-sided decision but named explained ones, at most two in all.
+    Measure 1: no one-sided decision but named explained ones, at most two in all — and only where
+    the backtest provably started from the session's warmup; otherwise not checked, whatever the
+    days show, since a decision compared on two unknown starts says nothing.
 
     Args:
         decisions: Each compared day's decision on both sides
         chances: The segment's chances
+        warmup: The backtest's injected warmup held to the session's record; None where it was
+            not checked
 
     Returns:
         The verdict, every one-sided day named
@@ -145,6 +162,12 @@ def judge_decisions(decisions: Sequence[DecisionComparison],
             f'{len(items)} of {len(judged)} days one-sided, {explained} explained')
     if in_gap:
         reason += f'; {len(in_gap)} day(s) left out by a gap'
+    if warmup is None or warmup.state is not WarmupInjectionState.EQUAL:
+        state = MeasureState.NOT_CHECKED
+        reason = ('the injected warmup was not checked against the session\'s record'
+                  if warmup is None else
+                  f'the injected warmup is {warmup.state.value.replace("_", " ")}: '
+                  f'{warmup.detail}') + f' — {reason}'
     return MeasureVerdict(
         measure=DivergenceMeasure.DECISIONS, state=state, reason=reason, bound=bound,
         compared=len(judged), deviating=len(items), share=_share(len(items), len(judged)),
@@ -219,7 +242,8 @@ def cross_section(verdicts: Sequence[MeasureVerdict]) -> CrossSection:
 
 def _judge_orders(measure: DivergenceMeasure, days: Sequence[DayOrderDivergence],
                   comparable: _OrderCheck, deviation: _OrderCheck, chances: MeasureChances,
-                  bound: str, zones: bool = True) -> MeasureVerdict:
+                  bound: str, zones: bool = True,
+                  trace: Optional[_OrderTrace] = None) -> MeasureVerdict:
     """
     One per-order measure of measure 2 over the compared days' paired orders.
 
@@ -232,9 +256,11 @@ def _judge_orders(measure: DivergenceMeasure, days: Sequence[DayOrderDivergence]
         chances: The segment's chances
         bound: The bound in words
         zones: Whether the measure ends in zones (2b, 2c, 2d) or passes only without a deviation
+        trace: The cause an order beyond the bound is traced to; None where the measure traces
+            none, so every such order leaves its zone red
 
     Returns:
-        The verdict, every deviating order named with its delays
+        The verdict, every deviating order named with its delays and its trace
     """
     compared = 0
     unchecked: List[str] = []
@@ -249,22 +275,29 @@ def _judge_orders(measure: DivergenceMeasure, days: Sequence[DayOrderDivergence]
             compared += 1
             found = deviation(order)
             if found is not None:
-                items.append(DeviatingItem(trading_day=day.trading_day,
-                                           at=order.live.submitted_at,
-                                           detail=f'{found}{_delays(order)}'))
+                traced = trace(order) if trace is not None else None
+                items.append(DeviatingItem(
+                    trading_day=day.trading_day, at=order.live.submitted_at,
+                    detail=f'{found}{_delays(order)}',
+                    traced_by=traced[0] if traced is not None else None,
+                    trace_detail=traced[1] if traced is not None else ''))
+    untraced = sum(1 for item in items if item.traced_by is None)
     zone = None
     if zones and compared:
-        zone = (Zone.GREEN if not items else Zone.YELLOW if len(items) <= YELLOW_ZONE_MAX_ORDERS
+        zone = (Zone.GREEN if not items
+                else Zone.YELLOW if len(items) <= YELLOW_ZONE_MAX_ORDERS and not untraced
                 else Zone.RED)
     if items and (not zones or zone is Zone.RED):
-        state, reason = MeasureState.FAILED, f'{len(items)} of {compared} order(s) beyond the bound'
+        state, reason = MeasureState.FAILED, (
+            f'{len(items)} of {compared} order(s) beyond the bound'
+            + (f', {untraced} not traced to a cause' if zones and untraced else ''))
     elif not compared:
         state, reason = MeasureState.NOT_CHECKED, (
             f'no order checkable: {unchecked[0]}' if unchecked else 'no order to compare')
     elif items:
         state, reason = MeasureState.PASSED, (
-            f'{len(items)} of {compared} order(s) beyond the bound — yellow: each one is listed '
-            f'with its delays and passes once traced to its cause')
+            f'{len(items)} of {compared} order(s) beyond the bound — yellow: each traced to its '
+            f'cause')
     else:
         state, reason = MeasureState.PASSED, f'{compared} order(s) within the bound'
     if unchecked:
@@ -303,7 +336,7 @@ def _lots_beyond(lot_step: Optional[float]) -> _OrderCheck:
         The check
     """
     def deviation(order: OrderDivergence) -> Optional[str]:
-        if lot_step is not None and abs(order.lots_difference) > lot_step + 1e-12:
+        if lot_step is not None and abs(order.lots_difference) > lot_step + _LOT_STEP_SLACK:
             return (f'filled {order.live.filled_lots} live, {order.backtest.filled_lots} in the '
                     f'backtest')
         return None
@@ -368,9 +401,80 @@ def _fee_beyond(order: OrderDivergence) -> Optional[str]:
     return None
 
 
+def _market_move_trace(order: OrderDivergence) -> Optional[Tuple[OrderTraceCause, str]]:
+    """
+    Measure 2b's trace: held against each side's mid at its own fill, the execution difference
+    lies within the bound — the market moved while the venue took its time. Read from the
+    orders' own records and the archive's quotes, never from a second backtest, which stays beside
+    the verdict.
+
+    Args:
+        order: The paired order beyond the bound
+
+    Returns:
+        (MARKET_MOVED_IN_LATENCY, its figures); None where a mid is missing or the difference
+        stays beyond the bound
+    """
+    at_fill = order.execution_difference_at_fill_pct
+    if at_fill is None or abs(at_fill) > EXECUTION_PRICE_BOUND_PCT:
+        return None
+    waited = (f' in the {(order.live.filled_at - order.live.submitted_at).total_seconds():.1f} s '
+              'from submission to fill'
+              if order.live.filled_at is not None and order.live.submitted_at is not None else '')
+    moved = (f'the market moved {order.live_market_move_pct:+.4f} %{waited}; '
+             if order.live_market_move_pct is not None else '')
+    return OrderTraceCause.MARKET_MOVED_IN_LATENCY, (
+        f'{moved}against each side\'s mid at its fill the difference is {at_fill:+.4f} %')
+
+
+def _maker_rate_trace(order: OrderDivergence) -> Optional[Tuple[OrderTraceCause, str]]:
+    """
+    Measure 2c's trace: the venue charged the frozen maker rate, within the bound — the order
+    filled resting, where the backtest charges the taker rate.
+
+    Args:
+        order: The paired order beyond the taker bound
+
+    Returns:
+        (MAKER_RATE, its figures); None where the rate is not the maker rate or either is unknown
+    """
+    if order.live_fee_rate_pct is None or order.maker_rate_pct is None:
+        return None
+    if abs(order.live_fee_rate_pct - order.maker_rate_pct) > FEE_RATE_BOUND_PP:
+        return None
+    return OrderTraceCause.MAKER_RATE, (
+        f'the venue charged {order.live_fee_rate_pct:.4f} %, the frozen maker rate '
+        f'{order.maker_rate_pct} % — the order filled resting')
+
+
+def _lot_step_trace(lot_step: Optional[float]) -> _OrderTrace:
+    """
+    Measure 2d's trace: the live size lies within one lot step of the backtest's size scaled by
+    the two account values — the venue's lot step rounded it.
+
+    Args:
+        lot_step: The symbol's lot step; None where it is unknown, so nothing is traced
+
+    Returns:
+        The trace
+    """
+    def traced(order: OrderDivergence) -> Optional[Tuple[OrderTraceCause, str]]:
+        if not lot_step or not order.equity_ratio:
+            return None
+        scaled = order.backtest.filled_lots * order.equity_ratio
+        if abs(order.live.filled_lots - scaled) > lot_step + _LOT_STEP_SLACK:
+            return None
+        return OrderTraceCause.WITHIN_ONE_LOT_STEP, (
+            f'{order.live.filled_lots:g} lots live against {scaled:.8g} scaled from the '
+            f'backtest — within one lot step ({lot_step:g})')
+    return traced
+
+
 def _size_comparable(order: OrderDivergence) -> Optional[str]:
     """
-    Whether measure 2d compares an order: only with both ratios known.
+    Whether measure 2d compares an order: only one both sides filled, with both ratios known. An
+    order a refusal explains, or one a side filled nothing of, is measure 2a's — its size against
+    the account says nothing.
 
     Args:
         order: The paired order
@@ -378,6 +482,10 @@ def _size_comparable(order: OrderDivergence) -> Optional[str]:
     Returns:
         None where compared, '' where left out
     """
+    if order.live.refusal or order.backtest.refusal:
+        return ''
+    if not order.live.filled_lots or not order.backtest.filled_lots:
+        return ''
     return None if order.lots_ratio is not None and order.equity_ratio else ''
 
 
@@ -448,7 +556,8 @@ def _applied(verdict: MeasureVerdict, binding: bool, floor: Optional[int],
         verdict: The measure's verdict as judged
         binding: Whether the reading binds it
         floor: The fewest compared days a pass needs; None where none applies
-        compared_days: The segment's compared days
+        compared_days: The days the measure judged where it counts days (measure 1 leaves a day
+            in a gap out), else the segment's compared days
 
     Returns:
         The verdict as the reading reads it

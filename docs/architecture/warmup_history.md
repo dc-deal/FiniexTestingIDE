@@ -147,11 +147,13 @@ session's window against exactly that history. One object per file:
 
 `read_at` is the boot read, `selected_for` the instant the recorded bars are complete at — the
 first tick once the seam has closed. Each bar is `[opening instant, open, high, low, close, volume,
-tick count]`. A backtest does not write this file: its history is the archive's, and the same
-selection over the same archive reproduces it. A backtest of the session's window reads the file
-back instead — the loader with `read_warmup_record`, before any process starts, the process with
-`WarmupHistory.from_record` — so it starts from the bars the session
-started from, venue bars included; where the collector missed the session's first trades and the
+tick count]`. A backtest warmed up from the archive does not write this file: its history is the
+archive's, and the same selection over the same archive reproduces it. A backtest of the session's
+window reads the file back instead — the loader with `read_warmup_record`, before any process
+starts, the process with `WarmupHistory.from_record` — so it starts from the bars the session
+started from, venue bars included. Such a scenario records what it injected under its own name,
+`io/warmup_history_{scenario}.json`, in the same shape, and the divergence report holds the two to
+each other bar by bar before it compares a decision; where the collector missed the session's first trades and the
 backtest's first tick opens a later period, the record cannot supply the bars in between and the
 run is refused at that tick. The archive does change — every import renders the
 bar files again — so the parity report (#512) will record which render of the bar files its

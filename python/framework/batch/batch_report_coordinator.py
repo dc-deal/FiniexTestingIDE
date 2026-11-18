@@ -323,6 +323,10 @@ class BatchReportCoordinator:
                 result.tick_loop_results is not None
                 and (scenario.execution_config or {}).get('state_frames', {}).get('enabled', False)
                 for result, scenario in zip(
+                    process_results, self._batch_execution_summary.single_scenario_list)),
+            warmup_from_record=any(
+                result.tick_loop_results is not None and scenario.warmup_from_run
+                for result, scenario in zip(
                     process_results, self._batch_execution_summary.single_scenario_list)))
         try:
             write_footprint(run_dir, run_id, RUN_TYPE_SIMULATION, expectations)
@@ -332,8 +336,8 @@ class BatchReportCoordinator:
 
     def _footprint_expectations(self, scenario_ran: bool, orders_placed: bool,
                                 block_splitting_written: bool, robustness_written: bool,
-                                order_events_written: bool,
-                                state_frames_asked: bool) -> List[MemberExpectation]:
+                                order_events_written: bool, state_frames_asked: bool,
+                                warmup_from_record: bool) -> List[MemberExpectation]:
         """
         For each file a backtest writes only sometimes, whether this run expected it — judged
         from what the run knows at its close. A scenario's diagnostics tables are written by its
@@ -346,6 +350,8 @@ class BatchReportCoordinator:
             robustness_written: Whether the robustness section was written
             order_events_written: Whether any scenario recorded an order event
             state_frames_asked: Whether a scenario that reached its process asked for state frames
+            warmup_from_record: Whether a scenario that reached its process started from a
+                session's recorded warmup history
 
         Returns:
             One expectation per member the run decides on
@@ -374,5 +380,8 @@ class BatchReportCoordinator:
             expectation(RunEntryMemberId.SCENARIO_STATE_FRAMES, state_frames_asked,
                         'a scenario asked for state frames',
                         'no scenario asked for state frames'),
+            expectation(RunEntryMemberId.SCENARIO_WARMUP_HISTORY, warmup_from_record,
+                        "a scenario started from a session's recorded warmup history",
+                        "no scenario started from a session's recorded warmup history"),
         ]
 

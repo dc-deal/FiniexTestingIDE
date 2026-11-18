@@ -96,6 +96,7 @@ class WarmupHistory:
         self._first_tick_time: Optional[datetime] = None
         self._reread_at_first_tick: List[str] = []
         self._run_writer: Optional[RunEntryWriter] = None
+        self._scenario: Optional[str] = None
 
     @classmethod
     def from_package(
@@ -269,6 +270,7 @@ class WarmupHistory:
         self,
         bar_controller: BarRenderingController,
         run_writer: Optional[RunEntryWriter] = None,
+        scenario: Optional[str] = None,
     ) -> None:
         """
         Hand the history to the renderer through its checked route, and arm the seam.
@@ -277,6 +279,8 @@ class WarmupHistory:
             bar_controller: The session's bar rendering controller
             run_writer: The session's writer — the history is recorded as its warmup history,
                 now and again once the seam has closed. None records nothing
+            scenario: The backtest scenario it is recorded for, under the scenario's own name;
+                None for a session
 
         Returns:
             None
@@ -285,6 +289,7 @@ class WarmupHistory:
             self._logger.debug('⏭️  No warmup history to inject')
             return
         self._run_writer = run_writer
+        self._scenario = scenario
 
         bar_controller.inject_warmup_bars(
             self._symbol, self._bars_by_timeframe, self._reference_time)
@@ -451,8 +456,12 @@ class WarmupHistory:
         """
         if self._run_writer is None:
             return
-        self._run_writer.write_snapshot(RunEntryMemberId.WARMUP_HISTORY,
-                                        json.dumps(asdict(self.build_record()), indent=1))
+        text = json.dumps(asdict(self.build_record()), indent=1)
+        if self._scenario is None:
+            self._run_writer.write_snapshot(RunEntryMemberId.WARMUP_HISTORY, text)
+            return
+        self._run_writer.write_snapshot(RunEntryMemberId.SCENARIO_WARMUP_HISTORY, text,
+                                        scenario=self._scenario)
 
     def _log_tails(self) -> None:
         """

@@ -19,6 +19,7 @@ from python.framework.constants.run_layout_constants import (
 )
 from python.framework.reporting.builders.divergence.backtest_side_collector import (
     BacktestSideCollector,
+    mids_at,
     window_trades,
 )
 from python.framework.reporting.io.artifact_specs import SCENARIO_DETAILS_ARTIFACT
@@ -231,6 +232,22 @@ class _TickIndex:
 
     def get_relevant_files(self, broker_type, symbol, start, end):
         return self._paths
+
+
+def test_the_archives_mid_at_an_instant(tmp_path):
+    at = FIRST_TICK
+    offsets = (-200, -60, -10, 5)
+    path = tmp_path / 'ETHUSD_ticks.parquet'
+    pd.DataFrame({
+        'time_msc': [int((at + timedelta(seconds=s)).timestamp() * 1000) for s in offsets],
+        'bid': [2990.0, 3000.0, 0.0, 3010.0], 'ask': [2991.0, 3001.0, 3002.0, 3011.0]},
+    ).to_parquet(path)
+    later = at + timedelta(seconds=400)
+    mids = mids_at(_TickIndex([path]), 'kraken_spot', 'ETHUSD', [at, later])
+    # the tick 10 s before carries no bid, the one after the instant is not yet there
+    assert mids[at] == 3000.5
+    # the newest quoted tick lies further back than the gap bound: no market was recorded
+    assert mids[later] is None
 
 
 def test_the_render_stamps_of_the_bar_files_the_backtest_read(tree):

@@ -12,6 +12,9 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 from python.framework.constants.divergence_gate_constants import GAP_BOUND_S
+from python.framework.constants.divergence_verdict_constants import (
+    ACCOUNT_VALUE_FLIP_MIN_DIFFERENCE,
+)
 from python.framework.reporting.builders.divergence.gap_list_builder import in_excluded
 from python.framework.types.api.divergence_report_types import (
     DayDecision,
@@ -59,7 +62,9 @@ def compare_decisions(days: Sequence[TradingDayClassification], segment_start: O
     """
     comparisons = [compare_day(day, segment_start if day.first_of_segment else None,
                                live_frames, backtest_frames, orders.get(day.closing),
-                               decision_timeframe, restarts, excluded)
+                               decision_timeframe, restarts, excluded,
+                               [orders[closing] for closing in sorted(orders)
+                                if closing < day.closing])
                    for day in days if day.included]
     return comparisons, decision_table(comparisons)
 
@@ -68,7 +73,8 @@ def compare_day(day: TradingDayClassification, first_tick: Optional[datetime],
                 live_frames: Sequence[StateFrame], backtest_frames: Sequence[StateFrame],
                 orders: Optional[DayOrderDivergence], decision_timeframe: str,
                 restarts: Mapping[str, Tuple[datetime, Optional[timedelta]]],
-                excluded: Sequence[ExcludedSpan] = ()) -> DecisionComparison:
+                excluded: Sequence[ExcludedSpan] = (),
+                earlier_orders: Sequence[DayOrderDivergence] = ()) -> DecisionComparison:
     """
     One compared day's decision on both sides.
 
@@ -81,6 +87,8 @@ def compare_day(day: TradingDayClassification, first_tick: Optional[datetime],
         decision_timeframe: The timeframe whose bar's close is the decision
         restarts: The sessions that started after the segment's first, as above
         excluded: The stretches the window's gaps leave out
+        earlier_orders: The measured orders of the segment's compared days before this one, in
+            day order
 
     Returns:
         Whether they agree, and for a one-sided day the explained kind it is proposed as
@@ -111,7 +119,7 @@ def compare_day(day: TradingDayClassification, first_tick: Optional[datetime],
         return DecisionComparison(trading_day=day.trading_day, closing=day.closing,
                                   state=DecisionComparisonState.AGREE, live=live,
                                   backtest=backtest)
-    kind, detail = propose_kind(day, live, backtest, restarts)
+    kind, detail = propose_kind(day, live, backtest, restarts, earlier_orders)
     return DecisionComparison(
         trading_day=day.trading_day, closing=day.closing, state=DecisionComparisonState.ONE_SIDED,
         live=live, backtest=backtest, proposed_kind=kind, detail=detail)
@@ -143,7 +151,8 @@ def decision_frame_on(frames: Sequence[StateFrame], day: TradingDayClassificatio
 
 
 def propose_kind(day: TradingDayClassification, live: DayDecision, backtest: DayDecision,
-                 restarts: Mapping[str, Tuple[datetime, Optional[timedelta]]]
+                 restarts: Mapping[str, Tuple[datetime, Optional[timedelta]]],
+                 earlier_orders: Sequence[DayOrderDivergence] = ()
                  ) -> Tuple[Optional[ExplainedFlipKind], str]:
     """
     The explained kind a one-sided day is proposed as, with the figures that show it.
@@ -153,6 +162,7 @@ def propose_kind(day: TradingDayClassification, live: DayDecision, backtest: Day
         live: The session's decision
         backtest: The backtest's decision
         restarts: The sessions that started after the segment's first, as above
+        earlier_orders: The measured orders of the segment's compared days before this one
 
     Returns:
         (the kind, or None where none fits; one line naming the day, the time and the figures)
@@ -171,11 +181,73 @@ def propose_kind(day: TradingDayClassification, live: DayDecision, backtest: Day
                 f'{head} · {restart} · workers differ: {named}')
         return ExplainedFlipKind.CAPTURE, (
             f"{head} · workers differ: {named} · unconfirmed until the venue's trades show it")
-    if live.equity is not None and backtest.equity is not None and live.equity != backtest.equity:
-        return ExplainedFlipKind.ACCOUNT_VALUE, (
-            f'{head} · the workers agree, the account values differ: {live.equity:.2f} live, '
-            f'{backtest.equity:.2f} backtest')
-    return None, f'{head} · the workers and the account values agree — unexplained'
+    return _account_value(head, live, backtest, earlier_orders)
+
+
+def _account_value(head: str, live: DayDecision, backtest: DayDecision,
+                   earlier_orders: Sequence[DayOrderDivergence]
+                   ) -> Tuple[Optional[ExplainedFlipKind], str]:
+    """
+    A one-sided day whose workers agree, proposed as decided by the account value only where the
+    account value can have decided it: the decision logic's own outputs differ, the two account
+    values lie more than the bound apart, and an earlier order of the segment moved them apart. An
+    order of an excluded day is not measured, so it never counts as that earlier order.
+
+    Args:
+        head: The day's line so far
+        live: The session's decision
+        backtest: The backtest's decision
+        earlier_orders: The measured orders of the segment's compared days before this one
+
+    Returns:
+        (ACCOUNT_VALUE, or None where a condition fails; the line, naming the condition that
+        failed)
+    """
+    if live.equity is None or backtest.equity is None:
+        return None, f'{head} · the workers agree, an account value is unknown — unexplained'
+    apart = live.equity - backtest.equity
+    if abs(apart) <= ACCOUNT_VALUE_FLIP_MIN_DIFFERENCE:
+        return None, (f'{head} · the workers agree, the account values lie within '
+                      f'{ACCOUNT_VALUE_FLIP_MIN_DIFFERENCE} — unexplained')
+    if live.decision_outputs == backtest.decision_outputs:
+        return None, (f'{head} · the workers and the decision outputs agree, the account values '
+                      f'differ by {apart:+.2f} — unexplained')
+    mover = _earlier_mover(earlier_orders)
+    if mover is None:
+        return None, (f'{head} · the account values differ by {apart:+.2f}, but no earlier order '
+                      'of the segment moved them apart — unexplained')
+    return ExplainedFlipKind.ACCOUNT_VALUE, (
+        f'{head} · the workers agree, the decision outputs and the account values differ: '
+        f'{live.equity:.2f} live, {backtest.equity:.2f} backtest · moved apart by {mover}')
+
+
+def _earlier_mover(earlier_orders: Sequence[DayOrderDivergence]) -> Optional[str]:
+    """
+    The latest earlier order that moved the two account values apart: one only a side sent, or
+    a paired one whose filled lots, fill price or fee rate differ.
+
+    Args:
+        earlier_orders: The measured orders of the compared days before the day, in day order
+
+    Returns:
+        The order in words — its day and what differed; None where no earlier order did
+    """
+    for day in reversed(earlier_orders):
+        if day.live_one_sided or day.backtest_one_sided:
+            side = 'live' if day.live_one_sided else 'backtest'
+            return f'{day.trading_day.isoformat()}: a {side} order without a counterpart'
+        for rank, order in enumerate(day.orders, start=1):
+            if order.lots_difference:
+                return (f'{day.trading_day.isoformat()}: order {rank} filled '
+                        f'{order.lots_difference:+g} lots apart')
+            if order.execution_difference:
+                return (f'{day.trading_day.isoformat()}: order {rank} filled '
+                        f'{order.execution_difference:+.4f} apart in price')
+            if (order.live_fee_rate_pct is not None and order.taker_rate_pct is not None
+                    and order.live_fee_rate_pct != order.taker_rate_pct):
+                return (f'{day.trading_day.isoformat()}: order {rank} paid a fee rate of '
+                        f'{order.live_fee_rate_pct} % against {order.taker_rate_pct} %')
+    return None
 
 
 def decision_table(comparisons: Sequence[DecisionComparison]) -> DecisionTable:

@@ -521,6 +521,8 @@ class OrderOutcome(BaseModel):
         filled_lots: What was executed of it; 0 where nothing was
         fill_price: The lot-weighted mean price of its fills; None where nothing was executed
         filled_at: When its last fill came; None as above
+        fill_mid: The archive's mid when its last fill came — the last quoted tick at or before it
+            within the gap bound; None where there is none, or nothing was executed
         fee: The fees of its fills, in the account currency; None as above
         fee_source: Whether the fee is the venue's own figure; None as above
         refusal: Why it was refused, where a refusal is recorded — its reason and the venue's
@@ -536,6 +538,7 @@ class OrderOutcome(BaseModel):
     filled_lots: float = 0.0
     fill_price: Optional[float] = None
     filled_at: Optional[datetime] = None
+    fill_mid: Optional[float] = None
     fee: Optional[float] = None
     fee_source: Optional[FeeSource] = None
     refusal: str = ''
@@ -553,9 +556,17 @@ class OrderDivergence(BaseModel):
         execution_difference: (fill − submission mid) signed by the order's side, live minus
             backtest — positive where live paid more than the backtest (2b)
         execution_difference_pct: The same in % of the live submission mid
+        execution_difference_at_fill_pct: The same against each side's mid at its own last fill,
+            in % of the live submission mid — the difference once the market's move during each
+            side's latency is taken out (2b's trace); None where a mid is missing
+        live_market_move_pct: The live mid at the fill less the live submission mid, signed by
+            the side — positive where the market moved against the order — in % of that mid;
+            None as above
         live_fee_rate_pct: The live fee ÷ (lots × fill price), in % (2c); None where the fee is
             not the venue's own figure
         taker_rate_pct: The frozen broker configuration's taker rate, in %
+        maker_rate_pct: Its maker rate, in % — where the venue charged it, the order filled
+            resting, and a fee rate beyond the taker bound is traced to that
         fee_not_checked_because: Why the fee rate was not compared; '' where it was
         lots_ratio: Live lots ÷ backtest lots (2d)
         equity_ratio: Live ÷ backtest account value at the two decision frames
@@ -567,8 +578,11 @@ class OrderDivergence(BaseModel):
     lots_difference: float
     execution_difference: Optional[float] = None
     execution_difference_pct: Optional[float] = None
+    execution_difference_at_fill_pct: Optional[float] = None
+    live_market_move_pct: Optional[float] = None
     live_fee_rate_pct: Optional[float] = None
     taker_rate_pct: Optional[float] = None
+    maker_rate_pct: Optional[float] = None
     fee_not_checked_because: str = ''
     lots_ratio: Optional[float] = None
     equity_ratio: Optional[float] = None
@@ -962,6 +976,64 @@ class RenderStamp(BaseModel):
     rendered_at: Optional[str] = None
 
 
+class WarmupInjectionState(StrEnum):
+    """
+    What holding a backtest's injected warmup to the session's record found, before measure 1.
+
+    EQUAL: every timeframe's bars, and the instant they are complete at, are the record's —
+        the one state measure 1 may be judged after
+    DIFFERENT: a bar, a timeframe or that instant differs — every difference is named
+    NOT_CHECKED: a side's record is missing or unreadable — the cause is named; never equal
+    """
+    EQUAL = 'equal'
+    DIFFERENT = 'different'
+    NOT_CHECKED = 'not_checked'
+
+
+class WarmupInjectionCheck(BaseModel):
+    """
+    The backtest's injected warmup held to the session's record, bar by bar — the verdict rules'
+    warmup check before measure 1.
+
+    Args:
+        state: What it found
+        detail: What was compared, or why it was not, in a few words
+        differences: Every difference, its timeframe and bar named
+    """
+    state: WarmupInjectionState
+    detail: str = ''
+    differences: List[str] = []
+
+
+class WarmupArchiveComparison(BaseModel):
+    """
+    One session's recorded warmup of one timeframe held to the archive's bars of the same periods —
+    an input line that decides nothing: a session's warmup comes from the venue, the archive's bars
+    from the collector's ticks.
+
+    Args:
+        run_id: The session
+        timeframe: The timeframe
+        compared: The recorded bars whose period the archive holds a bar for
+        differing: Of those, the bars whose open, high, low or close differ — volume is left out,
+            because the venue counts every trade and the collector only those it received
+        recorded_to_archived_volume: The compared bars' recorded volume ÷ their archived volume —
+            above 1 the venue saw trades the collector did not; None where nothing was compared
+            or the archive holds no volume for those periods
+        missing_in_archive: The recorded bars whose period the archive holds no bar for
+        examples: The first differences, in words
+        not_compared_because: Why the timeframe was not compared; '' where it was
+    """
+    run_id: str
+    timeframe: str
+    compared: int = 0
+    differing: int = 0
+    recorded_to_archived_volume: Optional[float] = None
+    missing_in_archive: int = 0
+    examples: List[str] = []
+    not_compared_because: str = ''
+
+
 class SegmentMeasures(BaseModel):
     """
     What one segment's compared days show beside a backtest of its window — measure 2, measure 3
@@ -981,6 +1053,10 @@ class SegmentMeasures(BaseModel):
         equity: How far the two account values ran apart
         attribution: Each compared day's difference of equity change, taken apart
         unreadable: What could not be read, on either side, with the reason
+        warmup_injection: The backtest's injected warmup held to the session's record; None where
+            the check was not made — measure 1 is then not checked
+        warmup_against_archive: Each session's recorded warmup held to the archive's bars,
+            timeframe by timeframe
     """
     segment_index: int
     scenario: str
@@ -994,6 +1070,8 @@ class SegmentMeasures(BaseModel):
     equity: EquityTracking = EquityTracking()
     attribution: List[DayAttribution] = []
     unreadable: List[str] = []
+    warmup_injection: Optional[WarmupInjectionCheck] = None
+    warmup_against_archive: List[WarmupArchiveComparison] = []
 
 
 class DivergenceReading(StrEnum):
@@ -1028,6 +1106,15 @@ class DivergenceMeasure(StrEnum):
     ATTRIBUTION = 'attribution'
     CURVE_TRACKING = 'curve_tracking'
 
+    def counts_days(self) -> bool:
+        """
+        Whether the measure's compared count is trading days — the count the floor of days holds.
+
+        Returns:
+            True for measure 1 and the attribution; measure 2 counts orders, measure 3 slots
+        """
+        return self in (DivergenceMeasure.DECISIONS, DivergenceMeasure.ATTRIBUTION)
+
 
 class MeasureState(StrEnum):
     """
@@ -1057,6 +1144,23 @@ class Zone(StrEnum):
     RED = 'red'
 
 
+class OrderTraceCause(StrEnum):
+    """
+    The cause an order beyond a per-order bound was traced to. A measure's yellow zone holds only
+    where every such order is traced; one that is not makes the zone red.
+
+    MARKET_MOVED_IN_LATENCY: 2b — against each side's mid at its own fill the execution difference
+        lies within the bound: the market moved while the venue took its time to fill
+    MAKER_RATE: 2c — the venue charged the frozen configuration's maker rate: the order filled
+        resting, where the backtest charges the taker rate
+    WITHIN_ONE_LOT_STEP: 2d — the live size lies within one lot step of the backtest's size scaled
+        by the two account values: the venue's lot step rounded it
+    """
+    MARKET_MOVED_IN_LATENCY = 'market_moved_in_latency'
+    MAKER_RATE = 'maker_rate'
+    WITHIN_ONE_LOT_STEP = 'within_one_lot_step'
+
+
 class DeviatingItem(BaseModel):
     """
     One item a measure found beyond its bound, or one it explained.
@@ -1066,11 +1170,16 @@ class DeviatingItem(BaseModel):
         at: When it happened; None where the item is the day itself
         detail: What deviated, with its figures
         explained: Whether it is an explained deviation — a named flip of measure 1
+        traced_by: For an order beyond a per-order bound, the cause it was traced to; None where
+            it was not traced, or where the item is no such order
+        trace_detail: The figures the trace rests on; '' where there is none
     """
     trading_day: date
     at: Optional[datetime] = None
     detail: str = ''
     explained: bool = False
+    traced_by: Optional[OrderTraceCause] = None
+    trace_detail: str = ''
 
 
 class MeasureChances(BaseModel):

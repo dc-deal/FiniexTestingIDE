@@ -29,6 +29,7 @@ from python.framework.types.api.divergence_report_types import (
     DivergenceMeasure,
     DivergenceReading,
     MeasureState,
+    WarmupInjectionState,
 )
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.validation_types import Severity
@@ -117,6 +118,7 @@ class TestTheGateAndTheVerdict:
         verdicts = {measure.measure: measure.state for measure in segment.verdict.measures}
         assert verdicts[DivergenceMeasure.DECISIONS] is MeasureState.PASSED
         assert verdicts[DivergenceMeasure.ATTRIBUTION] is MeasureState.PASSED
+        assert segment.measures.warmup_injection.state is WarmupInjectionState.EQUAL
 
     def test_beside_the_verdict_a_backtest_at_the_measured_latency(self, compared):
         """The session's two fills measured a latency, so a second backtest ran at it and measure

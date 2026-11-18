@@ -120,6 +120,13 @@ class TestTheSyntaxTree:
         edited = self._CODE.replace('return 1', "x = 'a'\n        return 1")
         assert not same_syntax_tree(self._CODE, edited)
 
+    def test_the_rendering_is_the_modules_own_and_leaves_empty_fields_out(self):
+        # Pinned: a change here moves every pinned declaration of the gate, so it is deliberate.
+        # No empty field (decorators, type parameters) is part of it, which keeps a field a newer
+        # interpreter adds empty from moving a digest.
+        assert syntax_digest(self._CODE) == (
+            '807d3cbf8495845d6badf7f890714112db8cd80fdda9be141207bf53078b7480')
+
     def test_the_digest_is_hex_of_a_fixed_length(self):
         digest = syntax_digest(self._CODE)
         assert len(digest) == 64 and int(digest, 16) >= 0

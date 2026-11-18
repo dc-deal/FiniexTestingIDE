@@ -16,10 +16,14 @@ from python.framework.types.api.divergence_report_types import (
     MeasuredLatencyBacktest,
     DivergenceReport,
     MeasureVerdict,
+    SegmentMeasures,
     SegmentReport,
 )
 
 _RULE = '━' * 100
+
+# How many differences of the injected warmup the console names; the report's JSON holds them all
+_NAMED_WARMUP_DIFFERENCES = 10
 
 
 def render_divergence_report(report: DivergenceReport) -> str:
@@ -191,6 +195,7 @@ def _segment(report: SegmentReport) -> List[str]:
     measures = report.measures
     if verdict is None or measures is None:
         return lines
+    lines += _warmup(measures)
     lines.append(f'  VERDICT: {verdict.state.value.upper()} — {verdict.reason}')
     lines.append(f'  Days: {verdict.compared_days} compared, {verdict.excluded_days} excluded '
                  f'(longest run {verdict.longest_excluded_run})'
@@ -209,6 +214,8 @@ def _segment(report: SegmentReport) -> List[str]:
             lines.append(f'    {measure.measure.value} {item.trading_day.isoformat()} '
                          f'{_when(item.at) or ""} {"(explained) " if item.explained else ""}'
                          f'{item.detail}')
+            if item.traced_by is not None:
+                lines.append(f'      traced: {item.traced_by.value} — {item.trace_detail}')
     cross = verdict.cross_section
     lines.append('  Cross-section: ' + (
         f'agreement {cross.agreement * 100:.1f} % (weighted deviation '
@@ -235,6 +242,41 @@ def _segment(report: SegmentReport) -> List[str]:
         lines.append(f'  unread: {unread}')
     for note in verdict.notes:
         lines.append(f'  Note: {note}')
+    return lines
+
+
+def _warmup(measures: SegmentMeasures) -> List[str]:
+    """
+    The warmup lines: the backtest's injected warmup held to the session's record, and each
+    session's record held to the archive's bars.
+
+    Args:
+        measures: The segment's measures
+
+    Returns:
+        The lines
+    """
+    check = measures.warmup_injection
+    if check is None:
+        lines = ['  Warmup injected: NOT CHECKED — the check was not made']
+    else:
+        lines = [f'  Warmup injected: {check.state.value.upper()} — {check.detail}']
+        lines += [f'    {difference}'
+                  for difference in check.differences[:_NAMED_WARMUP_DIFFERENCES]]
+        if len(check.differences) > _NAMED_WARMUP_DIFFERENCES:
+            lines.append(f'    … and {len(check.differences) - _NAMED_WARMUP_DIFFERENCES} more '
+                         'in the report\'s JSON')
+    for line in measures.warmup_against_archive:
+        head = f'  Warmup against the archive: {line.run_id} {line.timeframe}'.rstrip()
+        if line.not_compared_because:
+            lines.append(f'{head} not compared — {line.not_compared_because}')
+            continue
+        volume = (f'{line.recorded_to_archived_volume:.4f}'
+                  if line.recorded_to_archived_volume is not None else '—')
+        lines.append(f'{head} · {line.compared} compared · {line.differing} differ in price · '
+                     f'{line.missing_in_archive} not in the archive · volume recorded ÷ archived '
+                     f'{volume}')
+        lines += [f'    {example}' for example in line.examples]
     return lines
 
 

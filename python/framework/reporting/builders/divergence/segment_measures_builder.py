@@ -63,7 +63,8 @@ def measure_segment(segment: LiveSegment, capture: LiveDeploymentCapture,
                     live_frames: Mapping[str, RecordedFrames], backtest: BacktestRunCapture,
                     records: BacktestScenarioRecords, taker_rate_pct: Optional[float],
                     decision_timeframe: Optional[str], gaps: Optional[GapList] = None,
-                    render_stamps: Sequence[RenderStamp] = ()) -> SegmentMeasures:
+                    render_stamps: Sequence[RenderStamp] = (),
+                    maker_rate_pct: Optional[float] = None) -> SegmentMeasures:
     """
     One segment's compared days, measured against a backtest of its window.
 
@@ -80,6 +81,7 @@ def measure_segment(segment: LiveSegment, capture: LiveDeploymentCapture,
         gaps: The window's gaps; their stretches are left out of every measure. None where none
             were gathered
         render_stamps: The bar files the backtest read, and when each was rendered
+        maker_rate_pct: The frozen broker configuration's maker rate, in percent
 
     Returns:
         The segment's days after the resumption rule, and measures 1, 2 and 3 and the day
@@ -126,7 +128,8 @@ def measure_segment(segment: LiveSegment, capture: LiveDeploymentCapture,
             {run_id: live_frames.get(run_id, RecordedFrames([])).frames
              for run_id in segment.run_ids},
             backtest.run_id, day_backtest, backtest_frames, taker_rate_pct,
-            day.completeness.unbooked_executions if day.completeness is not None else None)
+            day.completeness.unbooked_executions if day.completeness is not None else None,
+            maker_rate_pct)
         orders.append(measured)
         attribution.append(attribute_day(
             day.trading_day, day.opening, day.closing,

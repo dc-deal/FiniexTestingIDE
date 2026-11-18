@@ -41,6 +41,7 @@ from tests.shared.fixture_helpers import (
     extract_tick_loop_results,
     remove_run_dir,
 )
+from tests.shared.entry_census_helpers import assert_run_dir_declared
 
 FIXTURE = Path('configs/scenario_sets/backtesting/backtesting_validation_test.json')
 # A spot account: its positions are not re-marked on every tick, so a frame that re-marked one
@@ -101,8 +102,8 @@ def runs(tmp_path_factory) -> Dict[str, Any]:
     patcher.setattr(WarmupHistory, 'from_package', staticmethod(capture))
     run_dirs: List[Path] = []
     try:
-        baseline, run_dir = _run(_variant(tmp_path, 'baseline', {}, {}))
-        run_dirs.append(run_dir)
+        baseline, baseline_dir = _run(_variant(tmp_path, 'baseline', {}, {}))
+        run_dirs.append(baseline_dir)
         assert captured, 'the archive path selected no warmup history'
         archive_record = captured[0]
 
@@ -112,9 +113,9 @@ def runs(tmp_path_factory) -> Dict[str, Any]:
 
         patcher.setattr('python.scenario.scenario_config_loader.read_warmup_record',
                         lambda run_id, reader=None: archive_record)
-        recorded_warmup, run_dir = _run(_variant(
+        recorded_warmup, warmup_dir = _run(_variant(
             tmp_path, 'warmup_record', {'warmup_from_run': 'archive_selection_run'}, {}))
-        run_dirs.append(run_dir)
+        run_dirs.append(warmup_dir)
 
         seed = BrokerConfigFactory.build_broker_config(
             MarketConfigManager().get_broker_config_path('mt5'))
@@ -128,7 +129,7 @@ def runs(tmp_path_factory) -> Dict[str, Any]:
         patcher.undo()
     yield {'baseline': baseline, 'frames': frames, 'warmup_record': recorded_warmup,
            'broker_document': document, 'archive_record': archive_record,
-           'frame_lines': frame_lines}
+           'frame_lines': frame_lines, 'baseline_dir': baseline_dir, 'warmup_dir': warmup_dir}
     for run_dir in run_dirs:
         remove_run_dir(run_dir)
 
@@ -221,6 +222,19 @@ class TestTheRecordedWarmupIsTheArchiveWarmup:
         def snapshots(summary):
             return extract_probe_metadata(extract_tick_loop_results(extract_process_result(summary, 0)))
         assert snapshots(runs['warmup_record']) == snapshots(runs['baseline'])
+
+    def test_the_backtest_records_the_bars_it_injected_under_its_scenario(self, runs):
+        recorded = sorted((runs['warmup_dir'] / 'io').glob('warmup_history_*.json'))
+        assert len(recorded) == 1, recorded
+        record = WarmupHistoryRecord.from_dict(json.loads(recorded[0].read_text(encoding='utf-8')))
+        fed = runs['archive_record']
+        assert record.selected_for == fed.selected_for
+        assert ({tf: [list(bar) for bar in t.bars] for tf, t in record.timeframes.items()}
+                == {tf: [list(bar) for bar in t.bars] for tf, t in fed.timeframes.items()})
+        assert_run_dir_declared(runs['warmup_dir'])
+
+    def test_a_backtest_warmed_from_the_archive_records_none(self, runs):
+        assert not list((runs['baseline_dir'] / 'io').glob('warmup_history*.json'))
 
 
 class TestTheBrokerDocumentIsTheBrokerFile:
