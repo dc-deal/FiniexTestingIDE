@@ -57,6 +57,21 @@ search runs afterwards, each with the search term appended as its last argument 
 maintainer keeps outside the repository. Empty in a fresh clone; set it in your own
 `user_configs/app_config.json`.
 
+The search itself can be such a command. Given `--root`, it searches that one folder instead of the
+documentation tree: one level deep, so a sub-folder can be a collection of its own, and with no extra
+search after it. Its block is announced by the folder's name:
+
+```json
+"docs_search": {
+  "extra_commands": [
+    ["python", "python/cli/docs_search_cli.py", "search", "--root", "/path/to/my_notes"],
+    ["python", "python/cli/docs_search_cli.py", "search", "--root", "/path/to/my_notes/archive"]
+  ]
+}
+```
+
+The repository names none of these folders; only your own configuration does.
+
 ---
 
 

@@ -27,6 +27,12 @@ The following marks and their variations are the exclusive property of Frank Kr�
 - **Finiex IDE™**
 - **Finiex Development Platform™**
 
+### 🧩 The Finiex App Family
+- **FiniexViewer™** / **Finiex Viewer™**
+- **FiniexDataCollector™** / **Finiex Data Collector™**
+- **FiniexRAGEngine™** / **Finiex RAG Engine™**
+- **FiniexCorpusEngine™** / **Finiex Corpus Engine™**
+
 ### 🤖 Trading Automation Products  
 - **Finiex AutoTrader™** / **Finiex™ AutoTrader**
 - **FiniexAutoTrader™**

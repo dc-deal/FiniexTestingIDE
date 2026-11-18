@@ -5,12 +5,14 @@ The API's search reads only the served set, because it answers readers who canno
 repository. A maintainer at the terminal reads everything: every document under `docs/`, ranked
 by the same search, followed by the output of each further search command configured for this
 installation (`app_config.json::docs_search.extra_commands`). Collections that cannot live in the
-repository are searched there, so the repository never has to name them.
+repository are searched there, so the repository never has to name them. Such a command can be this
+search itself, pointed at one folder (`--root`): it then searches that folder alone, one level deep,
+and runs no extra search of its own.
 """
 import os
 import subprocess
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from python.framework.docs_search.docs_search_index import DocsSearchIndex
 
@@ -48,7 +50,7 @@ class DocsSearchConsole:
         print(f'\n{self._HEAVY}')
         print(f'  SEARCH  {query!r}')
         print(self._HEAVY)
-        self._print_documentation_hits(query, hits)
+        self._print_hits(query, hits, recursive=True, heading='DOCS')
         for command in self._extra_commands:
             self._run_extra_search(command, query)
         # Printed once here rather than by each command, which would repeat it per corpus.
@@ -57,18 +59,42 @@ class DocsSearchConsole:
               '_books/tools/books_search.py --open <key> <page>')
         return 0
 
-    def _print_documentation_hits(self, query: str, hits: int) -> None:
+    def run_folder(self, query: str, hits: int) -> int:
         """
-        Rank every document of the tree and print the best passages, each with a line to open.
+        Search one folder alone, one level deep, and print what it found.
+
+        This is the form an extra search takes, so it prints no rule and no label of its own (the
+        search that runs it has printed both) and runs no extra search itself.
 
         Args:
             query: The search term
             hits: How many passages to show at most
+
+        Returns:
+            Process exit code, 0 also when nothing matched
         """
-        index = DocsSearchIndex(self._docs_root, recursive=True)
+        self._print_hits(query, hits, recursive=False, heading=None)
+        return 0
+
+    def _print_hits(self, query: str, hits: int, recursive: bool, heading: Optional[str]) -> None:
+        """
+        Rank every document below the root and print the best passages, each with a line to open.
+
+        Args:
+            query: The search term
+            hits: How many passages to show at most
+            recursive: Whether documents in sub-folders are read too
+            heading: The label printed under a rule above the hits; None for a folder searched alone,
+                whose count line names the folder instead
+        """
+        index = DocsSearchIndex(self._docs_root, recursive=recursive)
         found, unknown = index.search(query, hits)
-        print(f'\n{self._LIGHT}')
-        print(f'  DOCS \u2014 {index.get_passage_count()} passages, best {len(found)}\n')
+        if heading is not None:
+            print(f'\n{self._LIGHT}')
+            print(f'  {heading} \u2014 {index.get_passage_count()} passages, best {len(found)}\n')
+        else:
+            folder = Path(os.path.relpath(self._docs_root)).as_posix()
+            print(f'  {index.get_passage_count()} passages in {folder}, best {len(found)}\n')
         for score, passage in found:
             # Relative to where the search was started — in the workspace that is the path an
             # editor's terminal turns into a link.
@@ -94,10 +120,28 @@ class DocsSearchConsole:
         """
         # Flushed, because the command writes to the terminal on its own: anything this process
         # still holds in its buffer would otherwise appear AFTER the command's output.
-        corpus = command[command.index('--corpus') + 1] if '--corpus' in command else ' '.join(command)
+        corpus = self._label_of(command)
         print(f'\n{self._LIGHT}')
         print(f'  {corpus.upper()}\n', flush=True)
         try:
             subprocess.run([*command, query], check=False)
         except OSError as error:
             print(f'  not run: {error}')
+
+    @staticmethod
+    def _label_of(command: List[str]) -> str:
+        """
+        The name an extra search is announced under: its `--corpus`, else the folder of its `--root`,
+        else the command itself.
+
+        Args:
+            command: The command as its argument list
+
+        Returns:
+            The label, before upper-casing
+        """
+        for flag in ('--corpus', '--root'):
+            if flag in command and command.index(flag) + 1 < len(command):
+                value = command[command.index(flag) + 1]
+                return Path(value).name if flag == '--root' else value
+        return ' '.join(command)
