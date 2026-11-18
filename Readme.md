@@ -72,6 +72,7 @@ wherever the apps name one another.
 | FiniexDataCollector | `datacollector` | [FiniexDataCollector](https://github.com/dc-deal/FiniexDataCollector) | Collects Kraken ticks around the clock: the IDE's crypto tick data |
 | Package service | `packages` | part of FiniexDataCollector | Packs the collectors' finished tick files into weekly packages, which the IDE's import fetches |
 | FiniexRAGEngine | `ragengine` | [FiniexRAGEngine](https://github.com/dc-deal/FiniexRAGEngine) | Turns news into typed trading signals (LLM sentiment): the IDE's signal input |
+| FiniexCorpusEngine | `corpusengine` | [FiniexCorpusEngine](https://github.com/dc-deal/FiniexCorpusEngine) | The librarian: searches a trading library's checked pages over MCP and answers with a verbatim quote and its page |
 | MT5 tick collector | `mt5-collector` | this repository, [`mql5/`](mql5/) | MetaTrader 5 experts that collect forex ticks, and one that reports the terminal's health — see [Tick Collector](docs/data_pipeline/tick_collector_guide.md) |
 
 ---
