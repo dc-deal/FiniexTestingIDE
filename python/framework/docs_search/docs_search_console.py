@@ -55,8 +55,7 @@ class DocsSearchConsole:
             self._run_extra_search(command, query)
         # Printed once here rather than by each command, which would repeat it per corpus.
         print(f'\n{self._LIGHT}')
-        print('  open <path>:<line> in the editor \u00b7 a book page in full: '
-              '_books/tools/books_search.py --open <key> <page>')
+        print('  open <path>:<line> in the editor')
         return 0
 
     def run_folder(self, query: str, hits: int) -> int:

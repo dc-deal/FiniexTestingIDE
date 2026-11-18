@@ -230,8 +230,8 @@ CLAUDE.md
 # Read-only snapshot of the GitHub issues, refreshed by the script below.
 _github_issues/
 export_github_issues.sh
-# Reference corpus with its conversion and search tools.
-_books/
+# The delta audits: what a technique means in this codebase.
+_audits/
 # Internal documents kept for the record.
 _internal_archive/
 # Foreign trading strategies kept for study — not project code.
