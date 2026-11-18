@@ -22,7 +22,7 @@ from typing import List, Optional
 
 import pytest
 
-import python.framework.autotrader.autotrader_tick_loop as tick_loop_module
+import python.framework.autotrader.autotrader_event_loop as event_loop_module
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
 from python.framework.types.trading_env_types.trading_env_stats_types import (
@@ -239,7 +239,7 @@ def test_a_fill_between_the_last_tick_and_the_boundary_is_the_ending_day_s_loss(
     before_midnight = [tick for tick in ticks_across_midnight() if tick.timestamp < MIDNIGHT]
     loop = autotrader_loop(before_midnight, spot_mode, idle_heartbeats=len(instants),
                            hold_ticks=len(before_midnight) - 100)
-    monkeypatch.setattr(tick_loop_module, 'datetime', _WallClock)
+    monkeypatch.setattr(event_loop_module, 'datetime', _WallClock)
     loop.run()
     ended, _ = loop.get_booking_periods()
     ending_day, new_day = loop.get_safety_session().days

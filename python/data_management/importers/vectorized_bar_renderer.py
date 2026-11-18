@@ -26,7 +26,7 @@ class VectorizedBarRenderer:
     """
     Fast vectorized bar rendering for batch processing.
 
-    Uses pandas.resample() instead of tick-by-tick loops.
+    Uses pandas.resample() instead of tick-by-event loops.
     Perfect for pre-rendering bars from tick data.
 
     Gaps (periods without ticks) are simply skipped — no synthetic

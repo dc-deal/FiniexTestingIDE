@@ -6,7 +6,7 @@ it logs and counts divergences but does not mutate state and does not halt.
 Correction (AUTO_CORRECT) and HALT_TRADING land in #349 (V1.4).
 
 Live-only by design (Design Decision #9 — sim's PortfolioManager IS the truth).
-Poll-based: the tick loop calls is_due() on a hybrid cadence (every N ticks OR
+Poll-based: the event loop calls is_due() on a hybrid cadence (every N ticks OR
 every M wall-clock seconds) and then reconcile(). The outcome-listener path is
 Phase 4 (#349), not here.
 
@@ -150,7 +150,7 @@ class Reconciler:
         would fire twice, on two clocks.
 
         Args:
-            tick_counter: Current tick-loop counter
+            tick_counter: Current event-loop counter
 
         Returns:
             True if interval_ticks elapsed since the last reconcile
@@ -175,11 +175,11 @@ class Reconciler:
         The broker pull is the one step that reaches outside the process, and a venue
         answering 502 for a moment must not end a thirty-day session (#473). On a TRANSIENT
         failure the cycle is SKIPPED and reported: this method is already cadenced, so
-        `is_due` is the ladder and no wait belongs in the tick loop. A TERMINAL failure
+        `is_due` is the ladder and no wait belongs in the event loop. A TERMINAL failure
         still propagates — a refused credential is not something to keep quiet about.
 
         Args:
-            current_tick: Current tick-loop counter (updates the cadence tracker)
+            current_tick: Current event-loop counter (updates the cadence tracker)
 
         Returns:
             ReconciliationResult for this cycle, or a skipped one when broker truth was
@@ -232,7 +232,7 @@ class Reconciler:
         a cadence for a hat. The next attempt comes at the normal interval.
 
         Args:
-            current_tick: Current tick-loop counter
+            current_tick: Current event-loop counter
             error: The transport failure that ended the pull
 
         Returns:

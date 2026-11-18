@@ -8,7 +8,7 @@ contract must be identical.
 
 This file directly invokes modify/cancel on both pipelines and asserts the
 return shape, in_flight_operation transitions, and post-resolve state are
-identical. Lightweight by design — does NOT run a full tick loop; instead
+identical. Lightweight by design — does NOT run a full event loop; instead
 spins up minimal sim and live executors and drives them deterministically.
 
 The full-bar-parity tests in test_bar_parity_kraken_spot_*.py cover bar

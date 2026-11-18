@@ -78,7 +78,7 @@ at every release that the venue still answers in their shape.
 Either test alone fails near a
 boundary — our clock may be past a period's end while the venue still adds trades to it.
 
-The re-read is a single attempt inside the tick loop, never a retry with a wait. If it fails, or
+The re-read is a single attempt inside the event loop, never a retry with a wait. If it fails, or
 the venue has not committed the period yet, the session **refuses** with
 `WarmupHistoryRefusedError`: no decision has run yet, so stopping there is stopping before trading,
 and a restart seconds later closes the seam.

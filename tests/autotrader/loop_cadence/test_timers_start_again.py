@@ -7,7 +7,7 @@ a run starts the timer again from now, so the two never fire back to back; a gat
 open leaves the timer where it is.
 
 The loop is exercised through `__new__`: the methods under test read a handful of collaborators,
-and building a real tick loop would drag in a queue, workers and a decision logic without testing
+and building a real event loop would drag in a queue, workers and a decision logic without testing
 any of them.
 """
 
@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import List, Tuple
 from unittest.mock import MagicMock
 
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
 from python.framework.types.live_types.reconciliation_types import ReconciliationResult
 from python.framework.types.loop_types.timer_kind_types import TimerKind
 
@@ -64,9 +64,9 @@ class _StateStore:
         return 30.0
 
 
-def _loop(reconciler=None, state_store=None) -> Tuple[AutotraderTickLoop, _ArmingIntake]:
+def _loop(reconciler=None, state_store=None) -> Tuple[AutotraderEventLoop, _ArmingIntake]:
     intake = _ArmingIntake()
-    loop = AutotraderTickLoop.__new__(AutotraderTickLoop)
+    loop = AutotraderEventLoop.__new__(AutotraderEventLoop)
     loop._tick_source = MagicMock()
     loop._tick_source.get_idle_pass_time.return_value = _NOW
     loop._replay = False

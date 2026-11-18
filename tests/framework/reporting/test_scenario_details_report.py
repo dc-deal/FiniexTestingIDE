@@ -3,8 +3,8 @@ Scenario-Details Report Builder Tests (#391/#393).
 
 Maps each scenario's ProcessResult (+ index-synced SingleScenario) to a row: status
 (success / failed / hybrid), execution metadata, and the decision-logic signal counts.
-Tested with real ProcessResult / ProcessTickLoopResult / SingleScenario fixtures — failed
-scenarios (no tick_loop_results) must still appear.
+Tested with real ProcessResult / ProcessEventLoopResult / SingleScenario fixtures — failed
+scenarios (no event_loop_results) must still appear.
 """
 
 import io
@@ -24,7 +24,7 @@ from python.framework.types.performance_types.performance_stats_types import (
 )
 from python.framework.types.process_data_types import (
     ProcessResult,
-    ProcessTickLoopResult,
+    ProcessEventLoopResult,
     TickRangeStats,
 )
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
@@ -45,9 +45,9 @@ def _ws() -> WorkerPerformanceStats:
         worker_min_time_ms=0.0, worker_max_time_ms=0.0)
 
 
-def _tick_loop(buy=296, sell=263, flat=14441, trades=2, ticks=15000,
-               tracked=True) -> ProcessTickLoopResult:
-    return ProcessTickLoopResult(
+def _event_loop(buy=296, sell=263, flat=14441, trades=2, ticks=15000,
+               tracked=True) -> ProcessEventLoopResult:
+    return ProcessEventLoopResult(
         decision_statistics=DecisionLogicStats(
             buy_signals=buy, sell_signals=sell, flat_signals=flat, trades_requested=trades,
             tracked=tracked),
@@ -57,10 +57,10 @@ def _tick_loop(buy=296, sell=263, flat=14441, trades=2, ticks=15000,
         worker_statistics=[_ws(), _ws()])
 
 
-def _result(name, idx, tick_loop=None, error_type='', error_message='') -> ProcessResult:
+def _result(name, idx, event_loop=None, error_type='', error_message='') -> ProcessResult:
     return ProcessResult(
         success=not error_type, scenario_name=name, scenario_index=idx,
-        tick_loop_results=tick_loop, error_type=error_type, error_message=error_message)
+        event_loop_results=event_loop, error_type=error_type, error_message=error_message)
 
 
 def _scenario(name, idx, symbol, account_currency='', explicit=False,
@@ -82,7 +82,7 @@ def _batch(results, scenarios) -> BatchExecutionSummary:
 
 class TestBuild:
     def test_success_row(self):
-        batch = _batch([_result('s1', 0, tick_loop=_tick_loop())],
+        batch = _batch([_result('s1', 0, event_loop=_event_loop())],
                        [_scenario('s1', 0, 'EURUSD', workers=_TWO_WORKERS)])
         row = build_scenario_details_report_from_batch(_RUN_ID, batch).units[0]
         assert row.status == 'success'
@@ -92,7 +92,7 @@ class TestBuild:
         assert row.worker_count == 2
         assert row.first_tick_time.endswith('+00:00')
 
-    def test_failed_row_no_tick_loop(self):
+    def test_failed_row_no_event_loop(self):
         batch = _batch(
             [_result('bad', 0, error_type='ValidationError', error_message='start before data')],
             [_scenario('bad', 0, 'BTCUSD')])
@@ -103,7 +103,7 @@ class TestBuild:
 
     def test_uncounted_decisions_are_null_not_zero(self):
         """The simulation's default: no decision tracker, so nothing was counted — not zero."""
-        batch = _batch([_result('s1', 0, tick_loop=_tick_loop(buy=0, sell=0, flat=0, trades=0,
+        batch = _batch([_result('s1', 0, event_loop=_event_loop(buy=0, sell=0, flat=0, trades=0,
                                                               tracked=False))],
                        [_scenario('s1', 0, 'EURUSD', workers=_TWO_WORKERS)])
         row = build_scenario_details_report_from_batch(_RUN_ID, batch).units[0]
@@ -113,9 +113,9 @@ class TestBuild:
 
     def test_the_worker_count_is_what_the_scenario_declares(self):
         """Known from the configuration, timed or not — two declared, none timed, reads two."""
-        tick_loop = _tick_loop(tracked=False)
-        tick_loop.worker_statistics = []
-        batch = _batch([_result('s1', 0, tick_loop=tick_loop)],
+        event_loop = _event_loop(tracked=False)
+        event_loop.worker_statistics = []
+        batch = _batch([_result('s1', 0, event_loop=event_loop)],
                        [_scenario('s1', 0, 'EURUSD', workers=_TWO_WORKERS)])
         assert build_scenario_details_report_from_batch(_RUN_ID, batch).units[0].worker_count == 2
 
@@ -128,7 +128,7 @@ class TestBuild:
 
     def test_hybrid_row(self):
         batch = _batch(
-            [_result('s1', 0, tick_loop=_tick_loop(), error_type='RuntimeError', error_message='boom')],
+            [_result('s1', 0, event_loop=_event_loop(), error_type='RuntimeError', error_message='boom')],
             [_scenario('s1', 0, 'EURUSD')])
         row = build_scenario_details_report_from_batch(_RUN_ID, batch).units[0]
         assert row.status == 'hybrid'
@@ -138,7 +138,7 @@ class TestBuild:
     def test_account_currency_explicit(self):
         # account_currency set in config → row carries it + the explicit marker
         batch = _batch(
-            [_result('s1', 0, tick_loop=_tick_loop())],
+            [_result('s1', 0, event_loop=_event_loop())],
             [_scenario('s1', 0, 'EURUSD', account_currency='USD', explicit=True)])
         row = build_scenario_details_report_from_batch(_RUN_ID, batch).units[0]
         assert row.account_currency == 'USD'
@@ -147,7 +147,7 @@ class TestBuild:
     def test_account_currency_derived(self):
         # derived (not in config) → currency present, explicit marker off
         batch = _batch(
-            [_result('s1', 0, tick_loop=_tick_loop())],
+            [_result('s1', 0, event_loop=_event_loop())],
             [_scenario('s1', 0, 'EURUSD', account_currency='USD', explicit=False)])
         row = build_scenario_details_report_from_batch(_RUN_ID, batch).units[0]
         assert row.account_currency == 'USD'
@@ -162,10 +162,10 @@ class TestTheConsoleNamesThePasses:
     """
 
     def _line(self, algo_passes) -> str:
-        tick_loop = _tick_loop(ticks=15000)
-        tick_loop.coordination_statistics.algo_passes = algo_passes
+        event_loop = _event_loop(ticks=15000)
+        event_loop.coordination_statistics.algo_passes = algo_passes
         report = build_scenario_details_report_from_batch(
-            _RUN_ID, _batch([_result('s1', 0, tick_loop=tick_loop)],
+            _RUN_ID, _batch([_result('s1', 0, event_loop=event_loop)],
                             [_scenario('s1', 0, 'EURUSD', workers=_TWO_WORKERS)]))
         if algo_passes is None:
             report.units[0].algo_passes = None

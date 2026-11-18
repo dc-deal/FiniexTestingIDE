@@ -555,7 +555,7 @@ _DEMO_SESSIONS: Tuple[FixtureSession, ...] = (
                    {_RSI: 35, _SAFETY: True, _DRAWDOWN: 12.0}),
     # Killed at its first order rather than after a fixed time: a timer cannot tell where a
     # session is. Measured 2026-10-10 on the 25 s timer it replaced: the header comes at the start,
-    # the tick loop 17.7 s later and the first order 1.2 s after that — the kill landed seconds
+    # the event loop 17.7 s later and the first order 1.2 s after that — the kill landed seconds
     # after it, and on a loaded machine it would have landed before the header (at 8 s it did).
     FixtureSession('s5 · killed before its close', '2026-02-05T18:00:00+00:00',
                    {_RSI: 35, _SAFETY: True, _DRAWDOWN: 12.0}, killed_before_close=True),

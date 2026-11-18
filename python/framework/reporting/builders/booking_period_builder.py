@@ -20,7 +20,7 @@ overnight. That is correct bookkeeping and it is NOT the whole story about Monda
 a period carries its equity band beside its realised figures. The two differ by exactly the
 unrealised movement across the boundary: flow is derived, stock is read (§48).
 
-**Why this runs inside the tick loop and not off it.** §391 puts calculations in the builder,
+**Why this runs inside the event loop and not off it.** §391 puts calculations in the builder,
 away from the run, and the WRITE does move out — the coordinator writes every period at once,
 so no parquet write lands in what the benchmark measures. The arithmetic stays, deliberately:
 `trade_history_max` bounds the record deque, so a long run drops its oldest records, and a

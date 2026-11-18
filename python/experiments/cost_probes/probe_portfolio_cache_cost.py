@@ -6,7 +6,7 @@ from the balances, and a position is marked only when the price passes one of it
 `verification.portfolio_cache` off, every open position is marked on every tick. The difference is
 what the cache saves, and what dropping it would cost.
 
-It drives one portfolio the way the backtest's tick loop does — a new price, then the equity sample
+It drives one portfolio the way the backtest's event loop does — a new price, then the equity sample
 — over synthetic ticks with 1, 5 and 20 open positions, the cache on and off, at spot and at margin,
 and reports microseconds per tick. The figure moves with the machine and the code, so it is run
 again after either changes. At margin the per-tick sample marks every position anyway, so the cache
@@ -138,7 +138,7 @@ def _portfolio(market: Dict, spot_mode: bool, positions: int, portfolio_cache: b
 def _microseconds_per_tick(market: Dict, spot_mode: bool, positions: int, portfolio_cache: bool,
                            ticks: List[TickData], repeats: int) -> float:
     """
-    The median time per tick of the tick loop's portfolio path: a new price, then the equity sample.
+    The median time per tick of the event loop's portfolio path: a new price, then the equity sample.
 
     Args:
         market: The market's settings

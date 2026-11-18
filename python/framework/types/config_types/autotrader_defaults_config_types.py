@@ -49,7 +49,7 @@ class UnresolvedResolutionDefaults(StrictConfigModel):
 
 
 class AutotraderExecutionDefaults(StrictConfigModel):
-    """AutoTrader tick-loop execution defaults."""
+    """AutoTrader event-loop execution defaults."""
     parallel_workers: bool = False
     bar_max_history: int = 1000
     # Heartbeat cadence (#360, #461): the heartbeat falls due this long after the

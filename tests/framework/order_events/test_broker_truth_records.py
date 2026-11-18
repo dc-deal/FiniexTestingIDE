@@ -195,7 +195,7 @@ class TestARunWithNoVenueAccount:
 
 
 class TestAReconcileRecord:
-    """Inside the tick loop: what the cycle read, plus the balances on a crossing only."""
+    """Inside the event loop: what the cycle read, plus the balances on a crossing only."""
 
     @staticmethod
     def _cycle(state_changed: bool) -> ReconciliationResult:
@@ -230,10 +230,10 @@ class TestAReconcileRecord:
         assert crossing.snapshot.venue_balances == {'USD': 812.4}
 
     def test_a_failed_balance_read_does_not_wait(self, monkeypatch):
-        """The tick loop's cadence is its ladder: one attempt, then the record goes out."""
+        """The event loop's cadence is its ladder: one attempt, then the record goes out."""
         _, executor, _ = live_session()
         executor.broker.adapter.set_transport_fault('balances', 'venue busy')   # transient
-        monkeypatch.setattr(time, 'sleep', lambda seconds: pytest.fail('the tick loop waited'))
+        monkeypatch.setattr(time, 'sleep', lambda seconds: pytest.fail('the event loop waited'))
 
         record = executor.record_reconcile_truth(self._cycle(state_changed=True))
 

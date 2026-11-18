@@ -43,7 +43,7 @@ wakes the main thread with a marker on the tick queue; only the main thread read
 If the tick source were `async` in the same thread, every downstream caller would need to become `async` too:
 
 ```python
-async def run_tick_loop():
+async def run_event_loop():
     tick = await websocket.recv()             # async!
     result = await worker.process_tick(tick)   # Worker must become async!
     decision = await logic.execute(result)     # Logic must become async!
@@ -132,7 +132,7 @@ components into the shared framework.
 2. `setup_pipeline()` creates all objects (mirrors backtesting) and returns them as one
    `AutotraderPipelineBundle`
 3. `setup_tick_source()` starts tick source thread
-4. Enter tick loop
+4. Enter event loop
 
 Before step 2 the session has already written its run header, which names the profile it was
 given (`config_id`), what it runs with (`rendered_config_id`) and its code; step 2 freezes the
@@ -146,7 +146,7 @@ and the pipeline loading it. `--allow-dirty` lets a deliberate test through the 
 the run header and reported as a Tier-1 warning, and never through the second — see
 [Run Origin and Code Identity](../architecture/run_origin_and_code_identity.md#real-orders-from-uncommitted-code).
 
-### Tick Loop
+### Event Loop
 
 The loop is the session's drive: it takes the next instant from the session's timeline and hands
 it to the loop core (`dispatch_live_instant`), which runs it in the phase order a backtest runs its
@@ -205,7 +205,7 @@ Two modes:
 | Mode | Trigger | Behavior |
 |------|---------|----------|
 | **Normal** | Tick source exhausted, SIGTERM | Finish orders per policy, collect full stats |
-| **Emergency** | SIGINT (Ctrl+C), a startup or tick-loop exception, or an EMERGENCY session-end escalation (#348) | Same cleanup, best-effort stats |
+| **Emergency** | SIGINT (Ctrl+C), a startup or event-loop exception, or an EMERGENCY session-end escalation (#348) | Same cleanup, best-effort stats |
 
 Signal handling: first Ctrl+C requests shutdown; a second within 3s forces exit.
 
@@ -249,7 +249,7 @@ and `get_outcome()` grades the session from there:
 |---|---|---|
 | `SUCCESS` | `0` | normal shutdown, or an operator Ctrl+C — no errors logged |
 | `CRASHED` | `1` | an uncaught exception reached the CLI |
-| `FAILED` | `2` | `emergency` that the operator did not initiate — startup abort, tick-loop crash, safety escalation, a refusal at the first tick |
+| `FAILED` | `2` | `emergency` that the operator did not initiate — startup abort, event-loop crash, safety escalation, a refusal at the first tick |
 | `FINISHED_WITH_ERRORS` | `3` | the session ended without an emergency, but errors were logged |
 
 A **refusal at the first tick** (#588) is an `emergency` that is neither a crash nor a startup
@@ -289,7 +289,7 @@ store is decoupled — it knows only a JSON dict plus the bot identity; orchestr
 (restore / snapshot / freshness gate) lives in `AutotraderMain`.
 
 Lifecycle: restore runs after warmup and before the first decision; saves fire on a hybrid
-cadence (every N ticks OR M seconds) from the tick loop — both the per-tick and the idle
+cadence (every N ticks OR M seconds) from the event loop — both the per-tick and the idle
 heartbeat branch — plus a final save on shutdown. An empty snapshot writes no file; a
 mid-session save failure is logged (error pot) but never aborts the session.
 

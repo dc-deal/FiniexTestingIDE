@@ -122,7 +122,7 @@ python python/cli/autotrader_cli.py run \
 
 The two pipelines have different process architectures:
 
-- **AutoTrader:** Single process — tick loop + Rich dashboard share the same process
+- **AutoTrader:** Single process — event loop + Rich dashboard share the same process
   (separate threads). `display.enabled: false` eliminates rendering overhead (~100ms
   refresh cycles).
 - **Simulation:** Multi-process — each scenario runs as a subprocess. Subprocesses export

@@ -453,7 +453,7 @@ class PostRunValidator:
         """Warn when worker/decision coordination overhead exceeds 50% of computation (was an inline report verdict)."""
         high = []
         for result in self._batch.process_result_list:
-            tlr = result.tick_loop_results
+            tlr = result.event_loop_results
             if not tlr or not tlr.profiling_data:
                 continue
             op_total = tlr.profiling_data.profile_times.get('worker_decision', 0.0)
@@ -473,7 +473,7 @@ class PostRunValidator:
         freq = {}
         scenarios = 0
         for result in self._batch.process_result_list:
-            tlr = result.tick_loop_results
+            tlr = result.event_loop_results
             if not tlr or not tlr.profiling_data:
                 continue
             scenarios += 1
@@ -500,12 +500,12 @@ class PostRunValidator:
     def _check_parallel_penalty(self) -> None:
         """Warn when parallel worker execution COST time instead of saving it."""
         penalised = [
-            (result.scenario_name, result.tick_loop_results.coordination_statistics)
+            (result.scenario_name, result.event_loop_results.coordination_statistics)
             for result in self._batch.process_result_list
-            if result.tick_loop_results
-            and result.tick_loop_results.coordination_statistics
-            and result.tick_loop_results.coordination_statistics.parallel_workers
-            and result.tick_loop_results.coordination_statistics.parallel_time_saved_ms < 0
+            if result.event_loop_results
+            and result.event_loop_results.coordination_statistics
+            and result.event_loop_results.coordination_statistics.parallel_workers
+            and result.event_loop_results.coordination_statistics.parallel_time_saved_ms < 0
         ]
         if not penalised:
             return
@@ -518,9 +518,9 @@ class PostRunValidator:
     def _check_usable_funds(self) -> None:
         """Warn when a scenario's funds fall below zero once its own unfilled orders count."""
         finding = check_usable_funds(
-            [(result.scenario_name, usable_funds(result.tick_loop_results.portfolio_stats))
+            [(result.scenario_name, usable_funds(result.event_loop_results.portfolio_stats))
              for result in self._batch.process_result_list
-             if result.tick_loop_results and result.tick_loop_results.portfolio_stats],
+             if result.event_loop_results and result.event_loop_results.portfolio_stats],
             _SCENARIO_UNIT_LABEL)
         if finding is not None:
             self._add_finding(finding)
@@ -528,9 +528,9 @@ class PostRunValidator:
     def _check_multi_currency(self) -> None:
         """Advisory when a batch mixes account currencies (cross-currency P&L is not summed)."""
         currencies = sorted({
-            result.tick_loop_results.portfolio_stats.currency
+            result.event_loop_results.portfolio_stats.currency
             for result in self._batch.process_result_list
-            if result.tick_loop_results and result.tick_loop_results.portfolio_stats})
+            if result.event_loop_results and result.event_loop_results.portfolio_stats})
         if len(currencies) > 1:
             self._add('multi_currency', ValidationDomain.PORTFOLIO, (
                 f"Multi-currency batch ({len(currencies)} currencies: {', '.join(currencies)}) — "
@@ -541,7 +541,7 @@ class PostRunValidator:
         """Advisory when a currency group's scenarios span a large time range (aggregation unrealistic)."""
         groups = {}
         for result in self._batch.process_result_list:
-            tlr = result.tick_loop_results
+            tlr = result.event_loop_results
             if not tlr or not tlr.portfolio_stats:
                 continue
             trs = tlr.tick_range_stats
@@ -561,10 +561,10 @@ class PostRunValidator:
         """Advisory when a scenario's order-event stream lacks submissions it counted (#362)."""
         finding = check_order_event_stream([
             (result.scenario_name,
-             submission_count(result.tick_loop_results.order_events or []),
-             result.tick_loop_results.execution_stats.orders_submitted)
+             submission_count(result.event_loop_results.order_events or []),
+             result.event_loop_results.execution_stats.orders_submitted)
             for result in self._batch.process_result_list
-            if result.tick_loop_results and result.tick_loop_results.execution_stats
+            if result.event_loop_results and result.event_loop_results.execution_stats
         ], 'Scenarios')
         if finding is not None:
             self._add_finding(finding)
@@ -639,10 +639,10 @@ class PostRunValidator:
 
     def _profiling(self, result: ProcessResult) -> Optional[ProfilingData]:
         """Build typed ProfilingData for a scenario, or None when no profiling data exists."""
-        if (not result.tick_loop_results or
-                not result.tick_loop_results.profiling_data):
+        if (not result.event_loop_results or
+                not result.event_loop_results.profiling_data):
             return None
-        pd = result.tick_loop_results.profiling_data
+        pd = result.event_loop_results.profiling_data
         return ProfilingData.from_dicts(
             pd.profile_times, pd.profile_counts,
             inter_tick_intervals_ms=pd.inter_tick_intervals_ms,

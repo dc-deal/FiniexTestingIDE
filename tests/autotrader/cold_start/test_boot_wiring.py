@@ -27,7 +27,7 @@ from typing import List, Optional, Set
 import pytest
 
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
 from python.framework.autotrader.cold_start.cold_start_setup import (
     ColdStartSetup,
     read_carry_over,
@@ -162,7 +162,7 @@ def _main(executor, store, persist: bool, keys_in_use=None,
     # None, because the write happens at BOOT too — before the loop exists. The carry-over
     # reads the booking-period high-water mark from it (#537), and the store treats the value
     # as a floor, so a zero here leaves a deployment's period count alone.
-    main._tick_loop = None
+    main._event_loop = None
     main._cold_start = ColdStartSetup(
         proceed=True,
         store=store,
@@ -304,7 +304,7 @@ class TestTheReportedDrawdownReachesTheStore:
     The curve is written on the same points as everything else here (#497).
 
     It has no cadence of its own on purpose: one write plus its index rebuild costs tens of
-    milliseconds on this tree (§42) and has no business in a tick loop. So the boot write,
+    milliseconds on this tree (§42) and has no business in an event loop. So the boot write,
     the shutdown write and every structural change of the open book carry it — and if the
     wiring drops it, a thirty-day run reports the drawdown of its last segment while every
     unit test stays green.
@@ -348,7 +348,7 @@ class TestTheReportedDrawdownReachesTheStore:
         different periods, which is the confusion #497 exists to end. It does so at the READ,
         once for both. The writes always carry the curve, as they carry the denominator and as
         the final figures always did — a write that obeyed the switch on its own made what was
-        stored depend on whether the tick loop had run.
+        stored depend on whether the event loop had run.
         """
         store = SpyStore()
         executor.portfolio.sample_equity()
@@ -390,7 +390,7 @@ class TestTheClosingWriteCarriesTheBookAsReported:
             The session object the two shutdown writes run on
         """
         main = _main(executor, store, persist=True, persist_venue_claims=persist_venue_claims)
-        main._tick_loop = SimpleNamespace(get_highest_period_no=lambda: 1)
+        main._event_loop = SimpleNamespace(get_highest_period_no=lambda: 1)
         return main
 
     def test_the_extrema_the_session_reported_reach_the_closing_write(self):
@@ -580,19 +580,19 @@ class TestBothReadsHonourADeclaredContinuation:
             CarryOverLoadOutcome.ACCEPTED, 'cert_soft')
 
 
-class TestTheTickLoopSeam:
+class TestTheEventLoopSeam:
     """
     The seam that decides whether a pass writes the carry-over (#355 / #356).
 
     Exercised through `__new__` for the same reason the rest of this file is: the method needs
-    four attributes, and building a real tick loop would drag in a broker, a tick source and a
+    four attributes, and building a real event loop would drag in a broker, a tick source and a
     decision logic without testing any of them.
     """
 
     @staticmethod
     def _loop(executor, writes, drift_ticks=500, risk_baseline=None):
-        """A tick loop carrying only what the carry-over seam reads."""
-        loop = AutotraderTickLoop.__new__(AutotraderTickLoop)
+        """An event loop carrying only what the carry-over seam reads."""
+        loop = AutotraderEventLoop.__new__(AutotraderEventLoop)
         loop._executor = executor
         loop._persist_carry_over = lambda: writes.append(True) or True
         loop._book_watcher = PositionBookWatcher(executor.portfolio.get_open_positions())
@@ -651,7 +651,7 @@ class TestTheTickLoopSeam:
 
     def test_the_cadence_needs_no_clock(self, spot_executor):
         # The first passes happen before the canonical clock is injected — a cadence that
-        # asked for the time would raise ClockNotInjectedError inside the tick loop.
+        # asked for the time would raise ClockNotInjectedError inside the event loop.
         writes = []
         loop = self._loop(spot_executor, writes)
         spot_executor.portfolio.restore_position_book([_note()])
@@ -694,8 +694,8 @@ class TestTheBaselineReachesTheDiskBeforeAHardKill:
 
     @staticmethod
     def _loop(executor, writes, tracker, drift_ticks=500, seeded=None):
-        """A tick loop whose book is quiet, so only the baseline can trigger a write."""
-        loop = AutotraderTickLoop.__new__(AutotraderTickLoop)
+        """An event loop whose book is quiet, so only the baseline can trigger a write."""
+        loop = AutotraderEventLoop.__new__(AutotraderEventLoop)
         loop._executor = executor
         loop._persist_carry_over = lambda: writes.append(True) or True
         loop._book_watcher = PositionBookWatcher(executor.portfolio.get_open_positions())
@@ -907,7 +907,7 @@ class TestTheReadingsFollowTheRunKind:
         store = SpyStore()
         executor.portfolio.sample_equity()
         main = _main(executor, store, persist=True, persist_venue_claims=False)
-        main._tick_loop = SimpleNamespace(get_highest_period_no=lambda: 3)
+        main._event_loop = SimpleNamespace(get_highest_period_no=lambda: 3)
         main._carried = _readings(10_000.0, OrdersTo.VENUE)
         main._load_carry_over_records(OrdersTo.SIMULATED)
 
@@ -921,7 +921,7 @@ class TestTheReadingsFollowTheRunKind:
         store = SpyStore()
         main = _main(executor, store, persist=True,
                      risk_baseline=_fixed_baseline(10_000.0))
-        main._tick_loop = SimpleNamespace(get_highest_period_no=lambda: 1)
+        main._event_loop = SimpleNamespace(get_highest_period_no=lambda: 1)
         main._carried = _readings(10_400.0, OrdersTo.SIMULATED)
         main._load_carry_over_records(OrdersTo.VENUE)
 

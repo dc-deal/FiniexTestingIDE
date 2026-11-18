@@ -7,7 +7,7 @@ broker-side transport (build → request → parse), and pushes Response
 objects into _http_inbox. drain_inbox() on the main thread consumes the
 responses and applies portfolio mutations + listener notifications.
 
-This isolates broker I/O from the main tick loop. The main thread never
+This isolates broker I/O from the main event loop. The main thread never
 performs HTTP / RPC / terminal-bridge calls — those live exclusively in
 the worker. Cross-thread state transfer happens only via the two queues.
 

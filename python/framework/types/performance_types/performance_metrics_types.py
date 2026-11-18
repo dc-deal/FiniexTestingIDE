@@ -5,7 +5,7 @@ How a scenario's time splits between workers, decision logic and coordination is
 profiling report (`WorkerDecisionBreakdownRow`).
 
 Architecture:
-- Filled by batch_orchestrator during tick loop profiling
+- Filled by batch_orchestrator during event loop profiling
 - Stored in ScenarioPerformanceStats
 - Read by ProfilingSummary for visualization
 """

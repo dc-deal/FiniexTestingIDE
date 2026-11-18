@@ -187,7 +187,7 @@ SERVED_UNFOLDED: Dict[type, Dict[str, str]] = {
     SafetyReport: {
         'run_id': 'the identity of the run',
         'symbol': 'the instrument the session traded',
-        **{name: "a copy of the session's record: what the tick loop measured against its limits"
+        **{name: "a copy of the session's record: what the event loop measured against its limits"
            for name in ('enabled', 'baseline', 'baseline_value', 'final_value',
                         'worst_drawdown_abs', 'worst_drawdown_abs_at', 'worst_drawdown_pct',
                         'worst_drawdown_pct_at', 'block_count', 'blocked_at_end',

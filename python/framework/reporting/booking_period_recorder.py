@@ -4,7 +4,7 @@ Booking-period recorder (#537) — the state a booking period needs while it is 
 The ledger is written from records, but it cannot be written from records ALONE: a period's
 equity band is a running observation, its boundary is an event, and its number continues across
 a restart. That state has to live somewhere during the run, and it has to live in ONE place —
-the two tick loops are shaped differently (the AutoTrader's is a class, the simulation's a
+the two event loops are shaped differently (the AutoTrader's is a class, the simulation's a
 function), so a recorder each would be two implementations of one rule, diverging on the day
 somebody fixes only the one they are looking at (§19).
 
@@ -225,7 +225,7 @@ class BookingPeriodRecorder:
         **The cached boundary is the whole point of this method's shape.** Asking
         `trading_day_of` per tick means a timezone conversion per tick: measured 1.52 µs at UTC
         and 1.87 µs at America/New_York, which over a 1.5-million-tick benchmark run is 2.3-2.8 s
-        against a 23.4 s baseline — about a tenth of the tick loop, spent re-deriving a date that
+        against a 23.4 s baseline — about a tenth of the event loop, spent re-deriving a date that
         changes once a day. The instant at which the current day ENDS is computed once per period
         instead, and the hot path is one datetime comparison.
 

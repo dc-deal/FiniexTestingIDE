@@ -53,7 +53,7 @@ def _render_with_bar_renderer(
     Render bars using BarRenderer.update_current_bars() — the production path.
 
     Feeds ticks one-by-one and collects completed bars from history,
-    exactly as process_tick_loop.py does it.
+    exactly as process_event_loop.py does it.
 
     Args:
         ticks: List of TickData objects

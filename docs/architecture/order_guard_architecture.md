@@ -261,7 +261,7 @@ The project has two runtime protection mechanisms that operate independently at 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    AutoTrader Tick Loop                      │
+│                    AutoTrader Event Loop                      │
 │                                                             │
 │  1. check_safety()           ← ACCOUNT-LEVEL (per-tick)     │
 │     "Is the account healthy?"                               │

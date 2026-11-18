@@ -14,7 +14,7 @@ from python.framework.process.indicator_series_recorder import (
 from python.framework.process.process_live_queue_helper import send_status_update_process
 from python.framework.process.process_pipeline_bundle import ProcessPipelineBundle
 from python.framework.process.process_startup_preparation import process_startup_preparation
-from python.framework.process.process_tick_loop import execute_tick_loop
+from python.framework.process.process_event_loop import execute_event_loop
 from python.framework.process.state_frame_recorder import StateFrameRecorder
 from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
@@ -41,7 +41,7 @@ def process_main(
     Main process entry point.
 
     TOP-LEVEL FUNCTION: Can be called by ProcessPoolExecutor.
-    Creates all objects, runs tick loop, returns results.
+    Creates all objects, runs event loop, returns results.
 
     Args:
         config: Serializable scenario configuration
@@ -107,14 +107,14 @@ def process_main(
         # === STATUS: RUNNING ===
         send_status_update_process(live_queue, config, ScenarioStatus.RUNNING)
 
-        # === TICK LOOP EXECUTION ===
-        tick_loop_results = execute_tick_loop(
+        # === EVENT LOOP EXECUTION ===
+        event_loop_results = execute_event_loop(
             config, worker_coordinator, trade_simulator,
             bar_rendering_controller, decision_logic,
             scenario_logger, ticks, live_queue,
             decision_event_dispatcher, state_frames, indicator_series)
         scenario_logger.debug(
-            '🔄 Execute tick loop finished')
+            '🔄 Execute event loop finished')
 
         # === DIAGNOSTICS CSV (#376) ===
         # Flush algo-declared diagnostics sinks next to events_<scenario>.csv.
@@ -135,23 +135,23 @@ def process_main(
         errors_in_buffer = scenario_logger.get_records(LogLevel.ERROR)
         scenario_logger.close()
 
-        # === Tick loop Error Check ===
-        tick_loop_error = tick_loop_results.tick_loop_error
-        if (tick_loop_error is not None):
-            # tick loop failed, pare error, sucess is false.
+        # === Event loop Error Check ===
+        event_loop_error = event_loop_results.event_loop_error
+        if (event_loop_error is not None):
+            # event loop failed, pare error, sucess is false.
             success = False
-            error_type = type(tick_loop_error).__name__
-            error_message = str(tick_loop_error)
+            error_type = type(event_loop_error).__name__
+            error_message = str(event_loop_error)
             error_traceback = ''.join(traceback.format_exception(
-                type(tick_loop_error),
-                tick_loop_error,
-                tick_loop_error.__traceback__
+                type(event_loop_error),
+                event_loop_error,
+                event_loop_error.__traceback__
             ))
             send_status_update_process(live_queue, config,
                                        ScenarioStatus.FINISHED_WITH_ERROR)
 
         # === Errors in Buffer check ===
-        if len(errors_in_buffer) > 0 and tick_loop_error is None:
+        if len(errors_in_buffer) > 0 and event_loop_error is None:
             # Logged errors WITHOUT exception
             success = False
             error_type = LOGGED_ERRORS_TYPE
@@ -169,7 +169,7 @@ def process_main(
             scenario_name=config.name,
             scenario_index=config.scenario_index,
             execution_time_ms=(time.perf_counter() - start_monotonic) * 1000.0,
-            tick_loop_results=tick_loop_results,
+            event_loop_results=event_loop_results,
             scenario_logger_buffer=log_buffer,
             error_type=error_type,
             error_message=error_message,

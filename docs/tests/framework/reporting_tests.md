@@ -225,7 +225,7 @@ after a seal the rest of the next day adds none.
 
 That half is not premature optimisation. Measured 2026-09-22, `trading_day_of` costs 1.52 µs at
 UTC and 1.87 µs at America/New_York, so asking it per tick spends 2.3-2.8 s of a 1.5-million-tick
-benchmark run against a 23.4 s baseline — about a tenth of the tick loop, to re-derive a date that
+benchmark run against a 23.4 s baseline — about a tenth of the event loop, to re-derive a date that
 changes once a day. The cached boundary brings the same check to 0.071 µs. **The behaviour is
 identical either way**, which is exactly why the behaviour tests cannot catch the regression:
 mutation-checked, the two cost tests go red against the uncached recorder (24 conversions instead

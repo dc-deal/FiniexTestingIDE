@@ -550,7 +550,7 @@ for each run (3x):
          ├→ batch_warmup_time (IO-bound: Phases 0-5)
          ├→ batch_tickrun_time (CPU-bound: Phase 6)
          └→ process_result_list[]
-              └→ tick_loop_results.coordination_statistics.ticks_processed
+              └→ event_loop_results.coordination_statistics.ticks_processed
   BatchReportCoordinator.generate_and_log()
     └→ summary_generation_time (measured externally)
 

@@ -66,7 +66,7 @@ def _record(level, message: str) -> LogRecord:
 
 def _result(name, idx, success=True, error_type='', error_message='', buffer=None) -> ProcessResult:
     return ProcessResult(
-        success=success, scenario_name=name, scenario_index=idx, tick_loop_results=None,
+        success=success, scenario_name=name, scenario_index=idx, event_loop_results=None,
         error_type=error_type, error_message=error_message, scenario_logger_buffer=buffer)
 
 
@@ -281,7 +281,7 @@ class TestBuildFromSession:
         assert interrupted.outcome.emergency_reason == ''
 
         crashed = build_warnings_errors_report_from_session(_RUN_ID, 
-            AutoTraderResult(shutdown_mode='emergency', emergency_reason='tick loop died'),
+            AutoTraderResult(shutdown_mode='emergency', emergency_reason='event loop died'),
             'p', 'BTCUSD')
         assert crashed.outcome.operator_interrupted is False
         assert crashed.outcome.run_outcome == RunOutcome.FAILED
@@ -296,7 +296,7 @@ class TestBuildFromSession:
         assert refused.outcome.run_outcome == RunOutcome.FAILED
 
         crashed = build_warnings_errors_report_from_session(_RUN_ID,
-            AutoTraderResult(shutdown_mode='emergency', emergency_reason='tick loop died'),
+            AutoTraderResult(shutdown_mode='emergency', emergency_reason='event loop died'),
             'p', 'ETHUSD')
         assert crashed.outcome.refused_at_first_tick is False
 

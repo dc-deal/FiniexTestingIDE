@@ -1,6 +1,6 @@
 # Bar Parity Tests
 
-Cross-pipeline parity tests verify that the simulation pipeline (`execute_tick_loop`) and the AutoTrader pipeline (`AutotraderTickLoop.run()`) produce identical output when fed the same deterministic tick stream.
+Cross-pipeline parity tests verify that the simulation pipeline (`execute_event_loop`) and the AutoTrader pipeline (`AutotraderEventLoop.run()`) produce identical output when fed the same deterministic tick stream.
 
 ## What Is Tested
 
@@ -43,7 +43,7 @@ VS Code launch entry: `🧩 Pytest: Parity (All)`.
 ## Regression Validation (#293 Guard)
 
 To confirm the test is load-bearing, temporarily move `bar_rendering_controller.process_tick(tick)`
-below the `if tick.is_clipped: continue` guard in `python/framework/process/process_tick_loop.py`.
+below the `if tick.is_clipped: continue` guard in `python/framework/process/process_event_loop.py`.
 With 100 ticks flagged as clipped, the simulation pipeline skips them for bar rendering while the
 AutoTrader pipeline renders all ticks. Bars diverge — the test must fail. Revert the change to
 restore passing state.

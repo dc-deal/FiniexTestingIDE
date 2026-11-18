@@ -1,6 +1,6 @@
 """
 FiniexTestingIDE - AutoTrader Mock Session Integration Test
-End-to-end test: Config → Pipeline → Tick Loop → Shutdown → Result.
+End-to-end test: Config → Pipeline → Event Loop → Shutdown → Result.
 
 Uses mock_session_test.json profile with parquet replay data.
 Deterministic: same data + same config = same results.
@@ -417,7 +417,7 @@ class TestSessionExitCode:
     def test_framework_emergency_exits_two(self):
         """An emergency the operator did not initiate is a failed run."""
         result = AutoTraderResult(shutdown_mode='emergency',
-                                  emergency_reason='tick loop crashed')
+                                  emergency_reason='event loop crashed')
         assert result.get_outcome() == RunOutcome.FAILED
         assert result.get_exit_code() == 2
 

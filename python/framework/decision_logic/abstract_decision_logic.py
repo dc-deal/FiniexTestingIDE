@@ -658,7 +658,7 @@ class AbstractDecisionLogic(ABC):
         """
         React to an order fill. No-op unless overridden.
 
-        Called at the tick-loop boundary after the fill resolved (sim latency
+        Called at the event-loop boundary after the fill resolved (sim latency
         path or live poll/push). Subscribe via get_subscribed_events().
 
         Args:

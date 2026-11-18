@@ -1073,8 +1073,8 @@ class TestTheLastFrameAfterTheCleanup:
         session._session_logger = RecordingLogger()
         session._global_logger = RecordingLogger()
         marks: List[str] = []
-        session._tick_loop = MagicMock()
-        session._tick_loop.push_last_display_frame.side_effect = lambda ticks: marks.append(
+        session._event_loop = MagicMock()
+        session._event_loop.push_last_display_frame.side_effect = lambda ticks: marks.append(
             f'frame:{ticks}')
         monkeypatch.setattr(session, '_stop_display', lambda: marks.append('display_stop'))
         monkeypatch.setattr(session, '_collect_results',

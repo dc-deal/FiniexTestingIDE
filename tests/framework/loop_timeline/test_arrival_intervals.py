@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import List
 
 from python.framework.types.market_types.market_data_types import TickData
-from python.framework.types.process_data_types import ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessEventLoopResult
 from python.framework.types.scenario_types.scenario_set_performance_types import ProfilingData
 from tests.shared.booking_day_harness import SYMBOL, simulation_result
 
@@ -35,7 +35,7 @@ def _tick(arrival_offset: int) -> TickData:
                     collected_msc=_START_MSC + arrival_offset)
 
 
-def _run(arrivals: List[int]) -> ProcessTickLoopResult:
+def _run(arrivals: List[int]) -> ProcessEventLoopResult:
     """
     A profiled backtest over ticks that arrived at the offsets given.
 

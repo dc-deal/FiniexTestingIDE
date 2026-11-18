@@ -144,7 +144,7 @@ the condition is judged from what the run knew at its close, so an expected file
 `failed`, and the run's log carries the writer's own error. A run that stopped early closes too — a
 session its startup checks or its cold start refused, a backtest none of whose scenarios ran — and
 a file it never got to reads as `skipped` with the step it stopped before (`the session stopped
-before its tick loop`), never as `failed`.
+before its event loop`), never as `failed`.
 
 `python python/cli/store_cli.py run-footprint <run_id>` prints it and exits 1 when something needs a
 look:
@@ -240,12 +240,12 @@ behind its `write_strategy_files` parameter.
 | [`scenario_indicator_series`](drawing_channel_architecture.md#the-indicator-series-stream) | `io/indicator_series_{scenario}/{worker}.jsonl` | stream · v1 | as it runs — the scenario records indicator series and a worker declares one | — | — | — |
 | [`tick_stream_events`](../autotrader/autotrader_architecture.md#what-a-session-records) | `io/tick_stream_events.jsonl` | stream · v1 | — | at start — the session reads its ticks from a venue | — | — |
 | [`diagnostics_rows`](diagnostics_csv_sink.md#lifecycle-framework-owned) | `diagnostics/{sink}.jsonl` | stream · v1 | — | as it runs — the logic declared a diagnostics sink | — | — |
-| [`trades`](../autotrader/autotrader_architecture.md#what-a-session-records) | `io/trades.jsonl` | stream · v1 | — | at start — the session reached its tick loop | — | — |
+| [`trades`](../autotrader/autotrader_architecture.md#what-a-session-records) | `io/trades.jsonl` | stream · v1 | — | at start — the session reached its event loop | — | — |
 | [`order_events_day`](run_stream_day_records.md#what-a-day-record-holds) | `days/{day}/io/order_events.parquet` | day record | — | as it runs — the session got through its startup checks, and a trading day ended while the session ran | — | — |
 | [`state_frames_day`](run_stream_day_records.md#what-a-day-record-holds) | `days/{day}/io/state_frames.parquet` | day record | — | as it runs — the profile records state frames, and a trading day ended while the session ran | — | — |
 | [`indicator_series_day`](run_stream_day_records.md#what-a-day-record-holds) | `days/{day}/io/indicator_series_{worker}.parquet` | day record | — | as it runs — the profile records indicator series and a worker declares one, and a trading day ended while the session ran | — | — |
 | [`tick_stream_events_day`](run_stream_day_records.md#what-a-day-record-holds) | `days/{day}/io/tick_stream_events.parquet` | day record | — | as it runs — the session reads its ticks from a venue, and a trading day ended while the session ran | — | — |
-| [`trades_day`](run_stream_day_records.md#what-a-day-record-holds) | `days/{day}/io/trades.parquet` | day record | — | as it runs — the session reached its tick loop, and a trading day ended while the session ran | — | — |
+| [`trades_day`](run_stream_day_records.md#what-a-day-record-holds) | `days/{day}/io/trades.parquet` | day record | — | as it runs — the session reached its event loop, and a trading day ended while the session ran | — | — |
 | [`diagnostics_rows_day`](run_stream_day_records.md#what-a-day-record-holds) | `days/{day}/diagnostics/{sink}.parquet` | day record | — | as it runs — the logic declared a diagnostics sink, and a trading day ended while the session ran | — | — |
 | [`warmup_history`](warmup_history.md#what-a-session-records) | `io/warmup_history.json` | snapshot | — | at start — a worker requires bars | — | — |
 | [`scenario_warmup_history`](warmup_history.md#what-a-session-records) | `io/warmup_history_{scenario}.json` | snapshot | at start — the scenario starts from a session's recorded warmup history | — | — | — |

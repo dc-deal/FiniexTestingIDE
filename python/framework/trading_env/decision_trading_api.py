@@ -864,7 +864,7 @@ class DecisionTradingApi:
         """
         Signal the runner to end the trading session (#348).
 
-        The tick loop ends the session at the next loop boundary: NORMAL runs the
+        The event loop ends the session at the next loop boundary: NORMAL runs the
         graceful shutdown (close remaining orders, final stats, clean exit),
         EMERGENCY exits immediately. Works in both pipelines — in backtesting it
         ends the scenario early; in live it shuts the AutoTrader down. A

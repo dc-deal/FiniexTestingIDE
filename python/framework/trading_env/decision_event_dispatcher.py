@@ -6,7 +6,7 @@ Bridges the executor's event sources to the decision logic's typed event hooks.
 Order fills, rejections and unaccounted orders ride the executor's existing
 order-outcome listener fan-out (#319). Cancellations, partial closes, and session-end arrive via the
 executor's dedicated decision-event sink. The dispatcher buffers every event and
-the tick loop drains it at the loop boundary, so events are processed in order —
+the event loop drains it at the loop boundary, so events are processed in order —
 after the tick's compute/execute and before the next tick.
 
 Drain ordering & re-entrancy: submit() only buffers; hooks fire exclusively in
@@ -69,7 +69,7 @@ _ORDER_ENDINGS = (
 class DecisionEventDispatcher:
     """
     Buffers decision events and delivers them to the decision logic's hooks
-    at the tick-loop boundary.
+    at the event-loop boundary.
 
     Constructed at startup only when the active decision logic subscribes to at
     least one event (zero overhead otherwise). Registers on the executor's

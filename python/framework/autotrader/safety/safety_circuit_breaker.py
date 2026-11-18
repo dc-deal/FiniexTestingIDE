@@ -3,7 +3,7 @@ FiniexTestingIDE - Safety Circuit Breaker (#356, #314)
 
 The safety layer of an AutoTrader session: the soft breaker that blocks new entries, the hard stop
 that closes everything and ends the session, the daily loss limit with its own day baseline, and
-the record of what the breaker saw for the end-of-session report. The tick loop hands it one
+the record of what the breaker saw for the end-of-session report. The event loop hands it one
 account value per tick and asks whether entries are blocked; everything the breaker decides on
 lives here, so the layer #358 certifies with real money is one unit.
 """
@@ -320,7 +320,7 @@ class SafetyCircuitBreaker:
         """
         Evaluate circuit breaker conditions and update safety state.
 
-        Soft stop: sets _safety_blocked flag, and while it holds the tick loop forces each
+        Soft stop: sets _safety_blocked flag, and while it holds the event loop forces each
         decision's action to FLAT — no new entry, and no close the strategy expresses as an
         action. The breaker closes nothing itself.
 

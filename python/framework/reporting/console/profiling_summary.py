@@ -44,7 +44,7 @@ class ProfilingSummary(AbstractBatchSummarySection):
 
     def _layer_b_has_data(self) -> bool:
         """
-        Returns True if at least one unit produced tick-loop profiling data.
+        Returns True if at least one unit produced event-loop profiling data.
         When Layer B (tick_loop_profiling) is off, no operations are present and
         this summary's sections are suppressed (#137).
         """

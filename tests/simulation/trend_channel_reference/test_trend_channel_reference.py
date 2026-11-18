@@ -29,7 +29,7 @@ from python.framework.types.trading_env_types.order_types import OrderDirection
 from tests.shared.fixture_helpers import (
     extract_open_positions,
     extract_process_result,
-    extract_tick_loop_results,
+    extract_event_loop_results,
     extract_trade_history,
 )
 
@@ -156,16 +156,16 @@ class TestItEndsFlatWhenAsked:
 
     The fixture's data ends at 14:00 while two positions are open. The backtest settles the closes
     the logic sends from the event at the last quote, as a session's stop settles them, so the run
-    ends flat — through the real tick loop, not a mirror of its order.
+    ends flat — through the real event loop, not a mirror of its order.
     """
 
     def test_the_backtest_ends_flat(self, session_end_close_batch):
-        tick_loop = extract_tick_loop_results(
+        event_loop = extract_event_loop_results(
             extract_process_result(session_end_close_batch, scenario_index=0))
-        assert extract_open_positions(tick_loop) == []
+        assert extract_open_positions(event_loop) == []
 
     def test_the_positions_open_at_the_data_end_close_there(self, session_end_close_batch):
-        trades = extract_trade_history(extract_tick_loop_results(
+        trades = extract_trade_history(extract_event_loop_results(
             extract_process_result(session_end_close_batch, scenario_index=0)))
         last_exit = max(trade.exit_time for trade in trades)
         at_the_end = [trade for trade in trades if trade.exit_time == last_exit]

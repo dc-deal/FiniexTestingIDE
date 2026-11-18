@@ -219,9 +219,9 @@ class TestARunThatStopsEarlyClosesClean:
         members = _closed_and_clean(census_session_refused_at_its_cold_start)
         assert members[RunEntryMemberId.ORDER_EVENTS][0] is MemberFootprintState.PRESENT
         assert members[RunEntryMemberId.STATE_FRAMES] == (
-            MemberFootprintState.SKIPPED, 'the session stopped before its tick loop')
+            MemberFootprintState.SKIPPED, 'the session stopped before its event loop')
         assert members[RunEntryMemberId.SESSION_DAY_LOG] == (
-            MemberFootprintState.SKIPPED, 'the session made no pass of its tick loop')
+            MemberFootprintState.SKIPPED, 'the session made no pass of its event loop')
 
     def test_a_session_aborted_before_its_order_record_skips_it(
             self, census_session_aborted_before_its_order_record):

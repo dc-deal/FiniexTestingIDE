@@ -125,12 +125,12 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
 
     Returns:
         One RunUnit per scenario (symbol resolved via the index-synced SingleScenario);
-        scenarios without a tick-loop result are skipped
+        scenarios without an event-loop result are skipped
     """
     units: List[RunUnit] = []
     for result in batch.process_result_list:
-        tick_loop = getattr(result, 'tick_loop_results', None)
-        if tick_loop is None:
+        event_loop = getattr(result, 'event_loop_results', None)
+        if event_loop is None:
             continue
         scenario = batch.get_scenario_by_process_result(result)
         units.append(RunUnit(
@@ -141,27 +141,27 @@ def run_units_from_batch(batch: BatchExecutionSummary) -> List[RunUnit]:
             has_error=bool(result.error_type or result.error_message),
             input_without_quote=any(DataDeficiency.NO_QUOTE in deficiencies
                                     for deficiencies in scenario.data_deficiencies),
-            trade_history=tick_loop.trade_history or [],
-            open_positions=tick_loop.open_positions or [],
-            order_history=tick_loop.order_history or [],
-            order_events=tick_loop.order_events or [],
-            protective_fill_levels=tick_loop.protective_fill_levels or {},
-            portfolio_stats=tick_loop.portfolio_stats,
-            execution_stats=tick_loop.execution_stats,
-            active_orders=tick_loop.active_orders,
-            worker_statistics=tick_loop.worker_statistics or [],
-            decision_statistics=tick_loop.decision_statistics,
-            coordination_statistics=tick_loop.coordination_statistics,
-            signal_statistics=tick_loop.signal_statistics or [],
+            trade_history=event_loop.trade_history or [],
+            open_positions=event_loop.open_positions or [],
+            order_history=event_loop.order_history or [],
+            order_events=event_loop.order_events or [],
+            protective_fill_levels=event_loop.protective_fill_levels or {},
+            portfolio_stats=event_loop.portfolio_stats,
+            execution_stats=event_loop.execution_stats,
+            active_orders=event_loop.active_orders,
+            worker_statistics=event_loop.worker_statistics or [],
+            decision_statistics=event_loop.decision_statistics,
+            coordination_statistics=event_loop.coordination_statistics,
+            signal_statistics=event_loop.signal_statistics or [],
             disturbance_episodes=_stamp_unit(
-                tick_loop.disturbance_episodes or [], result.scenario_name, scenario.symbol),
-            market_data_tick_stats=tick_loop.market_data_tick_stats,
+                event_loop.disturbance_episodes or [], result.scenario_name, scenario.symbol),
+            market_data_tick_stats=event_loop.market_data_tick_stats,
             planned_outages=_planned_outages(scenario.stress_test_config),
-            first_tick_time=(tick_loop.tick_range_stats.first_tick_time
-                             if tick_loop.tick_range_stats else None),
-            last_tick_time=(tick_loop.tick_range_stats.last_tick_time
-                            if tick_loop.tick_range_stats else None),
-            booking_periods=tick_loop.booking_periods or [],
+            first_tick_time=(event_loop.tick_range_stats.first_tick_time
+                             if event_loop.tick_range_stats else None),
+            last_tick_time=(event_loop.tick_range_stats.last_tick_time
+                            if event_loop.tick_range_stats else None),
+            booking_periods=event_loop.booking_periods or [],
         ))
     return units
 
@@ -185,8 +185,8 @@ def unit_roster_from_batch(batch: BatchExecutionSummary, disabled_count: int) ->
     """
     absent = []
     for result in batch.process_result_list:
-        tick_loop = getattr(result, 'tick_loop_results', None)
-        if tick_loop is not None and tick_loop.portfolio_stats is not None:
+        event_loop = getattr(result, 'event_loop_results', None)
+        if event_loop is not None and event_loop.portfolio_stats is not None:
             continue
         absent.append(AbsentUnitRow(
             name=result.scenario_name,

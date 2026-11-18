@@ -274,7 +274,7 @@ class BatchReportCoordinator:
         # subfolder of the scenario set's log dir — keeps the run dir tidy
         # when many scenarios produce many CSVs.
         for process_result in self._batch_execution_summary.process_result_list:
-            tlr = process_result.tick_loop_results
+            tlr = process_result.event_loop_results
             if tlr is None:
                 continue
             EventStreamWriter.from_sim_result(
@@ -329,15 +329,15 @@ class BatchReportCoordinator:
             # scenario excluded before it ran has none, and wrote no log of its own
             scenario_ran=any(result.scenario_logger_buffer is not None
                              for result in process_results),
-            orders_placed=any(result.tick_loop_results is not None
-                              and (result.tick_loop_results.trade_history
-                                   or result.tick_loop_results.order_history)
+            orders_placed=any(result.event_loop_results is not None
+                              and (result.event_loop_results.trade_history
+                                   or result.event_loop_results.order_history)
                               for result in process_results),
             block_splitting_written=bool(block_splitting_report.symbols),
             robustness_written=robustness_report.enabled,
             order_events_written=any(unit.order_events for unit in units),
             state_frames_asked=any(
-                result.tick_loop_results is not None
+                result.event_loop_results is not None
                 and (scenario.execution_config or {}).get('state_frames', {}).get('enabled', False)
                 for result, scenario in zip(
                     process_results, self._batch_execution_summary.single_scenario_list)),
@@ -346,8 +346,8 @@ class BatchReportCoordinator:
                 for result, scenario in zip(
                     process_results, self._batch_execution_summary.single_scenario_list)),
             indicator_series_opened=any(
-                result.tick_loop_results is not None
-                and result.tick_loop_results.indicator_series_opened
+                result.event_loop_results is not None
+                and result.event_loop_results.indicator_series_opened
                 for result in process_results))
         try:
             write_footprint(run_dir, run_id, RUN_TYPE_SIMULATION, expectations)

@@ -215,7 +215,7 @@ Tests for the `collected_msc` field (V1.3.0), `time_msc` offset consistency, tic
 
 **TestCollectedMscBackwardCompat:**
 - JSON without `collected_msc` imports WITHOUT the column (no zero is written); the reader adds the
-  tick loop's zero when it loads the file
+  event loop's zero when it loads the file
 
 **TestCollectedMscValues:**
 - V1.3.0 data preserves `collected_msc` values through import

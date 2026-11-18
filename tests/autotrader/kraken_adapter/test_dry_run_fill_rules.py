@@ -144,7 +144,7 @@ class TestARestingOrderWaitsForItsPrice:
         response = _poll(sim, submit.broker_ref, _market(bid=3999.0, ask=4001.0), times=20)
 
         assert response.status == BrokerOrderStatus.PENDING, (
-            'twenty polls is ~100 s of tick loop — a limit 100 below the ask must still wait')
+            'twenty polls is ~100 s of event loop — a limit 100 below the ask must still wait')
 
     def test_a_buy_limit_fills_once_the_ask_comes_down_to_it(self):
         sim = DryRunOrderSimulator()

@@ -45,7 +45,7 @@ All tests use **synthetic tick generators** (no external data dependencies):
 
 The test feeds the same synthetic ticks through both renderers:
 
-- **BarRenderer**: Ticks are processed one-by-one via `update_current_bars()` — the production path used in `process_tick_loop.py`. Completed bars are collected from `get_bar_history()`, plus the current (last) bar.
+- **BarRenderer**: Ticks are processed one-by-one via `update_current_bars()` — the production path used in `process_event_loop.py`. Completed bars are collected from `get_bar_history()`, plus the current (last) bar.
 - **VectorizedBarRenderer**: Ticks are converted to a DataFrame and processed via `render_all_timeframes()` using `pandas.resample()`.
 
 For each bar, the test verifies exact match of:

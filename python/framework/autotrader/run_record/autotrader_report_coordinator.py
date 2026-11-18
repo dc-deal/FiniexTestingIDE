@@ -411,8 +411,8 @@ class AutotraderReportCoordinator:
         reach = self._result.session_reach
         series_on = self._config.indicator_series.enabled
         series_skipped = ('the profile records no indicator series' if not series_on
-                          else 'the session stopped before its tick loop'
-                          if not reach.tick_loop_entered
+                          else 'the session stopped before its event loop'
+                          if not reach.event_loop_entered
                           else 'no worker of the session draws')
         log_members = (RunEntryMemberId.SESSION_GLOBAL_LOG, RunEntryMemberId.SESSION_SUMMARY_LOG,
                        RunEntryMemberId.SESSION_BOOT_LOG)
@@ -421,7 +421,7 @@ class AutotraderReportCoordinator:
                           'log files are switched off') for member_id in log_members),
             expectation_after(RunEntryMemberId.SESSION_DAY_LOG, logs_on, reach.day_log_opened,
                               'log files are switched on', 'log files are switched off',
-                              'the session made no pass of its tick loop'),
+                              'the session made no pass of its event loop'),
             expectation_after(RunEntryMemberId.ORDER_EVENTS, True, reach.order_record_opened,
                               'the session opened its order record', '',
                               'the session stopped before it opened its order record'),
@@ -443,19 +443,19 @@ class AutotraderReportCoordinator:
                         'the logic recorded a diagnostics row',
                         'the logic recorded no diagnostics row'),
             expectation_after(RunEntryMemberId.DIAGNOSTICS_ROWS, bool(sinks),
-                              reach.tick_loop_entered, 'the logic declared a diagnostics sink',
+                              reach.event_loop_entered, 'the logic declared a diagnostics sink',
                               'the logic declared no diagnostics sink',
-                              'the session stopped before its tick loop'),
+                              'the session stopped before its event loop'),
             expectation_after(RunEntryMemberId.STATE_FRAMES, self._config.state_frames.enabled,
-                              reach.tick_loop_entered, 'the profile records state frames',
+                              reach.event_loop_entered, 'the profile records state frames',
                               'the profile records no state frames',
-                              'the session stopped before its tick loop'),
+                              'the session stopped before its event loop'),
             expectation(RunEntryMemberId.INDICATOR_SERIES, reach.indicator_series_opened,
                         'the profile records indicator series and a worker draws',
                         series_skipped),
-            expectation_after(RunEntryMemberId.TRADES, True, reach.tick_loop_entered,
-                              'the session reached its tick loop', '',
-                              'the session stopped before its tick loop'),
+            expectation_after(RunEntryMemberId.TRADES, True, reach.event_loop_entered,
+                              'the session reached its event loop', '',
+                              'the session stopped before its event loop'),
             expectation(RunEntryMemberId.ALGO_STATE_RESTORED, reach.algo_state_found,
                         'a saved algo state was found at the start',
                         'no saved algo state was found at the start'),

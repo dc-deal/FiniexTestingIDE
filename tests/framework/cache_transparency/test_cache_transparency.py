@@ -2,7 +2,7 @@
 Cache Transparency — nothing a decision can see changes with the portfolio's cache on or off (#653).
 
 The portfolio marks its open positions lazily: only when something asks. That is meant to make the
-tick loop faster without changing anything a strategy sees. The observer probe trades a fixed plan
+event loop faster without changing anything a strategy sees. The observer probe trades a fixed plan
 and records, on every tick pass, every heartbeat pass and in every hook, everything the decision
 trading API hands out — the positions it kept from earlier passes first. The same backtest runs once
 with `verification.portfolio_cache` on (the ordinary behaviour) and once off (every position current
@@ -27,7 +27,7 @@ from python.scenario.scenario_set import ScenarioSet
 from tests.shared.fixture_helpers import (
     extract_probe_metadata,
     extract_process_result,
-    extract_tick_loop_results,
+    extract_event_loop_results,
     remove_run_dir,
 )
 
@@ -86,7 +86,7 @@ def _observations(set_path: str) -> Tuple[List[Dict[str, Any]], Path]:
     scenario_set = ScenarioSet(ScenarioConfigLoader().load_config(set_path), app_config,
                                reporting=RunReporting.NONE)
     summary = BatchOrchestrator(scenario_set, app_config).run()
-    metadata = extract_probe_metadata(extract_tick_loop_results(extract_process_result(summary, 0)))
+    metadata = extract_probe_metadata(extract_event_loop_results(extract_process_result(summary, 0)))
     return metadata.observations, Path(scenario_set.logger.get_log_dir())
 
 

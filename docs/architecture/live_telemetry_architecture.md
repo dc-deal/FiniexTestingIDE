@@ -45,7 +45,7 @@ critical path.
 ```
 subprocess (ProcessPool worker)                         batch process
 ───────────────────────────────                         ─────────────
-process_tick_loop.execute_tick_loop
+process_event_loop.execute_event_loop
    └─ process_live_export.process_live_export  ─────┐
         builds LiveScenarioStats(core=…)            │  multiprocessing.Queue
    └─ process_live_queue_helper / LiveStatsCoordinator   (pickled, maxsize=100)
@@ -65,7 +65,7 @@ the same as the former dict (which already built intermediate dicts).
 ### AutoTrader — in-thread
 
 ```
-main thread (AutotraderTickLoop.run)                    display thread
+main thread (AutotraderEventLoop.run)                    display thread
 ────────────────────────────────────                   ──────────────
 per tick / heartbeat:
    AutotraderDisplayExporter.build(...)        ─────┐
@@ -79,7 +79,7 @@ per tick / heartbeat:
 ```
 
 `AutotraderDisplayExporter` holds the stable collaborators (executor, orchestrator, monitors,
-config); the tick loop passes the volatile per-frame state and stays orchestration-only. An
+config); the event loop passes the volatile per-frame state and stays orchestration-only. An
 in-thread `queue.Queue` passes the dataclass by reference (no pickling — same process).
 
 ### Rendering, and what a failure does
@@ -101,7 +101,7 @@ A failure never ends a session or a batch, and it is never silent:
   the live display. Each frame is printed once into a scratch console first, and one that fails
   is replaced by a failure frame and tried again on the next cycle. The order matters: a live
   display re-renders the frame it holds whenever ANY thread prints, so an unprintable frame, once
-  held, makes that other thread's print raise — the tick loop's own logging included. Printing
+  held, makes that other thread's print raise — the event loop's own logging included. Printing
   happens in the display's own loop rather than in a refresh thread of rich's own. A venue's or a
   strategy's words are escaped before they enter a panel, so a bracket in them is text.
 - **Each failure is reported once**, and only a few per place, by

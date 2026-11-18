@@ -47,7 +47,7 @@ never a table, because a table hides its conditions and invites reordering at ru
 keeps its drive and hands each pass to an entry:
 
 ```
-backtest drive (process_tick_loop)              loop core
+backtest drive (process_event_loop)              loop core
   for instant in SimEventIntake(…): ───────▶  dispatch_backtest_instant(events, simulator, ctx,
       state frame · series · session end                                 hooks, record)
       · live export                               clock → day boundary → scheduled modifies and
@@ -57,7 +57,7 @@ backtest drive (process_tick_loop)              loop core
                                                   → algo, once → execute → drain
                                                   — at a timer: ghost → execute → drain
 
-AutoTrader drive (AutotraderTickLoop.run)
+AutoTrader drive (AutotraderEventLoop.run)
   for instant in LiveEventIntake(…): ──────▶  dispatch_live_instant(events, executor, ctx,
       reconcile and persistence gates                                hooks, record)
       · timers armed again · clipping             clock → day boundary → for each tick: broker
@@ -81,7 +81,7 @@ What a pass works with is bundled once per run:
   computing the workers and the decision, the ghost pass's decision.
 - **The hooks** — the runner's own steps inside a pass, at fixed points
   (`AbstractBacktestPassHooks`, which `SimPassHooks` implements; `AbstractLivePassHooks`, which
-  the AutoTrader's tick loop implements itself, because the steps are its own state). A hook
+  the AutoTrader's event loop implements itself, because the steps are its own state). A hook
   exists only where the runner has work, so a pass makes no call that does nothing.
 - **`LoopPassRecord`** — what a pass leaves for its drive: the ticks applied, the forming bars, the
   bars the tick closed, the decision and what it sent.

@@ -2,7 +2,7 @@
 Operator Alerts in a Session — the wiring, end to end, on a short mock replay (#235).
 
 The channel and the monitor are stand-ins that keep what they were sent; everything between
-them and the tick loop is the real thing: the session builds its channels at startup, says when
+them and the event loop is the real thing: the session builds its channels at startup, says when
 the loop starts, pings while it passes, and ends with one closing message and its last word to
 the monitor. An abort is ONE message, sent at once — not a second one at the end. A boot step
 that refuses to start is one message too, quoting why, and a loop that never ran is vouched for
@@ -16,7 +16,7 @@ import pytest
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader import autotrader_main as autotrader_main_module
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
 from python.framework.autotrader.cold_start.cold_start_setup import ColdStartSetup
 from python.framework.autotrader.operator_alerts.liveness_pinger import LivenessPinger
 from python.framework.autotrader.operator_alerts.loop_progress import LoopProgress
@@ -126,14 +126,14 @@ def test_an_abort_is_one_message_and_a_fail_ping(recorded, monkeypatch):
 
 def test_a_crash_in_the_loop_reports_how_far_the_session_got(recorded, monkeypatch):
     """
-    A crash in the tick loop took the loop's counts along, and the session reported zero ticks
+    A crash in the event loop took the loop's counts along, and the session reported zero ticks
     however long it had run (#636). The crash is provoked from outside, in a call the loop makes on
     every slice; the slice it happens in counts, because the count moves before the slice is
     applied. A replay's slice holds the ticks of one arrival millisecond (#461), so the count is
     read where the crash happens rather than derived from the passes.
     """
     channel, _, _ = recorded
-    drain = AutotraderTickLoop._drain_signal_inbox
+    drain = AutotraderEventLoop._drain_signal_inbox
     seen = {'slices': 0, 'ticks': 0}
 
     def fall_after_some_slices(self, off_tick):
@@ -141,10 +141,10 @@ def test_a_crash_in_the_loop_reports_how_far_the_session_got(recorded, monkeypat
             seen['slices'] += 1
             if seen['slices'] > CRASH_AFTER:
                 seen['ticks'] = self._ticks_processed
-                raise RuntimeError('provoked in the tick loop')
+                raise RuntimeError('provoked in the event loop')
         return drain(self, off_tick)
 
-    monkeypatch.setattr(AutotraderTickLoop, '_drain_signal_inbox', fall_after_some_slices)
+    monkeypatch.setattr(AutotraderEventLoop, '_drain_signal_inbox', fall_after_some_slices)
     trader = AutotraderMain(load_autotrader_config(FRAMES_PROFILE))
     try:
         result = trader.run()

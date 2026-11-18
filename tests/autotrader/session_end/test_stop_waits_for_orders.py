@@ -27,7 +27,7 @@ import pytest
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.shutdown_status_holder import ShutdownStatusHolder
 from python.framework.autotrader.stop_budget import StopBudget
@@ -268,9 +268,9 @@ class _Stage:
             time.sleep(0.005)
         return self.executor.get_open_positions()[0].position_id
 
-    def loop(self, logic: Optional[_HearingLogic] = None, **options: Any) -> AutotraderTickLoop:
+    def loop(self, logic: Optional[_HearingLogic] = None, **options: Any) -> AutotraderEventLoop:
         """
-        The tick loop of this session, with no tick to come.
+        The event loop of this session, with no tick to come.
 
         Args:
             logic: What hears the decision events; nothing hears them when None
@@ -289,7 +289,7 @@ class _Stage:
             profile_name='stop_waits', symbol='BTCUSD', broker_type='kraken_spot',
             adapter_type='mock', shutdown=self.settings,
             execution=AutotraderExecutionDefaults(heartbeat_interval_ms=5))
-        return AutotraderTickLoop(
+        return AutotraderEventLoop(
             config=config,
             tick_queue=tick_queue,
             tick_source=tick_source,
@@ -312,7 +312,7 @@ class _Stage:
 
     def stop(self, logic: Optional[_HearingLogic] = None,
              severity: SessionEndSeverity = SessionEndSeverity.NORMAL,
-             **options: Any) -> AutotraderTickLoop:
+             **options: Any) -> AutotraderEventLoop:
         """
         A stop asked for before any pass, so the loop goes straight to what follows its last one.
 
@@ -2071,7 +2071,7 @@ class TestWhatTheStatusAsksTheSession:
     ], ids=['input_ran_out', 'never_started'])
     def test_no_request_names_how_far_it_got(self, stage, loop_started, expected):
         session = _session_around(stage().executor)
-        session._tick_loop_started = loop_started
+        session._event_loop_started = loop_started
 
         assert session._what_asked_for_the_stop() == expected
 

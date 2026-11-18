@@ -1738,7 +1738,7 @@ class KrakenAdapter(AbstractAdapter):
 
         Delegates to _do_fetch_private via the broker-agnostic _timed_call wrapper
         so the API monitor (#351) records per-endpoint latency/errors. The timing
-        includes the rate-limit throttle (the real tick-loop-blocking cost).
+        includes the rate-limit throttle (the real event-loop-blocking cost).
 
         Args:
             endpoint: API path (e.g., '/0/private/AddOrder')

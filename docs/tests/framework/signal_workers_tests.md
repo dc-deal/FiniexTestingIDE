@@ -5,7 +5,7 @@
 The signal-worker suite validates the SIGNAL worker type (#141): the pydantic envelope types, the
 JSONL loader, the `SignalDataProvider` lookup, the `CORE/llm_sentiment` worker, the orchestrator
 dispatch, and the didactic `CORE/hybrid_sentiment_reference` decision fusion. All run against mock
-fixtures via direct provider injection — no batch, no tick loop.
+fixtures via direct provider injection — no batch, no event loop.
 
 **Test Location:** `tests/framework/signal_workers/`
 

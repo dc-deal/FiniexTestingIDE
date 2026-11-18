@@ -3,7 +3,7 @@ Profiling Report Builder + Aggregator Tests (#399).
 
 `build_profiling_report_from_batch` maps each scenario's raw `ProcessProfileData` to a
 `ProfilingUnitRow` (operation timing + inter-tick + clipping) and rolls them up via
-`aggregate_profiling`. Tested with **real** ProcessResult / ProcessTickLoopResult /
+`aggregate_profiling`. Tested with **real** ProcessResult / ProcessEventLoopResult /
 ProcessProfileData / BatchExecutionSummary fixtures (the reporting-test convention) — plus a
 Layer-B-off scenario (no profiling) and the clipping path; the aggregator is exercised directly
 on real `ProfilingUnitRow` rows.
@@ -36,7 +36,7 @@ from python.framework.types.process_data_types import (
     ClippingStats,
     ProcessProfileData,
     ProcessResult,
-    ProcessTickLoopResult,
+    ProcessEventLoopResult,
 )
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.utils.console_renderer import ConsoleRenderer
@@ -63,11 +63,11 @@ def _ppd(times, ticks, intervals=None, passes=None) -> ProcessProfileData:
 
 
 def _result(name, idx, times, ticks, intervals=None, passes=None) -> ProcessResult:
-    tick_loop = ProcessTickLoopResult(
+    event_loop = ProcessEventLoopResult(
         profiling_data=_ppd(times, ticks, intervals, passes),
         coordination_statistics=WorkerCoordinatorPerformanceStats(ticks_processed=ticks))
     return ProcessResult(success=True, scenario_name=name, scenario_index=idx,
-                         tick_loop_results=tick_loop)
+                         event_loop_results=event_loop)
 
 
 def _scenario(name, idx, symbol='EURUSD') -> SingleScenario:
@@ -145,11 +145,11 @@ class TestBuild:
 
     def test_layer_b_off_scenario_skipped(self):
         # profile_times empty → no operation timing → unit skipped
-        tick_loop = ProcessTickLoopResult(
+        event_loop = ProcessEventLoopResult(
             profiling_data=ProcessProfileData(profile_times={}, profile_counts={}),
             coordination_statistics=WorkerCoordinatorPerformanceStats(ticks_processed=100))
         result = ProcessResult(success=True, scenario_name='off', scenario_index=0,
-                               tick_loop_results=tick_loop)
+                               event_loop_results=event_loop)
         report = build_profiling_report_from_batch(_RUN_ID, _batch([result], [_scenario('off', 0)]))
         assert report.units == []
 

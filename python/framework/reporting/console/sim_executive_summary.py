@@ -44,7 +44,7 @@ _TRACKING_LINE = {
                                   '(no per-component or operation-level diagnostics)'),
     PerformanceTracking.WORKER_OFF: ('⚠️  Worker tracking OFF '
                                      '(per-worker / decision breakdowns unavailable)'),
-    PerformanceTracking.PROFILING_OFF: ('⚠️  Tick-loop profiling OFF '
+    PerformanceTracking.PROFILING_OFF: ('⚠️  Event-loop profiling OFF '
                                         '(operation hotspot analysis unavailable)'),
 }
 
@@ -683,7 +683,7 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             Formatted deviation string, or empty string
         """
         # Per-scenario compute cost = the unit's summed operation time (profiling model).
-        # The model only carries units where tick-loop profiling was on — same filter as before.
+        # The model only carries units where event-loop profiling was on — same filter as before.
         if len(self._profiling.units) < 2:
             return ''
 

@@ -4,9 +4,9 @@ Post-Run Validator Tests (#395).
 PostRunValidator lifts the batch-global advisory warnings out of the report renderer: it appends
 run-scoped ValidationResults to BatchExecutionSummary.batch_validation_result. Tested with REAL
 BatchExecutionSummary / SingleScenario / ClippingStats fixtures. The profiling-dependent budget
-checks (P5 / too-high) need a full tick-loop result and are covered via the sim integration run.
+checks (P5 / too-high) need a full event-loop result and are covered via the sim integration run.
 The coordination-overhead + infra-bottleneck advisories (lifted out of the report renderers, #395)
-are tested here with real tick-loop / profiling fixtures.
+are tested here with real event-loop / profiling fixtures.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -23,7 +23,7 @@ from python.framework.types.process_data_types import (
     ClippingStats,
     ProcessProfileData,
     ProcessResult,
-    ProcessTickLoopResult,
+    ProcessEventLoopResult,
 )
 from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
@@ -63,17 +63,17 @@ def _ws(total_ms) -> WorkerPerformanceStats:
 
 
 def _result_prof(name, idx, profile_times, worker_ms=0.0, decision_ms=0.0) -> ProcessResult:
-    tlr = ProcessTickLoopResult(
+    tlr = ProcessEventLoopResult(
         worker_statistics=[_ws(worker_ms)] if worker_ms else [],
         decision_statistics=DecisionLogicStats(decision_total_time_ms=decision_ms),
         profiling_data=ProcessProfileData(profile_times=profile_times, profile_counts={}))
-    return ProcessResult(success=True, scenario_name=name, scenario_index=idx, tick_loop_results=tlr)
+    return ProcessResult(success=True, scenario_name=name, scenario_index=idx, event_loop_results=tlr)
 
 
 def _perf_result(name, idx, worker_name='rsi', worker_avg=0.1, logic_name='',
                  logic_avg=0.0, parallel=False, saved_ms=0.0) -> ProcessResult:
     """A result carrying only what the performance verdicts read."""
-    tlr = ProcessTickLoopResult(
+    tlr = ProcessEventLoopResult(
         worker_statistics=[WorkerPerformanceStats(
             worker_type='CORE/x', worker_name=worker_name, worker_call_count=1,
             worker_total_time_ms=worker_avg, worker_avg_time_ms=worker_avg,
@@ -84,7 +84,7 @@ def _perf_result(name, idx, worker_name='rsi', worker_avg=0.1, logic_name='',
             parallel_workers=parallel, ticks_processed=100,
             parallel_time_saved_ms=saved_ms))
     return ProcessResult(success=True, scenario_name=name, scenario_index=idx,
-                         tick_loop_results=tlr)
+                         event_loop_results=tlr)
 
 
 def _batch_results(results) -> BatchExecutionSummary:
@@ -361,7 +361,7 @@ class TestTheBudgetIsHeldToAnAlgoPass:
     """
 
     def _result(self) -> ProcessResult:
-        tlr = ProcessTickLoopResult(
+        tlr = ProcessEventLoopResult(
             profiling_data=ProcessProfileData(
                 profile_times={'worker_decision': 300.0, 'total_per_tick': 300.0,
                                'total_per_algo_pass': 300.0},
@@ -369,7 +369,7 @@ class TestTheBudgetIsHeldToAnAlgoPass:
                 inter_tick_intervals_ms=[2.0] * 100, gap_threshold_s=300.0),
             coordination_statistics=WorkerCoordinatorPerformanceStats(ticks_processed=300))
         return ProcessResult(success=True, scenario_name='s1', scenario_index=0,
-                             tick_loop_results=tlr)
+                             event_loop_results=tlr)
 
     def _with_budget(self, budget_ms) -> BatchExecutionSummary:
         return BatchExecutionSummary(
@@ -485,10 +485,10 @@ def _stream_result(name, idx, recorded, counted) -> ProcessResult:
     """
     events = [OrderEvent(seq=n + 1, event_type=OrderEventType.SUBMITTED, order_id=f'pos_{n}',
                          submitted_seq=n + 1) for n in range(recorded)]
-    tlr = ProcessTickLoopResult(
+    tlr = ProcessEventLoopResult(
         order_events=events, execution_stats=ExecutionStats(orders_submitted=counted))
     return ProcessResult(success=True, scenario_name=name, scenario_index=idx,
-                         tick_loop_results=tlr)
+                         event_loop_results=tlr)
 
 
 class TestTheStreamHoldsEverySubmission:
@@ -534,7 +534,7 @@ def _funds_result(name, idx, balances, committed) -> ProcessResult:
         current_balance=balances.get('USD', 0.0), initial_balance=1000.0, spot_mode=True,
         balances=balances, committed_funds=committed, base_currency='BTC', quote_currency='USD')
     return ProcessResult(success=True, scenario_name=name, scenario_index=idx,
-                         tick_loop_results=ProcessTickLoopResult(portfolio_stats=stats))
+                         event_loop_results=ProcessEventLoopResult(portfolio_stats=stats))
 
 
 class TestFundsBelowZeroAfterOwnOrdersAreAValidatorsVerdict:

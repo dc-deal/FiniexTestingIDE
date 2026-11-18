@@ -1,7 +1,7 @@
 """
 Bar Rendering Clipping Regression Tests.
 
-Verifies that bar rendering in the simulation tick loop processes ALL ticks —
+Verifies that bar rendering in the simulation event loop processes ALL ticks —
 including ticks flagged as is_clipped=True by the tick processing budget.
 
 The tick processing budget simulates "algo was too slow to react to some ticks".
@@ -9,8 +9,8 @@ It does NOT mean the market data feed was incomplete. Therefore bars must
 reflect the full tick stream (OHLC, volume, tick_count), while only the algo
 path (workers, decision logic) skips clipped ticks.
 
-These tests guard the ordering fix in process_tick_loop.py: Bar Rendering
-must sit ABOVE the Clipping Gate (same ordering as AutoTrader tick loop).
+These tests guard the ordering fix in process_event_loop.py: Bar Rendering
+must sit ABOVE the Clipping Gate (same ordering as AutoTrader event loop).
 """
 
 import queue
@@ -19,11 +19,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.process.process_tick_loop import execute_tick_loop
+from python.framework.process.process_event_loop import execute_event_loop
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
@@ -83,7 +83,7 @@ def _build_mocks():
     trade_simulator.portfolio = MagicMock()
     trade_simulator.portfolio.initial_balance = 10000.0
 
-    # Portfolio statistics used by _print_tick_loop_finishing_log — must have
+    # Portfolio statistics used by _print_event_loop_finishing_log — must have
     # numeric fields so the f-string formatting does not blow up on MagicMock.
     portfolio_stats = MagicMock()
     portfolio_stats.total_profit = 0.0
@@ -117,12 +117,12 @@ def _build_mocks():
 
 
 def _run_loop(ticks):
-    """Run execute_tick_loop with real BarRenderingController + mocks."""
+    """Run execute_event_loop with real BarRenderingController + mocks."""
     config = _build_config()
     controller = _build_controller()
     trade_simulator, worker_coordinator, decision_logic, logger = _build_mocks()
 
-    execute_tick_loop(
+    execute_event_loop(
         config=config,
         worker_coordinator=worker_coordinator,
         trade_simulator=trade_simulator,
@@ -225,9 +225,9 @@ def test_ohlc_reflects_extrema_from_clipped_ticks():
 # correct ordering (Bar Rendering never behind a clipping gate).
 # =============================================================================
 
-def _build_autotrader_tick_loop(ticks_with_flags):
+def _build_autotrader_event_loop(ticks_with_flags):
     """
-    Construct an AutoTraderTickLoop wired to a real BarRenderingController
+    Construct an AutoTraderEventLoop wired to a real BarRenderingController
     and mocks for executor / orchestrator / decision_logic.
 
     The tick_queue is pre-filled with the given ticks, one arrival per millisecond, followed
@@ -243,7 +243,7 @@ def _build_autotrader_tick_loop(ticks_with_flags):
         symbol=SYMBOL,
         # The VENUE, not the tick source: `adapter_type='mock'` is what makes this a mock
         # session, while broker_type names the market whose rules apply — and since #476 the
-        # tick loop resolves this market's trading-day anchor at construction, so a broker
+        # event loop resolves this market's trading-day anchor at construction, so a broker
         # market_config.json does not know is refused rather than silently defaulted.
         broker_type='kraken_spot',
         adapter_type='mock',
@@ -293,7 +293,7 @@ def _build_autotrader_tick_loop(ticks_with_flags):
     tick_source = MagicMock()
     tick_source.is_exhausted.return_value = True
 
-    loop = AutotraderTickLoop(
+    loop = AutotraderEventLoop(
         config=config,
         tick_queue=tick_queue,
         tick_source=tick_source,
@@ -312,7 +312,7 @@ def _build_autotrader_tick_loop(ticks_with_flags):
 
 
 def test_autotrader_loop_bar_rendering_covers_all_ticks():
-    """AutoTrader tick loop must feed every tick through bar rendering.
+    """AutoTrader event loop must feed every tick through bar rendering.
 
     Regression guard for #293: guarantees the AutoTrader-side ordering stays
     correct (no clipping gate may ever appear between the broker path and bar
@@ -341,7 +341,7 @@ def test_autotrader_loop_bar_rendering_covers_all_ticks():
         ticks.append(t)
 
     loop, controller, executor, worker_orchestrator = \
-        _build_autotrader_tick_loop(ticks)
+        _build_autotrader_event_loop(ticks)
     ticks_processed, _ = loop.run()
 
     assert ticks_processed == len(ticks), (

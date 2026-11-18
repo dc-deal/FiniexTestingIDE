@@ -49,7 +49,7 @@ def _result_signature(summary: BatchExecutionSummary) -> List[tuple]:
     """Deterministic per-scenario result signature: (name, success, trades, orders)."""
     signature = []
     for result in summary.process_result_list:
-        tlr = result.tick_loop_results
+        tlr = result.event_loop_results
         trades = len(tlr.trade_history) if tlr and tlr.trade_history is not None else -1
         orders = len(tlr.order_history) if tlr and tlr.order_history is not None else -1
         signature.append((result.scenario_name, bool(result.success), trades, orders))

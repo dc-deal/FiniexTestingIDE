@@ -72,12 +72,12 @@ it closes, and on a rejected or unaccounted close it is None once that position 
    POSITION_CLOSED ────┘                                                  │
                                                                           ▼
                                           ┌────────────────────────────────────┐
-   SESSION_END (tick loop) ──────────────►│  DecisionEventDispatcher             │
+   SESSION_END (event loop) ──────────────►│  DecisionEventDispatcher             │
                                           │   submit(event)  → filter + buffer   │
                                           │   drain()        → FIFO → on_* hooks │
                                           └────────────────────────────────────┘
                                                           ▲
-                                                          │ drain() at the tick-loop boundary
+                                                          │ drain() at the event-loop boundary
                                           (after compute/execute, and in the idle heartbeat)
 ```
 
@@ -92,7 +92,7 @@ it closes, and on a rejected or unaccounted close it is None once that position 
   "my position is gone" needs it whichever route closed it. That includes a spot close the venue
   ended with only dust left: `PARTIAL_CLOSE` for what it executed, then `POSITION_CLOSED`, because
   the record leaves the book.
-- `SESSION_END` is built by the tick loop at session end (request, exhaustion,
+- `SESSION_END` is built by the event loop at session end (request, exhaustion,
   Ctrl+C, or safety halt).
 
 ### Drain Ordering & Re-Entrancy (the critical invariant)
@@ -121,7 +121,7 @@ queue, FIX-based OMS (sequence-numbered execution reports), and the LMAX Disrupt
 It buys deterministic ordering, no re-entrancy, and back-pressure.
 
 **Where we sit — tick-gated, not a continuous event loop.** We drain at the
-tick-loop boundary (after compute/execute) and during the idle heartbeat (#320),
+event-loop boundary (after compute/execute) and during the idle heartbeat (#320),
 rather than the instant an event arrives. This keeps the model deterministic and
 **symmetric between simulation and the AutoTrader** — in a backtest there is no continuous
 loop, only ticks, so "drained before the next tick" *is* the backtest-determinism
@@ -156,7 +156,7 @@ subscribes to an event the current executor can't emit simply never receives it
 ## Session Control — `request_session_end`
 
 `DecisionTradingApi.request_session_end(reason, severity)` lets a decision logic
-end the session itself. The tick loop ends the session at the next boundary:
+end the session itself. The event loop ends the session at the next boundary:
 `SessionEndSeverity.NORMAL` runs the graceful shutdown (close remaining orders,
 final stats, clean exit); `EMERGENCY` exits immediately. Works in both pipelines —
 in backtesting it ends the scenario early; in an AutoTrader session it shuts the AutoTrader down. A
@@ -196,7 +196,7 @@ backtest and is reported; in a session it is the session-end policy's, and not r
   after compute/execute (`dispatch_backtest_instant`, #460), so a fill of the instant reaches its
   hook before the decision computes; in the AutoTrader's instant the same way, once before the algo
   or its ghost pass and once after (`dispatch_live_instant`, #461), and in a stop's wait
-  (`dispatch_live_order_wait`). The AutoTrader's tick loop keeps only the drain of a stop's
+  (`dispatch_live_order_wait`). The AutoTrader's event loop keeps only the drain of a stop's
   give-up. The final `SESSION_END` is drained once the loop ends.
 
 ## Relation to Other Components

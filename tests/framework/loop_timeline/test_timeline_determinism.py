@@ -20,7 +20,7 @@ from python.framework.decision_logic.core.test_probes.deterministic_probe import
     DeterministicProbe,
 )
 from python.framework.types.market_types.market_data_types import TickData
-from python.framework.types.process_data_types import ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessEventLoopResult
 from tests.shared.booking_day_harness import SYMBOL, simulation_result
 
 _START = datetime(2026, 4, 1, 10, tzinfo=timezone.utc)
@@ -52,7 +52,7 @@ def _ticks() -> List[TickData]:
     return ticks
 
 
-def _run() -> ProcessTickLoopResult:
+def _run() -> ProcessEventLoopResult:
     """
     One backtest of the fixture, with a seeded latency of 20 to 400 ms and a timer every 700 ms.
 
@@ -64,7 +64,7 @@ def _run() -> ProcessTickLoopResult:
                              tick_loop_profiling=True)
 
 
-def _record(result: ProcessTickLoopResult) -> Dict[str, Any]:
+def _record(result: ProcessEventLoopResult) -> Dict[str, Any]:
     """
     What a run records about its trading, as plain values.
 

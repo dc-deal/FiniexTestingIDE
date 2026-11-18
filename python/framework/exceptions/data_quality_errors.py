@@ -69,7 +69,7 @@ class TradedPriceMissingException(DataQualityException):
     Raised when a venue that prints trades delivers ticks without a traded price
 
     An order-driven venue has a central order book, so `last` is a real event on every
-    tick — and the import refuses a file where it is absent. Reaching the tick loop
+    tick — and the import refuses a file where it is absent. Reaching the event loop
     without one therefore means this pipeline dropped it somewhere between the archive
     and the mount, and the consequence is silent: `TickData.price` falls back to the
     book midpoint, so every bar of the run is built on a different basis than the

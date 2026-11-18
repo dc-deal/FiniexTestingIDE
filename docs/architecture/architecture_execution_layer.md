@@ -165,7 +165,7 @@ The advantage: You can test your error-handling logic in the simulator before tr
 
 Rejection data flows through the full reporting pipeline:
 
-1. **Subprocess bridge**: `order_history` collected from `trade_simulator.get_order_history()`, serialized in `ProcessTickLoopResult`
+1. **Subprocess bridge**: `order_history` collected from `trade_simulator.get_order_history()`, serialized in `ProcessEventLoopResult`
 2. **Trade History Summary**: Per-scenario rejection table (order ID, reason, message) + aggregated rejection breakdown by reason
 3. **Executive Summary**: Order execution stats with rejected count and execution rate
 4. **Portfolio Grid Boxes**: Conditional display — shows rejection count when rejections exist
@@ -501,7 +501,7 @@ Each mode sets the fields it needs. The other mode's fields remain None.
 
 ## Unified Tick Lifecycle
 
-The tick loop (process_tick_loop) calls exactly one method on the executor:
+The event loop (process_event_loop) calls exactly one method on the executor:
 
 ```
 trade_executor.on_tick(tick)
@@ -511,16 +511,16 @@ This single call handles:
 1. **Price update** — store current bid/ask, mark portfolio dirty
 2. **Pending order processing** — mode-specific (abstract method)
 
-The tick loop does not know (and should not know) whether it's driving a simulator or a live executor. It doesn't call internal methods, doesn't inspect queues, doesn't check pending orders. One call, one responsibility.
+The event loop does not know (and should not know) whether it's driving a simulator or a live executor. It doesn't call internal methods, doesn't inspect queues, doesn't check pending orders. One call, one responsibility.
 
 ### Why This Matters
 
-In the previous design, the tick loop called two separate methods: `update_prices(tick)` and
+In the previous design, the event loop called two separate methods: `update_prices(tick)` and
 `process_pending_orders()`. This leaked implementation details — the loop "knew" that orders and
 prices were separate concerns inside the executor. When the live executor arrived, this coupling
-would have required changes in the tick loop itself.
+would have required changes in the event loop itself.
 
-With `on_tick()`, the tick loop is a pure driver. The executor decides how to partition its work internally.
+With `on_tick()`, the event loop is a pure driver. The executor decides how to partition its work internally.
 
 ---
 
@@ -667,7 +667,7 @@ All order outcomes — successful fills AND rejections — are recorded in `_ord
 - **Stress test rejection**: OrderResult with status=REJECTED, reason=BROKER_ERROR
 - **Successful close**: OrderResult with status=EXECUTED, close details
 
-Exposed via `get_order_history()` and transferred across the subprocess boundary in `ProcessTickLoopResult.order_history`.
+Exposed via `get_order_history()` and transferred across the subprocess boundary in `ProcessEventLoopResult.order_history`.
 
 **Distinction from `trade_history`**: `trade_history` (from PortfolioManager) contains completed
 round-trip trades with P&L. `order_history` contains all order attempts. A rejection appears in
@@ -797,7 +797,7 @@ At run end, `finish_remaining_orders()` expires unfilled active orders:
 ### Error Handling in Execution Chain (Partially Resolved)
 **Resolved:** `_fill_open_order()` is now void/side-effect based — rejections stored in
 `_order_history` instead of returned. Margin rejections and stress test rejections follow the same
-pattern. `order_history` crosses subprocess boundary via `ProcessTickLoopResult`.
+pattern. `order_history` crosses subprocess boundary via `ProcessEventLoopResult`.
 **Remaining:** `_fill_close_order()` still returns None silently on position-not-found. `close_position()` result not checked by DecisionLogic. Broader error propagation pattern (timeouts, broker errors in live) still needs design.
 - Affects: AbstractTradeExecutor (close path), DecisionTradingApi, DecisionLogic
 
@@ -843,7 +843,7 @@ logic* (the one class that turns worker outputs into decisions) and *worker* —
 | **OrderLatencySimulator** | Simulation-specific pending order manager with seeded tick delays |
 | **LiveRequestProcessor** | Live-specific pending order manager — see [live_execution_architecture.md](live_execution_architecture.md) |
 | **Pseudo-Position** | (Removed) A fake position representing a pending order — now replaced by explicit API |
-| **Tick Loop** | The main processing loop that feeds ticks to all components |
+| **Event Loop** | The main processing loop that feeds ticks to all components |
 | **Order History** | The run's record of order outcomes from `_order_history` — submissions, fills, rejections, expiries. Capped by `order_history_max`, and a cancel the strategy issues leaves no row yet (#362) |
 | **BrokerResponse** | Standardized response from broker adapter — see [live_execution_architecture.md](live_execution_architecture.md) |
 | **MockBrokerAdapter** | Test adapter with configurable execution modes — see [live_execution_architecture.md](live_execution_architecture.md) |

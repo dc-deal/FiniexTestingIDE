@@ -106,7 +106,7 @@ and [The Loop Core](architecture/loop_core_architecture.md#the-backtests-timelin
 **alive stamp** (`FiniexTickCollector.<symbol>`) — The value an MT5 `TickCollector` writes every
 second into a global variable of its terminal: the computer's UTC time. The terminal's keepalive
 reads it before each ping and pings only while every collected symbol's stamp is fresh, so a
-collector that was never started stops the pings too. Not the *heartbeat*, which is the tick loop's
+collector that was never started stops the pings too. Not the *heartbeat*, which is the event loop's
 idle pass, and not a *liveness ping*, which goes to the monitor. See
 [Tick Collector](data_pipeline/tick_collector_guide.md).
 
@@ -411,6 +411,12 @@ enum's are other things. See [Store Entry Members](architecture/store_entry_memb
 without logging an error shows in the *run outcome*, not here. See
 [Warnings & Errors](architecture/warnings_errors_tiers.md).
 
+**event loop** — The loop that drives a pipeline: it takes one *instant* at a time from its timeline
+and hands it to the *loop core*'s dispatcher — `execute_event_loop` for a backtest scenario,
+`AutotraderEventLoop` for an AutoTrader session (#460, #461). Before 1.6 it was the *tick loop*, the
+name older issues use. Not `asyncio`'s event loop, on which the Kraken tick source reads its WebSocket
+(`_asyncio_loop`). See [The Loop Core](architecture/loop_core_architecture.md).
+
 **event time** (`event_time` on an order-history row and an order event) — When that row's event
 happened, on the run's *canonical clock*: the submission on a `pending` row, the fill on an
 `executed` one, and on every other row the moment the order ended without a fill — refused,
@@ -623,7 +629,7 @@ exports as it goes. Here *live* means "as it happens", which is why the code und
 archive. See [Signal Data Source](data_pipeline/signal_data_source.md).
 
 **liveness ping** — The ping an AutoTrader session sends a monitoring service every interval while
-its tick loop is still passing; the monitor raises the alarm when pings stop. It vouches for the
+its event loop is still passing; the monitor raises the alarm when pings stop. It vouches for the
 LOOP, not the process, so a hung session goes silent too — and for one bot: each bot pings a check
 of its own. Not the *heartbeat*: that is the tick
 loop's idle pass when no tick arrives. See [Unattended Operation](autotrader/unattended_operation.md).
@@ -632,9 +638,9 @@ loop's idle pass when no tick arrives. See [Unattended Operation](autotrader/una
 ignorable by design. Not the *warning count*. See [Warnings & Errors](architecture/warnings_errors_tiers.md).
 
 **loop core** — The part of both pipelines that decides what happens in which order: the event
-model and its one timeline, and the dispatcher that owns the order of a pass. The tick loops are
-its drives: the backtest walks its ticks, the AutoTrader takes them off its queue, and each hands
-every pass over. Not the *tick loop*: that is a runner's drive. See [The Loop Core](architecture/loop_core_architecture.md).
+model and its one timeline, and the dispatcher that owns the order of a pass. The two *event loops*
+are its drives: each takes the instants of its pipeline's timeline and hands every one to the
+dispatcher. Not the *event loop* itself, which is a pipeline's drive. See [The Loop Core](architecture/loop_core_architecture.md).
 
 **lost request** (`lost_request` on an order event) — Which request's answer an `unresolved` or
 `resolved` event is about: `submit`, `cancel`, `modify`, or `status_read` — the read with which an

@@ -94,7 +94,7 @@ true — a recurrence before the all-clear keeps the episode open.
 | REFUSED AT THE FIRST TICK, and what had been sent before it | ⛔ |
 | RUNTIME ERROR — the session aborted, and how many ticks it had processed | ⛔ |
 | EMERGENCY STOP, and EMERGENCY STOP incomplete — check the account by hand (only when closes were sent; kept spot holdings are said in the first message) | ⛔ |
-| TICK LOOP STALLED — the process is alive and not trading; with Telegram on, also when the liveness ping is off | ⛔ |
+| EVENT LOOP STALLED — the process is alive and not trading; with Telegram on, also when the liveness ping is off | ⛔ |
 | SESSION CRASHED while shutting down — the report may be incomplete | ⛔ |
 | The liveness ping was refused (wrong URL, deleted check) / its fail URL was refused | ⛔ / ⚠️ |
 | Safety circuit breaker — new entries blocked / cleared | ⚠️ / ✅ |
@@ -352,10 +352,10 @@ verdict `stopped` comes after `stopped_after_cadences` cadences, long after a su
 
 Every alert above is sent by the session about itself, which covers one class of failure: the
 process is alive and notices something. The ping covers the other class. It goes out every
-minute — but only while the **tick loop** has come round within `loop_stall_after_s`:
+minute — but only while the **event loop** has come round within `loop_stall_after_s`:
 
 ```
-  tick loop (every pass)            liveness thread (every interval_s)        monitor
+  event loop (every pass)            liveness thread (every interval_s)        monitor
   ──────────────────────            ──────────────────────────────────        ─────────────────
   stamp loop progress   ───────►    loop passed recently?
                                       yes → ping            ───────────►     last_seen = now

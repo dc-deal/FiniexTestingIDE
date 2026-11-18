@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 from unittest.mock import MagicMock
 
-import python.framework.autotrader.autotrader_tick_loop as tick_loop_module
+import python.framework.autotrader.autotrader_event_loop as event_loop_module
 from python.framework.autotrader.session_log_rotator import SessionLogRotator
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
@@ -141,7 +141,7 @@ def test_a_boundary_a_heartbeat_notices_is_sealed_before_the_pass_resolves(monke
 
     monkeypatch.setattr(LiveTradeExecutor, 'heartbeat', heartbeat)
     monkeypatch.setattr(SessionLogRotator, 'check_daily_rotation', rotation)
-    monkeypatch.setattr(tick_loop_module, 'datetime', _WallClockAfterMidnight)
+    monkeypatch.setattr(event_loop_module, 'datetime', _WallClockAfterMidnight)
 
     before_midnight = [tick for tick in ticks_across_midnight() if tick.timestamp < MIDNIGHT]
     # A live feed: the heartbeat of its quiet stretch is stamped by the wall clock (#461)

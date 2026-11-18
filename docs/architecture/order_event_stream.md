@@ -133,7 +133,7 @@ the two planes read in the order they were written. A read is the venue's whole 
   `reconciliation.broker_truth_min_interval_seconds` (300 s) have passed since the last such line.
   A change inside that distance is deferred, not dropped: the first cycle after it writes the
   picture as it is then, if it still differs, so the stream ends with the latest state however often
-  an order at the edge of a tolerance flips it. Inside the tick loop nothing waits: the balances are
+  an order at the edge of a tolerance flips it. Inside the event loop nothing waits: the balances are
   asked once, and a transient failure leaves them unread. A clean cycle forgets the last
   divergence, so one that returns is written — and warned in the session log — again.
 - **Not in a backtest.** The simulation's venue is its own book; there is nobody to ask.
@@ -156,7 +156,7 @@ than on every record; every later line is the API's `OrderEventRow` or — live 
 differently. Empty fields are left out of a line.
 
 - **Backtest** — a listener in each scenario subprocess appends to a list, which travels back in
-  `ProcessTickLoopResult.order_events` and `RunUnit.order_events`. `BatchReportCoordinator` writes
+  `ProcessEventLoopResult.order_events` and `RunUnit.order_events`. `BatchReportCoordinator` writes
   every unit's events at report time, unit after unit. A backtest whose scenarios placed no order
   writes no stream.
 - **Live session** — `open_order_event_stream`

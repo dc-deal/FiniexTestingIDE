@@ -13,7 +13,7 @@ the data range.
 - 17 scenarios: 5 SL/TP + 4 limit order + 7 stop order + 1 cancel limit, each opening 1 trade at tick 10
 - Seeds: inbound_latency=12345
 - Time windows sourced from `discoveries_cli.py extreme-moves mt5 USDJPY`
-- Per-scenario `max_ticks` caps to limit tick loop processing (see Scenario Design)
+- Per-scenario `max_ticks` caps to limit event loop processing (see Scenario Design)
 
 **Coverage:** SL/TP · limit · stop · cancel · batch health
 
@@ -96,7 +96,7 @@ Each scenario has three fixtures (all session scope):
 
 | Pattern | Description |
 |---------|-------------|
-| `*_tick_loop` | `ProcessTickLoopResult` for the scenario |
+| `*_event_loop` | `ProcessEventLoopResult` for the scenario |
 | `*_trade_history` | `List[TradeRecord]` for the scenario |
 | `*_execution_stats` | `ExecutionStats` for the scenario |
 

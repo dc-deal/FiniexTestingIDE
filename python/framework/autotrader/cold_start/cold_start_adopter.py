@@ -97,7 +97,7 @@ def _describe_order(order: BrokerOrder) -> str:
 
 class ColdStartAdopter:
     """
-    Reconstructs this bot's resting orders from broker truth, once, before the tick loop.
+    Reconstructs this bot's resting orders from broker truth, once, before the event loop.
 
     Args:
         executor: The live executor — adapter, session key, adoption surface, REST ladder

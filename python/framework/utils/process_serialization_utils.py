@@ -28,7 +28,7 @@ def serialize_ticks_for_transport(
     """
     Trim DataFrame to transport columns and convert to list of dicts.
 
-    Filters the DataFrame to only the columns needed by the tick loop consumer,
+    Filters the DataFrame to only the columns needed by the event loop consumer,
     dropping all other columns (tick_volume, chart_tick_volume, spread_points,
     spread_pct, tick_flags, session, etc.).
 
@@ -103,7 +103,7 @@ def process_deserialize_ticks_batch(scenario_symbol: str, ticks_tuple_list: Dict
         ticks_tuple_list: Dict mapping symbol -> tuple of tick dicts
 
     Returns:
-        Tuple of TickData objects for the tick loop
+        Tuple of TickData objects for the event loop
     """
     ticks_tuple = ticks_tuple_list[scenario_symbol]
     if not ticks_tuple:

@@ -54,7 +54,7 @@ def _tick(spot_mode: bool, moved_by: float, seconds: int) -> TickData:
 
 
 def _feed(portfolio: PortfolioManager, clock: List[datetime], ticks: List[TickData]) -> None:
-    """New prices as both tick loops give them: a new price, then the equity sample — no read."""
+    """New prices as both event loops give them: a new price, then the equity sample — no read."""
     for tick in ticks:
         clock[0] = tick.timestamp
         portfolio.mark_dirty(tick)

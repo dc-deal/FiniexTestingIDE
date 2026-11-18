@@ -7,7 +7,7 @@ This is the single reference for every event a decision logic can subscribe to:
 each DecisionEventType maps to one typed payload and one hook method on
 AbstractDecisionLogic. The decision logic declares the events it wants via
 get_subscribed_events(); the DecisionEventDispatcher delivers the matching
-payloads to the on_* hooks at the tick-loop boundary.
+payloads to the on_* hooks at the event-loop boundary.
 
 The channel is source-agnostic: an event carries the same payload whether it
 originated from the simulation latency path, live REST polling (#320), or a

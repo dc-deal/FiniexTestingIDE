@@ -54,7 +54,7 @@ from python.framework.types.portfolio_types.portfolio_aggregation_types import P
 from python.framework.types.process_data_types import (
     ProcessProfileData,
     ProcessScenarioConfig,
-    ProcessTickLoopResult,
+    ProcessEventLoopResult,
 )
 from python.framework.types.trading_env_types.order_event_types import OrderEvent
 from python.framework.utils.process_debug_info_utils import (
@@ -64,7 +64,7 @@ from python.framework.utils.process_debug_info_utils import (
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
-def execute_tick_loop(
+def execute_event_loop(
     config: ProcessScenarioConfig,
     worker_coordinator: WorkerOrchestrator,
     trade_simulator: TradeSimulator,
@@ -76,7 +76,7 @@ def execute_tick_loop(
     decision_event_dispatcher: Optional[DecisionEventDispatcher] = None,
     state_frames: Optional[StateFrameRecorder] = None,
     indicator_series: Optional[IndicatorSeriesRecorder] = None,
-) -> ProcessTickLoopResult:
+) -> ProcessEventLoopResult:
     """
     Execute tick processing loop with live update support.
 
@@ -101,7 +101,7 @@ def execute_tick_loop(
             records none
 
     Returns:
-        ProcessTickLoopResult with loop results
+        ProcessEventLoopResult with loop results
     """
     # #451: the tick-domain observer — episode spans + fresh/stale tick counters.
     # Always active: without stress the status stays fresh, so it simply counts.
@@ -141,7 +141,7 @@ def execute_tick_loop(
             scenario_logger, config, ticks, live_queue)
         live_update_count = 0
 
-        tick_loop_error: Exception = None
+        event_loop_error: Exception = None
         current_tick = None
 
         # === BOOKING PERIODS (#537) — this scenario's ledger entries ===
@@ -208,11 +208,11 @@ def execute_tick_loop(
 
         if has_clipping:
             scenario_logger.info(
-                f'🔄 Starting tick loop ({live_setup.tick_count:,} ticks, '
+                f'🔄 Starting event loop ({live_setup.tick_count:,} ticks, '
                 f'{algo_tick_count:,} algo)')
         else:
             scenario_logger.info(
-                f'🔄 Starting tick loop ({live_setup.tick_count:,} ticks)')
+                f'🔄 Starting event loop ({live_setup.tick_count:,} ticks)')
 
         # === TIMELINE (#460) ===
         # The ticks by arrival, the simulator's due times and a heartbeat logic's timers, one
@@ -321,11 +321,11 @@ def execute_tick_loop(
 
         if has_clipping:
             scenario_logger.info(
-                f'✅ Tick loop completed: {live_setup.tick_count:,} ticks '
+                f'✅ Event loop completed: {live_setup.tick_count:,} ticks '
                 f'({algo_tick_count:,} algo)')
         else:
             scenario_logger.info(
-                f'✅ Tick loop completed: {live_setup.tick_count:,} ticks')
+                f'✅ Event loop completed: {live_setup.tick_count:,} ticks')
 
         # === FINISH OPEN ORDERS ===
         # The scenario's data has ended, so its active orders can never fill and are
@@ -348,8 +348,8 @@ def execute_tick_loop(
         # in case of an error, abort & try to collect the rest of data.
         # see below.
         scenario_logger.error(
-            f'Error in Tick Loop - Runtime - try to collect statistics now.: {e}')
-        tick_loop_error = e
+            f'Error in Event Loop - Runtime - try to collect statistics now.: {e}')
+        event_loop_error = e
         if state_frames is not None:
             state_frames.close()
     # #379: closed once on both ends — every line is flushed as written; the close releases the
@@ -410,7 +410,7 @@ def execute_tick_loop(
         # raw; the block-splitting builder derives the disposition from it off the run.
         open_positions = trade_simulator.get_open_positions()
 
-        _print_tick_loop_finishing_log(
+        _print_event_loop_finishing_log(
             live_update_count, scenario_logger, portfolio_stats
         )
 
@@ -418,7 +418,7 @@ def execute_tick_loop(
         # is filed like every other rather than dropped for having no successor (#537).
         booking_periods = booking.close(trade_simulator.get_current_time(), seal_source)
 
-        return ProcessTickLoopResult(
+        return ProcessEventLoopResult(
             booking_periods=booking_periods,
             decision_statistics=decision_statistics,
             worker_statistics=worker_statistics,
@@ -444,30 +444,30 @@ def execute_tick_loop(
             ),
             tick_range_stats=tick_range_stats,
             indicator_series_opened=indicator_series is not None,
-            tick_loop_error=tick_loop_error
+            event_loop_error=event_loop_error
         )
     except Exception as e:
         # an error here is not possible to handle correctly.
-        scenario_logger.error(f'Error in Tick Loop - Statistics & Return: {e}')
+        scenario_logger.error(f'Error in Event Loop - Statistics & Return: {e}')
         # The two errors stand at the same level, and that is not politeness. The block above
-        # ABSORBS a tick-loop failure into `tick_loop_error` and lets collection continue — so
+        # ABSORBS an event-loop failure into `event_loop_error` and lets collection continue — so
         # whatever failed there usually causes something here to fail too, and without the
         # chain the CONSEQUENCE is what propagates while the CAUSE lives only in the scenario
         # log. Measured 2026-09-24: a construction error before the loop surfaced as
         # `ClockNotInjectedError` from the booking close, pointing forty lines past the line
         # that broke. `from` says what is true — no tick ran, so there was no clock to seal
         # against — and prints both tracebacks, the cause first.
-        if tick_loop_error is not None:
-            raise e from tick_loop_error
+        if event_loop_error is not None:
+            raise e from event_loop_error
         raise
 
 
-def _print_tick_loop_finishing_log(
+def _print_event_loop_finishing_log(
         live_update_count: int,
         scenario_logger: ScenarioLogger,
         portfolio_stats: PortfolioStats):
     """
-        Simple finishing log after Tick loop for debug purposes.
+        Simple finishing log after Event loop for debug purposes.
     """
     total_profit = portfolio_stats.total_profit
     total_loss = portfolio_stats.total_loss

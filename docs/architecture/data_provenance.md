@@ -402,7 +402,7 @@ configured to declare, and the reconstructed arrival times run straight through 
 declared version. The tick index measures every file it scans — it reads each file in full anyway —
 so a file imported before the vocabulary existed is measured on the next rebuild, without being
 imported again. A file without an arrival time stores no `collected_msc` column at all; the reader
-restores the tick loop's own convention for "not recorded" (zero) when it loads one.
+restores the event loop's own convention for "not recorded" (zero) when it loads one.
 
 **Said once per run, counted.** The post-run validator gives one finding per deficiency present,
 over every input file of every scenario, grouped by where the files came from:

@@ -111,7 +111,7 @@ What a live session writes when it asks the venue (#362), against the mock venue
 | `TestTheSessionRead` | the venue's orders and balances are written; positions on a margin account only; a part the venue does not give is unread, never empty; a ladder that aborts ends neither the read nor the session |
 | `TestItsPlaceInTheStream` | one counter with the order events, no gap; before the first tick only the receipt time; a backtest asks no venue |
 | `TestARunWithNoVenueAccount` | a dry-run Kraken adapter answers its account reads itself and says so; the mock venue is read; without a venue account no line is written — start, reconcile or end — and no number is spent |
-| `TestAReconcileRecord` | the cycle's own orders, never a second read; balances on a crossing between clean and divergent only; a failed balance read inside the tick loop does not wait |
+| `TestAReconcileRecord` | the cycle's own orders, never a second read; balances on a crossing between clean and divergent only; a failed balance read inside the event loop does not wait |
 
 The route itself — every step in stream order with its keys, the venue's lines beside them and
 gone when narrowed to one order, the two filters, a cut-off line, a damaged file, a run without a

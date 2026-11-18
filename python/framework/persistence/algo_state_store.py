@@ -11,7 +11,7 @@ Scope is Category B only. It does NOT reconstruct broker positions/orders (Cold-
 Recovery, #355) and does NOT persist the safety baseline (#356) — both reuse this store.
 
 Live-only by design. The cadence + ALERT-style optional-component shape mirrors the
-Reconciler (#151): the tick loop calls is_due() on a hybrid cadence (every N ticks OR
+Reconciler (#151): the event loop calls is_due() on a hybrid cadence (every N ticks OR
 every M wall-clock seconds) and then save(). The store stays decoupled — it knows only
 a JSON-serializable dict plus the bot identity, never the decision logic.
 
@@ -116,7 +116,7 @@ class AlgoStateStore:
         timeline (#461), which `get_save_interval_seconds` schedules.
 
         Args:
-            tick_counter: Current tick-loop counter
+            tick_counter: Current event-loop counter
 
         Returns:
             True if save_interval_ticks elapsed since the last save
@@ -140,7 +140,7 @@ class AlgoStateStore:
 
         Args:
             snapshot: The algo's JSON-serializable internal state
-            tick_counter: Current tick-loop counter (updates the cadence tracker)
+            tick_counter: Current event-loop counter (updates the cadence tracker)
         """
         # Cadence is consumed regardless of whether anything was written — an
         # empty snapshot still resets the trackers so we don't re-snapshot every

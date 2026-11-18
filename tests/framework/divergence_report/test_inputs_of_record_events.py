@@ -38,7 +38,7 @@ from python.scenario.scenario_set import ScenarioSet
 from tests.shared.fixture_helpers import (
     extract_probe_metadata,
     extract_process_result,
-    extract_tick_loop_results,
+    extract_event_loop_results,
     remove_run_dir,
 )
 from tests.shared.entry_census_helpers import assert_run_dir_declared
@@ -74,14 +74,14 @@ def _run(set_path: str):
 
 def _events(summary: BatchExecutionSummary) -> List[Dict[str, Any]]:
     """The scenario's order events as plain dicts — the stream the report compares."""
-    results = extract_tick_loop_results(extract_process_result(summary, 0))
+    results = extract_event_loop_results(extract_process_result(summary, 0))
     return [event.model_dump(mode='json') if hasattr(event, 'model_dump') else asdict(event)
             for event in results.order_events or []]
 
 
 def _trades(summary: BatchExecutionSummary) -> List[Dict[str, Any]]:
     """The scenario's closed trades as plain dicts."""
-    results = extract_tick_loop_results(extract_process_result(summary, 0))
+    results = extract_event_loop_results(extract_process_result(summary, 0))
     return [asdict(trade) for trade in results.trade_history]
 
 
@@ -220,7 +220,7 @@ class TestTheRecordedWarmupIsTheArchiveWarmup:
 
     def test_the_probe_saw_the_same_bars(self, runs):
         def snapshots(summary):
-            return extract_probe_metadata(extract_tick_loop_results(extract_process_result(summary, 0)))
+            return extract_probe_metadata(extract_event_loop_results(extract_process_result(summary, 0)))
         assert snapshots(runs['warmup_record']) == snapshots(runs['baseline'])
 
     def test_the_backtest_records_the_bars_it_injected_under_its_scenario(self, runs):

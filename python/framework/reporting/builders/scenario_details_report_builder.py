@@ -4,7 +4,7 @@ Scenario-details report builder (#391/#393) — the per-scenario execution/signa
 Maps each scenario's `ProcessResult` (+ its index-synced `SingleScenario`) to a
 `ScenarioDetailsRow`: status (success/failed/hybrid), execution metadata, tick range, and the
 decision-logic signal counts. **Sim-only** (AutoTrader has no scenario grid) and reads the
-batch directly — NOT via `RunUnit`, because failed scenarios carry no `tick_loop_results` yet
+batch directly — NOT via `RunUnit`, because failed scenarios carry no `event_loop_results` yet
 must still appear (the section is the full scenario status view).
 """
 
@@ -143,14 +143,14 @@ def _to_row(result: ProcessResult, scenario: SingleScenario,
         error_message=result.error_message or '',
     )
 
-    tick_loop = getattr(result, 'tick_loop_results', None)
-    if tick_loop is None:
+    event_loop = getattr(result, 'event_loop_results', None)
+    if event_loop is None:
         # Pure failure — preparation/validation failed, no execution data
         return ScenarioDetailsRow(status='failed', **common)
 
-    decision = tick_loop.decision_statistics
-    coordination = tick_loop.coordination_statistics
-    tick_range = tick_loop.tick_range_stats
+    decision = event_loop.decision_statistics
+    coordination = event_loop.coordination_statistics
+    tick_range = event_loop.tick_range_stats
     # Only a tracker counts decisions; without one the counters are unknown, not zero.
     counted = decision is not None and decision.tracked
     return ScenarioDetailsRow(

@@ -1,7 +1,7 @@
 """
 Safety report builder (#356 / #314) — the risk-denominator postprocessor.
 
-Maps what the tick loop measured (`SafetySessionRecord`) plus what the profile armed
+Maps what the event loop measured (`SafetySessionRecord`) plus what the profile armed
 (`SafetyConfig`) onto the `SafetyReport` model. Live-only: a simulation has no circuit
 breaker, and no baseline to carry across a restart.
 
@@ -41,7 +41,7 @@ def build_safety_report_from_session(
 
     Args:
         run_id: The run this report belongs to
-        record: What the tick loop measured against the session's denominators
+        record: What the event loop measured against the session's denominators
         safety: The profile's circuit-breaker configuration
         symbol: The instrument this session traded
 

@@ -1,6 +1,6 @@
 # Loop Pass Order Tests
 
-`tests/framework/loop_pass_order/` — what each tick loop calls in each kind of pass, and in which
+`tests/framework/loop_pass_order/` — what each event loop calls in each kind of pass, and in which
 order. Both loops send their passes through one dispatcher (#458), a move that was not to change
 behaviour. A parity test compares what the two pipelines produce, but a step that moves
 inside one pass can leave every output the same on a fixture and still change a real run: a drain

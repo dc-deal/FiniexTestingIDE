@@ -21,7 +21,7 @@ import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
 from python.framework.reporting.certificates.field_study_certificate import FieldStudyCertificate
 from tests.shared.fixture_helpers import remove_run_dir
 
@@ -63,7 +63,7 @@ def not_waited():
     config = replace(load_autotrader_config(_PROFILE), bot_id='fldstop02')
     with pytest.MonkeyPatch.context() as patch:
         # Both of the stop's waits go, as before #630
-        patch.setattr(AutotraderTickLoop, '_wait_for_orders', lambda self, *args, **kwargs: None)
+        patch.setattr(AutotraderEventLoop, '_wait_for_orders', lambda self, *args, **kwargs: None)
         run_dir, lines, analysis, result = _session(config)
     yield lines, analysis, result
     remove_run_dir(run_dir)

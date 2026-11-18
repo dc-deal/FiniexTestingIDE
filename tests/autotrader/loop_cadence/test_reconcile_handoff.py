@@ -1,19 +1,19 @@
 """
 Loop Cadence — Handing Attributions to the Executor (#355 Phase 1)
 
-The tick loop is the seam between the two halves of the client-key feature: the Reconciler
+The event loop is the seam between the two halves of the client-key feature: the Reconciler
 DETECTS (it is read-only by contract) and the executor WRITES (it owns the pending state).
 That handoff is the only write path in the feature, and it is invisible to both the
 reconciliation and the live-executor suites — each tests one side of a call the loop makes.
 
 The loop is exercised through `__new__` rather than a full construction: the method under
-test needs exactly two collaborators, and building a real tick loop would drag in a queue,
+test needs exactly two collaborators, and building a real event loop would drag in a queue,
 a tick source, workers and a decision logic without testing any of them.
 """
 
 from typing import List, Tuple
 
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
 from python.framework.types.live_types.reconciliation_types import (
     BrokerOrder,
@@ -76,9 +76,9 @@ def _pair() -> Tuple[PendingOrder, BrokerOrder]:
     return pending, broker_order
 
 
-def _loop(reconciler, executor) -> AutotraderTickLoop:
-    """A tick loop with only the two collaborators this seam uses."""
-    loop = AutotraderTickLoop.__new__(AutotraderTickLoop)
+def _loop(reconciler, executor) -> AutotraderEventLoop:
+    """An event loop with only the two collaborators this seam uses."""
+    loop = AutotraderEventLoop.__new__(AutotraderEventLoop)
     loop._reconciler = reconciler
     loop._executor = executor
     loop._intake = None

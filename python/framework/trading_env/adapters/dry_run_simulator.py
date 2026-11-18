@@ -102,7 +102,7 @@ class DryRunOrderSimulator:
         Args:
             polls_until_fill: How many query() calls a PENDING order must
                               receive before it may fill. Default 2
-                              matches the typical tick-loop cadence
+                              matches the typical event-loop cadence
                               (one tick → poll → still pending → next
                               tick → poll → fill). It models the round
                               trip to the venue, so it applies to a

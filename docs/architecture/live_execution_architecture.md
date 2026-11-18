@@ -303,13 +303,13 @@ broker does not show either. It is never dropped (the venue may still hold it) b
 the targeted status query in #487.
 
 **The Reconciler still writes nothing.** An attribution is applied by the executor
-(`apply_order_attributions`), called by the tick loop with what the cycle matched, and it only ever
+(`apply_order_attributions`), called by the event loop with what the cycle matched, and it only ever
 fills a `broker_ref` that is `None` — overwriting a settled one would be correction, which is #349.
 
 **A changed picture is written to the order-event stream (#362).** A cycle marks itself
 `broker_truth_due` when its picture — clean, or the divergence by identity — differs from the one
 last written and `broker_truth_min_interval_seconds` have passed since; a change inside that
-distance waits for the next cycle after it. The tick loop hands a due cycle to the executor, which
+distance waits for the next cycle after it. The event loop hands a due cycle to the executor, which
 numbers the line on the stream's counter. A clean cycle forgets the last divergence, so one that
 returns is warned and written again rather than called unchanged. See
 [Order-Event Stream](order_event_stream.md#what-the-venue-said--broker-truth).
@@ -328,7 +328,7 @@ adopting an unknown position with a synthetic entry price corrupts P&L permanent
 
 On boot the executor's shadow is empty while the venue still holds what an earlier session
 left there. A bot that starts anyway trades beside its own open orders without seeing them.
-The boot step (`cold_start_setup.py` → `ColdStartAdopter`) runs once, before the tick loop:
+The boot step (`cold_start_setup.py` → `ColdStartAdopter`) runs once, before the event loop:
 
 > **This pairs with the session-end policy (#492), and the pair is checked at startup.**
 > Adoption only has something to adopt if the previous session LEFT it — so
@@ -355,7 +355,7 @@ BOOT
  │    ├─ restore the book, adopt the orders, lift the id counter
  │    └─ file the situation in the run record    (`io/cold_start.json`)
  ├─ FIELD STUDY                   excluded — it asserts a flat book itself (#332)
- └─ TICK LOOP
+ └─ EVENT LOOP
 ```
 
 ### Ownership, not existence, decides

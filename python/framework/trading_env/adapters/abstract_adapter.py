@@ -408,7 +408,7 @@ class AbstractAdapter(ABC):
 
         OPTIONAL — Real adapters determine market state broker-side and
         typically ignore this. Mock/simulation adapters use it to keep
-        their internal market view in sync with the tick loop so that
+        their internal market view in sync with the event loop so that
         execute_order() can fill at the current market price.
 
         Default: no-op.

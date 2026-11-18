@@ -197,7 +197,7 @@ in [venue_order_features.md](../architecture/venue_order_features.md).
 
 ## Safety Circuit Breaker
 
-A soft-stop mechanism: while a configured risk threshold is exceeded, the tick loop replaces the decision's ACTION with FLAT. Whatever a strategy sends only on a BUY or SELL action is suppressed — an entry, and also a close or a reduction it expresses as an action. What a strategy sends from its own position management whatever the action — a close, a stop amend, a cancel, a re-price — still goes out, an order already resting can still fill, and the a logic's own exits keep working. The breaker closes nothing itself. A strategy that reduces by deciding SELL therefore keeps its full exposure for as long as the block holds.
+A soft-stop mechanism: while a configured risk threshold is exceeded, the event loop replaces the decision's ACTION with FLAT. Whatever a strategy sends only on a BUY or SELL action is suppressed — an entry, and also a close or a reduction it expresses as an action. What a strategy sends from its own position management whatever the action — a close, a stop amend, a cancel, a re-price — still goes out, an order already resting can still fill, and the a logic's own exits keep working. The breaker closes nothing itself. A strategy that reduces by deciding SELL therefore keeps its full exposure for as long as the block holds.
 
 ### Behavior
 

@@ -1,7 +1,7 @@
 """
 ApiPerfMonitor thread-safety (#351).
 
-record() is called from the tick-loop thread AND worker threads (#319/#320/#327),
+record() is called from the event-loop thread AND worker threads (#319/#320/#327),
 so it must not lose updates under concurrency.
 """
 

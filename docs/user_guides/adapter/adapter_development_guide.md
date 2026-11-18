@@ -583,7 +583,7 @@ flattered every stop by the distance the price had moved through it, which on a 
 gap. No quote is passed to `submit()` at all any more; a dry-run order is priced when it is
 polled, because that is when a venue prices it.
 
-`polls_until_fill=2` matches the typical tick-loop cadence (one tick → poll → still pending →
+`polls_until_fill=2` matches the typical event-loop cadence (one tick → poll → still pending →
 next tick → poll → fill). It models the round trip to the venue, so it applies to a resting order
 that is immediately reachable too, and it is a condition ALONGSIDE the price rather than instead
 of it.

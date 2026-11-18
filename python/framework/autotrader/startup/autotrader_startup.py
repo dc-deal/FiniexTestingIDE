@@ -271,8 +271,8 @@ def create_autotrader_loggers(
         run_type=RUN_TYPE_AUTOTRADER
     )
 
-    # Session logger — tick loop, daily rotated in session_logs/ subdir
-    # Initial file logger is a placeholder — the tick loop swaps it on
+    # Session logger — event loop, daily rotated in session_logs/ subdir
+    # Initial file logger is a placeholder — the event loop swaps it on
     # the first tick to match the tick's date (avoids wallclock vs replay mismatch).
     session_logger = ScenarioLogger(
         scenario_set_name=session_name,
@@ -341,7 +341,7 @@ def create_autotrader_loggers(
         RunIndex(AppConfigManager().get_file_logging_config_object().run_index).register_run(
             header, run_dir)
 
-    # Create session_logs/ subdir (tick loop will create files there) — only when log files are
+    # Create session_logs/ subdir (event loop will create files there) — only when log files are
     # written: the run directory exists either way, the daily logs only with the switch on (#621)
     if run_dir and AppConfigManager().get_file_logging_config_object().scenario_enabled:
         create_directory(run_dir / run_member_folder(RunEntryMemberId.SESSION_DAY_LOG),

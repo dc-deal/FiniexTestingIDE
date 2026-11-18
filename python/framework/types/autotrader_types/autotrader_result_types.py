@@ -52,8 +52,8 @@ class SessionReach:
         order_record_opened: The order-event stream was opened
         capture_opened: An acceptance study's capture was opened
         tick_source_started: The tick source was built and started
-        tick_loop_entered: The state frames were opened and the tick loop was built
-        day_log_opened: A pass of the tick loop opened the trading day's session log
+        event_loop_entered: The state frames were opened and the event loop was built
+        day_log_opened: A pass of the event loop opened the trading day's session log
         algo_state_found: The start found a saved algo state, so it recorded what it found (#476)
         indicator_series_opened: The indicator series streams were opened — the profile records
             them and a worker draws (#379)
@@ -63,7 +63,7 @@ class SessionReach:
     order_record_opened: bool = False
     capture_opened: bool = False
     tick_source_started: bool = False
-    tick_loop_entered: bool = False
+    event_loop_entered: bool = False
     day_log_opened: bool = False
     algo_state_found: bool = False
     indicator_series_opened: bool = False
@@ -131,7 +131,7 @@ class AutoTraderResult:
         safety_session: What the circuit breaker measured against the session's risk
             denominators (#356 / #314) — running maxima rather than the value at the end,
             so a session that recovered from a deep excursion is not read as a quiet one.
-            None when the session never built a tick loop. Captured raw; the report model
+            None when the session never built an event loop. Captured raw; the report model
             is derived from it
         session_validation_result: Post-run advisory findings (Tier 1) — the live counterpart
             of BatchExecutionSummary.batch_validation_result
@@ -213,7 +213,7 @@ class AutoTraderResult:
         Grade this session (#372).
 
         An emergency the operator did not initiate is a failed run — a startup abort, a
-        tick-loop crash, or a safety escalation (#348). An operator Ctrl+C is not: it also
+        event-loop crash, or a safety escalation (#348). An operator Ctrl+C is not: it also
         arrives as 'emergency', and emergency_reason does not separate the two, which is
         why operator_interrupted is explicit. Logged errors re-grade an otherwise clean
         session, closing the §35 asymmetry.

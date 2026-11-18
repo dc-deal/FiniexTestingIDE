@@ -12,7 +12,7 @@ groupby('event_type'). See docs/architecture/trade_execution_visibility.md
 (planned) for the full event-type taxonomy.
 
 This writer takes the post-loop trade_history + order_history as input and
-walks them chronologically to emit synthetic events. No inline tick-loop
+walks them chronologically to emit synthetic events. No inline event-loop
 instrumentation needed — keeps the hot path untouched.
 """
 
@@ -96,8 +96,8 @@ class EventStreamWriter:
         for symmetry and future per-pipeline divergence.
 
         Args:
-            trade_history: All TradeRecord from process_result.tick_loop_results
-            order_history: All OrderResult from process_result.tick_loop_results
+            trade_history: All TradeRecord from process_result.event_loop_results
+            order_history: All OrderResult from process_result.event_loop_results
 
         Returns:
             EventStreamWriter ready to flush.

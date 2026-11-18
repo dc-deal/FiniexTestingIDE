@@ -1,6 +1,6 @@
 """
 FiniexTestingIDE - Signal Inbox
-Thread-safe hand-off from a live signal transport to the tick loop (#141 Part 2a).
+Thread-safe hand-off from a live signal transport to the event loop (#141 Part 2a).
 
 Transport, not core: this exists only because a thread boundary exists. A live stream
 receives envelopes on its own thread and deposits them here; the loop drains the inbox at

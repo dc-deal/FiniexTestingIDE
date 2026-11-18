@@ -46,7 +46,7 @@ class DecisionLogicStats:
     Complete statistics for decision logic execution.
 
     Tracks signal counts AND performance timing.
-    Used for serialization in ProcessTickLoopResult.
+    Used for serialization in ProcessEventLoopResult.
 
     Contains:
     - Signal counts (buy/sell/flat)

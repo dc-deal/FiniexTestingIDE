@@ -10,7 +10,7 @@ Launch entry: `🧩 Pytest: Cache Transparency (All)`
 
 ## What this suite exists to catch
 
-The portfolio marks its open positions lazily to keep the tick loop fast, and that is only safe while
+The portfolio marks its open positions lazily to keep the event loop fast, and that is only safe while
 no algo can tell. Until the algo masks it could: at spot a decision read a position's price and P&L
 as they stood at the last extreme, and a position a fill had just opened read a price of `0.0` in its
 own fill hook. No test saw it, because no strategy of ours read those fields. This suite looks from

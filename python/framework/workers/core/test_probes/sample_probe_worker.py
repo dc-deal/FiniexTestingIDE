@@ -138,7 +138,7 @@ class SampleProbeWorker(AbstractIndicatorWorker):
         Return warmup requirements from 'periods' config.
 
         This tells the system how many bars to load per timeframe
-        before starting the tick loop.
+        before starting the event loop.
 
         Returns:
             Dict[timeframe, bars_needed] - e.g. {"M5": 14, "M30": 20}
@@ -177,7 +177,7 @@ class SampleProbeWorker(AbstractIndicatorWorker):
         Validate warmup and capture bar snapshots.
 
         First tick:
-            - bar_history contains warmup bars (loaded before tick loop)
+            - bar_history contains warmup bars (loaded before event loop)
             - Validate counts against periods config
 
         Subsequent ticks:
@@ -239,7 +239,7 @@ class SampleProbeWorker(AbstractIndicatorWorker):
         - Record validation status
 
         Args:
-            bar_history: Historical bars loaded before tick loop
+            bar_history: Historical bars loaded before event loop
 
         Returns:
             Dict[timeframe, status_dict] where status_dict contains:

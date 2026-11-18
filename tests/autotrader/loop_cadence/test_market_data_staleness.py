@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
 from python.framework.autotrader.operator_alerts.alert_episode import AlertEpisode
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
@@ -89,7 +89,7 @@ class _StubTickSource:
 def _make_loop(stale_after_s: float, last_tick_wall: float,
                now: datetime, tick_source=None, stress_driver=None):
     """Bare loop carrying only the #436/#451/#444 state (ctor bypassed)."""
-    loop = object.__new__(AutotraderTickLoop)
+    loop = object.__new__(AutotraderEventLoop)
     loop._operator_alerts = OperatorAlertRecorder()
     loop._all_clear_after_s = 300.0
     loop._market_data_alert = AlertEpisode(loop._all_clear_after_s)
@@ -472,7 +472,7 @@ class TestStaleDataStressDriver:
             executor, decision, logger
 
     def _observed(self, driver, executor, logger):
-        """Driver + observer wired as the sim tick loop wires them (#451)."""
+        """Driver + observer wired as the sim event loop wires them (#451)."""
         tracker = MarketDataEpisodeTracker(source='kraken_spot', logger=logger)
 
         def advance(now: datetime) -> None:

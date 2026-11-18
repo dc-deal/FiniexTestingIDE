@@ -1,5 +1,5 @@
 """
-Hard Stop Integration — the hard stop's wiring through the real tick loop (#356).
+Hard Stop Integration — the hard stop's wiring through the real event loop (#356).
 
 The unit suites drive the hard stop's methods against a stub. This drives the whole path a
 session takes: the loop values the account on a tick, the safety layer sees the drawdown pass
@@ -20,7 +20,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.bars.bar_rendering_controller import BarRenderingController
@@ -83,9 +83,9 @@ def _ticks_with_a_drop() -> List[TickData]:
 
 
 def _run(spot_mode: bool, liquidate: bool = False) -> Tuple[
-        AutotraderTickLoop, LiveTradeExecutor, int]:
+        AutotraderEventLoop, LiveTradeExecutor, int]:
     """
-    Run the AutoTrader tick loop over the drop with the hard stop armed.
+    Run the AutoTrader event loop over the drop with the hard stop armed.
 
     Args:
         spot_mode: The account model
@@ -125,7 +125,7 @@ def _run(spot_mode: bool, liquidate: bool = False) -> Tuple[
     # A replay's own time, the front of its queue: the session stamps the venue's answers on it
     tick_source.get_idle_pass_time.return_value = ticks[-1].timestamp
 
-    loop = AutotraderTickLoop(
+    loop = AutotraderEventLoop(
         config=AutoTraderConfig(
             profile_name='hard_stop', symbol=SYMBOL, broker_type='kraken_spot',
             adapter_type='mock',

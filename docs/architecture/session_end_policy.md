@@ -10,7 +10,7 @@ decisions rather than one.** Layer b (architecture / flow) per #323.
 | Policy resolution | [session_end_validator.py](../../python/framework/validators/session_end_validator.py) |
 | Live cleanup | [live_trade_executor.py:4020](../../python/framework/trading_env/live/live_trade_executor.py#L4020) |
 | Sim cleanup | [trade_simulator.py:1440](../../python/framework/trading_env/simulation/trade_simulator.py#L1440) |
-| A stop's wait for orders on their way | [autotrader_tick_loop.py:642](../../python/framework/autotrader/autotrader_tick_loop.py#L642) |
+| A stop's wait for orders on their way | [autotrader_event_loop.py:642](../../python/framework/autotrader/autotrader_event_loop.py#L642) |
 | Its settings | `autotrader.shutdown` in [app_config.json](../../configs/app_config.json) |
 | Accounting rule | [reporting_pipeline.md](reporting_pipeline.md) — *Realised vs valued* |
 | Tests | [session_end_tests.md](../tests/autotrader/session_end_tests.md) |
@@ -367,7 +367,7 @@ populated.
 | The open-position report row | [report_types.py:545](../../python/framework/types/api/report_types.py#L545) |
 | The equity curve, one scale for both writers | [portfolio_manager.py:1380](../../python/framework/trading_env/portfolio_manager.py#L1380) |
 | The adoption prompt that states this policy | [cold_start_adopter.py:1005](../../python/framework/autotrader/cold_start/cold_start_adopter.py#L1005) |
-| A stop's wait and one pass of it | [autotrader_tick_loop.py:642](../../python/framework/autotrader/autotrader_tick_loop.py#L642) · [autotrader_tick_loop.py:721](../../python/framework/autotrader/autotrader_tick_loop.py#L721) · [loop_event_dispatcher.py:367](../../python/framework/loop/loop_event_dispatcher.py#L367) |
+| A stop's wait and one pass of it | [autotrader_event_loop.py:642](../../python/framework/autotrader/autotrader_event_loop.py#L642) · [autotrader_event_loop.py:721](../../python/framework/autotrader/autotrader_event_loop.py#L721) · [loop_event_dispatcher.py:367](../../python/framework/loop/loop_event_dispatcher.py#L367) |
 | What it waits for | [live_trade_executor.py:3810](../../python/framework/trading_env/live/live_trade_executor.py#L3810) |
 | A bound that runs out | [live_trade_executor.py:3894](../../python/framework/trading_env/live/live_trade_executor.py#L3894) |
 | The budget, and the check at the start | [stop_budget.py:16](../../python/framework/autotrader/stop_budget.py#L16) · [stop_budget_validator.py:31](../../python/framework/validators/stop_budget_validator.py#L31) |

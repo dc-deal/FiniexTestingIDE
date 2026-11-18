@@ -20,7 +20,7 @@ the timers' cadence and gates in the timeline intake, and the end-to-end loop wi
 |-------|-------|
 | `TestLatencyResolutionByMsc` | `OrderLatencySimulator.process_up_to_msc(msc)` resolves a queued order exactly when its `broker_fill_msc` is reached and removes it (the mechanism that lets a fill landing in a gap be resolved on a ghost-pass) |
 | `TestTheIntakeTimers` | The timeline intake (`SimEventIntake`) makes one timer per `heartbeat_interval_ms` within a sub-threshold gap (9 for a 10 s gap at 1 s), **none** across a gap over `inter_tick_gap_threshold_s` (#208 weekend-gap correctness gate), and none for a logic that takes no heartbeat |
-| `TestSimGhostPassLoop` | End-to-end via `execute_tick_loop` with a real `TradeSimulator`: an opt-in decision fires the expected ghost-passes between two ticks; a **non-opt-in** decision fires **none** (hard gate); an over-threshold gap fires none; a session end asked for in a ghost pass ends the run after it, before the next tick reaches the algo; so does one asked for in a tick pass without a decision event channel, since the loop checks after every instant (#460) |
+| `TestSimGhostPassLoop` | End-to-end via `execute_event_loop` with a real `TradeSimulator`: an opt-in decision fires the expected ghost-passes between two ticks; a **non-opt-in** decision fires **none** (hard gate); an over-threshold gap fires none; a session end asked for in a ghost pass ends the run after it, before the next tick reaches the algo; so does one asked for in a tick pass without a decision event channel, since the loop checks after every instant (#460) |
 
 ---
 
@@ -47,4 +47,4 @@ pipelines — the foundation the #294 matrix extends for a heartbeat algo.
 
 No shared fixtures. The latency test instantiates `OrderLatencySimulator` directly; the timer
 tests run `SimEventIntake` against a stand-in that has nothing in flight; the loop test wires a
-real `TradeSimulator` + a `MagicMock` orchestrator/decision into `execute_tick_loop`.
+real `TradeSimulator` + a `MagicMock` orchestrator/decision into `execute_event_loop`.

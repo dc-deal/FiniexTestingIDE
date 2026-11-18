@@ -11,7 +11,7 @@ same relative point as live. Three deterministic layers, no broker, no network:
    weekend-gap correctness gate, and none without a heartbeat. Until #460 a gap walk
    (`_run_sim_heartbeats`) made these passes; the intake makes them as timer events, on the
    same arrival axis and at the same instants.
-3. execute_tick_loop — end-to-end: ghost-passes fire through the real loop for an
+3. execute_event_loop — end-to-end: ghost-passes fire through the real loop for an
    opt-in decision (hard-gated; a non-opt-in decision fires none), and a session end asked
    for in one ends the run after it.
 """
@@ -24,7 +24,7 @@ from python.framework.logging.global_logger import GlobalLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.loop.event_sequencer import EventSequencer
 from python.framework.loop.intake.sim_event_intake import SimEventIntake
-from python.framework.process.process_tick_loop import execute_tick_loop
+from python.framework.process.process_event_loop import execute_event_loop
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.simulation.order_latency_simulator import OrderLatencySimulator
@@ -133,7 +133,7 @@ class TestTheIntakeTimers:
 def _run_loop(ticks, wants_heartbeat: bool, end_in_first_ghost: bool = False,
               end_in_first_tick: bool = False) -> MagicMock:
     """
-    Run execute_tick_loop with a real TradeSimulator + mock orchestrator/decision.
+    Run execute_event_loop with a real TradeSimulator + mock orchestrator/decision.
 
     Args:
         ticks: The ticks
@@ -175,7 +175,7 @@ def _run_loop(ticks, wants_heartbeat: bool, end_in_first_ghost: bool = False,
         start_time=ticks[0].timestamp,
         live_stats_config=LiveStatsExportConfig(enabled=False),
     )
-    execute_tick_loop(
+    execute_event_loop(
         config=config,
         worker_coordinator=worker_coordinator,
         trade_simulator=sim,

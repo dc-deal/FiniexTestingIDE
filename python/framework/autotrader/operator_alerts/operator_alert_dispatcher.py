@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - Operator Alert Dispatcher
 
-Carries operator alerts to their channel on a thread of its own (#235), so the tick loop never
+Carries operator alerts to their channel on a thread of its own (#235), so the event loop never
 waits on a network: `send()` is a queue append under a lock and returns at once.
 
 The thread paces the messages (`min_send_interval_s` — Telegram allows about one per second to a
@@ -117,7 +117,7 @@ class OperatorAlertDispatcher:
                     f'📣 Operator alerts: the queue holds {self._capacity} and is full — the '
                     f'oldest alert below CRITICAL is dropped for each new one')
         except Exception as error:   # noqa: BLE001 — the never-raise contract, said in the pot
-            # Called from the tick loop and from the abort path; a raise here would skip the
+            # Called from the event loop and from the abort path; a raise here would skip the
             # shutdown that cancels orders and writes the carry-over.
             self._logger.error(
                 f'📣 Operator alert could not be queued ({type(error).__name__}: {error})')

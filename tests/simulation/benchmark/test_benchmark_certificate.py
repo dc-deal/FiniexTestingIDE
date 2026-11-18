@@ -308,7 +308,7 @@ class TestBreakdownShape:
     """
     The shape rule: compare the section NAMES before comparing their values.
 
-    Pinned here because the pitfall is not hypothetical. `process_tick_loop.py` carries the
+    Pinned here because the pitfall is not hypothetical. `process_event_loop.py` carries the
     comment "'worker_decision' now also covers the (tiny) bar-history" — the meaning of the
     largest operation has already been extended once, and nothing typed stopped it.
     """

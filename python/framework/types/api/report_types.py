@@ -2614,8 +2614,8 @@ class PerformanceTracking(StrEnum):
     A description of the run's configuration, not a verdict: worker tracking is off in a default
     backtest, so most runs report `worker_off`.
     """
-    BOTH_ON = 'both_on'             # worker statistics and tick-loop profiling
-    WORKER_OFF = 'worker_off'       # tick-loop profiling only
+    BOTH_ON = 'both_on'             # worker statistics and event-loop profiling
+    WORKER_OFF = 'worker_off'       # event-loop profiling only
     PROFILING_OFF = 'profiling_off' # worker statistics only
     ALL_OFF = 'all_off'             # neither
 
@@ -2626,7 +2626,7 @@ class PerformanceTracking(StrEnum):
 
         Args:
             worker_on: Whether any scenario carried worker statistics
-            profiling_on: Whether any scenario carried tick-loop profiling
+            profiling_on: Whether any scenario carried event-loop profiling
 
         Returns:
             The class
@@ -2657,7 +2657,7 @@ class RunMetaReport(RunScopedReport):
     tickrun_time_s: float = 0.0
     pickle_time_s: float = 0.0
     pickle_sample_mb: float = 0.0
-    # #137 performance-tracking layer presence (any scenario): A = worker stats, B = tick-loop profiling
+    # #137 performance-tracking layer presence (any scenario): A = worker stats, B = event-loop profiling
     worker_tracking_on: bool = False
     profiling_tracking_on: bool = False
     # The parallelism the batch was configured with: whether scenarios ran side by side, and at
@@ -2992,7 +2992,7 @@ class WorkerDecisionReport(RunScopedReport):
 
 
 class ProfilingOperationRow(BaseModel):
-    """One tick-loop operation's timing within a unit (#399)."""
+    """One event-loop operation's timing within a unit (#399)."""
     operation: str
     total_time_ms: float = 0.0
     avg_time_ms: float = 0.0
@@ -3023,7 +3023,7 @@ class ClippingRow(BaseModel):
 
 
 class ProfilingUnitRow(BaseModel):
-    """Per-unit tick-loop profiling (#399, sim-only): operation timing + inter-tick + clipping."""
+    """Per-unit event-loop profiling (#399, sim-only): operation timing + inter-tick + clipping."""
     name: str
     symbol: str
     total_ticks: int = 0
@@ -3056,7 +3056,7 @@ class WorkerDecisionBreakdownRow(BaseModel):
     Where one unit's `worker_decision` operation time went (#399): its workers, its decision
     logic, and the coordination between them — the profiled total less the two, never below 0.
 
-    Built where both tracking layers measured the unit: the operation's total from the tick-loop
+    Built where both tracking layers measured the unit: the operation's total from the event-loop
     profiling, the workers' and the decision's time from the worker/decision statistics. The
     shares are of that total; whether the coordination share is too high is a validator's verdict.
     """
@@ -3145,7 +3145,7 @@ class ProfilingAggregate(BaseModel):
 
 class ProfilingReport(RunScopedReport):
     """
-    Per-unit tick-loop profiling + run-level roll-up + warmup (#399, **sim-only**). Closes the
+    Per-unit event-loop profiling + run-level roll-up + warmup (#399, **sim-only**). Closes the
     #398 residual: the `worker_decision` operation Total now lives here, so the worker/decision
     breakdown reads it from the model instead of the profiling map.
     """

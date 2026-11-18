@@ -47,7 +47,7 @@ tick from the boundary tick on that many days later, so one gap crosses several 
 closes it; `hold_ticks` sets how long the position is held. The AutoTrader loop can also end
 with idle heartbeats instead of an end-of-feed marker (`idle_heartbeats`), which the
 loop-cadence tests use to notice a boundary on a heartbeat. Its tick source stands in for a live
-feed, whose time for a pass without a tick is the wall clock, read from the tick loop's module; a
+feed, whose time for a pass without a tick is the wall clock, read from the event loop's module; a
 test that fakes that clock decides on which side of midnight the heartbeats fall.
 
 ## How to Run

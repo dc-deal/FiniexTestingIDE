@@ -8,8 +8,8 @@ trading-day boundary only, switchable, and never a reason for the session to end
 
 from datetime import date, datetime, timezone
 
-from python.framework.autotrader import autotrader_tick_loop as tick_loop_module
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader import autotrader_event_loop as event_loop_module
+from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
 from python.framework.types.api.report_types import RunSummaryCurrency
 from python.framework.types.autotrader_types.operator_alert_types import OperatorAlertKind
 from python.framework.types.config_types.market_config_types import DayAnchorConfig
@@ -28,7 +28,7 @@ class _LoopStub:
         self._logger = RecordingLogger()
 
     def announce(self, period: BookingPeriod) -> None:
-        AutotraderTickLoop._announce_day_closed(self, period)
+        AutotraderEventLoop._announce_day_closed(self, period)
 
 
 def _period(reason: PeriodCloseReason = PeriodCloseReason.ANCHOR) -> BookingPeriod:
@@ -71,7 +71,7 @@ def test_a_message_that_cannot_be_written_does_not_end_the_session(monkeypatch):
     def broken(period, trading_day, day_opened_at):
         raise KeyError('figures')
 
-    monkeypatch.setattr(tick_loop_module, 'day_closed_text', broken)
+    monkeypatch.setattr(event_loop_module, 'day_closed_text', broken)
     stub = _LoopStub()
     stub.announce(_period())
 

@@ -6,7 +6,7 @@ End-to-end validation of AutoTrader mock sessions and unit testing of AutoTrader
 
 ## Both account models
 
-The tick loop is one for both account models, and the money paths branch inside it, so a margin
+The event loop is one for both account models, and the money paths branch inside it, so a margin
 defect hides behind a green spot suite. Where a whole session runs on a margin account:
 
 | Test | Profile | What runs at margin |

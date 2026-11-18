@@ -1,8 +1,8 @@
 # Profiling
 
 A slow run tells you only that it was slow. Without this section you know how long a backtest took
-and not which step of the tick loop spent it, nor whether the market left enough time between
-ticks for the work to fit — so "make it faster" starts with a guess. This section is the tick loop
+and not which step of the event loop spent it, nor whether the market left enough time between
+ticks for the work to fit — so "make it faster" starts with a guess. This section is the event loop
 measured: where each unit's time went, how much time the market gave between ticks, and what a
 tick-processing budget dropped.
 
@@ -13,18 +13,18 @@ GET /api/v1/reports/runs/{run_id}/profiling
 ```
 
 **What is not here:** per-worker timings and the decision counters. Those are
-[workers and decisions](/api/v1/docs/worker-decision) — this section measures the tick loop's
+[workers and decisions](/api/v1/docs/worker-decision) — this section measures the event loop's
 operations, one of which runs the workers and the logic together. The complete list of a run's
 scenarios is [scenario details](/api/v1/docs/scenario-details).
 
-Only a backtest writes this section; the live tick loop has no operation profiling, so the route
+Only a backtest writes this section; the live event loop has no operation profiling, so the route
 answers `artifact_not_produced` for a session. Read the run's `artifacts` on
 [runs](/api/v1/docs/runs) first, and see [run kinds](/api/v1/docs/run-kinds) and
 [errors](/api/v1/docs/errors).
 
 ## `units` is not the scenario roster
 
-A scenario whose tick-loop profiling was switched off has **no row here at all** — it is left out
+A scenario whose event-loop profiling was switched off has **no row here at all** — it is left out
 rather than reported empty. So `units` can be shorter than the run's scenario grid, and
 [scenario details](/api/v1/docs/scenario-details) is the list that is complete. A run where every
 scenario had it off answers an empty `units` and an `aggregate` of zeros.
@@ -157,7 +157,7 @@ surfaces as one; this number is the input, not the conclusion.
 
 One entry per warmup phase, with its `name`, its measured `duration_s` and `pct`, its share of the
 whole warmup — null on a run recorded before contract 52. These belong to the run, not to any
-unit: they sit outside the tick-loop figures above and are not part of any unit's `total_ms`.
+unit: they sit outside the event-loop figures above and are not part of any unit's `total_ms`.
 Beside them, `warmup_total_s` is the whole warmup and `warmup_slowest_phase`, `warmup_slowest_s`
 and `warmup_slowest_pct` its slowest phase — of equals the first; null without a phase. Those
 four are read from the phases, so an older run answers them too.
@@ -165,7 +165,7 @@ four are read from the phases, so an older run answers them too.
 ## `worker_decision_breakdowns`
 
 Null on a run recorded before contract 52. Otherwise one row per unit that both tracking layers
-measured — the tick-loop profiling and the
+measured — the event-loop profiling and the
 [workers and decisions](/api/v1/docs/worker-decision) statistics: where its `worker_decision`
 operation time went. `total_time_ms` is that operation's total, `worker_execution_ms` its workers'
 time, `decision_logic_ms` the decision logic's (0.0 where the decisions were not tracked), and

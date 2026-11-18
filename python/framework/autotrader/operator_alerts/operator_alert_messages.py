@@ -75,7 +75,7 @@ def session_label(config: AutoTraderConfig) -> str:
 def session_started_text(config: AutoTraderConfig, dry_run: bool, run_id: str,
                          commits: List[Tuple[str, Optional[str]]]) -> Tuple[str, str]:
     """
-    The message a session sends when its tick loop starts.
+    The message a session sends when its event loop starts.
 
     Args:
         config: The session's resolved profile

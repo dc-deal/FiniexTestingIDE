@@ -10,7 +10,7 @@ with broker adapter communication and LiveRequestProcessor for pending
 order management.
 
 Architecture:
-    FiniexAutoTrader (live runner, replaces process_tick_loop)
+    FiniexAutoTrader (live runner, replaces process_event_loop)
         |
         +-- Live Data Feed (WebSocket / REST poll) -> delivers ticks
         |
@@ -403,7 +403,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         Everything the venue holds for this account, each part under the shared REST ladder (§43).
 
-        For the reads OUTSIDE the tick loop — the session's start and its end — where waiting
+        For the reads OUTSIDE the event loop — the session's start and its end — where waiting
         between attempts is allowed. Positions only on a margin account: on spot a holding is a
         balance, and the venue has no position object to report.
 
@@ -510,7 +510,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         The venue's orders and positions come from the cycle itself — read once, never twice.
         Its balances are read only when the record crosses between clean and divergent, and
-        with ONE attempt: this runs inside the tick loop, where the cadence is the ladder and
+        with ONE attempt: this runs inside the event loop, where the cadence is the ladder and
         nothing waits (§43).
 
         Args:
@@ -535,7 +535,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
     def _read_venue_balances_once(self) -> Optional[Dict[str, float]]:
         """
-        The venue's balance sheet, asked once and never waited for — for the tick loop.
+        The venue's balance sheet, asked once and never waited for — for the event loop.
 
         A transient failure gives None and a warning; the next record that reads balances asks
         again. Anything else propagates, as in the reconcile cycle: a refused credential is not
@@ -777,7 +777,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Drains async worker responses (fills, edits, cancels, query results,
         trades), processes timeouts, and re-polls resting orders and the MARKET
         orders and closes the venue has acknowledged. Called by
-        the AutoTrader tick loop on queue.Empty so the live pipeline stays
+        the AutoTrader event loop on queue.Empty so the live pipeline stays
         responsive even when the market is quiet — the fill/cancel-confirm query
         now fires during idle, not only on a real tick (#360). Does NOT touch
         tick state — see the abstract contract in AbstractTradeExecutor.heartbeat.
@@ -2280,7 +2280,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         decision, which by definition already ran on a tick — so the situation could not occur
         until boot ADOPTION became the first path that puts a fillable order into the shadow
         before any tick exists. Polling one then would answer FILLED into a dereference of
-        None, i.e. an uncaught exception in the tick loop of a live-adapter session, with a real
+        None, i.e. an uncaught exception in the event loop of a live-adapter session, with a real
         execution at the venue and no local record of it. Waiting for the first tick costs
         nothing: the algo is not running before it either.
         """

@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - AutoTrader Pipeline Bundle
 
-What `setup_pipeline` hands back to an AutoTrader session: the wired objects the tick loop runs on.
+What `setup_pipeline` hands back to an AutoTrader session: the wired objects the event loop runs on.
 
 A bundle rather than a tuple, and the reason is the failure it prevents: seven returns in a
 fixed order met seven targets in a fixed order, so two neighbours of related type could be

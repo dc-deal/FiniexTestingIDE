@@ -16,7 +16,7 @@ class VerificationConfig(StrictConfigModel):
     The verification switches of one run.
 
     portfolio_cache: true marks open positions lazily — only when something asks, which keeps the
-    tick loop fast at spot; false keeps every open position current at every event that can change
+    event loop fast at spot; false keeps every open position current at every event that can change
     its figures (a new price, a clock advance, a fill, a read), the reference the lazy marking is
     compared against.
     """

@@ -185,7 +185,7 @@ and the Phase 7 `BrokerSummary`.
 - WorkerFactory / DecisionLogicFactory validate parameter schemas (second check)
 - Apply schema defaults to config (fill missing optional parameters)
 - Create ProcessExecutor for each scenario
-- Run tick loop with trading simulation
+- Run event loop with trading simulation
 - Collect execution results
 
 **Optimization:**

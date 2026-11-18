@@ -296,7 +296,7 @@ def _bar_open(instant: datetime, step: timedelta) -> datetime:
 
 def _orders(summary) -> list:
     """Every order event and trade of the run's scenarios, as plain values."""
-    results = [result.tick_loop_results for result in summary.process_result_list]
+    results = [result.event_loop_results for result in summary.process_result_list]
     assert all(results)
     return [([asdict(event) for event in result.order_events or []],
              [asdict(trade) for trade in result.trade_history or []]) for result in results]
@@ -327,7 +327,7 @@ class TestOnARealBacktest:
 
     def test_each_drawing_worker_records_every_bar_that_closed_in_its_window(self, backtests):
         (summary, run_dir), _ = backtests
-        ticks = summary.process_result_list[0].tick_loop_results.tick_range_stats
+        ticks = summary.process_result_list[0].event_loop_results.tick_range_stats
         streams = {}
         for path in RunDirReader(run_dir).files_of(RunEntryMemberId.SCENARIO_INDICATOR_SERIES):
             lines = [json.loads(line) for line in path.read_text().splitlines()]

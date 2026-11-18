@@ -2,7 +2,7 @@
 FiniexTestingIDE - Process Pipeline Bundle
 
 What `process_startup_preparation` hands back to a scenario subprocess: the wired objects the
-tick loop runs on, all of them created inside the subprocess.
+event loop runs on, all of them created inside the subprocess.
 
 A bundle rather than a tuple, for the same reason as its live counterpart
 (`autotrader/autotrader_pipeline_bundle.py`): returns in a fixed order met targets in a fixed

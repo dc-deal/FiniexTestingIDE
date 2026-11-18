@@ -236,7 +236,7 @@ class BarRenderingController:
         Register what closes the gap between the warmup history and the first tick.
 
         Called with the first tick's instant, once, before that tick is rendered — the moment
-        the session's own bars begin. Lives here rather than in either tick loop because both
+        the session's own bars begin. Lives here rather than in either event loop because both
         loops render through this controller, so the seam closes at the same point in both.
 
         Args:

@@ -4,7 +4,7 @@
 
 The modify_lifecycle test suite validates the async modify/cancel pattern introduced by #318 on the
 **simulation side**. Unlike most other simulation test suites which run full scenarios via
-`execute_tick_loop`, this suite instantiates `TradeSimulator` directly and drives it with controlled
+`execute_event_loop`, this suite instantiates `TradeSimulator` directly and drives it with controlled
 msc-tagged ticks. The focus is on the **shape of the modify/cancel lifecycle** — scheduling,
 in-flight state, resolve-on-next-tick — not on full P&L correctness.
 
@@ -159,7 +159,7 @@ Unlike scenario-based simulation tests (`baseline`, `sltp_limit_validation`, etc
 1. Each test creates a fresh `TradeSimulator` via the `sim_executor` fixture
 2. `feed_sim_tick` advances the sim clock with explicit msc values
 3. Tests assert lifecycle state directly via `executor._active_limit_orders`, `pending.in_flight_operation`, etc.
-4. No scenario config, no `execute_tick_loop`, no decision logic
+4. No scenario config, no `execute_event_loop`, no decision logic
 
 This makes tests sharply focused (one lifecycle step per test) and fast (the whole suite runs in <1s).
 

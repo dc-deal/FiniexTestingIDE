@@ -111,13 +111,13 @@ class TestTheBootCheck:
         alerts.get_loop_progress().stamp()
         alerts.start_liveness()
         deadline = time.monotonic() + 5.0
-        while '⛔ TICK LOOP STALLED' not in channel.titles() and time.monotonic() < deadline:
+        while '⛔ EVENT LOOP STALLED' not in channel.titles() and time.monotonic() < deadline:
             time.sleep(0.01)
         alerts.loop_ended()
         alerts.finish(emergency=False, flush_timeout_s=5.0)
 
         assert alerts.describe() == 'telegram on · liveness ping off'
-        assert channel.titles() == ['⛔ TICK LOOP STALLED']
+        assert channel.titles() == ['⛔ EVENT LOOP STALLED']
 
 
 class TestTheCredentials:

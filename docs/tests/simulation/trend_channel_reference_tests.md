@@ -88,7 +88,7 @@ The STOP fixture runs with `write_strategy_files` on, the LIMIT fixture with it 
 ### TestItEndsFlatWhenAsked
 
 With `close_at_session_end` the logic closes what it holds from the session-end event (#642), and the
-backtest settles those closes at its last quote — through the real tick loop.
+backtest settles those closes at its last quote — through the real event loop.
 
 | Test | Description |
 |---|---|

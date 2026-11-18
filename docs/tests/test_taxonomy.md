@@ -113,7 +113,7 @@ tests/
 │   ├── indicator_series/  unit + one real backtest — what a worker draws on a run's chart (#379): each declaration held to the worker's outputs, the value recorded for a closed bar, the orders the same with the recording on and off
 │   ├── indicators/        unit — the shared indicator library: what each name means (Wilder vs EMA vs simple), the scalar/series parity, and the warmup each recursive average needs (#517)
 │   ├── loop_events/       unit — the loop core's event vocabulary and its one timeline (#457): two stamps per event, earliest stamp then submission order, no kind first, one instant per stamp, ticks of one instant as one data slice
-│   ├── loop_pass_order/   integration — what each tick loop calls in each kind of pass, and in which order, spied on the real collaborators: the backtest's tick, clipped tick and ghost pass, the AutoTrader's tick, idle and stop-wait pass (#458)
+│   ├── loop_pass_order/   integration — what each event loop calls in each kind of pass, and in which order, spied on the real collaborators: the backtest's tick, clipped tick and ghost pass, the AutoTrader's tick, idle and stop-wait pass (#458)
 │   ├── loop_timeline/     unit + integration — the backtest's timeline driver (#460): ticks grouped by arrival, due times and timers merged into instants, an order filled when it comes due, a due cancel first, a stop inside a sweep, the same run twice and no wall clock in the record
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
 │   ├── warmup_history/    unit + cross-path — the bars a run starts from: one synthetic stream through the backtest, mock and live

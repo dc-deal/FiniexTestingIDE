@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - Booking Day Harness
 
-One trading day's boundary, driven through both tick loops: flat BTCUSD ticks shifted so one
+One trading day's boundary, driven through both event loops: flat BTCUSD ticks shifted so one
 tick lands exactly on midnight UTC (kraken_spot is a crypto market, whose day flips there), a
 price gap on that tick, and a position opened before midnight and closed after it. Shared by the
 parity test that pins where a day ends (#476) and by the tests of what a session does at the
@@ -15,8 +15,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from unittest.mock import MagicMock
 
-from python.framework.autotrader import autotrader_tick_loop as tick_loop_module
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader import autotrader_event_loop as event_loop_module
+from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.bars.bar_rendering_controller import BarRenderingController
@@ -24,7 +24,7 @@ from python.framework.decision_logic.core.test_probes.deterministic_probe import
     DeterministicProbe,
 )
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.process.process_tick_loop import execute_tick_loop
+from python.framework.process.process_event_loop import execute_event_loop
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
 from python.framework.trading_env.broker_config import BrokerConfig
@@ -42,7 +42,7 @@ from python.framework.types.market_types.market_data_types import TickData, arri
 from python.framework.types.persistence_types import BaselineKind
 from python.framework.types.process_data_types import (
     ProcessScenarioConfig,
-    ProcessTickLoopResult,
+    ProcessEventLoopResult,
 )
 from python.framework.types.run_results_types import BookingPeriod
 from python.framework.types.trading_env_types.broker_types import BrokerType
@@ -181,7 +181,7 @@ def _orchestrator(logic: DeterministicProbe) -> MagicMock:
 def simulation_periods(ticks: List[TickData], spot_mode: bool,
                        stop_loss: Optional[float] = None) -> List[BookingPeriod]:
     """
-    Run the simulation's tick loop over the ticks.
+    Run the simulation's event loop over the ticks.
 
     Args:
         ticks: The input
@@ -201,9 +201,9 @@ def simulation_result(ticks: List[TickData], spot_mode: bool,
                       state_frames: Optional[Any] = None,
                       indicator_series: Optional[Any] = None,
                       inbound_latency_ms: Tuple[int, int] = (1, 1),
-                      **config_options: Any) -> ProcessTickLoopResult:
+                      **config_options: Any) -> ProcessEventLoopResult:
     """
-    Run the simulation's tick loop over the ticks.
+    Run the simulation's event loop over the ticks.
 
     Args:
         ticks: The input
@@ -230,7 +230,7 @@ def simulation_result(ticks: List[TickData], spot_mode: bool,
         inbound_latency_max_ms=inbound_latency_ms[1],
         spot_mode=spot_mode, initial_balances=_balances(spot_mode))
     logic = _probe(simulator, logger, stop_loss, stop_beyond_venue=True)
-    result = execute_tick_loop(
+    result = execute_event_loop(
         config=ProcessScenarioConfig(
             name='booking_parity', symbol=SYMBOL, scenario_index=0,
             start_time=ticks[0].timestamp, broker_type=BrokerType.KRAKEN_SPOT,
@@ -253,7 +253,7 @@ def simulation_result(ticks: List[TickData], spot_mode: bool,
 def autotrader_periods(ticks: List[TickData], spot_mode: bool,
                        stop_loss: Optional[float] = None) -> List[BookingPeriod]:
     """
-    Run the AutoTrader tick loop over the ticks.
+    Run the AutoTrader event loop over the ticks.
 
     Args:
         ticks: The input
@@ -279,9 +279,9 @@ def autotrader_loop(ticks: List[TickData], spot_mode: bool,
                     heartbeat_interval_ms: Optional[int] = None,
                     live_source: bool = False,
                     display_queue: Optional[queue.Queue] = None,
-                    **loop_options: Any) -> AutotraderTickLoop:
+                    **loop_options: Any) -> AutotraderEventLoop:
     """
-    The AutoTrader tick loop over the ticks, built the way a session builds it.
+    The AutoTrader event loop over the ticks, built the way a session builds it.
 
     A session always hands the loop its risk baseline tracker, and the daily loss limit rides the
     same per-tick read, so the tracker is part of the construction here.
@@ -326,9 +326,9 @@ def autotrader_loop(ticks: List[TickData], spot_mode: bool,
     tick_source.get_reconnect_count.return_value = 0
     tick_source.get_injected_outage_label.return_value = None
     # A live source's time for a pass without a tick is the wall clock (#616), read where a test
-    # fakes it: the tick loop's module
+    # fakes it: the event loop's module
     tick_source.get_idle_pass_time.side_effect = (
-        lambda: tick_loop_module.datetime.now(timezone.utc))
+        lambda: event_loop_module.datetime.now(timezone.utc))
 
     execution: Dict[str, Any] = (
         {'execution': AutotraderExecutionDefaults(heartbeat_interval_ms=heartbeat_interval_ms)}
@@ -336,7 +336,7 @@ def autotrader_loop(ticks: List[TickData], spot_mode: bool,
     if decision_events:
         loop_options['decision_event_dispatcher'] = DecisionEventDispatcher(
             logic, executor, logger)
-    loop = AutotraderTickLoop(
+    loop = AutotraderEventLoop(
         config=AutoTraderConfig(
             profile_name='booking_parity', symbol=SYMBOL, broker_type='kraken_spot',
             adapter_type='mock',

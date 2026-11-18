@@ -64,7 +64,7 @@ def read_tick_parquet(path: Path, columns: Optional[List[str]] = None) -> pd.Dat
         df['volume'] = 0.0
 
     # A file without an arrival time stores no `collected_msc` column (the deficiency
-    # `no_arrival_time` says so in the index). The tick loop's own convention for "not
+    # `no_arrival_time` says so in the index). The event loop's own convention for "not
     # recorded" is 0 — it then times on the event clock — so the column is added HERE, once,
     # and a window spanning files with and without one concatenates without a gap. A
     # projected read that did not ask for it gets none.

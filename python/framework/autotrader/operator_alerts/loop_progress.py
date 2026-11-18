@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - Loop Progress
 
-When the tick loop last came round — the one fact the liveness ping vouches for (#235). A ping
+When the event loop last came round — the one fact the liveness ping vouches for (#235). A ping
 sent because the PROCESS is alive would report a hung loop as healthy, which is the one failure a
 supervisor cannot see either: the process neither crashes nor exits. So the loop stamps this on
 every pass, a tick or an idle heartbeat alike, and the pinger reads it from its own thread.
@@ -16,7 +16,7 @@ from typing import Callable, Optional
 
 class LoopProgress:
     """
-    The tick loop's most recent pass.
+    The event loop's most recent pass.
 
     Args:
         clock: The monotonic clock — injected by tests

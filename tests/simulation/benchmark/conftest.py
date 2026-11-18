@@ -441,9 +441,9 @@ def benchmark_metrics(
 
     # Calculate total ticks (should be identical across runs)
     total_ticks = sum(
-        r.tick_loop_results.coordination_statistics.ticks_processed
+        r.event_loop_results.coordination_statistics.ticks_processed
         for r in runs[0].summary.process_result_list
-        if r.tick_loop_results and r.tick_loop_results.coordination_statistics
+        if r.event_loop_results and r.event_loop_results.coordination_statistics
     )
 
     tps_values = [
@@ -659,7 +659,7 @@ def benchmark_report(
             overall_status = 'FAILED'
             warnings.append(
                 f'Report generation took {summary_seconds:.2f}s, above the {summary_ceiling:.1f}s '
-                f'ceiling. Once per batch, not in the tick loop — so this is a reporting-pipeline '
+                f'ceiling. Once per batch, not in the event loop — so this is a reporting-pipeline '
                 f'cost, not a throughput regression. Raise the ceiling deliberately or find it.')
     metrics_list.append({
         'name': 'summary_generation_time_s',
@@ -745,7 +745,7 @@ def benchmark_report(
         'raw_measurements': benchmark_metrics.get('raw_measurements', {}),
         # The breakdown, with the SHAPE it was measured in. The shape is not decoration: the
         # operation names are free strings, and `worker_decision` has already absorbed another
-        # operation once (see process_tick_loop.py). A comparison across reports must check the
+        # operation once (see process_event_loop.py). A comparison across reports must check the
         # name sets FIRST and report +new / -gone, because diffing values across two different
         # definitions produces a number that looks like a regression and is not.
         'breakdown': {

@@ -11,7 +11,7 @@ file lives, and which document answers which question. **It is deliberately shor
 sits in the documents below, because a single file of fifteen hundred lines is one nobody reads
 to the end.
 
-FiniexAutoTrader is the counterpart of the backtesting `process_tick_loop`. It connects tick
+FiniexAutoTrader is the counterpart of the backtesting `process_event_loop`. It connects tick
 sources through workers and decision logic to the `LiveTradeExecutor`, using the same algorithm
 classes as backtesting.
 
@@ -152,7 +152,7 @@ recognises a study, and the capture's setup and preflight.
 ```
 python/framework/autotrader/
   autotrader_main.py             Runner: run(), shutdown, signal handling
-  autotrader_tick_loop.py        Tick processing loop (main thread, hot path)
+  autotrader_event_loop.py        Tick processing loop (main thread, hot path)
   autotrader_display_exporter.py Display frames from the live pipeline state (#400)
   deployment_resolver.py         Whether the session joins a deployment, starts one, or stands alone (#497)
   dry_run_resolver.py            Whether the session places real orders, answered once

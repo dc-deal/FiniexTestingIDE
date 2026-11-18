@@ -317,7 +317,7 @@ class WarmupHistory:
         after the read, and the timeframe is read again for the tick and replaced whole — so
         the history becomes the last N bars complete at the first tick, as in a backtest.
 
-        A single attempt, never a retry with a wait: this runs inside the tick loop. A
+        A single attempt, never a retry with a wait: this runs inside the event loop. A
         re-read that fails, or that still lacks the bar because the venue has not committed
         it yet (Kraken committed a period 0.8 s after its end on 2026-10-12 and up to 2.2 s
         after it on 2026-10-13), is a

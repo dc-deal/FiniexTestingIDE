@@ -41,7 +41,7 @@ def _ok(name='s1') -> ProcessResult:
 
 def _crashed(name='s2') -> ProcessResult:
     """
-    A scenario whose tick loop raised.
+    A scenario whose event loop raised.
 
     Args:
         name: Scenario name

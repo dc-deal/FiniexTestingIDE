@@ -40,7 +40,7 @@ once a trading day ended while it ran.
 
 ## How a day is sealed
 
-The seal runs where the booking period of the day is sealed — in the tick loop's boundary check,
+The seal runs where the booking period of the day is sealed — in the event loop's boundary check,
 before the first event of the new day is applied, right after the day's ledger row was written. So
 what the first tick of a day writes is already in the new day's file. Every stream the session opened
 through its run writer is sealed in the same pass, one after the other:

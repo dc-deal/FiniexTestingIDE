@@ -309,7 +309,7 @@ class ColdStartStateStore:
             refresh_index: Whether to rebuild the store index afterwards. False for the
                 writes that happen DURING a session: the rebuild reads every bot's document
                 and costs 26-40 ms on this project's tree (§42), which has no business inside
-                a tick loop — and the index answers a cross-BOT question ("which bot carries
+                an event loop — and the index answers a cross-BOT question ("which bot carries
                 what") that nobody asks mid-session. It is derived and disposable (§44), so a
                 session that ends without one leaves a store that reports itself stale and
                 rebuilds on the next boot or via `store_cli.py rebuild cold_start_state`

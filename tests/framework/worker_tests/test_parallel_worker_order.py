@@ -115,9 +115,9 @@ def _run(parallel_workers: bool) -> Dict[str, Any]:
     names = [scenario.name for scenario in loaded.scenarios]
     for result in summary.process_result_list:
         # The comparison proves something only if the parallel run took the parallel path.
-        assert result.tick_loop_results.coordination_statistics.parallel_workers is parallel_workers
-    return {name: (extract_trade_history(result.tick_loop_results),
-                   extract_portfolio_stats(result.tick_loop_results))
+        assert result.event_loop_results.coordination_statistics.parallel_workers is parallel_workers
+    return {name: (extract_trade_history(result.event_loop_results),
+                   extract_portfolio_stats(result.event_loop_results))
             for name, result in zip(names, summary.process_result_list)}
 
 

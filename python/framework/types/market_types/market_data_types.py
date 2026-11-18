@@ -63,7 +63,7 @@ class TickData:
 
         Deliberately inline rather than delegating to `trading_math.price_trigger.mid_price`,
         which answers the same question for callers holding a raw (bid, ask) pair: this sits
-        in the tick loop, and delegating was measured at +30 % on the access.
+        in the event loop, and delegating was measured at +30 % on the access.
         """
         return (self.bid + self.ask) / 2.0
 

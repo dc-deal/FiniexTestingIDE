@@ -51,13 +51,13 @@ def build_run_meta_report_from_batch(run_id: str, batch: BatchExecutionSummary,
         scenarios[0], 'is_profile_run', False)
 
     # #137 performance-tracking layer presence (any scenario carried the data) — Layer A =
-    # per-worker stats, Layer B = tick-loop operation profiling. Drives the "tracking OFF" notice.
+    # per-worker stats, Layer B = event-loop operation profiling. Drives the "tracking OFF" notice.
     worker_on = any(
-        r.tick_loop_results and r.tick_loop_results.worker_statistics
+        r.event_loop_results and r.event_loop_results.worker_statistics
         for r in batch.process_result_list)
     profiling_on = any(
-        r.tick_loop_results and r.tick_loop_results.profiling_data
-        and r.tick_loop_results.profiling_data.profile_times
+        r.event_loop_results and r.event_loop_results.profiling_data
+        and r.event_loop_results.profiling_data.profile_times
         for r in batch.process_result_list)
 
     return RunMetaReport(

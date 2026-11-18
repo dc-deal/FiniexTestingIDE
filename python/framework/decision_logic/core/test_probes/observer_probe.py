@@ -3,7 +3,7 @@ FiniexTestingIDE - Observer Probe Decision Logic
 Records everything a decision can see, on every pass, so two runs can be compared field by field
 (#653).
 
-The portfolio marks its positions lazily, and that is meant to make the tick loop faster without
+The portfolio marks its positions lazily, and that is meant to make the event loop faster without
 changing anything a strategy sees. This probe is the instrument that checks it: it trades a fixed
 plan and, on every tick pass, every heartbeat pass and in every hook, records every READS method of
 the decision trading API — the positions it kept from earlier passes first, before any call could

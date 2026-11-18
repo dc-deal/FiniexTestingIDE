@@ -2,7 +2,7 @@
 FiniexTestingIDE - AutoTrader Display Types
 Data structures for live console dashboard (#228).
 
-Lightweight snapshots pushed via queue from tick loop to display thread.
+Lightweight snapshots pushed via queue from event loop to display thread.
 Designed for queue transport: all fields are primitives, lists, or dicts.
 """
 
@@ -107,7 +107,7 @@ class TradeHistoryEntry:
 @dataclass
 class SafetyState:
     """
-    Circuit-breaker state passed from the tick loop to the display exporter.
+    Circuit-breaker state passed from the event loop to the display exporter.
 
     Args:
         blocked: Whether new entries are currently blocked

@@ -39,7 +39,7 @@ the scenario console output.
 Two details worth knowing about:
 
 - **The filler must match the stamp's width.** `format_log_event_time(None)` is padded to
-  `EVENT_TIME_WIDTH`, so the column does not shift when the run enters its tick loop — the same
+  `EVENT_TIME_WIDTH`, so the column does not shift when the run enters its event loop — the same
   reason `format_log_elapsed` is fixed width.
 - **`print_buffer` is the second display surface.** `flush_buffer` filtered the console threshold
   and `print_buffer` did not, so a warning the threshold suppressed still reached the console

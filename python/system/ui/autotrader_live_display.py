@@ -54,7 +54,7 @@ class AutoTraderLiveDisplay:
     """
     Real-time console dashboard for AutoTrader sessions.
 
-    Queue-based design: tick loop pushes AutoTraderDisplayStats snapshots,
+    Queue-based design: event loop pushes AutoTraderDisplayStats snapshots,
     display thread drains queue and renders via rich.live.
 
     Tick source connection stats are polled once per frame (GIL-safe primitives) and handed to
@@ -64,7 +64,7 @@ class AutoTraderLiveDisplay:
     shows as failed in place; a frame that cannot be printed is replaced by a failure frame;
     either is reported through `on_render_error` — once per failure, and only a few times per
     panel (RenderFailureReporter). Should the display thread still end, trading goes on
-    unaffected: the tick loop hands snapshots over without waiting and drops them when nobody
+    unaffected: the event loop hands snapshots over without waiting and drops them when nobody
     takes them.
 
     Args:
@@ -185,7 +185,7 @@ class AutoTraderLiveDisplay:
                     time.sleep(self._update_interval)
 
                 # Final drain after _running = False — ensures the very last
-                # snapshot pushed by the tick loop is rendered, regardless of
+                # snapshot pushed by the event loop is rendered, regardless of
                 # refresh timing. This runs inside the display thread, so
                 # live.update() is safe (same thread that owns the Live context).
                 self._drain_queue(limit=None)
@@ -362,7 +362,7 @@ class AutoTraderLiveDisplay:
             Rich Panel containing the dashboard
         """
         if stats is None:
-            # Race-window only: tick loop pushes a startup pulse before its
+            # Race-window only: event loop pushes a startup pulse before its
             # while-loop, so the display has a frame from t=0. This empty
             # panel is visible at most one refresh cycle, if at all.
             return Panel(

@@ -28,7 +28,7 @@ PROFILE_TOTAL_KEYS = frozenset({'total_per_tick', 'total_per_algo_pass'})
 @dataclass
 class OperationTiming:
     """
-    Timing data for a single operation in tick loop.
+    Timing data for a single operation in event loop.
 
     Represents profiling data for one operation (e.g., 'worker_decision',
     'bar_rendering') collected during scenario execution.
@@ -56,8 +56,8 @@ class ProfilingData:
     """
     Performance profiling data from scenario execution.
 
-    Built AFTER tick loop completes (zero overhead during ticks).
-    Contains timing for each operation in the tick loop.
+    Built AFTER event loop completes (zero overhead during ticks).
+    Contains timing for each operation in the event loop.
 
     Operations tracked:
     - trade_simulator: Price updates
@@ -115,7 +115,7 @@ class ProfilingData:
         """
         Build ProfilingData from raw dict data (AFTER loop).
 
-        This is called ONCE after tick loop completes.
+        This is called ONCE after event loop completes.
         Zero overhead during tick processing.
 
         Args:

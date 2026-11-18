@@ -26,7 +26,7 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
     EntryType,
     TradeRecord,
 )
-from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessResult, ProcessEventLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderSide
@@ -403,7 +403,7 @@ class TestTheUnitKnowsItsDataLackedAQuote:
             name='s1', scenario_index=0, symbol='EURGBP', data_broker_type='mt5',
             start_date=_T0, data_deficiencies=deficiencies)
         result = ProcessResult(success=True, scenario_name='s1', scenario_index=0,
-                               tick_loop_results=ProcessTickLoopResult())
+                               event_loop_results=ProcessEventLoopResult())
         return run_units_from_batch(BatchExecutionSummary(
             batch_execution_time=0.0, batch_warmup_time=0.0, batch_tickrun_time=0.0,
             process_result_list=[result], single_scenario_list=[scenario]))

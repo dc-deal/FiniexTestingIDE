@@ -47,8 +47,8 @@ Located at `configs/scenario_sets/backtesting/spot_sell_test.json`:
 
 | Fixture | Scope | Description |
 |---------|-------|-------------|
-| `spot_sell_tick_loop` | module | Runs `spot_sell_test` scenario once |
-| `spot_sell_order_history` | module | Extracts order history from tick loop results |
-| `spot_sell_execution_stats` | module | Extracts ExecutionStats from tick loop results |
+| `spot_sell_event_loop` | module | Runs `spot_sell_test` scenario once |
+| `spot_sell_order_history` | module | Extracts order history from event loop results |
+| `spot_sell_execution_stats` | module | Extracts ExecutionStats from event loop results |
 
 All fixtures use `run_scenario()` from `tests/shared/fixture_helpers.py`.

@@ -1,7 +1,7 @@
 """
 Worker/decision breakdown builder (#399, #557) — where each unit's `worker_decision` time went.
 
-Joins the two tracking layers per unit, by name: the operation's total from the tick-loop
+Joins the two tracking layers per unit, by name: the operation's total from the event-loop
 profiling, the workers' and the decision logic's time from the worker/decision report. What is
 left of the total once both are taken out is the coordination between them, never below zero.
 Sim-only, like the profiling it extends; built once both reports exist.

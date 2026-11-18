@@ -12,7 +12,7 @@ from typing import Optional
 @dataclass(frozen=True)
 class MarketDataStatus:
     """
-    Session-level market-data health, evaluated by the live tick loop (#436).
+    Session-level market-data health, evaluated by the live event loop (#436).
 
     Default = fresh: the sim executor never sets this status — replay gaps are
     data (weekend/holiday), not outages — so downstream readers see a healthy

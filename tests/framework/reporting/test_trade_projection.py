@@ -24,7 +24,7 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
     EntryType,
     TradeRecord,
 )
-from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessResult, ProcessEventLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderSide
@@ -99,10 +99,10 @@ class TestSourceVariants:
             process_result_list=[
                 ProcessResult(
                     success=True, scenario_name='AUDUSD_cont_00', scenario_index=0,
-                    tick_loop_results=ProcessTickLoopResult(trade_history=[_trade('p1')])),
+                    event_loop_results=ProcessEventLoopResult(trade_history=[_trade('p1')])),
                 ProcessResult(
                     success=True, scenario_name='EURUSD_cont_01', scenario_index=1,
-                    tick_loop_results=ProcessTickLoopResult(trade_history=[_trade('p2')])),
+                    event_loop_results=ProcessEventLoopResult(trade_history=[_trade('p2')])),
             ],
             single_scenario_list=[
                 SingleScenario(

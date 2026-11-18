@@ -1,9 +1,10 @@
 """
-FiniexTestingIDE - AutoTrader Tick Loop
-Main tick processing loop for an AutoTrader session (Threading model 8.a).
+FiniexTestingIDE - AutoTrader Event Loop
+The event loop of an AutoTrader session (Threading model 8.a, #461).
 
-Runs in the main thread, pulls ticks from queue, processes through:
-executor.on_tick → bar_controller → workers → decision_logic.
+Runs in the main thread: takes one instant at a time from the session's timeline — the ticks, the
+venue's answers and the timers — and hands it to the loop core's dispatcher, which runs the broker
+path, the bars, the workers and the decision in its order.
 
 Session log rotates daily: session_logs/autotrader_session_YYYYMMDD.log
 """
@@ -102,15 +103,14 @@ from python.framework.validators.adapter_wiring_validator import REPLAY_TICK_SOU
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
-class AutotraderTickLoop(AbstractLivePassHooks):
+class AutotraderEventLoop(AbstractLivePassHooks):
     """
-    Tick processing loop for an AutoTrader session.
+    The event loop of an AutoTrader session.
 
-    Pulls ticks from a queue.Queue (fed by a TickSource thread) and hands each pass to the loop
-    core (#458) — a tick, the pass when no tick came, a stop's wait — whose order runs
-    on_tick → bars → workers → decision; this loop's own steps inside a pass are its hooks, and
-    what follows a pass (reconcile, persistence, clipping monitor, display, state frame) stays
-    here.
+    Takes the instants of the session's timeline (#461) — what the tick source put on its queue,
+    what the venue answered, what fell due — and hands each to the loop core (#458), as it hands a
+    stop's wait; this loop's own steps inside a pass are its hooks, and what follows an instant
+    (reconcile, persistence, clipping monitor, display, state frame) stays here.
 
     Session log rotates when the market crosses into a new trading day — each day gets its
     own file in session_logs/ to prevent unbounded log growth on 24/7 sessions.
@@ -433,7 +433,7 @@ class AutotraderTickLoop(AbstractLivePassHooks):
         )
 
     def stop(self) -> None:
-        """Signal the tick loop to stop. Thread-safe."""
+        """Signal the event loop to stop. Thread-safe."""
         self._running = False
 
     def run(self) -> Tuple[int, int]:
@@ -1436,13 +1436,13 @@ class AutotraderTickLoop(AbstractLivePassHooks):
         if waited <= self._market_data_stale_after_s:
             return
         self._logger.warning(
-            f'⚠️ No market data yet: no tick for {waited:.0f}s since the tick loop started '
+            f'⚠️ No market data yet: no tick for {waited:.0f}s since the event loop started '
             f'(threshold {self._market_data_stale_after_s:.0f}s) — the feed may not be connected')
         if self._market_data_alert.opens(self._executor.get_current_time()):
             self._operator_alerts.send(
                 OperatorAlertKind.MARKET_DATA_STALE, OperatorAlertLevel.WARNING,
                 'No market data since the session started',
-                f'No tick for {waited:.0f}s since the tick loop started (threshold '
+                f'No tick for {waited:.0f}s since the event loop started (threshold '
                 f'{self._market_data_stale_after_s:.0f}s). The feed may not be connected.')
 
     def _note_reconnects(self) -> None:

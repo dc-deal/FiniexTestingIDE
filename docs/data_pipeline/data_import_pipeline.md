@@ -665,9 +665,9 @@ Parquet (data/processed/{broker_type}/ticks/{SYMBOL}/)
   process_deserialize_ticks_batch()          [process_serialization_utils.py]
   ├─ Derives timestamp from time_msc (epoch ms → UTC datetime)
   ├─ Symbol from scenario config (not from dict)
-  └─ Produces TickData objects for tick loop
+  └─ Produces TickData objects for event loop
        ↓
-  ProcessTickLoop
+  ProcessEventLoop
   ├─ Iterates TickData objects in order
   ├─ Inter-tick interval: collected_msc (arrival clock, preferred)
   │   Fallback: time_msc when collected_msc == 0 (data without an arrival time)
@@ -694,7 +694,7 @@ These fields exist in Parquet but are **not** transported to subprocesses:
 |-------|--------|
 | `timestamp` | Derived from `time_msc` during deserialization (eliminates Pandas Timestamp from pickle) |
 | `symbol` | Injected from scenario config during deserialization |
-| `last`, `tick_volume`, `chart_tick_volume` | Not consumed by tick loop |
+| `last`, `tick_volume`, `chart_tick_volume` | Not consumed by event loop |
 | `spread_points`, `spread_pct` | Quality checks only (pre-transport) |
 | `tick_flags`, `session` | Import metadata only |
 
@@ -929,7 +929,7 @@ It is standard exchange/broker behavior to not render bars for time periods wher
 | Data gap (collector outage) | No bars (time jump) | Data quality problem detected via gap detection |
 | Crypto weekend | Normal bars | 24/7 market, no closure |
 
-This behavior is consistent across all three renderers: `VectorizedBarRenderer` (batch import), `BarRenderer` (tick loop / backtesting), and AutoTrader sessions.
+This behavior is consistent across all three renderers: `VectorizedBarRenderer` (batch import), `BarRenderer` (event loop / backtesting), and AutoTrader sessions.
 
 The market closure behavior is controlled by `market_config.json` → `market_rules.{market_type}.weekend_closure`. Forex has `weekend_closure: true`, Crypto has `weekend_closure: false`.
 

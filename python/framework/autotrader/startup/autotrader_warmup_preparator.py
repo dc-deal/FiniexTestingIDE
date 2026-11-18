@@ -228,7 +228,7 @@ class AutotraderWarmupPreparator:
         )
 
     # =========================================================================
-    # DISPLAY LABEL CACHE — built once, read by tick loop + display thread
+    # DISPLAY LABEL CACHE — built once, read by event loop + display thread
     # =========================================================================
 
     def build_display_label_cache(
@@ -253,7 +253,7 @@ class AutotraderWarmupPreparator:
 
         Returns:
             Frozen DisplayLabelCache ready to be shared read-only between
-            the tick loop and the display thread.
+            the event loop and the display thread.
         """
         # Decision logic input params → Params: line (display=True only)
         dl_input_schema = decision_logic.__class__.get_parameter_schema()

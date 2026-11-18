@@ -1,7 +1,7 @@
 """
 The promise that makes two forms of one indicator still one definition.
 
-Every indicator here exists twice: a scalar form the tick loop calls with a window of bars,
+Every indicator here exists twice: a scalar form the event loop calls with a window of bars,
 and a series form the analysis plane calls with a frame of months. That is not a convenience
 — forcing either onto the other puts pandas inside the per-tick path (§17, where worker and
 decision work is already ~79 % of tick time) or a Python loop across 300 000 rows.

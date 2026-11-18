@@ -2,7 +2,7 @@
 FiniexTestingIDE - Path-Based Loading Tests
 Shared fixtures for path-based loading and hot-reload testing
 
-No data dependencies. No tick loop. No bars.
+No data dependencies. No event loop. No bars.
 Uses tmp_path for isolated test modules.
 """
 

@@ -13,13 +13,13 @@ The backtesting flow processes a finite list of historical ticks synchronously. 
 from one event to the next (#460): the ticks, grouped by the millisecond they arrived in; the
 simulator's next due time — a fill, a scheduled modify or cancel; and a heartbeat logic's timers.
 
-**Entry point:** `python/framework/process/process_tick_loop.py` → `execute_tick_loop()`. The
+**Entry point:** `python/framework/process/process_event_loop.py` → `execute_event_loop()`. The
 timeline intake (`SimEventIntake`) merges the three sources and hands over one instant at a time;
 each instant runs in the loop core (`dispatch_backtest_instant`,
 [The Loop Core](loop_core_architecture.md)), in the phases of the event model.
 
 ```
-execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_controller, decision_logic, scenario_logger, ticks)
+execute_event_loop(config, worker_coordinator, trade_simulator, bar_rendering_controller, decision_logic, scenario_logger, ticks)
     │
     for instant in SimEventIntake(ticks, trade_simulator, ...):
         │                                         # a slice (ticks that arrived in one ms), a due time,
@@ -69,7 +69,7 @@ execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_con
     trade_simulator.check_clean_shutdown()
 
     # Collect results
-    → ProcessTickLoopResult (stats, trade_history, order_history, order_events, active_orders, profiling)
+    → ProcessEventLoopResult (stats, trade_history, order_history, order_events, active_orders, profiling)
 ```
 
 **Key characteristics:**
@@ -107,15 +107,15 @@ execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_con
 ## AutoTrader Tick Flow
 
 The AutoTrader flow processes the ticks of its tick source — in a live-adapter session, real-time
-ticks from a broker connection. The runner is `AutotraderTickLoop` — implemented and validated
+ticks from a broker connection. The runner is `AutotraderEventLoop` — implemented and validated
 against real Kraken Spot. Ticks are pulled from a thread-safe queue fed
 by a TickSource thread (KrakenTickSource — Kraken WebSocket v2); the loop is synchronous on the main
 thread.
 
-**Entry point:** `python/framework/autotrader/autotrader_tick_loop.py` → `AutotraderTickLoop.run()`
+**Entry point:** `python/framework/autotrader/autotrader_event_loop.py` → `AutotraderEventLoop.run()`
 
 ```
-AutotraderTickLoop.run()
+AutotraderEventLoop.run()
     │
     intake = LiveEventIntake(…)                     # #461: two lanes and the session's timers
     while running:                                  # infinite, real-time
@@ -204,7 +204,7 @@ gate, the per-step profiling and the error wrap around `execute_decision`. The A
 profiling; `dispatch_live_order_wait` is one pass of a stop's wait. Both keep the #348 event-drain
 boundary and set the clock to the instant's stamp on the receipt axis. The reconcile and
 persistence gates, the clipping monitor, the display and the state frame follow a pass in the
-AutoTrader's tick loop.
+AutoTrader's event loop.
 
 ## Side-by-Side Comparison
 
@@ -212,7 +212,7 @@ AutoTrader's tick loop.
 |--------|-------------|------|
 | **Tick source** | Pre-loaded list (finite) | WebSocket / REST (real-time, infinite) |
 | **Loop type** | `for instant in SimEventIntake(...)` — next event: slice, due time, timer | `while running` / event-driven |
-| **Runner** | `execute_tick_loop()` | `AutotraderTickLoop.run()` |
+| **Runner** | `execute_event_loop()` | `AutotraderEventLoop.run()` |
 | **Pending orders** | OrderLatencySimulator (ms-timestamp, seeded delay) | LiveRequestProcessor → broker polling |
 | **SL/TP check** | `_check_sl_tp_triggers()` local price check of the levels a position carries | None: a session holds no level (#625). A logic's own exit (`OwnExitLevels`) closes through `close_position()`, so it lands at the broker's next price instead of at the level |
 | **Fill detection** | An instant at `broker_fill_msc`, on the arrival axis (#460) | Broker response via polling (#320); WebSocket push primary in V1.4 (#331) |

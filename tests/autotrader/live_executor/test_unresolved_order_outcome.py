@@ -345,7 +345,7 @@ class TestATimedOutUnresolvedOrderLeavesTheTracker:
 
 def _heartbeat_as_the_loop_does(executor) -> None:
     """
-    Run one heartbeat the way the tick loop does: inject the clock first, then resolve.
+    Run one heartbeat the way the event loop does: inject the clock first, then resolve.
 
     A rejection is stamped with the canonical clock, so a heartbeat on a never-set clock
     raises — the loop always sets it one line before.

@@ -12,7 +12,7 @@ GET /api/v1/reports/runs/{run_id}/worker-decision
 ```
 
 **What is not here:** how a single tick splits into worker, decision and coordination shares. That
-breakdown is derived from the tick loop's own operation timings and stays with
+breakdown is derived from the event loop's own operation timings and stays with
 [profiling](/api/v1/docs/profiling). The list of the run's units is
 [scenario details](/api/v1/docs/scenario-details); what became of the orders a decision asked for
 is [execution stats](/api/v1/docs/execution-stats).

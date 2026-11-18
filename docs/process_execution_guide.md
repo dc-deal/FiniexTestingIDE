@@ -219,12 +219,12 @@ true](introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).
 
 ---
 
-## Tick Loop Execution
+## Event Loop Execution
 
 ### 6-Step Processing Pipeline
 
-**Function:** `execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_controller, decision_logic, scenario_logger, ticks, live_queue)`  
-**Located:** `python/framework/process/process_tick_loop.py`
+**Function:** `execute_event_loop(config, worker_coordinator, trade_simulator, bar_rendering_controller, decision_logic, scenario_logger, ticks, live_queue)`  
+**Located:** `python/framework/process/process_event_loop.py`
 
 **Per-Tick Operations:**
 
@@ -344,7 +344,7 @@ ProcessPool uses `fork()` on Linux, which copies entire process memory including
 **Required Cleanups:**
 
 ```python
-# In process_tick_loop.py - after execution
+# In process_event_loop.py - after execution
 1. worker_coordinator.cleanup()     # Close ThreadPool (if enabled)
 2. scenario_logger.close()          # Close log file handles
 3. logging.shutdown()               # Close ALL Python logging handlers
@@ -396,7 +396,7 @@ Display Update (Rich Console)
 ```
 
 **Key Properties:**
-- **Non-blocking:** Never blocks tick loop
+- **Non-blocking:** Never blocks event loop
 - **Lossy:** Drops updates if queue full (acceptable)
 - **Time-based:** Throttled by update_interval_ms
 - **Conditional:** Exports only requested data
@@ -473,7 +473,7 @@ if config.live_stats_config.export_current_bars:
 ```python
 INIT_PROCESS       # Subprocess started
     ↓
-RUNNING            # Tick loop active
+RUNNING            # Event loop active
     ↓
 COMPLETED          # Successful completion
     or
@@ -578,7 +578,7 @@ ticks = process_deserialize_ticks_batch(
 ```
 
 **Why Deserialize?**
-- Tick loop needs mutable list for iteration
+- Event loop needs mutable list for iteration
 - Convert from immutable tuple → mutable list
 - Happens ONCE per subprocess (not per tick)
 
@@ -601,7 +601,7 @@ ProcessResult(
     symbol="GBPUSD",
     scenario_index=1,
     execution_time_ms=1546.0,
-    tick_loop_results=ProcessTickLoopResult(...),  # Full results
+    event_loop_results=ProcessEventLoopResult(...),  # Full results
     scenario_logger_buffer=[(timestamp, message), ...]
 )
 ```
@@ -640,8 +640,8 @@ try:
     # Startup preparation — returns one ProcessPipelineBundle
     pipeline = process_startup_preparation(config, shared_data, scenario_logger)
     
-    # Tick loop execution
-    tick_loop_results = execute_tick_loop(
+    # Event loop execution
+    event_loop_results = execute_event_loop(
         config, pipeline.worker_coordinator, pipeline.trade_simulator,
         pipeline.bar_rendering_controller, pipeline.decision_logic,
         scenario_logger, pipeline.ticks, live_queue)
@@ -857,7 +857,7 @@ runs/autotrader/<name>/<run_id>/
     autotrader_session_YYYYMMDD.log
 ```
 
-### 7. 6-Step Tick Loop Pipeline
+### 7. 6-Step Event Loop Pipeline
 **Rationale:** Clear separation of concerns, profiling granularity  
 **Benefit:** Identify bottlenecks per operation  
 **Trade-off:** Slight overhead from profiling (< 1%)

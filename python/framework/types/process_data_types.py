@@ -257,7 +257,7 @@ class ProcessScenarioConfig:
     # === PERFORMANCE TRACKING (#137) ===
     # Layer A — per-worker / decision trackers in WorkerOrchestrator
     worker_decision_tracking: bool = False
-    # Layer B — operation-level timers in the tick loop (process_tick_loop)
+    # Layer B — operation-level timers in the event loop (process_event_loop)
     tick_loop_profiling: bool = True
 
     # === LOGGER METADATA ===
@@ -504,7 +504,7 @@ class ProcessScenarioConfig:
 @dataclass
 class ProcessProfileData:
     """
-        Profiling from Tick Loop,
+        Profiling from Event Loop,
         various profiling points.
     """
     profile_times: Dict[Any, float] = None
@@ -565,9 +565,9 @@ class TickRangeStats:
 
 
 @dataclass
-class ProcessTickLoopResult:
+class ProcessEventLoopResult:
     """
-    Result info from Tick Loop, after execution.
+    Result info from Event Loop, after execution.
 
     Contains three separate performance statistic sources:
     - decision_statistics: From DecisionLogicPerformanceTracker
@@ -634,7 +634,7 @@ class ProcessTickLoopResult:
     indicator_series_opened: bool = False
 
     # Error handling
-    tick_loop_error: Optional[Exception] = None
+    event_loop_error: Optional[Exception] = None
 
 
 # ============================================================================
@@ -671,8 +671,8 @@ class ProcessResult:
     error_message: Optional[str] = None
     traceback: Optional[str] = None
 
-    # Data from the tick loop
-    tick_loop_results: ProcessTickLoopResult = None
+    # Data from the event loop
+    event_loop_results: ProcessEventLoopResult = None
 
     # logger lines to print after scenario run.
     scenario_logger_buffer: list[LogRecord] = None

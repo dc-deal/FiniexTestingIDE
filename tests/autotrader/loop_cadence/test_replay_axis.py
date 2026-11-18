@@ -8,14 +8,14 @@ clock past ticks still waiting, and every one of them would be clamped forward o
 stamps at the loop's own position, and a live session at the wall clock.
 
 The loop is exercised through `__new__`: the method under test reads three collaborators, and
-building a real tick loop would drag in a queue, workers and a decision logic without testing any
+building a real event loop would drag in a queue, workers and a decision logic without testing any
 of them.
 """
 
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.autotrader_event_loop import AutotraderEventLoop
 
 _FRONT = datetime(2026, 1, 25, 12, 0, 0, tzinfo=timezone.utc)
 _FRONT_MSC = round(_FRONT.timestamp() * 1000)
@@ -32,8 +32,8 @@ class _Intake:
         return self._position_msc
 
 
-def _loop(replay: bool, position_msc) -> AutotraderTickLoop:
-    loop = AutotraderTickLoop.__new__(AutotraderTickLoop)
+def _loop(replay: bool, position_msc) -> AutotraderEventLoop:
+    loop = AutotraderEventLoop.__new__(AutotraderEventLoop)
     loop._tick_source = MagicMock()
     loop._tick_source.get_idle_pass_time.return_value = _FRONT
     loop._replay = replay

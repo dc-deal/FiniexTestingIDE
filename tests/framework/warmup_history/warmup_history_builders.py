@@ -58,7 +58,7 @@ def tick_frame(start: datetime, end: datetime, step_s: int) -> pd.DataFrame:
 
 def ticks_of(frame: pd.DataFrame, since: datetime) -> List[TickData]:
     """
-    The stream from an instant on, as the tick loops receive it.
+    The stream from an instant on, as the event loops receive it.
 
     Args:
         frame: The tick frame

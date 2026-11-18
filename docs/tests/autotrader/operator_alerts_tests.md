@@ -2,7 +2,7 @@
 
 An unattended session is only as good as what reaches the operator when it goes wrong — and as
 what reaches the monitor when nothing can be sent at all. This suite holds the alert channel, its
-dispatcher, the liveness ping and the texts to that: the tick loop never waits on a network, an
+dispatcher, the liveness ping and the texts to that: the event loop never waits on a network, an
 outage costs one message while a refusal closes the channel, a flapping symptom is one alert
 episode rather than a storm, the ping vouches for the LOOP rather than the process — and for no
 loop that never ran — a stalled loop reaches the operator even with the ping off, nothing on the
@@ -61,7 +61,7 @@ Also pinned in the suites whose code raises the alerts:
 
 | Test | What it verifies |
 |---|---|
-| `test_send_returns_at_once_while_the_channel_hangs` | the tick loop never waits |
+| `test_send_returns_at_once_while_the_channel_hangs` | the event loop never waits |
 | `test_a_full_queue_drops_the_oldest_and_says_so_at_once` | a bounded queue, the drop said when it starts — before the run is graded — once per streak |
 | `test_a_critical_alert_outranks_the_rest_when_the_queue_is_full` | the oldest alert below CRITICAL goes first |
 | `test_send_never_raises` | called from the abort path, a raise would skip the shutdown |

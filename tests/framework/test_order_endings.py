@@ -291,7 +291,7 @@ class _ActsOnTheWayOut:
 
 def _end_the_session(sim: TradeSimulator, logic: _ActsOnTheWayOut) -> None:
     """
-    The simulation's end, in the order its tick loop runs it once the data is over.
+    The simulation's end, in the order its event loop runs it once the data is over.
 
     Args:
         sim: The simulator

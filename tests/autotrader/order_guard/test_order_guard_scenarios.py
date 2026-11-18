@@ -25,7 +25,7 @@ from python.framework.types.trading_env_types.trading_env_stats_types import Exe
 from tests.shared.fixture_helpers import (
     extract_order_history,
     extract_process_result,
-    extract_tick_loop_results,
+    extract_event_loop_results,
     run_scenario,
 )
 
@@ -37,21 +37,21 @@ COOLDOWN_CONFIG = 'backtesting/order_guard_cooldown_test.json'
 
 
 @pytest.fixture(scope='module')
-def cooldown_tick_loop():
+def cooldown_event_loop():
     """Run the cooldown scenario once for the module."""
     summary = run_scenario(COOLDOWN_CONFIG)
     process_result = extract_process_result(summary)
-    return extract_tick_loop_results(process_result)
+    return extract_event_loop_results(process_result)
 
 
 @pytest.fixture(scope='module')
-def cooldown_order_history(cooldown_tick_loop) -> List[OrderResult]:
-    return extract_order_history(cooldown_tick_loop)
+def cooldown_order_history(cooldown_event_loop) -> List[OrderResult]:
+    return extract_order_history(cooldown_event_loop)
 
 
 @pytest.fixture(scope='module')
-def cooldown_execution_stats(cooldown_tick_loop) -> ExecutionStats:
-    return cooldown_tick_loop.execution_stats
+def cooldown_execution_stats(cooldown_event_loop) -> ExecutionStats:
+    return cooldown_event_loop.execution_stats
 
 
 class TestRejectionCooldown:

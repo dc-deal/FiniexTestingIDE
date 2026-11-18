@@ -1075,7 +1075,7 @@ class WorkerOrchestrator:
         """
         Collect the per-tick signal resolution counters (#433 Part C).
 
-        One capture, two transports: the sim tick loop and the AutoTrader session both
+        One capture, two transports: the sim event loop and the AutoTrader session both
         read it here, so neither pipeline builds its own counter.
 
         The clamp counters are read from each worker's PROVIDER at collection time rather

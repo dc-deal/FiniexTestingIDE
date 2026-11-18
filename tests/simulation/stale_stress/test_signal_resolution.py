@@ -57,9 +57,9 @@ def _counters(summary, index: int):
     """The scenario's single SIGNAL worker counters + its processed tick count."""
     result = summary.process_result_list[index]
     assert result.success, f'Scenario {index} failed: {result.error_message}'
-    stats = result.tick_loop_results.signal_statistics
+    stats = result.event_loop_results.signal_statistics
     assert len(stats) == 1, 'the fixture binds exactly one SIGNAL worker per scenario'
-    return stats[0], result.tick_loop_results.coordination_statistics.ticks_processed
+    return stats[0], result.event_loop_results.coordination_statistics.ticks_processed
 
 
 class TestTickExactness:

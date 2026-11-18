@@ -42,11 +42,11 @@ REFUSAL = WarmupHistoryRefusedError(
     '(2026-10-13T07:30:00.400000+00:00)')
 
 
-def _session(tick_loop_started: bool, executor=None) -> AutotraderMain:
+def _session(event_loop_started: bool, executor=None) -> AutotraderMain:
     """A session reduced to what the abort report reads and sets; by default it sent nothing."""
     session = AutotraderMain.__new__(AutotraderMain)
-    session._tick_loop_started = tick_loop_started
-    session._tick_loop = None
+    session._event_loop_started = event_loop_started
+    session._event_loop = None
     session._executor = executor or SimpleNamespace(
         get_execution_stats=lambda: SimpleNamespace(orders_submitted=0))
     session._session_logger = RecordingLogger()
@@ -62,8 +62,8 @@ def _session(tick_loop_started: bool, executor=None) -> AutotraderMain:
 
 class TestTheAbortIsNamedForWhatItIs:
 
-    def test_a_seam_refusal_in_the_tick_loop_is_a_refusal(self, capsys):
-        session = _session(tick_loop_started=True)
+    def test_a_seam_refusal_in_the_event_loop_is_a_refusal(self, capsys):
+        session = _session(event_loop_started=True)
 
         session._report_abort(REFUSAL)
 
@@ -78,7 +78,7 @@ class TestTheAbortIsNamedForWhatItIs:
 
     def test_the_refusal_reaches_the_session_log(self, capsys):
         """The session log is the operator's channel; the global log alone would hide it."""
-        session = _session(tick_loop_started=True)
+        session = _session(event_loop_started=True)
 
         session._report_abort(REFUSAL)
 
@@ -88,17 +88,17 @@ class TestTheAbortIsNamedForWhatItIs:
             'info', 'No order was submitted in this session.')
         assert session._global_logger.lines == []
 
-    def test_a_crash_in_the_tick_loop_still_reads_as_one(self, capsys):
-        session = _session(tick_loop_started=True)
+    def test_a_crash_in_the_event_loop_still_reads_as_one(self, capsys):
+        session = _session(event_loop_started=True)
 
         session._report_abort(KeyError('position'))
 
         assert 'RUNTIME ERROR — SESSION ABORTED' in capsys.readouterr().out
         assert not session._refused_at_first_tick
 
-    def test_the_same_refusal_before_the_tick_loop_is_a_startup_failure(self, capsys):
+    def test_the_same_refusal_before_the_event_loop_is_a_startup_failure(self, capsys):
         """The boot refusals (no bars at all, a capacity too small) stay STARTUP FAILED."""
-        session = _session(tick_loop_started=False)
+        session = _session(event_loop_started=False)
 
         session._report_abort(REFUSAL)
 
@@ -131,7 +131,7 @@ class TestWhatReachedTheVenueIsNamed:
         executor.on_tick(tick)
         with pytest.raises(WarmupHistoryRefusedError) as refused:
             render_bars_for_tick(tick, bar_controller)
-        session = _session(tick_loop_started=True, executor=executor)
+        session = _session(event_loop_started=True, executor=executor)
         capsys.readouterr()
 
         session._report_abort(refused.value)
@@ -158,7 +158,7 @@ class _Constructed(Exception):
 
 def test_the_result_carries_the_refusal(monkeypatch):
     """`_collect_results` hands the flag on — the summary reads it from the result."""
-    session = _session(tick_loop_started=True)
+    session = _session(event_loop_started=True)
     session._report_abort(REFUSAL)
     session._session_start = time.monotonic()
     session._cold_start = SimpleNamespace(situation=None, verdict=None)
@@ -170,7 +170,7 @@ def test_the_result_carries_the_refusal(monkeypatch):
     session._study_recorder = None
     session._indicator_series = None
     session._tick_source = None
-    session._tick_loop = None
+    session._event_loop = None
     session._algo_state_found = False
     session._stream_sealer = None
 

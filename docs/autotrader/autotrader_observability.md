@@ -15,7 +15,7 @@ purposes.
 
 ## Live Console UI (#228)
 
-Real-time dashboard rendered via `rich.live` in a dedicated display thread. Receives `AutoTraderDisplayStats` snapshots from the tick loop via `queue.Queue`, drains and renders every `update_interval_ms` (default 300ms).
+Real-time dashboard rendered via `rich.live` in a dedicated display thread. Receives `AutoTraderDisplayStats` snapshots from the event loop via `queue.Queue`, drains and renders every `update_interval_ms` (default 300ms).
 
 ### Layout — Responsive
 
@@ -69,7 +69,7 @@ snapshot and pushes it to the display queue (`put_nowait` — dropped if full, d
 state). The snapshot contains only primitives, lists, and dataclasses — safe for queue transport and
 future JSON serialization.
 
-At shutdown, the tick loop drains stale snapshots from the queue and pushes one **final** snapshot
+At shutdown, the event loop drains stale snapshots from the queue and pushes one **final** snapshot
 via blocking `put(timeout=1.0)`. This guarantees the display shows the terminal pipeline state
 (post-close balances, final trade count) regardless of refresh timing. The display thread performs
 its own final drain after the loop exits, then renders the last frame before the `Live` context
@@ -82,7 +82,7 @@ and `spot_balances` (per-currency holdings). The PORTFOLIO panel branches on `tr
 render a dual-balance layout (spot) or the standard balance view (margin).
 
 ```
-Tick Loop (Thread 2)                Display Thread (Thread 3)
+Event Loop (Thread 2)                Display Thread (Thread 3)
 ────────────────────                ──────────────────────────
 AutotraderDisplayExporter.build()   while running:
   → AutoTraderDisplayStats            drain queue (up to 100)
@@ -116,7 +116,7 @@ graded as finished with errors and exits 3, although trading was unaffected:
 ```
 
 The same failure is not reported again, and one place reports only a few distinct failures.
-Should the display thread end all the same, the session trades on: the tick loop hands its
+Should the display thread end all the same, the session trades on: the event loop hands its
 snapshots over without waiting. The mechanics are in
 [live_telemetry_architecture.md](../architecture/live_telemetry_architecture.md).
 

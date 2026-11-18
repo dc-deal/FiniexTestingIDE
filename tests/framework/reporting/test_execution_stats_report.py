@@ -2,7 +2,7 @@
 Execution-Stats Report Builder Tests (#391).
 
 Counts-only segment: order counts + SL/TP triggers, currency-agnostic. Tested against
-a real BatchExecutionSummary / ProcessResult / ProcessTickLoopResult / SingleScenario
+a real BatchExecutionSummary / ProcessResult / ProcessEventLoopResult / SingleScenario
 (not stand-ins), extracted into RunUnits — so it exercises the actual persist-path
 attribute access (the symbol comes from the index-synced SingleScenario, since
 ProcessResult carries none). The live builder uses a real AutoTraderResult.
@@ -23,7 +23,7 @@ from python.framework.reporting.builders.run_unit import (
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.fill_slippage_types import SlippageReference
-from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessResult, ProcessEventLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.order_event_types import OrderEvent, OrderEventType
 from python.framework.types.trading_env_types.order_types import (
@@ -53,7 +53,7 @@ def _stats(sent: int = 5, executed: int = 4, rejected: int = 1, sl_tp: int = 2) 
 def _process_result(name: str, idx: int, stats: ExecutionStats) -> ProcessResult:
     return ProcessResult(
         success=True, scenario_name=name, scenario_index=idx,
-        tick_loop_results=ProcessTickLoopResult(execution_stats=stats))
+        event_loop_results=ProcessEventLoopResult(execution_stats=stats))
 
 
 def _scenario(name: str, idx: int, symbol: str) -> SingleScenario:
@@ -100,7 +100,7 @@ class TestBatch:
 
     def test_skips_scenarios_without_stats(self):
         bad = ProcessResult(
-            success=False, scenario_name='bad', scenario_index=2, tick_loop_results=None)
+            success=False, scenario_name='bad', scenario_index=2, event_loop_results=None)
         report = build_execution_stats_report(_RUN_ID, run_units_from_batch(_batch(extra_results=[bad])))
         assert [u.name for u in report.units] == ['s1', 's2']
 

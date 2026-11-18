@@ -17,7 +17,7 @@ from python.framework.reporting.builders.order_history_report_builder import (
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.probe_metadata_types import ProbeMetadata
-from python.framework.types.process_data_types import ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessEventLoopResult
 from python.framework.types.trading_env_types.order_types import OrderStatus, RejectionReason
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 
@@ -97,13 +97,13 @@ class TestPositionCloseErrors:
 
     def test_scenario_completes_despite_close_error(
         self,
-        tick_loop_results: ProcessTickLoopResult,
+        event_loop_results: ProcessEventLoopResult,
         scenario_config: Dict[str, Any]
     ):
         """Scenario should complete all ticks despite close errors — every configured tick
         reaches the algo path, a pass counting each tick of its slice (#460)."""
         expected_ticks = scenario_config['scenarios'][0]['max_ticks']
-        actual = tick_loop_results.coordination_statistics.ticks_processed
+        actual = event_loop_results.coordination_statistics.ticks_processed
         assert actual == expected_ticks, (
             f'Expected {expected_ticks} ticks, got {actual}. '
             f'Scenario may have crashed on close error.'
@@ -138,10 +138,10 @@ class TestRejectionTracking:
     def test_rejected_orders_not_in_trade_history(
         self,
         trade_history: List[TradeRecord],
-        tick_loop_results: ProcessTickLoopResult,
+        event_loop_results: ProcessEventLoopResult,
     ):
         """Rejected orders should not appear in trade history — no trade is a rejected order's."""
-        rejected_ids = {o.order_id for o in tick_loop_results.order_history
+        rejected_ids = {o.order_id for o in event_loop_results.order_history
                         if o.status is OrderStatus.REJECTED}
         assert rejected_ids, 'the scenario must produce rejections for this test to mean anything'
         traded = [t.position_id for t in trade_history if t.position_id in rejected_ids]
@@ -164,10 +164,10 @@ class TestRejectionRecords:
 
     def test_every_rejection_states_its_side_symbol_size_and_time(
         self,
-        tick_loop_results: ProcessTickLoopResult,
+        event_loop_results: ProcessEventLoopResult,
     ):
         """No rejection leaves its side, symbol, direction, lots or time empty."""
-        rejections = [o for o in tick_loop_results.order_history if o.is_refused]
+        rejections = [o for o in event_loop_results.order_history if o.is_refused]
         assert rejections, 'the scenario must produce rejections for this test to mean anything'
         for rejection in rejections:
             assert rejection.action is not None, rejection.order_id
@@ -183,7 +183,7 @@ class TestRejectionRecords:
 
     def test_the_symbol_filter_keeps_the_rejections(
         self,
-        tick_loop_results: ProcessTickLoopResult,
+        event_loop_results: ProcessEventLoopResult,
     ):
         """
         Filtering the order history by its symbol drops no rejected row.
@@ -191,7 +191,7 @@ class TestRejectionRecords:
         The defect this pins: every rejection carried an empty symbol, so a symbol filter
         removed all of them while the unfiltered list still showed them.
         """
-        orders = tick_loop_results.order_history
+        orders = event_loop_results.order_history
         symbol = next(o.symbol for o in orders if o.symbol)
         units = [RunUnit(name='scenario', symbol=symbol, order_history=orders)]
 

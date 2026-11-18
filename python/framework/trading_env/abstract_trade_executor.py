@@ -7,7 +7,7 @@ FiniexTestingIDE - Abstract Trade Executor
 Base class for all trade execution engines (TradeSimulator, LiveTradeExecutor).
 
 This defines the contract that:
-- process_tick_loop uses for tick processing
+- process_event_loop uses for tick processing
 - DecisionTradingApi routes orders through
 - Framework code uses for statistics collection
 
@@ -21,7 +21,7 @@ Architecture:
 
 Design Principles:
 - DecisionLogic NEVER sees the executor directly (only DecisionTradingApi)
-- process_tick_loop calls on_tick() each tick (unified lifecycle)
+- process_event_loop calls on_tick() each tick (unified lifecycle)
 - Portfolio is shared infrastructure (same PortfolioManager for all executors)
 - Concrete methods: portfolio queries, broker info, fill processing
 - Abstract methods: order submission, pending order handling (mode-specific)
@@ -202,7 +202,7 @@ class AbstractTradeExecutor(ABC):
         self._current_tick: Optional[TickData] = None
         self._tick_counter = 0
 
-        # Canonical clock — injected by the tick loop (real-tick timestamp or,
+        # Canonical clock — injected by the event loop (real-tick timestamp or,
         # on a ghost-pass/heartbeat, the timer time). Decoupled from _current_tick
         # so the clock advances during idle periods (#360).
         self._clock_time: Optional[datetime] = None
@@ -281,7 +281,7 @@ class AbstractTradeExecutor(ABC):
         self._decision_event_sink: Optional[Callable[[DecisionEvent], None]] = None
 
         # Session-end request (#348) — set by DecisionTradingApi.request_session_end.
-        # The tick loop reads it at the loop boundary, emits SESSION_END, and ends
+        # The event loop reads it at the loop boundary, emits SESSION_END, and ends
         # the session. Shared mechanism for sim and live.
         self._session_end_requested: bool = False
         self._session_end_reason: str = ''
@@ -845,9 +845,9 @@ class AbstractTradeExecutor(ABC):
         severity: SessionEndSeverity = SessionEndSeverity.NORMAL,
     ) -> None:
         """
-        Request the tick loop to end the session (#348).
+        Request the event loop to end the session (#348).
 
-        Set by DecisionTradingApi.request_session_end. The tick loop checks the
+        Set by DecisionTradingApi.request_session_end. The event loop checks the
         request at the loop boundary, emits a SESSION_END event, and ends the
         session — NORMAL runs the graceful shutdown, EMERGENCY exits immediately.
 
@@ -872,7 +872,7 @@ class AbstractTradeExecutor(ABC):
         return self._session_end_severity
 
     # ============================================
-    # Tick Lifecycle (called by process_tick_loop)
+    # Tick Lifecycle (called by process_event_loop)
     # ============================================
 
     def on_tick(self, tick: TickData) -> None:
@@ -927,7 +927,7 @@ class AbstractTradeExecutor(ABC):
         """
         Side-effect-free drain routine for idle periods (#320).
 
-        Called from the AutoTrader tick loop's queue.Empty branch (no tick
+        Called from the AutoTrader event loop's queue.Empty branch (no tick
         available) so async worker responses don't sit in the inbox until
         the next real tick arrives.
 
@@ -1001,7 +1001,7 @@ class AbstractTradeExecutor(ABC):
         """
         Adopt the venue's reference for resting orders recognized as ours (#355).
 
-        Called by the live tick loop with what the Reconciler matched on the client order
+        Called by the live event loop with what the Reconciler matched on the client order
         id. The Reconciler detects and never writes; the executor owns the pending state,
         so the write lands here.
 
@@ -1038,7 +1038,7 @@ class AbstractTradeExecutor(ABC):
         """
         Write a reconciliation cycle whose picture changed to the order-event stream (#362).
 
-        Called by the live tick loop when the Reconciler marks a record due. Default no-op for
+        Called by the live event loop when the Reconciler marks a record due. Default no-op for
         executors without broker truth, as above.
 
         Args:
@@ -3119,7 +3119,7 @@ class AbstractTradeExecutor(ABC):
         """
         Inject the session-level tick-stream health status (#436).
 
-        Called by the LIVE tick loop (heartbeat evaluation + tick-path recovery)
+        Called by the LIVE event loop (heartbeat evaluation + tick-path recovery)
         and, in simulation, by the stale-data stress driver. An unstressed sim run
         never calls it — default fresh is by design.
 
@@ -3161,7 +3161,7 @@ class AbstractTradeExecutor(ABC):
         """
         if self._clock_time is None:
             raise ClockNotInjectedError(
-                'get_current_time() called before the tick loop injected a time'
+                'get_current_time() called before the event loop injected a time'
             )
         return self._clock_time
 

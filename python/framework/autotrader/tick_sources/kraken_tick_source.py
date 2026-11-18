@@ -143,7 +143,7 @@ class KrakenTickSource(AbstractTickSource):
         self._ssl_context: Optional[ssl.SSLContext] = None
         # Created inside the socket thread's event loop; stop() sets the event through that loop,
         # which wakes a backoff wait, a connect and a subscription at once.
-        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._asyncio_loop: Optional[asyncio.AbstractEventLoop] = None
         self._stop_event: Optional[asyncio.Event] = None
         # Set by the silence check before it aborts a connection, read when the pass is classified.
         self._silence_detected = False
@@ -197,7 +197,7 @@ class KrakenTickSource(AbstractTickSource):
                 self._recorder.close()
             finally:
                 # Ensure sentinel is sent even on unexpected exit — nothing raised above may
-                # cost the tick loop its end-of-stream signal
+                # cost the event loop its end-of-stream signal
                 try:
                     self._tick_queue.put_nowait(None)
                 except queue.Full:
@@ -213,11 +213,11 @@ class KrakenTickSource(AbstractTickSource):
         a backoff pause of up to a minute included — so it ends at once.
         """
         self._running = False
-        event_loop, stop_event = self._event_loop, self._stop_event
-        if event_loop is None or stop_event is None:
+        asyncio_loop, stop_event = self._asyncio_loop, self._stop_event
+        if asyncio_loop is None or stop_event is None:
             return
         try:
-            event_loop.call_soon_threadsafe(stop_event.set)
+            asyncio_loop.call_soon_threadsafe(stop_event.set)
         except RuntimeError:
             # The loop has already ended; there is nothing left to wake.
             pass
@@ -339,7 +339,7 @@ class KrakenTickSource(AbstractTickSource):
         again every second (#609). stop() wakes every wait. Runs until stop() is called.
         """
         self._stop_event = asyncio.Event()
-        self._event_loop = asyncio.get_running_loop()
+        self._asyncio_loop = asyncio.get_running_loop()
         try:
             await self._reconnect_until_stopped()
         finally:
@@ -676,7 +676,7 @@ class KrakenTickSource(AbstractTickSource):
 
     def _emit(self, ticks: Optional[List[TickData]]) -> None:
         """
-        Hand parsed ticks to the tick loop: one frame's trades as one item, a tuple, since they
+        Hand parsed ticks to the event loop: one frame's trades as one item, a tuple, since they
         arrived together. The loop counts what waited behind a busy pass by these items, not by
         the milliseconds the parser stamped while reading one frame (#461).
 

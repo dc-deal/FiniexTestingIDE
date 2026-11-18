@@ -1608,7 +1608,7 @@ class PortfolioManager:
         # peak that was current THEN, and a later, higher peak does not make it shallower.
         # Dividing the final figures by each other understates every run that recovered —
         # which is every profitable one. The live safety reading has always divided by its
-        # baseline of the moment (autotrader_tick_loop.py), so this is also what puts the
+        # baseline of the moment (autotrader_event_loop.py), so this is also what puts the
         # two pipelines on one construction (#497).
         if self._max_equity > 0:
             drawdown_pct = drawdown / self._max_equity * 100.0
@@ -1630,7 +1630,7 @@ class PortfolioManager:
         pipelines call this per tick; the run end keeps its own sample as the floor.
 
         Args:
-            equity: A value the caller already holds — the live tick loop evaluates exactly
+            equity: A value the caller already holds — the live event loop evaluates exactly
                 this quantity for its circuit breaker and would otherwise pay for it twice.
                 None evaluates it here
 
@@ -1696,7 +1696,7 @@ class PortfolioManager:
 
         Written at the cold-start store's existing points — boot, shutdown, and a structural
         change of the open book — never on a tick cadence: one write costs 11 ms plus the
-        index rebuild on this tree (§42), which has no business in a tick loop. A crash
+        index rebuild on this tree (§42), which has no business in an event loop. A crash
         between two of those loses the deepening since the last one; sealing the report plane
         against that is #476's subject, not this one.
 

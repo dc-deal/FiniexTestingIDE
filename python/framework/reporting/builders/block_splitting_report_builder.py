@@ -3,7 +3,7 @@ FiniexTestingIDE - Block Splitting Report Builder
 
 Aggregates the per-block edge facts of a Profile Run into per-symbol disposition facts +
 ratios (the DERIVE stage of the block-splitting section). Derives them from the raw material
-the tick loop hands over — the positions the block edge left OPEN, the trades that closed
+the event loop hands over — the positions the block edge left OPEN, the trades that closed
 naturally, the pending orders it discarded — so no measure is computed inside the subprocess;
 the GOOD/MODERATE/HIGH/SEVERE label is a display class left to the presenter.
 
@@ -66,7 +66,7 @@ def build_block_splitting_report_from_batch(
     # One fold row per block, with its symbol, its mode and its own end-of-block figures
     blocks: List[BlockOfSymbol] = []
     for result in batch.process_result_list:
-        if not result.success or not result.tick_loop_results:
+        if not result.success or not result.event_loop_results:
             continue
         scenario = scenario_by_name.get(result.scenario_name)
         if scenario is None or not scenario.is_profile_run:
@@ -77,7 +77,7 @@ def build_block_splitting_report_from_batch(
             continue
         symbol = parts[0]
 
-        loop = result.tick_loop_results
+        loop = result.event_loop_results
         positions = loop.open_positions or []
         trades = loop.trade_history or []
         blocks.append(BlockOfSymbol(

@@ -50,7 +50,7 @@ currency, per run, per ledger row — carries all of them.
 ### `TestAnOrderSentAtTheSessionEndInTheSimulation`
 
 An order the strategy sends from `on_session_end` ends as it ends live (#642). The simulation's end is
-run in the order its tick loop runs it; `test_trend_channel_reference.py` runs it through the loop
+run in the order its event loop runs it; `test_trend_channel_reference.py` runs it through the loop
 itself.
 
 | Test | Description |

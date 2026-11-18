@@ -21,9 +21,9 @@
 
 **Cost per tick:** N × `.record()` for N workers + 1 × `.record()` for decision. Scales linearly with worker count.
 
-### Layer B — Tick-Loop Profiler
+### Layer B — Event-Loop Profiler
 
-**Where:** `process_tick_loop.py` body — operation-level timers bracketed by `time.perf_counter()`
+**Where:** `process_event_loop.py` body — operation-level timers bracketed by `time.perf_counter()`
 between every loop step (`trade_simulator`, `bar_rendering`, `bar_history`, `worker_decision`,
 `order_execution`, `live_update`, `instant_resolution` for the broker work of an instant without a
 tick, plus two totals over whole instants — `total_per_tick`, and
@@ -37,7 +37,7 @@ one interval per arrival, the ticks of one millisecond counted once (#450)).
 
 **Cost per tick:** 12 × `time.perf_counter()` + 12 × dict-updates. Constant regardless of worker count.
 
-**Note:** AutoTrader has no Layer B equivalent. Its `autotrader_tick_loop.py` carries no operation-level timers — only Layer A applies in the AutoTrader pipeline.
+**Note:** AutoTrader has no Layer B equivalent. Its `autotrader_event_loop.py` carries no operation-level timers — only Layer A applies in the AutoTrader pipeline.
 
 ---
 
@@ -84,7 +84,7 @@ Layer A's split, the section would either show only a total (no breakdown) or co
 |---|---|---|---|---|
 | `true` | `true` | All | `both_on` | _(none — default case, no friction)_ |
 | `true` | `false` | Layer-B sections only | `worker_off` | `⚠️ Worker tracking OFF (per-worker / decision breakdowns unavailable)` |
-| `false` | `true` | Layer-A sections only | `profiling_off` | `⚠️ Tick-loop profiling OFF (operation hotspot analysis unavailable)` |
+| `false` | `true` | Layer-A sections only | `profiling_off` | `⚠️ Event-loop profiling OFF (operation hotspot analysis unavailable)` |
 | `false` | `false` | None | `all_off` | `⚠️ All performance tracking OFF (no per-component or operation-level diagnostics)` |
 
 `performance_tracking` is the class the run meta report derives from its two layer flags; the
@@ -96,16 +96,16 @@ The hybrid 🔍 WORKER DECISION BREAKDOWN is suppressed if **either** layer is o
 
 ---
 
-## Tick-Loop Implementation — Why No Context Managers
+## Event-Loop Implementation — Why No Context Managers
 
-A natural temptation when looking at the `process_tick_loop.py` profiling brackets is to refactor them into a context manager:
+A natural temptation when looking at the `process_event_loop.py` profiling brackets is to refactor them into a context manager:
 
 ```python
 with profiler.measure('trade_simulator'):
     trade_simulator.on_tick(tick)
 ```
 
-This is **deliberately not done**. The tick loop is the hottest code path in the framework. Every nanosecond of overhead is multiplied by N ticks × N operations per tick.
+This is **deliberately not done**. The event loop is the hottest code path in the framework. Every nanosecond of overhead is multiplied by N ticks × N operations per tick.
 
 Measured overhead per call (microbenchmark, CPython 3.x):
 
@@ -120,12 +120,12 @@ The `with`-block introduces frame setup, `__enter__`/`__exit__` dispatch, and (w
 inline conditionals **at minimum** — and when disabled, where the framework should be at its
 leanest, context managers are roughly 23× more expensive than inline conditionals.
 
-We pay the visual cost of inline `if`-checks to keep the tick loop's overhead as close to zero as
+We pay the visual cost of inline `if`-checks to keep the event loop's overhead as close to zero as
 physically achievable. The pattern is intentionally repetitive — six structurally identical blocks,
 one per operation — because uniform code is easy to scan even when verbose. Wrappers, helpers,
 decorators, and context managers all add measurable cost without changing what the code does.
 
-If you find yourself wanting to "clean up" the profiling brackets in `process_tick_loop.py`,
+If you find yourself wanting to "clean up" the profiling brackets in `process_event_loop.py`,
 **don't**. The current shape is the result of an explicit performance-first decision. The benchmark
 suite's throughput tolerance (±20%) cannot absorb a 3× overhead inflation, and the field study
 profiles depend on the disabled path being effectively free.
@@ -179,7 +179,7 @@ See [config_cascade_guide.md](../config_cascade_guide.md) for the full cascade d
 | File | Role |
 |---|---|
 | [`python/framework/workers/worker_orchestrator.py`](../../python/framework/workers/worker_orchestrator.py) | Layer A tracker creation, gated by `worker_decision_tracking` |
-| [`python/framework/process/process_tick_loop.py`](../../python/framework/process/process_tick_loop.py) | Layer B operation profiling, gated by `tick_loop_profiling` |
+| [`python/framework/process/process_event_loop.py`](../../python/framework/process/process_event_loop.py) | Layer B operation profiling, gated by `tick_loop_profiling` |
 | [`python/framework/reporting/console/performance_summary.py`](../../python/framework/reporting/console/performance_summary.py) | Layer-A sections, suppressed via `_layer_a_has_data()` |
 | [`python/framework/reporting/console/profiling_summary.py`](../../python/framework/reporting/console/profiling_summary.py) | Layer-B sections, suppressed via `_layer_b_has_data()` |
 | [`python/framework/reporting/console/worker_decision_breakdown_summary.py`](../../python/framework/reporting/console/worker_decision_breakdown_summary.py) | Hybrid section, suppressed when either layer is off |
