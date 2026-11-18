@@ -101,7 +101,7 @@ class _LoopStub:
         self._day_worst_loss_pct = 0.0
         self._day_worst_loss_at = ''
         self._day_limit_hit = False
-        self._flatten_sent_at_tick = None
+        self._flatten_sent_at_pass = None
         self._flatten_reason = ''
         self._flatten_outcome = None
         self._flatten_unconfirmed: List[str] = []
@@ -469,7 +469,7 @@ class TestAnUnresolvedHardStopIsNotReportedAsNeverFired:
     def test_a_drain_still_running_at_session_end_resolves_to_not_confirmed(self):
         stub = _LoopStub(baseline=_baseline(), open_positions=['pos_1'])
         stub._flatten_reason = 'hard drawdown 25.0% > 20.0%'
-        stub._flatten_sent_at_tick = 40
+        stub._flatten_sent_at_pass = 40
 
         record = stub.capture()
 

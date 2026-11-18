@@ -942,6 +942,58 @@ class AbstractTradeExecutor(ABC):
         """
         return
 
+    # ============================================
+    # The timeline's instant (#460, #461)
+    # ============================================
+    # What a loop core's dispatcher calls on an executor for one instant, so it takes the
+    # executor and never a concrete one. The simulator implements all five (#460); an executor
+    # that does not drive a timeline answers with these defaults.
+
+    def begin_instant(self, instant_msc: int) -> None:
+        """
+        Start an instant of the timeline.
+
+        Args:
+            instant_msc: The instant's stamp, on the arrival axis
+        """
+        return
+
+    def apply_tick(self, tick: TickData) -> None:
+        """
+        One tick of the instant's slice moves the market.
+
+        Args:
+            tick: The tick, in arrival order
+        """
+        return
+
+    def resolve_scheduled(self, up_to_msc: int) -> None:
+        """
+        Apply what was scheduled to take effect by the instant, before any tick of it is checked.
+
+        Args:
+            up_to_msc: The instant's stamp
+        """
+        return
+
+    def resolve_due(self, up_to_msc: int) -> None:
+        """
+        Resolve what came due by the instant, after all of its ticks.
+
+        Args:
+            up_to_msc: The instant's stamp
+        """
+        return
+
+    def peek_next_due_msc(self) -> Optional[int]:
+        """
+        When the next resolution comes due, if anything is waiting.
+
+        Returns:
+            Its stamp on the arrival axis, or None when nothing is waiting
+        """
+        return None
+
     def apply_order_attributions(
         self,
         attributions: List[Tuple[PendingOrder, BrokerOrder]],
@@ -1765,6 +1817,7 @@ class AbstractTradeExecutor(ABC):
         fill_type: FillType = FillType.MARKET,
         fill_event: OrderEventType = OrderEventType.FILLED,
         reported_fee: Optional[float] = None,
+        venue_time: Optional[datetime] = None,
     ) -> None:
         """
         Process a confirmed OPEN order — update portfolio, fees, stats.
@@ -1787,6 +1840,9 @@ class AbstractTradeExecutor(ABC):
             reported_fee: The venue's own fee for this fill, from the answer that reported it,
                 in the symbol's quote currency (#508). None in a backtest, and wherever the
                 answer carried none — the fee model's estimate is booked then
+            venue_time: The venue's own stamp of the fill, where its answer gives one — the fill
+                event's `ts_event` (#461). None in a backtest, and wherever the answer carried
+                none
         """
         self.logger.info(
             f'📋 Fill open order: {pending_order.pending_order_id} '
@@ -2034,7 +2090,7 @@ class AbstractTradeExecutor(ABC):
         self.logger.verbose(
             f'OPEN_ORDER_RESULT: {json.dumps(result.to_dict(), indent=2)}')
 
-        self._book_order_result(result, pending_order, event_type=fill_event)
+        self._book_order_result(result, pending_order, event_type=fill_event, ts_event=venue_time)
         self._notify_outcome(pending_order.direction, result, pending_order)
 
     def _fill_close_order(
@@ -2044,6 +2100,7 @@ class AbstractTradeExecutor(ABC):
         close_reason: CloseReason = CloseReason.MANUAL,
         fill_event: OrderEventType = OrderEventType.FILLED,
         reported_fee: Optional[float] = None,
+        venue_time: Optional[datetime] = None,
     ) -> Optional[OrderResult]:
         """
         Process a confirmed CLOSE order — update portfolio, record PnL.
@@ -2066,6 +2123,9 @@ class AbstractTradeExecutor(ABC):
             reported_fee: The venue's own fee for the volume this call books, in the symbol's
                 quote currency (#508). None in a backtest, and wherever the answer carried
                 none — the fee model's estimate is booked then
+            venue_time: The venue's own stamp of the fill, where its answer gives one — the fill
+                event's `ts_event` (#461). None in a backtest, and wherever the answer carried
+                none
 
         Returns:
             The booked result — its lots, its price and the fee booked for it — or None where
@@ -2122,7 +2182,7 @@ class AbstractTradeExecutor(ABC):
                     fill_event, pending=pending_order, fill_price=fill_price,
                     message=f'the venue executed this close; position {position_id} is no '
                             f'longer held here, so nothing was booked',
-                    **self._unbooked_fee_fields(reported_fee))
+                    ts_event=venue_time, **self._unbooked_fee_fields(reported_fee))
             return None
 
         # The level a stop-loss or take-profit close fired at, read before the close changes the
@@ -2337,7 +2397,7 @@ class AbstractTradeExecutor(ABC):
         self.logger.verbose(
             f'CLOSE_FILL_ORDER: {json.dumps(result.to_dict(), indent=2)}')
 
-        self._book_order_result(result, pending_order, event_type=fill_event)
+        self._book_order_result(result, pending_order, event_type=fill_event, ts_event=venue_time)
         if fired_level is not None and result.order_event_seq is not None:
             self._protective_fill_levels[result.order_event_seq] = fired_level
         self._on_close_fill(pending_order, result)

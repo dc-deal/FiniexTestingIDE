@@ -20,6 +20,7 @@ from python.framework.types.live_types.broker_truth_types import BrokerTruthReco
 from python.framework.types.live_types.reconciliation_types import ReconcileTotals
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
+from python.framework.types.loop_types.live_intake_stats_types import LiveIntakeStats
 from python.framework.types.performance_types.performance_stats_types import (
     DecisionLogicStats,
     WorkerCoordinatorPerformanceStats,
@@ -97,6 +98,7 @@ class AutoTraderResult:
             dry run and a session that opened no stream
         active_orders: What was still resting or on its way when the orders were finished
         clipping_summary: Clipping monitor session summary
+        intake_stats: What the session's timeline counted (#461); None when the loop never ran
         decision_statistics: Decision logic execution stats
         worker_statistics: Per-worker performance stats
         coordination_statistics: How many ticks reached the algo path, and what parallel
@@ -166,6 +168,7 @@ class AutoTraderResult:
     broker_truth: List[BrokerTruthRecord] = field(default_factory=list)
     active_orders: Optional[ActiveOrdersSnapshot] = None
     clipping_summary: ClippingSessionSummary = field(default_factory=ClippingSessionSummary)
+    intake_stats: Optional[LiveIntakeStats] = None
     decision_statistics: Optional[DecisionLogicStats] = None
     worker_statistics: List[WorkerPerformanceStats] = field(default_factory=list)
     coordination_statistics: Optional[WorkerCoordinatorPerformanceStats] = None

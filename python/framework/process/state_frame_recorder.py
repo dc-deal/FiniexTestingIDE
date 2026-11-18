@@ -60,7 +60,7 @@ from python.framework.types.api.state_frame_types import (
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_logic_types import Decision
 from python.framework.types.process_table_types import OwnProcessMemory
-from python.framework.utils.bar_period import open_time_of, period_start
+from python.framework.utils.bar_period import open_time_of, period_end, period_start
 from python.framework.utils.process_memory_reader import read_own_memory
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 from python.framework.utils.trading_math.price_trigger import mid_price
@@ -278,6 +278,19 @@ class StateFrameRecorder:
             The slot's opening instant
         """
         return period_start(frame_time, self._cadence_timeframe)
+
+    def next_slot_start(self, instant: datetime) -> datetime:
+        """
+        When the cadence's next period begins after an instant — when a session's timeline arms
+        its state-frame timer (#461).
+
+        Args:
+            instant: The instant, on the session's clock
+
+        Returns:
+            The start of the next period of the cadence timeframe
+        """
+        return period_end(period_start(instant, self._cadence_timeframe), self._cadence_timeframe)
 
     def _write(
         self,

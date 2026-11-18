@@ -29,7 +29,7 @@ Full pipeline integration: runs a complete session with deterministic parquet re
 
 | Test | What it validates |
 |------|-------------------|
-| `test_full_mock_session` | Normal shutdown + **exit code 0**, tick count (63412), 0 warnings/errors, trades produced, stats collected. Clipping is not asserted: it compares wall-clock processing with the recorded tick spacing, so it measures the machine — the monitor's rule is tested in `test_live_clipping_monitor.py` |
+| `test_full_mock_session` | Normal shutdown + **exit code 0**, tick count (63412), 0 warnings/errors, trades produced, stats collected. Clipping is not asserted: a replay is never behind and never coalesces, so it never clips (#461) — the monitor's rule is tested in `test_live_clipping_monitor.py` |
 | `test_log_files_created` | Log directory structure: global, summary, session_logs/, events.csv |
 | `test_broker_report_written` | Broker report persisted (unified model) + rendered in the summary |
 | `test_safety_report_written` | The safety record reaches disk and names its baseline (#356 Phase C) — the end-to-end the unit tests cannot show: a chain of proven links is not a proven chain. Also pins that an unarmed limit reports `null`, not `0.0` |
@@ -254,14 +254,27 @@ Unit tests for `LiveClippingMonitor` — no external dependencies, no tick data,
 
 | Class | Tests | What it validates |
 |-------|-------|-------------------|
-| `TestClippingDetection` | 5 | Core logic: processing_ms > tick_delta_ms triggers clipping, boundary cases (equal, zero, negative delta) |
-| `TestCounterAccuracy` | 5 | Mixed sequences, max/avg tracking, the processing times reaching the display — and the window behind the display's percentiles keeping only the most recent ticks while the session totals still count every one |
+| `TestClipping` | 4 | Clipping since #461: the ticks of a slice the algo did not compute on — a backlog's ticks behind the newest — counted as ticks against ticks; a frame's ticks arriving together, and a late tick the algo still computed on, are not clipped |
+| `TestCounterAccuracy` | 5 | Mixed sequences, max/avg tracking — the processing time is a pass's, however many ticks it held — the processing times reaching the display, and the window behind the display's percentiles keeping only the most recent ticks while the session totals still count every one |
 | `TestQueueDepthTracking` | 2 | Max queue depth updates, zero depth |
-| `TestPeriodicReports` | 5 | Interval timing, report generation, counter reset, zero-tick intervals, session totals persistence |
-| `TestSessionSummaryEdgeCases` | 4 | Empty session, 100% clipping, 0% clipping, single tick |
-| `TestStrategy` | 2 | Default and custom strategy |
+| `TestPeriodicReports` | 5 | Interval timing, report generation with ticks and passes, counter reset, zero-tick intervals, session totals persistence |
+| `TestSessionSummaryEdgeCases` | 4 | Empty session, a backlog with all but its newest tick clipped, 0% clipping, single tick |
 
 **Runtime:** <0.5 seconds.
+
+### test_answer_wakes_the_loop.py
+
+A venue's answer wakes the loop on arrival instead of waiting for the next tick or heartbeat
+(#461). A session's outcome is the same either way, so no outcome check can see a lost wake, and
+an unthrottled replay is taken whole before any answer arrives. The test therefore throttles
+`tp_triggered_test.json` (50 ms a tick, 40 ticks) and times the probe's answer from its put in the
+request processor's inbox to its take.
+
+| Test | What it validates |
+|------|-------------------|
+| `test_a_venue_answer_wakes_the_loop_between_ticks` | The answer reached the execution lane and waited less than half a tick gap. A listener that is never connected fails the first check, a wake that is never sent fails the second: the answer then waits one full gap for the next tick |
+
+**Runtime:** about 7 seconds.
 
 ### test_sim_at_parity.py
 

@@ -98,9 +98,9 @@ def _received_ticks(ticks: queue.Queue) -> List[Any]:
     """The ticks a source handed over, without the end-of-stream sentinel it adds when it stops."""
     received = []
     while not ticks.empty():
-        tick = ticks.get_nowait()
-        if tick is not None:
-            received.append(tick)
+        arrival = ticks.get_nowait()
+        if arrival is not None:
+            received.extend(arrival)
     return received
 
 

@@ -63,7 +63,7 @@ def _submit(sim, order_type, direction=OrderDirection.LONG, *,
         The submit BrokerResponse
     """
     return sim.submit(
-        lots=1.0, timestamp=_TS, direction=direction, order_type=order_type,
+        lots=1.0, ts_init=_TS, direction=direction, order_type=order_type,
         limit_price=limit_price, trigger_price=trigger_price)
 
 

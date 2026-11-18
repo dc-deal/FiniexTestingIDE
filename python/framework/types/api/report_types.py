@@ -443,6 +443,8 @@ class OrderEventRow(BaseModel):
     in_flight_ms: Optional[float] = None        # the answer to a submission: modelled / measured
     event_time: Optional[str] = None            # ISO-8601 UTC, the run's canonical clock
     ts_init: Optional[str] = None               # ISO-8601 UTC, when this process saw it — live only
+    ts_event: Optional[str] = None              # ISO-8601 UTC, when the venue says it happened —
+                                                # live only, where its answer gives a stamp
     initiator: Optional[OrderInitiator] = None
     end_reason: Optional[OrderEndReason] = None
     rejection_reason: Optional[RejectionReason] = None

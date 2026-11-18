@@ -18,14 +18,13 @@ from datetime import datetime, timezone
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 from python.framework.logging.abstract_logger import AbstractLogger
-from python.framework.loop.tick_slicer import tick_receipt_msc
 from python.framework.stress_test.stress_test_rejection import StressTestRejection
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
 from python.framework.trading_env.simulation.order_latency_simulator import OrderLatencySimulator
 from python.framework.types.decision_event_types import SessionEndSeverity
-from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.market_types.market_data_types import TickData, tick_receipt_msc
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
     EntryType,

@@ -364,7 +364,7 @@ class TestInFlightGuard:
             order_id=order_id,
             broker_response=BrokerResponse(
                 broker_ref='OLD-REF', status=BrokerOrderStatus.CANCELLED,
-                timestamp=datetime.now(timezone.utc),
+                ts_init=datetime.now(timezone.utc),
             ),
         )
         executor._handle_query_response(stale)
@@ -407,7 +407,7 @@ class TestStaleResponseGuard:
             broker_response=BrokerResponse(
                 broker_ref=old_ref, status=BrokerOrderStatus.FILLED,
                 fill_price=49000.0, filled_lots=0.001,
-                timestamp=datetime.now(timezone.utc),
+                ts_init=datetime.now(timezone.utc),
             ),
         )
         executor._handle_query_response(stale)
@@ -447,7 +447,7 @@ class TestPartialFillPreservedBehavior:
             broker_response=BrokerResponse(
                 broker_ref=pending.broker_ref, status=BrokerOrderStatus.PARTIALLY_FILLED,
                 fill_price=49000.0, filled_lots=0.0005,
-                timestamp=datetime.now(timezone.utc),
+                ts_init=datetime.now(timezone.utc),
             ),
         )
         executor._handle_query_response(partial)
@@ -484,7 +484,7 @@ class TestTheVenueNamingNoSuchOrder:
             broker_response=BrokerResponse(
                 broker_ref=pending.broker_ref,
                 status=BrokerOrderStatus.UNKNOWN,
-                timestamp=datetime.now(timezone.utc),
+                ts_init=datetime.now(timezone.utc),
             ),
         ))
 
@@ -504,7 +504,7 @@ class TestTheVenueNamingNoSuchOrder:
             broker_response=BrokerResponse(
                 broker_ref=pending.broker_ref,
                 status=BrokerOrderStatus.UNKNOWN,
-                timestamp=datetime.now(timezone.utc),
+                ts_init=datetime.now(timezone.utc),
             ),
         ))
 
@@ -525,7 +525,7 @@ class TestTheVenueNamingNoSuchOrder:
             broker_response=BrokerResponse(
                 broker_ref=pending.broker_ref,
                 status=BrokerOrderStatus.UNKNOWN,
-                timestamp=datetime.now(timezone.utc),
+                ts_init=datetime.now(timezone.utc),
             ),
         )
 
@@ -549,7 +549,7 @@ class TestTheVenueNamingNoSuchOrder:
             broker_response=BrokerResponse(
                 broker_ref=pending.broker_ref,
                 status=BrokerOrderStatus.UNKNOWN,
-                timestamp=datetime.now(timezone.utc),
+                ts_init=datetime.now(timezone.utc),
             ),
         ))
 

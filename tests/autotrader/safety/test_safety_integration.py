@@ -39,7 +39,7 @@ def _run_with_safety(safety: SafetyConfig) -> AutoTraderResult:
     trader = AutotraderMain(config)
     result = trader.run()
     # Clean up log directory
-    remove_run_dir(trader._run_dir)
+    remove_run_dir(trader.get_run_dir())
     return result
 
 

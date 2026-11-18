@@ -85,7 +85,7 @@ def _run():
     try:
         return trader.run()
     finally:
-        remove_run_dir(trader._run_dir)
+        remove_run_dir(trader.get_run_dir())
 
 
 def test_a_session_says_it_started_and_how_it_ended(recorded):
@@ -128,34 +128,39 @@ def test_a_crash_in_the_loop_reports_how_far_the_session_got(recorded, monkeypat
     """
     A crash in the tick loop took the loop's counts along, and the session reported zero ticks
     however long it had run (#636). The crash is provoked from outside, in a call the loop makes on
-    every tick; the tick it happens in counts, because the count moves before the tick is applied.
+    every slice; the slice it happens in counts, because the count moves before the slice is
+    applied. A replay's slice holds the ticks of one arrival millisecond (#461), so the count is
+    read where the crash happens rather than derived from the passes.
     """
     channel, _, _ = recorded
     drain = AutotraderTickLoop._drain_signal_inbox
-    ticks_seen = {'count': 0}
+    seen = {'slices': 0, 'ticks': 0}
 
-    def fall_after_some_ticks(self, off_tick):
+    def fall_after_some_slices(self, off_tick):
         if not off_tick:
-            ticks_seen['count'] += 1
-            if ticks_seen['count'] > CRASH_AFTER:
+            seen['slices'] += 1
+            if seen['slices'] > CRASH_AFTER:
+                seen['ticks'] = self._ticks_processed
                 raise RuntimeError('provoked in the tick loop')
         return drain(self, off_tick)
 
-    monkeypatch.setattr(AutotraderTickLoop, '_drain_signal_inbox', fall_after_some_ticks)
+    monkeypatch.setattr(AutotraderTickLoop, '_drain_signal_inbox', fall_after_some_slices)
     trader = AutotraderMain(load_autotrader_config(FRAMES_PROFILE))
     try:
         result = trader.run()
-        frames = [json.loads(line) for line in (trader._run_dir / IO_SUBDIR / STATE_FRAMES_FILE)
-                  .read_text(encoding='utf-8').splitlines()[1:]]
+        frames_path = trader.get_run_dir() / IO_SUBDIR / STATE_FRAMES_FILE
+        frames = [json.loads(line)
+                  for line in frames_path.read_text(encoding='utf-8').splitlines()[1:]]
     finally:
-        remove_run_dir(trader._run_dir)
+        remove_run_dir(trader.get_run_dir())
 
     assert result.get_outcome() is RunOutcome.FAILED
-    assert result.ticks_processed == CRASH_AFTER + 1
+    assert seen['ticks'] > CRASH_AFTER
+    assert result.ticks_processed == seen['ticks']
     assert frames[-1]['written_for'] == 'shutdown'
-    assert frames[-1]['ticks_processed'] == CRASH_AFTER + 1
+    assert frames[-1]['ticks_processed'] == seen['ticks']
     assert channel.titles()[-1].endswith('RUNTIME ERROR — session aborted')
-    assert f'Ticks: {CRASH_AFTER + 1:,}' in channel.delivered[-1].splitlines()
+    assert f"Ticks: {seen['ticks']:,}" in channel.delivered[-1].splitlines()
 
 
 def test_a_crash_while_shutting_down_is_said_and_fails_the_ping(recorded, monkeypatch):

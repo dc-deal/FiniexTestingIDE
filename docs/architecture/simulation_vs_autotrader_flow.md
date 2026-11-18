@@ -117,48 +117,51 @@ thread.
 ```
 AutotraderTickLoop.run()
     │
+    intake = LiveEventIntake(…)                     # #461: two lanes and the session's timers
     while running:                                  # infinite, real-time
         │
-        tick = tick_queue.get(timeout=heartbeat_interval_ms)  # fed by TickSource thread (WebSocket)
-        │   └── queue.Empty (idle, #360 timer event) → dispatch_live_timer(now, …):  # loop core
-        │         → set_current_time(now)             # advance the canonical clock (no frozen tick)
-        │         → day boundary                      # seal a finished day on a quiet feed too
-        │         → executor.heartbeat()              # drain async responses + timeouts + re-poll active orders
-        │         → staleness · reconcile if due (#151) · signal inbox
-        │         → drain #348 events                 # idle-time fills/cancels → algo hooks
-        │         → process_heartbeat()               # decision GHOST-PASS (tick=None, cached workers, opt-in)
-        │       then, in run(): persistence, state frame, display pulse ("💓 Ns since last tick")
+        events = intake.next_instant()              # waits for the next timer, woken by a tick or an answer
+        │   slice of the ticks that arrived (live: a backlog is ONE slice) · the venue's answers
+        │   · HEARTBEAT / RECONCILE / PERSISTENCE / STATE_FRAME_SLOT timers — one stamp
         │
-        │   dispatch_live_slice(event, …) — the loop core; the full order in loop_core_architecture.md:
+        │   dispatch_live_instant(events, executor, …) — the loop core; the full order in
+        │   loop_core_architecture.md:
         │
-        ├── 0. signal inbox · clock · day boundary
+        ├── 0. clock (the instant's stamp) · day boundary
         │
-        ├── 1. executor.on_tick(tick)                # AbstractTradeExecutor (sets clock from tick)
-        │       ├── Update prices (bid/ask)
-        │       └── _process_pending_orders()         # LiveRequestProcessor: poll broker for fills
+        ├── 1. for each tick: executor.apply_tick(tick)   # prices, market state
+        │                     render_bars_for_tick(...)    # SHARED CORE (#303)
+        │                     market status + account value
         │
-        ├── 2. render_bars_for_tick(tick, ...)        # SHARED CORE (#303)
+        ├── 2. signal inbox
         │
-        ├── 3+4. execute_algo_path(tick, ...)        # SHARED CORE (#303)
+        ├── 3. executor.resolve_due(stamp)            # after a tick: _process_pending_orders()
+        │       │                                     #   (incl. the synchronous MARKET status read)
+        │       │                                     # otherwise: heartbeat() — drain, timeouts, re-poll
+        │       └── HEARTBEAT: staleness · RECONCILE: reconcile (#151)
+        │
+        ├── 4. drain #348 decision events             # fills/cancels delivered to algo hooks
+        │
+        ├── 5. execute_algo_path(newest tick, ...)    # SHARED CORE (#303), once per slice
         │       ├── bar_history retrieval
         │       ├── Workers compute indicators
         │       └── decision_logic.compute_tick(tick, worker_results) → Decision
+        │   or, at a HEARTBEAT: process_heartbeat()   # decision GHOST-PASS (tick=None, opt-in)
         │
-        ├── 5. safety check (circuit breaker)         # blocked → override decision to FLAT
+        ├── 6. safety check (circuit breaker)         # blocked → override decision to FLAT
         │
-        ├── 6. decision_logic.execute_decision(decision, tick)
+        ├── 7. decision_logic.execute_decision(decision, tick)
         │       └── _execute_decision_impl(decision, tick)
         │           └── trading_api.send_order(...)
         │               └── executor.open_order(request)
         │                   └── adapter.execute_order() → Broker API
         │                   └── order_tracker.submit_order() → tracking
         │
-        ├── 7. drain #348 decision events             # fills/cancels delivered to algo hooks
+        ├── 8. drain #348 decision events
         │
         │   then, in run():
-        ├── 8. reconcile (#151, hybrid cadence)       # broker truth-pull, ALERT_ONLY
-        │
-        └── 9. persistence, clipping monitor, display stats, state frame
+        └── 9. reconcile and persistence by tick count, carry-over, clipping monitor, display,
+               state frame and indicator series (only where the algo ran), session-end check
 ```
 
 **Key characteristics:**
@@ -167,14 +170,16 @@ AutotraderTickLoop.run()
   hold, and a logic keeps its own (`OwnExitLevels`). The level check on a position is the simulation's
   alone. Contract: `docs/architecture/venue_order_features.md`
 - Pending orders resolved by broker polling today (#320 cadence); WebSocket push is the V1.4 primary (#331)
-- Fills on the fast path reach the algo immediately via the #348 Decision Event Channel — drained each tick AND during idle heartbeats
+- Fills reach the algo via the #348 Decision Event Channel on arrival: the venue's answer wakes the loop and resolves in the next instant (#461) — except while a stopping session waits for its last orders, which reads them a heartbeat apart
 - The Reconciler (#151) runs as a separate trust layer (ALERT_ONLY) — it verifies broker truth, it does not learn fills
-- Idle handling (#360): a tick gap fires a timer event (`heartbeat_interval_ms`, default 1 s) — the
-  single main-loop consumer advances the injected clock, re-polls active orders, reconciles, and
-  runs a side-effect-free decision **ghost-pass** (`tick=None`, cached worker results, opt-in via
-  `wants_heartbeat()`) so the algo reacts in ~1 s instead of waiting for the next tick. No second
-  thread, no synthetic market tick, no tick-state mutation.
-- Canonical clock (#360): `get_current_time()` is loop-injected — the tick timestamp on a real tick, the tick source's time on the heartbeat: the wall clock live, a replay's own time in a mock session (#616); sim: simulated time. It never freezes to the last tick, so phase/op timeouts track real elapsed time.
+- Idle handling (#360): the heartbeat falls due one `heartbeat_interval_ms` (default 500 ms) after
+  the last instant with ticks or the last heartbeat — the single main-loop consumer advances the
+  injected clock, re-polls active orders and runs a side-effect-free decision **ghost-pass** (`tick=None`, cached worker
+  results, opt-in via `wants_heartbeat()`). The reconciliation and the persistence are timers of
+  their own (#461). No second thread, no synthetic market tick, no tick-state mutation.
+- Canonical clock (#360, #461): `get_current_time()` is the instant's stamp on the receipt axis —
+  the wall clock at arrival live, the recorded arrival in a mock session's replay (#616); sim: the
+  recorded arrival too. It never goes back and never freezes to the last tick.
 - Same `compute_tick()` → `execute_decision()` two-phase pattern
 
 ---
@@ -192,14 +197,14 @@ which owns its order; see [The Loop Core](loop_core_architecture.md):
 | `execute_algo_path` | bar history + worker/decision compute | a backtest slice with an unclipped tick (once, on its last tick); a non-clipped live tick |
 | `run_ghost_pass` | heartbeat decision compute (#360) | idle heartbeats (opt-in algos) |
 
-Outside the shared blocks, each runner's own steps sit in its own dispatcher entries, in its own
-order. The backtest's `dispatch_backtest_instant` holds the instant's phases, the clipping gate,
-the per-step profiling and the error wrap around `execute_decision`. The
-AutoTrader's `dispatch_live_slice` and `dispatch_live_timer` hold the safety override and have no
-clipping gate and no profiling; `dispatch_live_order_wait` is one pass of a stop's wait. Both keep
-the #348 event-drain boundary and the clock injection (simulated vs wall-clock, #360) in their
-entries. The reconcile after a tick, the persistence, the clipping monitor, the display and the
-state frame follow a pass in the AutoTrader's tick loop.
+Outside the shared blocks, each runner's own steps sit in its own dispatcher entry, in the one
+phase order of the event model. The backtest's `dispatch_backtest_instant` holds the clipping
+gate, the per-step profiling and the error wrap around `execute_decision`. The AutoTrader's
+`dispatch_live_instant` (#461) holds the safety override and has no clipping gate and no
+profiling; `dispatch_live_order_wait` is one pass of a stop's wait. Both keep the #348 event-drain
+boundary and set the clock to the instant's stamp on the receipt axis. The reconcile and
+persistence gates, the clipping monitor, the display and the state frame follow a pass in the
+AutoTrader's tick loop.
 
 ## Side-by-Side Comparison
 

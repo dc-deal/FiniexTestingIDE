@@ -137,7 +137,8 @@ class SessionPostRunValidator:
 
     def _check_clipping(self) -> None:
         """
-        Warn when too many ticks arrived while the previous one was still being processed.
+        Warn when the algo did not compute on too many ticks: they arrived while a pass was still
+        running and waited for a newer venue message's slice (#461).
 
         Live-only, and the one performance verdict a session can honestly make: the clipping
         ratio is measured against REAL tick arrival, so it says how often the algo failed to
@@ -157,11 +158,13 @@ class SessionPostRunValidator:
             domain=ValidationDomain.PROFILING, scope=_RUN_SCOPE,
             message=(
                 f'Clipping ratio {clipping.clipping_ratio:.1%} exceeds {limit:.1%} — '
-                f'{clipping.ticks_clipped}/{clipping.total_ticks} ticks arrived while the '
-                f'previous one was still being processed, so those decisions ran on data up '
-                f'to {clipping.max_stale_ms:.1f}ms old (avg processing '
-                f'{clipping.avg_processing_ms:.2f}ms). The algo is not keeping up with this '
-                f'tick rate.')))
+                f'{clipping.ticks_clipped}/{clipping.total_ticks} ticks waited behind a newer '
+                f'venue message — mostly because a pass was still running — so the algo never '
+                f'computed on them and decided on the newer tick, up to '
+                f'{clipping.max_stale_ms:.1f}ms after the oldest arrived (avg processing '
+                f'{clipping.avg_processing_ms:.2f}ms a pass, '
+                f'{clipping.total_passes} passes). The algo is not keeping up with this tick '
+                f'rate.')))
 
     def _check_uncommitted_code(self) -> None:
         """

@@ -327,7 +327,9 @@ class AutoTraderDisplayStats:
         clipping_ratio: Fraction of ticks that experienced clipping
         avg_processing_ms: Average tick processing time in ms
         max_processing_ms: Maximum tick processing time in ms
-        queue_depth: Current tick queue depth
+        queue_depth: Current tick queue depth, in items, not ticks: one per arrival (a venue
+            message live, an arrival millisecond in a replay) and one per venue answer whose wake
+            was not yet taken
         total_ticks_clipped: Total clipped ticks
         processing_times_ms: The most recent ticks' processing times — a bounded window, for the percentiles
         ticks_per_min: Session-average tick rate (ticks / uptime_minutes)

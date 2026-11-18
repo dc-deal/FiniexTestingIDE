@@ -10,7 +10,7 @@ from typing import List, Optional, Tuple
 from unittest.mock import MagicMock
 
 from python.framework.loop.event_sequencer import EventSequencer
-from python.framework.loop.sim_event_intake import SimEventIntake
+from python.framework.loop.intake.sim_event_intake import SimEventIntake
 from python.framework.types.loop_types.loop_event_types import (
     DataSliceEvent,
     LoopEvent,

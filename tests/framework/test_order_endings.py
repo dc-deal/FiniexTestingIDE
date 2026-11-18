@@ -480,7 +480,7 @@ class TestEveryEndingHasARowLive:
             order_id=order_id,
             broker_response=BrokerResponse(
                 broker_ref=resting.broker_ref, status=venue_status,
-                timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc)),
+                ts_init=datetime(2026, 1, 1, tzinfo=timezone.utc)),
         ))
 
         ended = _ended(executor.get_order_history())
@@ -508,7 +508,7 @@ class TestEveryEndingHasARowLive:
             broker_response=BrokerResponse(
                 broker_ref=resting.broker_ref, status=BrokerOrderStatus.CANCELLED,
                 filled_lots=0.004, fill_price=_RESTING_BUY,
-                timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc)),
+                ts_init=datetime(2026, 1, 1, tzinfo=timezone.utc)),
         ))
 
         ended = _ended(executor.get_order_history())

@@ -27,21 +27,22 @@ from python.framework.loop.blocks.algo_compute_block import execute_algo_path
 from python.framework.loop.blocks.algo_heartbeat_block import run_ghost_pass
 from python.framework.loop.blocks.bar_render_block import render_bars_for_tick
 from python.framework.loop.loop_context import LoopContext
-from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
-from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
+from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.decision_logic_types import DecisionLogicAction
 from python.framework.types.loop_types.backtest_pass_kind_types import BacktestPassKind
+from python.framework.types.loop_types.live_pass_kind_types import LivePassKind
 from python.framework.types.loop_types.loop_event_types import (
     DataSliceEvent,
     LoopEvent,
     TimeEvent,
 )
 from python.framework.types.loop_types.loop_pass_record_types import LoopPassRecord
+from python.framework.types.loop_types.timer_kind_types import TimerKind
 
 
 def dispatch_backtest_instant(
     events: Tuple[LoopEvent, ...],
-    simulator: TradeSimulator,
+    simulator: AbstractTradeExecutor,
     ctx: LoopContext,
     hooks: AbstractBacktestPassHooks,
     record: LoopPassRecord,
@@ -208,155 +209,127 @@ def _drain(ctx: LoopContext) -> None:
     dispatcher.drain()
 
 
-def dispatch_live_slice(
-    event: DataSliceEvent,
+def dispatch_live_instant(
+    events: Tuple[LoopEvent, ...],
+    executor: AbstractTradeExecutor,
     ctx: LoopContext,
     hooks: AbstractLivePassHooks,
     record: LoopPassRecord,
-) -> None:
+    ticks_clipped: int,
+) -> LivePassKind:
     """
-    An AutoTrader session's tick pass, in the order the session has always run it.
+    One instant of an AutoTrader session, in the phases of `InstantPhase` — the order a backtest
+    runs its instants in (#461).
 
-    The slice holds one tick: the drive takes each tick off its queue on its own (`slice_of_tick`),
-    and has counted it before the pass. Unlike the backtest's, this pass has no clipping gate — a
-    session measures how far its algo falls behind and does not skip it — and it samples the
-    account's value after the algo computed, for the safety layer, as well as after the broker
-    path.
+    The instant is what the session's intake handed over: a slice of the ticks that arrived — a
+    backlog coalesced into one — the venue's answers resolving, a timer, or several of them at one
+    stamp. The clock moves to the stamp once. Every tick reaches the broker path, the market
+    status and the bars, in order; the signals are folded in; what the venue answered resolves
+    once, after all of them; the decision events are delivered; the algo computes once, on the
+    newest tick — or, at the heartbeat, the heartbeat logic's decision runs; what it sent is
+    executed and its events delivered. Unlike a backtest's, the pass has no clipping gate — a
+    session measures how far its algo falls behind and does not skip it — and the safety layer
+    samples the account after the algo.
 
     Args:
-        event: The tick, as a slice of one
+        events: The instant's events, all with one stamp on the receipt axis
+        executor: The session's executor, whose instant-level resolution this entry drives
         ctx: The session's collaborators
-        hooks: The session's own steps inside the pass
-        record: What the pass leaves for the drive; the drive keeps its own tick count
+        hooks: The session's own steps inside the instant
+        record: What the instant leaves for the drive; the drive keeps its own tick count
+        ticks_clipped: The slice's ticks the algo does not compute on — a backlog's ticks behind
+            the newest arrival; the workers count the others, as a backtest counts only its
+            unclipped ticks
+
+    Returns:
+        What the instant did with the algo
     """
-    # Exactly one tick, or this raises: a slice of several would need every tick on the broker
-    # path and the bars, which this pass does not do (#461 feeds whole instants)
-    (tick,) = event.ticks
-    executor = ctx.executor
+    stamp = events[0].ts_init
+    data: Optional[DataSliceEvent] = None
+    timers = set()
+    for event in events:
+        if isinstance(event, DataSliceEvent):
+            data = event
+        elif isinstance(event, TimeEvent):
+            timers.add(event.timer)
+    record.ghost_order = None
+    record.closed_timeframes = frozenset()
 
-    # #141 Part 2a: fold in whatever the signal transport received since the last
-    # pass, BEFORE the workers run — the existing should_refresh picks a new snapshot
-    # up exactly as it picks up a mounted one, so tick behaviour and its counters are
-    # untouched.
-    hooks.refresh_signals(off_tick=False)
-
-    # === 0. Trading-day boundary (#476) — BEFORE the tick is applied ===
-    # A day ends at its boundary: the seal reads the account as the previous pass left
-    # it and is stamped with the boundary, so this tick's fills, trades and valuation
-    # open the new day — the same cut the heartbeat makes, and the one the simulation
-    # makes. The daily loss limit rolls on this seal too, from the value it read. The
-    # canonical clock moves to the tick's instant first — forward only, so a clock a
-    # heartbeat set ahead of the venue's stamp stays where it is, which is the instant
-    # on_tick applies the tick at — and the boundary is checked on it.
-    executor.set_current_time(tick.timestamp)
+    # The clock moves to the instant once, and the trading day is checked on it BEFORE anything
+    # of the instant applies (#476): the seal reads the account as the previous instant left it
+    executor.begin_instant(stamp)
     ctx.booking.check_boundary(executor.get_current_time_if_set(), ctx.seal_source)
     hooks.close_sealed_days()
 
-    # === 1. Trade Executor — BROKER PATH (all ticks) ===
-    executor.on_tick(tick)
-    hooks.observe_market(tick)
+    # === MARKET_DATA === every tick, in arrival order: the broker path, the bars, then the
+    # market status and the account value the bars were built on
+    if data is not None:
+        for tick in data.ticks:
+            executor.apply_tick(tick)
+            record.current_bars = render_bars_for_tick(tick, ctx.bar_controller)
+            hooks.observe_market(tick)
+        # #579: read before the algo path consumes them — a state frame names the bar the
+        # decision just saw close
+        record.closed_timeframes = (ctx.bar_controller.get_pending_closed_timeframes()
+                                    if ctx.reads_closed_bars else frozenset())
 
-    # === 2. Bar Rendering (shared block, #303) ===
-    record.current_bars = render_bars_for_tick(tick, ctx.bar_controller)
-    # #579: read before the algo pass below consumes them — a state frame names the bar
-    # the decision just saw close
-    record.closed_timeframes = (ctx.bar_controller.get_pending_closed_timeframes()
-                                if ctx.reads_closed_bars else frozenset())
+    # === SIGNALS === #141 Part 2a: what the signal transport received since the last instant,
+    # before the workers run
+    hooks.refresh_signals(off_tick=data is None)
 
-    # === 3+4. Bar History + Worker Processing + Decision (shared block, #303) ===
-    decision = execute_algo_path(
-        tick=tick,
-        current_bars=record.current_bars,
-        bar_controller=ctx.bar_controller,
-        worker_orchestrator=ctx.orchestrator,
-        symbol=ctx.symbol,
-    )
+    # === BROKER_RESOLUTIONS === what the venue answered by now, after all of the slice's ticks;
+    # then the cadence work a timer brought
+    executor.resolve_due(stamp)
+    if TimerKind.HEARTBEAT in timers:
+        # #436: the last real tick's age, BEFORE the events and the ghost pass, so the decision
+        # sees the stale status in this very instant
+        hooks.evaluate_staleness()
+    if TimerKind.RECONCILE in timers:
+        hooks.reconcile()
 
-    # === 4b. New-max debug logging ===
-    hooks.log_new_maxima()
+    # === EVENT_DELIVERY === the fills and cancels of this instant reach the hooks before the
+    # decision does; a hook that asks for the session end ends it here, before the algo
+    _drain(ctx)
+    if executor.is_session_end_requested():
+        return LivePassKind.NO_PASS
 
-    # === 5. Safety Check (circuit breaker) ===
-    hooks.guard_account()
+    # === ALGO_PASS → ORDER_EXECUTION → TRAILING_DRAIN ===
+    if data is not None:
+        tick = data.ticks[-1]
+        decision = execute_algo_path(
+            tick=tick,
+            current_bars=record.current_bars,
+            bar_controller=ctx.bar_controller,
+            worker_orchestrator=ctx.orchestrator,
+            symbol=ctx.symbol,
+            tick_weight=len(data.ticks) - ticks_clipped,
+        )
+        hooks.log_new_maxima()
+        # Safety check (circuit breaker), on the account after the algo
+        hooks.guard_account()
+        if hooks.entries_blocked():
+            decision.action = DecisionLogicAction.FLAT
+        order_result = ctx.decision_logic.execute_decision(decision, tick)
+        hooks.record_order(order_result, decision)
+        _drain(ctx)
+        record.decision = decision
+        record.order_result = order_result
+        return LivePassKind.TICK_PASS
 
-    # === 6. Order Execution ===
-    if hooks.entries_blocked():
-        decision.action = DecisionLogicAction.FLAT
-    order_result = ctx.decision_logic.execute_decision(decision, tick)
-    hooks.record_order(order_result, decision)
-
-    # === 6b. Decision event drain (#348) ===
-    # Events buffered during on_tick (fills, partial closes, cancels)
-    # are delivered to the algo hooks here — after compute/execute and
-    # before the next tick. A hook may request session end.
-    if ctx.decision_event_dispatcher is not None:
-        ctx.decision_event_dispatcher.drain()
-
-    record.decision = decision
-    record.order_result = order_result
-
-
-def dispatch_live_timer(
-    now: datetime,
-    ctx: LoopContext,
-    hooks: AbstractLivePassHooks,
-) -> Optional[AlgoOrderResult]:
-    """
-    An AutoTrader session's pass when no tick came within the heartbeat (#360), in its order.
-
-    Its drive hands over the pass's instant, which the tick source answers; the timeline driver
-    (#461) makes it a time event. No tick state is mutated: no counter, no bar render.
-
-    Args:
-        now: The pass's instant — the wall clock live, the replay's own time in a mock (#616)
-        ctx: The session's collaborators
-        hooks: The session's own steps inside the pass
-
-    Returns:
-        What the ghost decision sent, or None when it sent nothing or did not run
-    """
-    executor = ctx.executor
-    # #360: timer event. The canonical clock advances during idle (phase/op
-    # timeouts track real elapsed time) — live by the wall clock, a replay by its
-    # own time, which the tick source answers (#616) — then run the side-effect-free
-    # cadence — no tick state mutation.
-    executor.set_current_time(now)
-    _pass_day_boundary_off_tick(ctx, hooks)
-    # #320 + #360: drain async responses + check timeouts + re-poll
-    # active orders (the fill/cancel-confirm query now fires during idle).
-    executor.heartbeat()
-    # #436: market-data staleness contract — evaluate the last real
-    # tick's age BEFORE events/ghost-pass, so the decision sees the
-    # stale status (and the edge hook) in this very pass.
-    hooks.evaluate_staleness()
-    # #151 + #360: reconcile on the timer too (was tick-only). Time-bounded
-    # by min_interval_seconds → self-throttled, no API storm during idle.
-    hooks.reconcile()
-    # #141 Part 2a: an envelope that landed between two ticks reaches the
-    # decision HERE. process_heartbeat forwards cached worker results by design,
-    # so without this the arrival would wait for the next tick — minutes on a
-    # quiet instrument, which is exactly what the push channel exists to avoid.
-    hooks.refresh_signals(off_tick=True)
-    # #348: deliver events surfaced by the heartbeat drain
-    # (idle-time fills/cancels) to the algo hooks — before the ghost-pass
-    # so the decision observes them this pass.
-    if ctx.decision_event_dispatcher is not None:
-        ctx.decision_event_dispatcher.drain()
-
-    # #360 ghost-pass: let an opt-in decision act between ticks (advance
-    # phases, react to drained events, issue follow-up orders) with no
-    # synthetic tick and no tick-state mutation. Workers do not recompute — the
-    # orchestrator serves their cached results. Safety reuses the last evaluated
-    # block state (no fresh price on idle). No drain after it: what it sent is
-    # heard on the next pass.
-    decision = run_ghost_pass(ctx.orchestrator)
-    if decision is None:
-        return None
-    hooks.count_ghost_pass()
-    if hooks.entries_blocked():
-        decision.action = DecisionLogicAction.FLAT
-    order_result = ctx.decision_logic.execute_decision(decision, tick=None)
-    hooks.record_ghost_order(order_result, decision)
-    return order_result
+    if TimerKind.HEARTBEAT in timers:
+        # #360: the heartbeat logic acts between ticks with the workers' cached results — no
+        # synthetic tick and no tick state; the safety layer reuses its last evaluated state
+        decision = run_ghost_pass(ctx.orchestrator)
+        if decision is not None:
+            hooks.count_ghost_pass()
+            if hooks.entries_blocked():
+                decision.action = DecisionLogicAction.FLAT
+            ghost_order = ctx.decision_logic.execute_decision(decision, tick=None)
+            hooks.record_ghost_order(ghost_order, decision)
+            record.ghost_order = ghost_order
+        _drain(ctx)
+        return LivePassKind.GHOST_PASS
+    return LivePassKind.NO_PASS
 
 
 def dispatch_live_order_wait(

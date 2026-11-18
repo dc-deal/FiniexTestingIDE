@@ -40,7 +40,7 @@ from python.framework.types.autotrader_types.safety_session_types import (
 from python.framework.types.config_types.autotrader_defaults_config_types import SafetyConfig
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
-from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.market_types.market_data_types import TickData, arrival_slices
 from python.framework.types.persistence_types import BaselineKind
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.utils.run_id_utils import mint_run_id
@@ -99,8 +99,9 @@ def _run(spot_mode: bool, liquidate: bool = False) -> Tuple[
         run_timestamp=datetime.now(tz=timezone.utc),
         run_id=mint_run_id(datetime.now(timezone.utc)))
     tick_queue: queue.Queue = queue.Queue()
-    for tick in _ticks_with_a_drop():
-        tick_queue.put(tick)
+    ticks = _ticks_with_a_drop()
+    for arrival in arrival_slices(ticks):
+        tick_queue.put(arrival)
     tick_queue.put(None)
 
     balances: Optional[Dict[str, float]] = {'USD': 10000.0, 'BTC': 0.0} if spot_mode else None
@@ -121,6 +122,8 @@ def _run(spot_mode: bool, liquidate: bool = False) -> Tuple[
         logic.compute_tick(tick, {}))
     tick_source = MagicMock()
     tick_source.is_exhausted.return_value = True
+    # A replay's own time, the front of its queue: the session stamps the venue's answers on it
+    tick_source.get_idle_pass_time.return_value = ticks[-1].timestamp
 
     loop = AutotraderTickLoop(
         config=AutoTraderConfig(

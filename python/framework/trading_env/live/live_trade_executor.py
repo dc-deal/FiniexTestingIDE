@@ -15,6 +15,9 @@ Architecture:
         +-- Live Data Feed (WebSocket / REST poll) -> delivers ticks
         |
         +-- LiveTradeExecutor
+            +-- begin_instant / apply_tick / resolve_due
+                                             -> the session's instant (#461): clock, prices,
+                                                then _process_pending_orders() or heartbeat()
             +-- on_tick(tick)                -> inherited: prices + _process_pending_orders()
             +-- _process_pending_orders()    -> polls broker for fills, handles timeouts
             +-- open_order()                 -> sends to broker via adapter
@@ -69,6 +72,7 @@ from python.framework.types.live_types.reconciliation_types import (
     ReconcileState,
     ReconciliationResult,
 )
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
     EntryType,
@@ -319,6 +323,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         # Start the processor's worker thread.
         self._request_processor.start_worker()
+        # Whether the timeline's running instant applied a tick — which form its resolution takes
+        self._instant_had_tick = False
 
     def get_rest_ladder(self) -> ConnectionLadder:
         """
@@ -792,6 +798,60 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # follows, and a status that is read only on a tick is never read in a quiet feed.
         self._process_pipeline_orders()
 
+    # ============================================
+    # The timeline's instant (#461)
+    # ============================================
+
+    def begin_instant(self, instant_msc: int) -> None:
+        """
+        Start an instant of the session's timeline: the canonical clock moves to its stamp, on the
+        receipt axis, forward only.
+
+        Args:
+            instant_msc: The instant's stamp, in UTC epoch milliseconds
+        """
+        self._instant_had_tick = False
+        self.set_current_time(datetime.fromtimestamp(instant_msc / 1000.0, tz=timezone.utc))
+
+    def apply_tick(self, tick: TickData) -> None:
+        """
+        One tick of the instant's slice moves the market — the prices, the valuation mark, the
+        adapter. The clock stays at the instant: the tick's venue stamp is data (§9).
+
+        Args:
+            tick: The tick, in arrival order
+        """
+        self._instant_had_tick = True
+        self._apply_market_tick(tick)
+
+    def resolve_due(self, up_to_msc: int) -> None:
+        """
+        Resolve what the venue answered by the instant, after all of its ticks.
+
+        Two forms, because a tick has always asked the venue more than a quiet pass: with a tick,
+        the tick's own processing — the inbox, the unresolved writes, the synchronous status read
+        of a MARKET order or close in transit, booked in this instant, the timeouts and the
+        resting orders; without one, the heartbeat's — the same, with the status reads asked
+        asynchronously and booked when they arrive.
+
+        Args:
+            up_to_msc: The instant's stamp
+        """
+        if self._instant_had_tick:
+            self._process_pending_orders()
+        else:
+            self.heartbeat()
+
+    def set_arrival_listener(self, listener: Callable[[], None]) -> None:
+        """
+        Name what to tell when the venue's answer lands in the inbox, so the session's loop drains
+        it on arrival (#461).
+
+        Args:
+            listener: Called on the worker thread once the answer is in the inbox
+        """
+        self._request_processor.set_arrival_listener(listener)
+
     def _process_pending_orders(self) -> None:
         """
         Poll broker for pending order updates and handle timeouts.
@@ -913,6 +973,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 filled,
                 fill_price=response.fill_price,
                 fill_fee=response.fill_fee,
+                venue_time=response.ts_event,
             )
 
         elif response.status == BrokerOrderStatus.REJECTED:
@@ -1603,6 +1664,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 pending,
                 fill_price=response.fill_price,
                 fill_fee=response.fill_fee,
+                venue_time=response.ts_event,
             )
         elif pending.execution_state.cancel_requested:
             # Deferred cancel (#361): a cancel was requested while this submit was
@@ -2854,6 +2916,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 entry_type=entry_type,
                 fill_type=fill_type,
                 fill_fee=broker_response.fill_fee,
+                venue_time=broker_response.ts_event,
             )
             self.logger.info(
                 f'🎯 Active {entry_type.value} order {order_id} filled at '
@@ -2973,6 +3036,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         fill_type: FillType = FillType.MARKET,
         fill_event: OrderEventType = OrderEventType.FILLED,
         fill_fee: Optional[float] = None,
+        venue_time: Optional[datetime] = None,
     ) -> None:
         """
         Send a confirmed fill to the OPEN or the CLOSE half, by the order's own action.
@@ -2986,6 +3050,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 ended the rest of the order
             fill_fee: The fee the venue's answer reports for that volume, None where it
                 reports none (#508) — booked as the fill's fee instead of the estimate
+            venue_time: The venue's own stamp of the fill (#461) — passed for a fill in full,
+                whose order the venue closed with it; None for a partial fill, whose order the
+                venue closed later or not at all, so its close time is not the fill's
         """
         if fill_event is OrderEventType.FILLED:
             # The order is filled: a cancel or amend still on its way is refused by the venue
@@ -2994,7 +3061,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             self._record_overtaken_operation(pending)
         if pending.order_action == PendingOrderAction.CLOSE:
             self._fill_close_order(pending, fill_price=fill_price, fill_event=fill_event,
-                                   reported_fee=fill_fee)
+                                   reported_fee=fill_fee, venue_time=venue_time)
             return
         self._fill_open_order(
             pending,
@@ -3003,6 +3070,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             fill_type=fill_type,
             fill_event=fill_event,
             reported_fee=fill_fee,
+            venue_time=venue_time,
         )
 
     def open_order(self, request: OpenOrderRequest) -> OrderResult:

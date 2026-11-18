@@ -52,11 +52,11 @@ class AutotraderExecutionDefaults(StrictConfigModel):
     """AutoTrader tick-loop execution defaults."""
     parallel_workers: bool = False
     bar_max_history: int = 1000
-    # Idle-heartbeat cadence (#360): max wait for a real tick before the loop
-    # fires a timer event (drain + reconcile + re-poll + decision ghost-pass).
-    # Governs the live idle wake only; does not multiply broker I/O (re-poll is
-    # gated by poll_interval_ms, reconcile by min_interval_seconds). 500 ms for
-    # snappier between-tick reaction; event-driven wake-on-arrival is #331.
+    # Heartbeat cadence (#360, #461): the heartbeat falls due this long after the
+    # last instant with ticks or the last heartbeat (drain + re-poll + staleness
+    # check + decision ghost-pass). Does not multiply broker I/O (the re-poll is
+    # gated by poll_interval_ms). A venue's answer wakes the loop on arrival, and
+    # the reconciliation is a timer of its own (#461).
     heartbeat_interval_ms: int = 500
     # Market-data staleness contract (#436): no real tick for this many wall
     # seconds → session-level stale (pot warning + on_market_data_stale hook +
@@ -86,7 +86,6 @@ class AutotraderExecutionDefaults(StrictConfigModel):
 class ClippingMonitorDefaults(StrictConfigModel):
     """Clipping monitor defaults."""
     report_interval_s: float = 60.0
-    strategy: str = 'queue_all'
     # Post-session advisory: warn when the clipping ratio exceeds this share of ticks. Unlike
     # an absolute millisecond threshold, this one is grounded — the ratio is already measured
     # against real tick arrival, so it says how often the algo failed to keep up. Where the
@@ -392,7 +391,8 @@ class TickSourceConfig(StrictConfigModel):
 
     Args:
         type: Tick source type ('mock' for scenario-data replay, 'kraken' for live WebSocket)
-        tick_delay_ms: Artificial delay per tick in ms (mock replay only). 0 = full speed
+        tick_delay_ms: Artificial delay per tick in ms (mock replay only), slept before each
+            arrival millisecond for all its ticks at once. 0 = full speed
         ws_url: WebSocket URL (kraken mode)
         quote_channel_enabled: Subscribe to the venue's quote channel beside trades (kraken mode,
             #520 step B). ON: a trade tick carries the real bid/ask it executed against, which is
@@ -409,7 +409,8 @@ class TickSourceConfig(StrictConfigModel):
         connection_dead_s: Silence threshold to force reconnect in seconds (kraken mode). Kraken
             sends a heartbeat about once a second on every connection (measured 2026-10-20, the
             longest healthy pause 1.15 s), so 10 s is a dead connection, never a quiet market
-        freeze_after_ticks: Outage drill (#436, mock mode): pause emission once after N ticks. 0 = off
+        freeze_after_ticks: Outage drill (#436, mock mode): pause emission once, at the first
+            arrival millisecond after N ticks were put. 0 = off
         freeze_duration_s: Outage drill (#436, mock mode): pause duration in wall seconds
     """
     type: str = 'mock'

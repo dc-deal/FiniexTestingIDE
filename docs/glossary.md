@@ -118,6 +118,16 @@ accepted is still read. See [Data Import](data_pipeline/data_import_pipeline.md)
 run unit. A mock session, a dry run or a real-money session. See
 [AutoTrader Architecture](autotrader/autotrader_architecture.md).
 
+**backlog coalescing** — What an AutoTrader session does with the ticks that arrived while a pass
+was still running: they become one *data slice* — split only at a timer's due time, between whole
+arrivals — so the broker path and the bars see every tick and the algo computes once, on the newest
+(#461). The tick queue holds one item per arrival — one venue
+message, whose trades came in together — and the ticks of every arrival before the newest are the
+session's *clipped* ticks. A replay never coalesces: its queue fills because it runs faster than
+real time, so each of its arrivals — one arrival millisecond, put whole — is a slice of its own, as
+in a backtest. See
+[The Loop Core](architecture/loop_core_architecture.md#the-autotraders-timeline-461).
+
 **backtest** — A run of the simulation pipeline over a scenario set, on archived ticks with
 simulated fills. See [Process Execution](process_execution_guide.md).
 
@@ -184,12 +194,12 @@ archive. How often a worker computes — on every tick or once per closed bar �
 `compute_basis` (`live` · `bar_close`). See [State frames](consumer/state-frames.md).
 
 **canonical clock** — The one clock a decision logic, a worker and the execution layer read:
-`get_current_time()`. In a backtest it is the time of the replayed tick. In an AutoTrader session a
-tick sets it to the tick's own time and an idle heartbeat to the tick source's time for a pass without
-a tick, so timeouts keep tracking real elapsed time: a live feed answers the machine's UTC clock, a
-mock replay its last tick plus the real time since, so a mock session stays in replay time. See
-*wall clock*, and
-[Live Execution](architecture/live_execution_architecture.md#canonical-clock--idle-cadence-360).
+`get_current_time()`. It is the stamp of the *instant* being run, on the receipt axis, and never
+goes back: in a backtest the recorded arrival of the instant's ticks; in an AutoTrader session the
+wall clock at arrival live, and in a mock session's replay its recorded arrival — between two ticks
+the last one plus the real time since, so a mock session stays in replay time. A timer's instant
+takes its due time. See *ts_init* (on a loop event), *wall clock*, and
+[Live Execution](architecture/live_execution_architecture.md#canonical-clock--the-sessions-timeline-360-461).
 
 **carry-over** — What one session hands the next session of the same bot: the algo's memory, and
 the framework's record of keys, positions, the risk baseline and the drawdown curve. Keyed by the
@@ -215,6 +225,14 @@ Not the certificate itself, which is a file beside the gate's test suite. See *r
 venue's answers and its list of open orders can be matched back to us — and to this session, whose
 run id it carries a piece of, beside a counter. Live only; a backtest sends none. Not the *order id*
 (`pos_btcusd_47`), which never goes on the wire, and not the *broker ref*, which is the venue's.
+
+**clipping** · **clipped tick** — A tick the algo did not compute on, while the broker path and the
+bars still saw it. In a backtest, a tick the tick-processing budget flagged (`is_clipped`), because
+the algo would still have been busy — simulated. In an AutoTrader session, a tick of an arrival — one
+venue message — that waited behind a newer arrival of its slice, mostly because a pass was running
+(#461) — observed, never simulated; the trades of one message are never clipped against each other,
+and a replay never clips. The session's `clipping_ratio` is its clipped ticks over all its ticks. See
+*backlog coalescing*, and [Observability](autotrader/autotrader_observability.md#clipping-monitor-197).
 
 **closed** (a run) — A run that wrote its *footprint*, its very last step: everything it was going
 to write is written. Not *completed*, which means its results reached the ledger — the step just
@@ -307,12 +325,12 @@ the operating system's home directory (`~`), where the list of what runs on the 
 `development`, `unknown`, `external`) with its evidence grade, stamped at import and carried into
 every run's consumption record. Not the *broker*. See [Data Provenance](architecture/data_provenance.md).
 
-**data slice** (`DataSliceEvent`) — Every tick of one *instant*, as one event of the loop core: the
-ticks that share the stamp the run orders by — in a backtest, the ticks that arrived in one
-millisecond (#460); an AutoTrader session still hands over one tick per slice, and its algo
-computes on each, until its timeline driver (#461). A sweep through the book prints several trades
-with one stamp, and as one slice the broker path still sees each of them while the algo computes
-once. See [Loop Event Tests](tests/framework/loop_events_tests.md).
+**data slice** (`DataSliceEvent`) — The ticks of one *instant*, as one event of the loop core: in a
+backtest and in a mock session's replay, the ticks that arrived in one millisecond (#460); live,
+every arrival that waited on the queue when the loop took it, which can span several venue messages
+under one stamp (*backlog coalescing*, #461). The broker path and the bars see each tick, the algo
+computes once, on the newest. A sweep through the book prints several trades with one stamp, and
+as one slice the broker path still sees each of them while the algo computes once. See [Loop Event Tests](tests/framework/loop_events_tests.md).
 
 **data source** — One of the inputs a scenario reads, named by its key: its *data broker* for the
 ticks, its `data_sentiment_type` for the signals. A stale-data stress event names the one it makes
@@ -550,9 +568,16 @@ output read by a decision. See [Indicator series](consumer/indicator-series.md).
 `venue` — and, on a cancel request in the order-event stream, who asked for it. See *end reason*.
 
 **instant** (of the loop's timeline) — Everything the loop's timeline holds at one stamp, handed
-over and run together: a *data slice*, a fill or a scheduled change coming due, a timer — or
-several of them. In a backtest the clock jumps from one instant to the next (#460). The plain word
-keeps its ordinary meaning elsewhere. See [The Loop Core](architecture/loop_core_architecture.md).
+over and run together: a *data slice*, a fill or a scheduled change coming due, a venue's answers, a
+timer — or several of them. The clock jumps from one instant to the next, in a backtest (#460) as in
+an AutoTrader session (#461). The plain word keeps its ordinary meaning elsewhere. See
+[The Loop Core](architecture/loop_core_architecture.md).
+
+**intake lane** — One of the two inputs of an AutoTrader session's timeline (#461), each with its own
+loss policy: the *market-data lane*, the tick queue, read whole and coalesced into one slice when the
+loop fell behind; and the *execution lane*, the venue's answers in the executor's inbox, never
+dropped or merged. Not the bare *lane*, which the configuration cascade guide uses for something
+else. See [The Loop Core](architecture/loop_core_architecture.md#the-autotraders-timeline-461).
 
 **journal · ledger · closing** — The three bookkeeping levels. The *journal* is every booking in
 order (the trade records); the *ledger* holds the period summaries (one row per booking period, in
@@ -1102,19 +1127,27 @@ row and the trade are made in the same step; the row does not carry the trade's 
 **trade window basis** — Whether a trade is placed in a window by its entry or its exit.
 
 **ts_event** (on a loop event) — The source stamp of an event, in UTC epoch milliseconds: a tick's
-venue stamp, a timer's due instant. No pipeline orders the loop's timeline by it since #460; a
-backtest falls back to it only for a tick whose file recorded no arrival it can trust. Not the
+venue stamp, a timer's due instant. No pipeline orders the loop's timeline by it since #460 and
+#461; a backtest falls back to it only for a tick whose file recorded no arrival it can trust. Not the
 order history's *event time*, which is a row's instant on the *canonical clock*. See *ts_init*.
+
+**ts_event** (on an order event) — When the venue says a step happened, on the venue's own clock, as
+ISO-8601 — unlike the loop event's epoch milliseconds. Live only, and only where the venue's answer
+gives a time: today a fill in full, at the time the venue closed the order (#461). Null in a
+backtest, a mock session and a dry run. Kept beside the step's time on the *canonical clock* and
+our receipt (`ts_init`), never in place of either. See [Order events](consumer/order-events.md).
 
 **ts_init** (on an order event) — When this process saw the step, on the *wall clock*. Live only;
 empty in a backtest, which has to come out the same every time it runs. Kept beside the step's own
 time on the *canonical clock*, never in its place.
 
 **ts_init** (on a loop event) — The receipt stamp of an event, in UTC epoch milliseconds: when this
-process received or made it — a tick's collection stamp, or its *ts_event* where none was recorded
-or data preparation cleared one it cannot trust. Set in a backtest too, from the recorded data,
-unlike the order event's, and an archived tick's is the recording collector's. Both pipelines order
-the loop's timeline by it — a backtest by the receipt it recorded (#460). See *ts_event*.
+process received or made it — live, the wall clock as a tick's message was parsed or an answer
+landed; a tick's collection stamp in a backtest and a replay, or its *ts_event* where none was
+recorded or data preparation cleared one it cannot trust. Set in a backtest too, from the recorded
+data, unlike the order event's, and an archived tick's is the recording collector's. Both pipelines
+order the loop's timeline by it — a backtest by the receipt it recorded (#460), a session by its
+own receipt (#461). See *ts_event*.
 
 **unaccounted** (an order status and an order event) — We stopped asking about an order and do not
 know how it ended: its answer was lost and the venue was asked until the resolution ran out, or the
@@ -1160,7 +1193,7 @@ published.
 `start_time`) and measures durations — on its monotonic form, because the wall clock itself can
 step backwards. Never the time a decision reads — that is the *canonical clock*. Where the one
 enters the other is in
-[Live Execution](architecture/live_execution_architecture.md#canonical-clock--idle-cadence-360).
+[Live Execution](architecture/live_execution_architecture.md#canonical-clock--the-sessions-timeline-360-461).
 
 **warmup history** — The bars of each timeframe a run hands its workers before their first tick:
 the last N bars *complete at* that tick, N being what the most demanding worker reading the

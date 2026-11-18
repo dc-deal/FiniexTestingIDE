@@ -144,7 +144,8 @@ def test_a_boundary_a_heartbeat_notices_is_sealed_before_the_pass_resolves(monke
     monkeypatch.setattr(tick_loop_module, 'datetime', _WallClockAfterMidnight)
 
     before_midnight = [tick for tick in ticks_across_midnight() if tick.timestamp < MIDNIGHT]
-    loop = autotrader_loop(before_midnight, spot_mode=True, idle_heartbeats=1,
+    # A live feed: the heartbeat of its quiet stretch is stamped by the wall clock (#461)
+    loop = autotrader_loop(before_midnight, spot_mode=True, idle_heartbeats=1, live_source=True,
                            book_sealed_periods=lambda periods: calls.append('booking'))
     loop.run()
     periods = loop.get_booking_periods()

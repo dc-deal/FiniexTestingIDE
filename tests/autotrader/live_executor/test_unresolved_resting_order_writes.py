@@ -136,8 +136,8 @@ class TestACancelAnswerNamingNothingBooksNothing:
         """A cancel the venue answered by naming nothing."""
         mock, executor, pending = _resting_limit(spot_mode)
         executor.broker.adapter.parse_cancel_response = (
-            lambda raw, broker_ref, timestamp: BrokerResponse(
-                broker_ref=broker_ref, status=BrokerOrderStatus.UNKNOWN, timestamp=timestamp))
+            lambda raw, broker_ref, ts_init: BrokerResponse(
+                broker_ref=broker_ref, status=BrokerOrderStatus.UNKNOWN, ts_init=ts_init))
         executor.cancel_limit_order(pending.pending_order_id)
         mock.await_submit_confirmation(executor)
         return mock, executor, pending

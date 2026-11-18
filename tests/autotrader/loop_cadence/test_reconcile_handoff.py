@@ -81,6 +81,7 @@ def _loop(reconciler, executor) -> AutotraderTickLoop:
     loop = AutotraderTickLoop.__new__(AutotraderTickLoop)
     loop._reconciler = reconciler
     loop._executor = executor
+    loop._intake = None
     return loop
 
 

@@ -37,7 +37,7 @@ def stress_session():
     trader = AutotraderMain(config)
     result = trader.run()
     yield result
-    remove_run_dir(trader._run_dir)
+    remove_run_dir(trader.get_run_dir())
 
 
 def _count(result, needle: str) -> int:

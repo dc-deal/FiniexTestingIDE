@@ -140,6 +140,10 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         # main thread consumes responses and invokes the executor hooks.
         self._http_outbox: queue.Queue = queue.Queue()
         self._http_inbox: queue.Queue = queue.Queue()
+        # Told that an answer was put in the inbox, so the loop drains it on arrival (#461); None
+        # until the loop sets one. A listener that fails is said once
+        self._on_arrival: Optional[Callable[[], None]] = None
+        self._arrival_failure_reported = False
         self._worker_thread: Optional[threading.Thread] = None
         self._worker_running: bool = False
         # A worker whose stop timed out, still inside a call: the adapter's lock is held until
@@ -243,12 +247,12 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             raw = adapter.do_request_submit(payload)
         except Exception as e:
             return self._failure_response(
-                e, broker_ref='', timestamp=datetime.now(timezone.utc),
+                e, broker_ref='', ts_init=datetime.now(timezone.utc),
                 operation='submit')
 
         return adapter.parse_submit_response(
             raw,
-            timestamp=datetime.now(timezone.utc),
+            ts_init=datetime.now(timezone.utc),
             direction=direction,
             order_type=order_type,
         )
@@ -290,12 +294,12 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             raw = adapter.do_request_submit(payload)
         except Exception as e:
             return self._failure_response(
-                e, broker_ref='', timestamp=datetime.now(timezone.utc),
+                e, broker_ref='', ts_init=datetime.now(timezone.utc),
                 operation='submit')
 
         return adapter.parse_submit_response(
             raw,
-            timestamp=datetime.now(timezone.utc),
+            ts_init=datetime.now(timezone.utc),
             direction=close_direction,
             order_type=OrderType.MARKET,
         )
@@ -830,6 +834,41 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self._unresolved_hook = on_unresolved
         self._describe_ending_hook = describe_ending
 
+    def set_arrival_listener(self, listener: Callable[[], None]) -> None:
+        """
+        Name what to tell when an answer was put in the inbox.
+
+        Args:
+            listener: Called on the worker thread once the answer is in the inbox; it must only
+                record and signal, never touch loop state. It stamps the arrival itself, on the
+                session's own axis: a replay's time is not the wall clock this thread could read
+        """
+        self._on_arrival = listener
+
+    def _put_inbox(self, response: object) -> None:
+        """
+        Put an answer in the inbox for the main thread, then tell the listener it arrived.
+
+        The listener runs on this worker thread, and nothing here may end it: a failing listener
+        costs the wake, never the worker — the answer already lies in the inbox, and the loop's
+        next pass drains it. A worker that died here would leave every later write unsent (#461).
+
+        Args:
+            response: The response object, drained by `drain_inbox` on the main thread
+        """
+        self._http_inbox.put(response)
+        if self._on_arrival is None:
+            return
+        try:
+            self._on_arrival()
+        except Exception as error:  # noqa: BLE001 — a lost wake costs latency, never the worker
+            if not self._arrival_failure_reported:
+                self._arrival_failure_reported = True
+                self.logger.error(
+                    f'📡 The loop could not be told that a venue answer arrived '
+                    f'({type(error).__name__}: {error}). The answer is in the inbox and is read '
+                    f'on the next pass; the request worker goes on. Said once.')
+
     def start_worker(self) -> None:
         """
         Start the daemon worker thread. Idempotent — safe to call more than once.
@@ -946,7 +985,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         self,
         error: BaseException,
         broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
         operation: str,
         self_healing: bool = False,
         is_read: bool = False,
@@ -979,7 +1018,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Args:
             error: What the call raised
             broker_ref: The reference the call was about ('' for a submit that never got one)
-            timestamp: Receipt time of the failure
+            ts_init: When this process received the failure (UTC)
             operation: What was being attempted, for the line the operator reads
             self_healing: True when the caller retries this on its own cadence — then the
                 failure is a warning rather than an entry in the error pot
@@ -1002,7 +1041,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 broker_ref=broker_ref,
                 status=BrokerOrderStatus.UNRESOLVED,
                 rejection_reason=str(error),
-                timestamp=timestamp,
+                ts_init=ts_init,
             )
         if transient:
             message = (
@@ -1017,7 +1056,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             broker_ref=broker_ref,
             status=BrokerOrderStatus.UNRESOLVED if transient else BrokerOrderStatus.REJECTED,
             rejection_reason=str(error),
-            timestamp=timestamp,
+            ts_init=ts_init,
         )
 
     def _dispatch_submit_job(self, job: SubmitJob) -> None:
@@ -1032,16 +1071,17 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             job: The SubmitJob enqueued by submit_open_order_async or
                  submit_close_order_async
         """
-        now = datetime.now(timezone.utc)
         try:
             raw = job.adapter.do_request_submit(job.payload)
+            # The answer's receipt, read as it comes back — never the moment the request left
+            received = datetime.now(timezone.utc)
             response = job.adapter.parse_submit_response(
-                raw, timestamp=now, direction=job.direction, order_type=job.order_type)
+                raw, ts_init=received, direction=job.direction, order_type=job.order_type)
         except Exception as e:
             response = self._failure_response(
-                e, broker_ref='', timestamp=now, operation='submit')
+                e, broker_ref='', ts_init=datetime.now(timezone.utc), operation='submit')
 
-        self._http_inbox.put(SubmitResponse(
+        self._put_inbox(SubmitResponse(
             order_id=job.order_id,
             action=job.action,
             order_type=job.order_type,
@@ -1062,7 +1102,6 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Args:
             job: EditJob enqueued by submit_modify_order_async
         """
-        now = datetime.now(timezone.utc)
         try:
             payload = job.adapter.build_modify_payload(
                 broker_ref=job.broker_ref,
@@ -1074,15 +1113,16 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 new_take_profit=job.new_take_profit,
             )
             raw = job.adapter.do_request_modify(payload)
+            received = datetime.now(timezone.utc)
             response = job.adapter.parse_modify_response(
-                raw, original_broker_ref=job.broker_ref, timestamp=now,
+                raw, original_broker_ref=job.broker_ref, ts_init=received,
             )
         except Exception as e:
             response = self._failure_response(
-                e, broker_ref=job.broker_ref, timestamp=now,
+                e, broker_ref=job.broker_ref, ts_init=datetime.now(timezone.utc),
                 operation='modify')
 
-        self._http_inbox.put(EditResponse(
+        self._put_inbox(EditResponse(
             order_id=job.order_id,
             broker_response=response,
         ))
@@ -1094,19 +1134,19 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Composes adapter Tier-3 cancel layer:
             build_cancel_payload → do_request_cancel → parse_cancel_response
         """
-        now = datetime.now(timezone.utc)
         try:
             payload = job.adapter.build_cancel_payload(job.broker_ref)
             raw = job.adapter.do_request_cancel(payload)
+            received = datetime.now(timezone.utc)
             response = job.adapter.parse_cancel_response(
-                raw, job.broker_ref, now,
+                raw, job.broker_ref, received,
             )
         except Exception as e:
             response = self._failure_response(
-                e, broker_ref=job.broker_ref, timestamp=now,
+                e, broker_ref=job.broker_ref, ts_init=datetime.now(timezone.utc),
                 operation='cancel')
 
-        self._http_inbox.put(CancelResponse(
+        self._put_inbox(CancelResponse(
             order_id=job.order_id,
             broker_response=response,
         ))
@@ -1119,13 +1159,12 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         contract assumes the adapter exposes
             build_position_modify_payload(position_id, symbol, new_sl, new_tp)
             do_request_position_modify(payload)
-            parse_position_modify_response(raw, position_id, timestamp)
+            parse_position_modify_response(raw, position_id, ts_init)
         as a separate operation triple. Adapters that fold position-modify
         into the existing modify operation (#209 design decision) should
         override this dispatch method or expose the same triple names as
         thin aliases.
         """
-        now = datetime.now(timezone.utc)
         try:
             payload = job.adapter.build_position_modify_payload(
                 position_id=job.position_id,
@@ -1134,15 +1173,16 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 new_take_profit=job.new_take_profit,
             )
             raw = job.adapter.do_request_position_modify(payload)
+            received = datetime.now(timezone.utc)
             response = job.adapter.parse_position_modify_response(
-                raw, position_id=job.position_id, timestamp=now,
+                raw, position_id=job.position_id, ts_init=received,
             )
         except Exception as e:
             response = self._failure_response(
-                e, broker_ref=job.position_id, timestamp=now,
+                e, broker_ref=job.position_id, ts_init=datetime.now(timezone.utc),
                 operation='position modify')
 
-        self._http_inbox.put(PositionModifyResponse(
+        self._put_inbox(PositionModifyResponse(
             position_id=job.position_id,
             broker_response=response,
         ))
@@ -1159,18 +1199,18 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         regardless, and the order is simply asked about again on the next
         throttle cycle.
         """
-        now = datetime.now(timezone.utc)
         try:
             payload = job.adapter.build_query_payload(job.broker_ref)
             raw = job.adapter.do_request_query(payload)
+            received = datetime.now(timezone.utc)
             response = job.adapter.parse_query_response(
-                raw, job.broker_ref, now, market=job.market)
+                raw, job.broker_ref, received, market=job.market)
         except Exception as e:
             response = self._failure_response(
-                e, broker_ref=job.broker_ref, timestamp=now,
+                e, broker_ref=job.broker_ref, ts_init=datetime.now(timezone.utc),
                 operation='status query', self_healing=True, is_read=True)
 
-        self._http_inbox.put(QueryResponse(
+        self._put_inbox(QueryResponse(
             order_id=job.order_id,
             broker_response=response,
         ))
@@ -1194,13 +1234,13 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Args:
             job: The OrderResolveJob enqueued by the executor's resolution scheduler
         """
-        now = datetime.now(timezone.utc)
         try:
             if job.broker_ref:
                 payload = job.adapter.build_query_payload(job.broker_ref)
                 raw = job.adapter.do_request_query(payload)
-                parsed = job.adapter.parse_query_response(raw, job.broker_ref, now)
-                self._http_inbox.put(OrderResolveResponse(
+                parsed = job.adapter.parse_query_response(
+                    raw, job.broker_ref, datetime.now(timezone.utc))
+                self._put_inbox(OrderResolveResponse(
                     order_id=job.order_id,
                     status=None if parsed.status == BrokerOrderStatus.UNKNOWN
                     else parsed.status,
@@ -1213,7 +1253,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 # Sent under no key and no reference came back: there is nothing to ask
                 # about. Reported as a FAILED read rather than as an empty answer, because
                 # an empty answer is evidence and this is the absence of a question.
-                self._http_inbox.put(OrderResolveResponse(
+                self._put_inbox(OrderResolveResponse(
                     order_id=job.order_id,
                     success=False,
                     error_message='no client order id and no broker reference to ask with',
@@ -1232,7 +1272,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 # answering "none" would read as "the venue never took it" — a verdict that
                 # books the order undelivered. A FAILED read
                 # is what this is: the resolution asks again, and its ceiling ends the question.
-                self._http_inbox.put(OrderResolveResponse(
+                self._put_inbox(OrderResolveResponse(
                     order_id=job.order_id,
                     success=False,
                     error_message=(f'{len(matches)} orders at the venue carry client order id '
@@ -1241,14 +1281,14 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 return
             match = matches[0] if matches else None
 
-            self._http_inbox.put(OrderResolveResponse(
+            self._put_inbox(OrderResolveResponse(
                 order_id=job.order_id,
                 status=match.status if match is not None else None,
                 broker_ref=match.broker_ref if match is not None else None,
                 filled_lots=match.filled_lots if match is not None else 0.0,
             ))
         except Exception as e:                           # noqa: BLE001 — reported below
-            self._http_inbox.put(OrderResolveResponse(
+            self._put_inbox(OrderResolveResponse(
                 order_id=job.order_id,
                 success=False,
                 error_message=str(e),
@@ -1296,14 +1336,14 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             trades = job.adapter.parse_trades_query_response(
                 raw, broker_ref=job.broker_ref, order_id=job.order_id,
             )
-            self._http_inbox.put(TradesQueryResponse(
+            self._put_inbox(TradesQueryResponse(
                 order_id=job.order_id,
                 broker_ref=job.broker_ref,
                 trades=trades,
                 success=True,
             ))
         except Exception as e:
-            self._http_inbox.put(TradesQueryResponse(
+            self._put_inbox(TradesQueryResponse(
                 order_id=job.order_id,
                 broker_ref=job.broker_ref,
                 trades=[],
@@ -1931,7 +1971,6 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             BrokerResponse (REJECTED on transport error, PENDING on success,
             with a new broker_ref only from a venue that re-mints it)
         """
-        now = datetime.now(timezone.utc)
         payload = adapter.build_modify_payload(
             broker_ref=broker_ref,
             symbol=symbol,
@@ -1945,9 +1984,10 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             raw = adapter.do_request_modify(payload)
         except Exception as e:
             return self._failure_response(
-                e, broker_ref=broker_ref, timestamp=now,
+                e, broker_ref=broker_ref, ts_init=datetime.now(timezone.utc),
                 operation='modify')
-        return adapter.parse_modify_response(raw, original_broker_ref=broker_ref, timestamp=now)
+        return adapter.parse_modify_response(
+            raw, original_broker_ref=broker_ref, ts_init=datetime.now(timezone.utc))
 
     def query_order_sync(
         self,
@@ -1974,15 +2014,15 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Returns:
             BrokerResponse with current status (UNRESOLVED when the query failed)
         """
-        now = datetime.now(timezone.utc)
         payload = adapter.build_query_payload(broker_ref)
         try:
             raw = adapter.do_request_query(payload)
         except Exception as e:
             return self._failure_response(
-                e, broker_ref=broker_ref, timestamp=now,
+                e, broker_ref=broker_ref, ts_init=datetime.now(timezone.utc),
                 operation='status query', self_healing=True, is_read=True)
-        return adapter.parse_query_response(raw, broker_ref, now, market=market)
+        return adapter.parse_query_response(
+            raw, broker_ref, datetime.now(timezone.utc), market=market)
 
     def cancel_order_sync(
         self,
@@ -2004,12 +2044,11 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Returns:
             BrokerResponse (REJECTED on transport error, CANCELLED on success)
         """
-        now = datetime.now(timezone.utc)
         payload = adapter.build_cancel_payload(broker_ref)
         try:
             raw = adapter.do_request_cancel(payload)
         except Exception as e:
             return self._failure_response(
-                e, broker_ref=broker_ref, timestamp=now,
+                e, broker_ref=broker_ref, ts_init=datetime.now(timezone.utc),
                 operation='cancel')
-        return adapter.parse_cancel_response(raw, broker_ref, now)
+        return adapter.parse_cancel_response(raw, broker_ref, datetime.now(timezone.utc))

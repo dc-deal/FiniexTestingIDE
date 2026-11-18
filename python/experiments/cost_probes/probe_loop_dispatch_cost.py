@@ -60,12 +60,15 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable, ClassVar, Dict, FrozenSet, List, Optional, Tuple
 
 from python.framework.loop.event_sequencer import EventSequencer
-from python.framework.loop.tick_slicer import tick_event_msc, tick_receipt_msc
 from python.framework.loop.blocks.algo_compute_block import execute_algo_path
 from python.framework.loop.blocks.bar_render_block import render_bars_for_tick
 from python.framework.types.loop_types.event_kind_types import EventKind
 from python.framework.types.loop_types.loop_event_types import DataSliceEvent
-from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.market_types.market_data_types import (
+    TickData,
+    tick_event_msc,
+    tick_receipt_msc,
+)
 
 _START = datetime(2026, 1, 12, 10, tzinfo=timezone.utc)
 _SYMBOL = 'BTCUSD'

@@ -1,5 +1,6 @@
 """
-Reconciler cadence (is_due hybrid) + ALERT_ONLY non-mutation + counters (#151).
+Reconciler cadence (is_due by the tick count, the seconds a timer of the session's timeline, #461)
++ ALERT_ONLY non-mutation + counters (#151).
 """
 
 import pytest
@@ -17,11 +18,13 @@ def test_is_due_by_ticks(mock_adapter, make_reconciler):
     assert rec.is_due(10)
 
 
-def test_is_due_by_seconds(mock_adapter, make_reconciler):
-    # min_interval_seconds=0 → always due by wall-clock, regardless of ticks
+def test_the_seconds_are_the_timelines_timer_not_the_gates(mock_adapter, make_reconciler):
+    # #461: the time part is a timer the session's timeline arms from this interval — checked in
+    # is_due as well, it would fire twice, on two clocks
     cfg = ReconciliationDefaults(enabled=True, interval_ticks=99999, min_interval_seconds=0.0)
     rec = make_reconciler(mock_adapter, config=cfg)
-    assert rec.is_due(1)
+    assert not rec.is_due(1)
+    assert rec.get_min_interval_seconds() == 0.0
 
 
 def test_reconcile_resets_tick_window(mock_adapter, make_reconciler):

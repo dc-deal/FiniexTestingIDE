@@ -81,7 +81,8 @@ An `unaccounted` order is the one to check by hand at the venue.
 `avg_in_flight_ms`, `min_in_flight_ms` and `max_in_flight_ms` are milliseconds from submission to
 the venue's answer — the acceptance or the refusal. In a backtest they are the modelled delay, not
 a measurement of a network; in a live session they are measured when the session reads the answer,
-which can be up to one heartbeat after it arrived. An acceptance the session learned later by
+right after it arrives — later only by a pass still running then, and while a stopping session
+waits for its last orders, up to one heartbeat after it. An acceptance the session learned later by
 asking carries no duration: that span would be the asking, not the venue.
 
 `in_flight_count` is how many answers the average rests on. **Weight by it when you average across

@@ -27,9 +27,9 @@ from python.framework.constants.currency_constants import format_currency_signed
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.loop.event_sequencer import EventSequencer
+from python.framework.loop.intake.sim_event_intake import SimEventIntake
 from python.framework.loop.loop_context import LoopContext
 from python.framework.loop.loop_event_dispatcher import dispatch_backtest_instant
-from python.framework.loop.sim_event_intake import SimEventIntake
 from python.framework.process.indicator_series_recorder import IndicatorSeriesRecorder
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
 from python.framework.process.process_live_export import process_live_export, process_live_setup

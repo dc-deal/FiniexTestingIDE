@@ -217,9 +217,11 @@ session holds no list — each event goes to disk as it is recorded.
 
 ## Known limits
 
-- `ts_init` is the moment the main thread records the step — up to one heartbeat after the worker
-  received the venue's answer. The exact receipt stamp belongs to the event-loop rebuild (#457).
-  Live `in_flight_ms` is measured at the same moment, so it includes that wait too.
+- `ts_init` is the moment the main thread records the step — right after the worker received the
+  venue's answer, later only by a pass still running then, and up to one heartbeat later while a
+  stopping session waits for its last orders. The worker's own receipt stamp stays on the answer
+  and is not served. Live `in_flight_ms` is measured at the same moment, so it includes that wait
+  too.
 - Live `partially_filled` is recorded only where a partial is booked: a venue ending an order after
   partial execution. A resting entry that fills in parts is observed only when it fills (#342).
 - The mock venue reports the orders and balances a test seeded into it, not the ones a mock

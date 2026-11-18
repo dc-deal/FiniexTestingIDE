@@ -23,7 +23,7 @@ from python.framework.bars.bar_rendering_controller import BarRenderingControlle
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.loop.event_sequencer import EventSequencer
-from python.framework.loop.sim_event_intake import SimEventIntake
+from python.framework.loop.intake.sim_event_intake import SimEventIntake
 from python.framework.process.process_tick_loop import execute_tick_loop
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.trading_env.broker_config import BrokerConfig

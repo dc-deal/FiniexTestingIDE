@@ -27,7 +27,7 @@ from python.framework.process.process_tick_loop import execute_tick_loop
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
-from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.market_types.market_data_types import TickData, arrival_slices
 from python.framework.types.process_data_types import ProcessScenarioConfig
 from python.framework.utils.run_id_utils import mint_run_id
 
@@ -230,12 +230,12 @@ def _build_autotrader_tick_loop(ticks_with_flags):
     Construct an AutoTraderTickLoop wired to a real BarRenderingController
     and mocks for executor / orchestrator / decision_logic.
 
-    The tick_queue is pre-filled with the given TickData objects followed
+    The tick_queue is pre-filled with the given ticks, one arrival per millisecond, followed
     by a sentinel (None) so the loop terminates after the last real tick.
     """
     tick_queue: queue.Queue = queue.Queue()
-    for t in ticks_with_flags:
-        tick_queue.put(t)
+    for arrival in arrival_slices(ticks_with_flags):
+        tick_queue.put(arrival)
     tick_queue.put(None)  # Sentinel: end of stream
 
     config = AutoTraderConfig(
@@ -315,9 +315,12 @@ def test_autotrader_loop_bar_rendering_covers_all_ticks():
     """AutoTrader tick loop must feed every tick through bar rendering.
 
     Regression guard for #293: guarantees the AutoTrader-side ordering stays
-    correct (no clipping gate may ever appear between on_tick and bar
+    correct (no clipping gate may ever appear between the broker path and bar
     rendering). The flag `is_clipped` is set here to mirror what a future
     clipping implementation might do — the bar must still aggregate all ticks.
+
+    The configured tick source is a replay, so each tick, arriving 10 s after the
+    one before it, is a slice of its own (#461) and the algo computes on each.
     """
     # time_msc is required for the daily-rotation path and clipping monitor.
     base_msc = int(BAR_START.timestamp() * 1000)
@@ -368,5 +371,5 @@ def test_autotrader_loop_bar_rendering_covers_all_ticks():
     assert current_bar.timeframe == TIMEFRAME
 
     # Broker path saw every tick (AutoTrader has no clipping gate).
-    assert executor.on_tick.call_count == len(ticks)
+    assert executor.apply_tick.call_count == len(ticks)
     assert worker_orchestrator.process_tick.call_count == len(ticks)

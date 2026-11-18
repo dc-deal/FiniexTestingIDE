@@ -51,7 +51,7 @@ def _session_record(portfolio_cache: bool) -> List[Dict[str, Any]]:
         result = trader.run()
         return result.decision_statistics.probe_metadata.observations
     finally:
-        remove_run_dir(trader._run_dir)
+        remove_run_dir(trader.get_run_dir())
 
 
 def _unmarked_reads(record: List[Dict[str, Any]]) -> List[str]:

@@ -93,7 +93,7 @@ def _partial_fill_then_venue_end(spot_mode: bool) -> Session:
     executor._handle_query_response(QueryResponse(
         order_id=order_id, broker_response=BrokerResponse(
             broker_ref=resting.broker_ref, status=BrokerOrderStatus.CANCELLED,
-            filled_lots=0.004, fill_price=40000.0, timestamp=_ANSWERED_AT)))
+            filled_lots=0.004, fill_price=40000.0, ts_init=_ANSWERED_AT)))
     return mock, executor, events
 
 
@@ -107,7 +107,7 @@ def _adoption_then_fill(spot_mode: bool) -> Session:
     executor._handle_query_response(QueryResponse(
         order_id='pos_btcusd_7', broker_response=BrokerResponse(
             broker_ref='MOCK-ADOPTED', status=BrokerOrderStatus.FILLED, filled_lots=0.01,
-            fill_price=40000.0, timestamp=_ANSWERED_AT)))
+            fill_price=40000.0, ts_init=_ANSWERED_AT)))
     return mock, executor, events
 
 

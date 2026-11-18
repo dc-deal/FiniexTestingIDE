@@ -31,6 +31,13 @@ Feeds 5 synthetic ticks (mix of clipped + non-clipped) into the tick loop and ve
 
 Constructs a tick sequence where the extreme high price is on a **clipped** tick. Verifies that `bar.high` captures that price — i.e. bar rendering must not skip clipped ticks.
 
+### `test_autotrader_loop_bar_rendering_covers_all_ticks`
+
+The AutoTrader side of the same guard: five ticks 10 s apart, two of them flagged clipped, from a
+replay source, so each is a slice of its own (#461). Verifies that the bar holds every tick (count,
+volume, OHLC), that the broker path (`apply_tick`) saw every tick, and that the algo computed on
+each — the AutoTrader has no clipping gate.
+
 ---
 
 ## Why This Test Exists

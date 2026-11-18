@@ -55,7 +55,7 @@ class TestFailureClassification:
         response = processor._failure_response(
             ConnectionAttemptFailedError('HTTP 502 from /0/private/AddOrder'),
             broker_ref='',
-            timestamp=datetime.now(timezone.utc),
+            ts_init=datetime.now(timezone.utc),
             operation='submit',
         )
         assert response.status is BrokerOrderStatus.UNRESOLVED
@@ -68,7 +68,7 @@ class TestFailureClassification:
         response = processor._failure_response(
             ConnectionError('Kraken API error: [EOrder:Insufficient funds]'),
             broker_ref='',
-            timestamp=datetime.now(timezone.utc),
+            ts_init=datetime.now(timezone.utc),
             operation='submit',
         )
         assert response.status is BrokerOrderStatus.REJECTED
@@ -81,7 +81,7 @@ class TestFailureClassification:
         response = processor._failure_response(
             raised.value,
             broker_ref='',
-            timestamp=datetime.now(timezone.utc),
+            ts_init=datetime.now(timezone.utc),
             operation='submit',
         )
         assert response.status is BrokerOrderStatus.UNRESOLVED
@@ -90,7 +90,7 @@ class TestFailureClassification:
         response = processor._failure_response(
             ConnectionAttemptFailedError('HTTP 401', terminal=True),
             broker_ref='X1',
-            timestamp=datetime.now(timezone.utc),
+            ts_init=datetime.now(timezone.utc),
             operation='submit',
         )
         assert response.status is BrokerOrderStatus.REJECTED
@@ -101,7 +101,7 @@ class TestFailureClassification:
         response = processor._failure_response(
             ConnectionAttemptFailedError('timeout'),
             broker_ref='',
-            timestamp=datetime.now(timezone.utc),
+            ts_init=datetime.now(timezone.utc),
             operation='submit',
         )
         assert response.is_terminal is False
@@ -130,7 +130,7 @@ class TestPendingSurvives:
         response = processor._failure_response(
             ConnectionAttemptFailedError('HTTP 502'),
             broker_ref='',
-            timestamp=datetime.now(timezone.utc),
+            ts_init=datetime.now(timezone.utc),
             operation='submit',
         )
 
@@ -167,7 +167,7 @@ class TestPendingSurvives:
             broker_response=processor._failure_response(
                 ConnectionAttemptFailedError('HTTP 502'),
                 broker_ref='',
-                timestamp=datetime.now(timezone.utc), operation='submit'),
+                ts_init=datetime.now(timezone.utc), operation='submit'),
         ))
 
         assert notified == [], 'the venue never spoke; the algo must not be told it did'
@@ -195,7 +195,7 @@ class TestPendingSurvives:
             broker_response=processor._failure_response(
                 ConnectionAttemptFailedError('HTTP 502'),
                 broker_ref='',
-                timestamp=datetime.now(timezone.utc), operation='submit'),
+                ts_init=datetime.now(timezone.utc), operation='submit'),
         ))
 
         assert processor.get_pending_orders()[0].broker_ref == 'TX-KNOWN'
@@ -216,7 +216,7 @@ class TestPendingSurvives:
             broker_response=processor._failure_response(
                 ConnectionError('Kraken API error: [EOrder:Insufficient funds]'),
                 broker_ref='',
-                timestamp=datetime.now(timezone.utc), operation='submit'),
+                ts_init=datetime.now(timezone.utc), operation='submit'),
         ))
 
         assert not processor.has_pending_orders()
@@ -366,7 +366,7 @@ class TestLogLevelMatchesConsequence:
         processor = LiveRequestProcessor(logger=recorder, timeout_config=TimeoutConfig())
         processor._failure_response(
             ConnectionAttemptFailedError('HTTP 502'),
-            broker_ref='', timestamp=datetime.now(timezone.utc), operation='submit')
+            broker_ref='', ts_init=datetime.now(timezone.utc), operation='submit')
         assert recorder.levels == ['error']
 
     def test_failed_status_poll_is_only_a_warning(self):
@@ -377,7 +377,7 @@ class TestLogLevelMatchesConsequence:
         processor = LiveRequestProcessor(logger=recorder, timeout_config=TimeoutConfig())
         processor._failure_response(
             ConnectionAttemptFailedError('HTTP 502'),
-            broker_ref='TX-1', timestamp=datetime.now(timezone.utc),
+            broker_ref='TX-1', ts_init=datetime.now(timezone.utc),
             operation='status query', self_healing=True)
         assert recorder.levels == ['warning']
 
@@ -388,7 +388,7 @@ class TestLogLevelMatchesConsequence:
         processor = LiveRequestProcessor(logger=recorder, timeout_config=TimeoutConfig())
         processor._failure_response(
             ConnectionError('Kraken API error: [EOrder:Insufficient funds]'),
-            broker_ref='', timestamp=datetime.now(timezone.utc), operation='submit')
+            broker_ref='', ts_init=datetime.now(timezone.utc), operation='submit')
         assert recorder.levels == []
 
 

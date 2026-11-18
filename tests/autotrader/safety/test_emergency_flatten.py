@@ -30,6 +30,7 @@ from python.framework.types.autotrader_types.safety_session_types import Flatten
 from python.framework.types.config_types.autotrader_defaults_config_types import SafetyConfig
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
+from tests.shared.booking_day_harness import autotrader_loop, ticks_across_midnight
 from tests.shared.operator_alert_recorder import OperatorAlertRecorder
 
 
@@ -61,7 +62,7 @@ class _FlattenStub:
         self._trading_model = trading_model
         self._logger = _RecordingLogger()
         self._operator_alerts = OperatorAlertRecorder()   # #235 — the hard stop alerts out of band
-        self._flatten_sent_at_tick = None
+        self._flatten_sent_at_pass = None
         self._flatten_reason = ''
         self._flatten_outcome = None
         self._flatten_unconfirmed: List[str] = []
@@ -102,9 +103,9 @@ class _FlattenStub:
     def check(self, value: float, baseline: float, tick_index: int = 0) -> None:
         SafetyCircuitBreaker.check_emergency_flatten(self, value, baseline, tick_index)
 
-    def _send_emergency_closes(self, reason: str, ticks_processed: int) -> None:
+    def _send_emergency_closes(self, reason: str, tick_passes: int) -> None:
         """The real sender, bound here for the same reason the two entry points are."""
-        SafetyCircuitBreaker._send_emergency_closes(self, reason, ticks_processed)
+        SafetyCircuitBreaker._send_emergency_closes(self, reason, tick_passes)
 
     def drive(self, tick_index: int) -> None:
         SafetyCircuitBreaker.drive_emergency_flatten(self, tick_index)
@@ -352,3 +353,29 @@ class TestACloseThatCannotBeSent:
             assert any(position_id in m and 'could not send' in m
                        for m in stub._logger.errors), (
                 f'{position_id} failed silently — it is still open at the venue')
+
+
+class TestTheDrainWindowCountsPasses:
+    """
+    #461: a live session coalesces a backlog into one pass, which resolves the venue's answers
+    once. The window counts those passes, as it counted ticks when every tick was its own pass —
+    a tick count would let one burst use up the whole window in a single instant.
+    """
+
+    def test_a_coalesced_backlog_is_one_pass_of_the_window(self, monkeypatch):
+        passes: List[int] = []
+        real_drive = SafetyCircuitBreaker.drive_emergency_flatten
+
+        def drive(breaker: SafetyCircuitBreaker, tick_passes: int) -> None:
+            passes.append(tick_passes)
+            real_drive(breaker, tick_passes)
+
+        monkeypatch.setattr(SafetyCircuitBreaker, 'drive_emergency_flatten', drive)
+        ticks = ticks_across_midnight()
+        loop = autotrader_loop(ticks, spot_mode=False, live_source=True)
+
+        loop.run()
+
+        assert len(ticks) > 1
+        assert passes == [1], 'the whole backlog was one pass'
+

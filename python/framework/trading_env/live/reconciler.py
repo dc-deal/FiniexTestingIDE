@@ -145,17 +145,24 @@ class Reconciler:
 
     def is_due(self, tick_counter: int) -> bool:
         """
-        Whether a reconcile is due — hybrid cadence (ticks OR wall-clock).
+        Whether a reconcile is due by the tick count. Its time part is a timer on the session's
+        timeline (#461), which `get_min_interval_seconds` schedules — checked here as well, it
+        would fire twice, on two clocks.
 
         Args:
             tick_counter: Current tick-loop counter
 
         Returns:
-            True if interval_ticks elapsed OR min_interval_seconds elapsed
+            True if interval_ticks elapsed since the last reconcile
         """
-        if tick_counter - self._last_reconcile_tick >= self._config.interval_ticks:
-            return True
-        return (time.monotonic() - self._last_reconcile_time) >= self._config.min_interval_seconds
+        return tick_counter - self._last_reconcile_tick >= self._config.interval_ticks
+
+    def get_min_interval_seconds(self) -> float:
+        """
+        Returns:
+            How long after a reconcile the next one falls due by time — the timeline's timer
+        """
+        return self._config.min_interval_seconds
 
     # ============================================
     # Reconcile

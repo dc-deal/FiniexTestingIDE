@@ -32,6 +32,7 @@ from python.framework.trading_env.simulation.trade_simulator import TradeSimulat
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
+from python.framework.types.market_types.market_data_types import arrival_slices
 from python.framework.types.process_data_types import ProcessScenarioConfig
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.utils.run_id_utils import mint_run_id
@@ -130,8 +131,8 @@ def _run_simulation(ticks):
 def _run_autotrader(ticks):
     """Run AutotraderTickLoop in-process and return the bar controller."""
     tick_queue: queue.Queue = queue.Queue()
-    for t in ticks:
-        tick_queue.put(t)
+    for arrival in arrival_slices(ticks):
+        tick_queue.put(arrival)
     tick_queue.put(None)  # Sentinel: signals end of stream
 
     logger = ScenarioLogger(
@@ -186,6 +187,8 @@ def _run_autotrader(ticks):
 
     tick_source = MagicMock()
     tick_source.is_exhausted.return_value = True
+    # A replay's own time, the front of its queue: the session stamps the venue's answers on it
+    tick_source.get_idle_pass_time.return_value = ticks[-1].timestamp
 
     loop = AutotraderTickLoop(
         config=config,
@@ -292,8 +295,8 @@ def _run_simulation_trades(ticks):
 def _run_autotrader_trades(ticks):
     """Run AutotraderTickLoop with real LiveTradeExecutor and DeterministicProbe."""
     tick_queue: queue.Queue = queue.Queue()
-    for t in ticks:
-        tick_queue.put(t)
+    for arrival in arrival_slices(ticks):
+        tick_queue.put(arrival)
     tick_queue.put(None)  # Sentinel: signals end of stream
 
     logger = ScenarioLogger(
@@ -335,6 +338,8 @@ def _run_autotrader_trades(ticks):
 
     tick_source = MagicMock()
     tick_source.is_exhausted.return_value = True
+    # A replay's own time, the front of its queue: the session stamps the venue's answers on it
+    tick_source.get_idle_pass_time.return_value = ticks[-1].timestamp
 
     loop = AutotraderTickLoop(
         config=config,

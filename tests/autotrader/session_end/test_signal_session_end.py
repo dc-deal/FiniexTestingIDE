@@ -26,6 +26,7 @@ from python.framework.trading_env.live.live_trade_executor import LiveTradeExecu
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
+from python.framework.types.market_types.market_data_types import arrival_slices
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.utils.run_id_utils import mint_run_id
 from tests.shared.parity_fixtures import make_flat_btcusd_ticks
@@ -143,8 +144,8 @@ def test_an_end_asked_for_before_the_first_pass_lets_no_decision_run():
         run_timestamp=datetime.now(tz=timezone.utc),
         run_id=mint_run_id(datetime.now(timezone.utc)))
     tick_queue: queue.Queue = queue.Queue()
-    for tick in make_flat_btcusd_ticks(count=5):
-        tick_queue.put(tick)
+    for arrival in arrival_slices(make_flat_btcusd_ticks(count=5)):
+        tick_queue.put(arrival)
     tick_queue.put(None)
 
     executor = MagicMock()

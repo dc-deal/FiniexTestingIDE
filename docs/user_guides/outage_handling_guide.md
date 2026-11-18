@@ -230,7 +230,7 @@ the loop already has:
 ```
 Tick arrives (real feed)                    Heartbeat (no tick, every ~500 ms)
 ────────────────────────                    ──────────────────────────────────
-executor.on_tick(tick)                      _evaluate_market_data_staleness()
+executor.apply_tick(tick)                   _evaluate_market_data_staleness()
 _end_market_stale_episode()                   │  age = now − last real tick
   → status fresh, edge reset                  │  > execution.market_data_stale_after_s ?
        │                                      ▼
@@ -250,7 +250,7 @@ What differs from a backtest or a mock session:
 |---|---|---|
 | Trigger | a real feed outage | a planned window / the freeze drill |
 | Origin column | always `live-real` — a real source declares no injection and a live-adapter session has no planned windows | `stress-injected` (label from the driver or the join) |
-| Time axes | canonical clock **=** wall clock, so span and duration agree | the canonical clock is bimodal in a mock replay (replay tick time vs wall heartbeat) |
+| Time axes | canonical clock **=** wall clock, so span and duration agree | the canonical clock is the replay's own time in a mock replay: a heartbeat in a pause stands at the last arrival put plus the real time since (#616, #461) |
 | Counting basis | every processed tick (a live-adapter session has no clipping gate — clipping is only measured) | non-clipped algo ticks only |
 | Signal domain | not yet present — a live-adapter session has no signal series (that is #375); only tick episodes are recorded | both domains |
 

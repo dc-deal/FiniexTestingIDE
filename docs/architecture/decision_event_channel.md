@@ -194,8 +194,8 @@ backtest and is reported; in a session it is the session-end policy's, and not r
 - Drained inside each pass by the loop core (`loop/loop_event_dispatcher.py`, the one place
   that orders a pass): in a backtest's instant once after what came due resolves and once more
   after compute/execute (`dispatch_backtest_instant`, #460), so a fill of the instant reaches its
-  hook before the decision computes; in the AutoTrader's tick pass after compute/execute
-  (`dispatch_live_slice`), around its ghost pass (`dispatch_live_timer`) and in a stop's wait
+  hook before the decision computes; in the AutoTrader's instant the same way, once before the algo
+  or its ghost pass and once after (`dispatch_live_instant`, #461), and in a stop's wait
   (`dispatch_live_order_wait`). The AutoTrader's tick loop keeps only the drain of a stop's
   give-up. The final `SESSION_END` is drained once the loop ends.
 

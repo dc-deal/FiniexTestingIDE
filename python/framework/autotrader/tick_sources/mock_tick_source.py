@@ -6,11 +6,15 @@ testing without live data.
 
 import queue
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 
 from python.framework.autotrader.tick_sources.abstract_tick_source import AbstractTickSource
-from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.market_types.market_data_types import (
+    TickData,
+    arrival_slices,
+    tick_receipt_msc,
+)
 
 
 class MockTickSource(AbstractTickSource):
@@ -21,15 +25,18 @@ class MockTickSource(AbstractTickSource):
     scenario_settings window through the same preparation stack the backtesting batch uses. Emits
     as fast as possible (functional testing); optional per-tick delay for visual debugging.
 
-    Runs in a separate thread. Pushes TickData objects to a queue.Queue that the main algo thread
-    consumes (Threading model 8.a).
+    Runs in a separate thread. Puts the ticks of one arrival millisecond on a queue.Queue as one
+    item, a tuple, which the main algo thread consumes (Threading model 8.a): the loop then reads a
+    millisecond whole, never in two parts, however its reads fall (#461).
 
     Args:
         ticks: Pre-loaded, time-ordered ticks for the session (from the data package)
         symbol: Trading symbol (e.g., 'BTCUSD')
         tick_queue: Thread-safe queue for tick delivery to main thread
-        tick_delay_ms: Artificial per-tick delay in ms (0 = full speed)
-        freeze_after_ticks: Outage drill (#436): pause emission once after N ticks. 0 = off
+        tick_delay_ms: Artificial per-tick delay in ms (0 = full speed), slept before each
+            arrival millisecond for all its ticks at once
+        freeze_after_ticks: Outage drill (#436): pause emission once, at the first arrival
+            millisecond after N ticks were put. 0 = off
         freeze_duration_s: Outage drill (#436): pause duration in wall seconds
     """
 
@@ -64,18 +71,22 @@ class MockTickSource(AbstractTickSource):
         or stop() is called.
         """
         self._running = True
+        froze = False
 
-        for tick in self._ticks:
+        for arrival in arrival_slices(self._ticks):
             if not self._running:
                 break
 
             # Outage drill (#436): one deliberate mid-replay silence. The loop's
             # heartbeats keep running against the wall clock, so the session-level
-            # staleness contract fires organically, then recovers on resume.
+            # staleness contract fires organically, then recovers on resume. It falls
+            # between two arrival milliseconds, never inside one (#461).
             if (
                 self._freeze_after_ticks > 0
-                and self._ticks_emitted == self._freeze_after_ticks
+                and not froze
+                and self._ticks_emitted >= self._freeze_after_ticks
             ):
+                froze = True
                 # Declared while silent (#451) so the episode is recorded as injected
                 # rather than as a real feed outage.
                 self._freezing = True
@@ -84,15 +95,17 @@ class MockTickSource(AbstractTickSource):
 
             # Throttle for visual debugging
             if self._tick_delay_s > 0:
-                time.sleep(self._tick_delay_s)
+                time.sleep(self._tick_delay_s * len(arrival))
 
-            self._tick_queue.put(tick)
-            self._last_emitted = (tick.timestamp, time.monotonic())
-            self._ticks_emitted += 1
+            self._tick_queue.put(arrival)
+            self._last_emitted = (_receipt_time(arrival[0]), time.monotonic())
+            self._ticks_emitted += len(arrival)
+            self._notify_arrival()
 
         self._exhausted = True
         # Sentinel: signal the consumer that no more ticks will come
         self._tick_queue.put(None)
+        self._notify_arrival()
 
     def stop(self) -> None:
         """Signal the tick source to stop. Thread-safe."""
@@ -115,9 +128,11 @@ class MockTickSource(AbstractTickSource):
         """
         The replay's own time for a pass that carries no tick (#616).
 
-        The last tick put on the queue plus the real time since, so a pause in the replay — the
+        The arrival last put on the queue — the receipt of the tick that opened it — plus the real
+        time since, on the receipt axis the session
+        orders by (#461) — the arrival the collector recorded — so a pause in the replay — the
         outage drill, a throttled replay — moves the clock by the pause and never to today. Before
-        the first tick it is the first tick's stamp. A pause longer than the replay's own gap to
+        the first tick it is the first tick's arrival. A pause longer than the replay's own gap to
         its next tick leaves the clock ahead of that tick; the executor's clock only moves
         forward, so it then holds until the replay has caught up. An empty replay has no time of
         its own and keeps the base's answer.
@@ -130,7 +145,7 @@ class MockTickSource(AbstractTickSource):
             stamp, emitted_at = last_emitted
             return stamp + timedelta(seconds=time.monotonic() - emitted_at)
         if self._ticks:
-            return self._ticks[0].timestamp
+            return _receipt_time(self._ticks[0])
         return super().get_idle_pass_time()
 
     def is_exhausted(self) -> bool:
@@ -145,3 +160,16 @@ class MockTickSource(AbstractTickSource):
             Ticks pushed to queue
         """
         return self._ticks_emitted
+
+
+def _receipt_time(tick: TickData) -> datetime:
+    """
+    A replayed tick's arrival as a time — the receipt axis a session orders by (#461).
+
+    Args:
+        tick: The tick
+
+    Returns:
+        Timezone-aware UTC datetime
+    """
+    return datetime.fromtimestamp(tick_receipt_msc(tick) / 1000.0, tz=timezone.utc)

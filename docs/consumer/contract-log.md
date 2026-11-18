@@ -33,6 +33,35 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 58 — 2026-11-16 (#461)
+
+An AutoTrader session runs on a timeline, as a backtest does since version 57: it waits for the next
+thing that falls due, is woken when a tick or a venue's answer arrives, and runs each instant in the
+backtest's phase order.
+
+- [Order events](/api/v1/docs/order-events): **`ts_event`** (new) — the venue's own stamp of the
+  step, where it reports one. Today that is a live order's fill in full, stamped with the time the
+  venue closed the order; null in a backtest, a mock session and a dry run, and on every other event.
+- A changed meaning for every time an AutoTrader session records — `event_time` on the order events,
+  a state frame's instant, a trade's entry and exit: it is when a tick or an answer reached the
+  session, no longer the venue's stamp of the tick, so a live session's times move by the feed's
+  delay. A backlog the session fell behind on is one slice, the algo computing once on its newest
+  tick, and a venue's answer resolves when it arrives rather than at the next tick or heartbeat —
+  except while a stopping session waits for its last orders, which reads them a heartbeat apart.
+- [Worker and decision](/api/v1/docs/worker-decision): a session's `ticks_processed` no longer
+  counts the ticks of a backlog behind its newest — they never reached the algorithm, as a
+  backtest's clipped ticks do not.
+- [Order events](/api/v1/docs/order-events) and [pending orders](/api/v1/docs/pending-orders): a
+  live `in_flight_ms` still runs until the session reads the answer, and the session now reads it
+  right after it arrives — later only by a pass still running then — no longer up to one heartbeat
+  after it, except while a stopping session waits for its last orders.
+
+**A session recorded before this contract** carries null in `ts_event`, its times are the venue's
+stamp of each tick, and its `in_flight_ms` can run up to one heartbeat long; it can differ from a
+session of the same data recorded now.
+
+One field added, three meanings changed; nothing removed.
+
 ## Version 57 — 2026-11-16 (#460)
 
 A backtest runs on its timeline: it orders its ticks by when they arrived, computes the algo once
@@ -139,26 +168,13 @@ A backtest's drawdown curve now begins in the replayed time.
 
 A field changed its meaning; nothing added, removed or renamed.
 
-## Version 53 — 2026-11-09 (#557)
-
-A position a session restored at boot has no tick of the closing session to start from.
-
-- [Trade history](/api/v1/docs/trade-history): **`entry_tick_index`** is null on a trade whose
-  position a session restored at boot. The position opened in another session, and the closing
-  session counts its ticks from zero again, so no tick of its own is the entry. `duration_ticks` is
-  null on such a row too; `duration_s` still answers.
-
-**A run recorded before this contract** keeps the index it was written with: the opening session's,
-and `duration_ticks` null only where the exit lies before it.
-
-A field became nullable; nothing added, removed or renamed.
-
-## Versions 52 and earlier
+## Versions 53 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 53** — 2026-11-09 (#557): `entry_tick_index` and `duration_ticks` on [trade history](/api/v1/docs/trade-history) are null on a trade whose position a session restored at boot, because no tick of the closing session is its entry; `duration_s` still answers.
 - **Version 52** — 2026-11-09 (#557): Every figure a console printed is a field the API serves — `duration_ticks` and the per-trade analytics on [trade history](/api/v1/docs/trade-history), the failed counts on [order history](/api/v1/docs/order-history), `open_position_count` and the active pending counts, `total_costs` on the [aggregated portfolio](/api/v1/docs/aggregated-portfolio), `execution_rate_pct` on the [run summary](/api/v1/docs/run-summary), the worker and decision totals, the profiling figures, `keys` on the lists and the check `usable_funds_negative`; a figure folded over rows an older run does not keep is null there.
 - **Version 51** — 2026-11-05 (#646): A deployment no longer reads twice in the list: the sessions without booked figures stand in no row of their own, each booked row of [deployments](/api/v1/docs/deployments) counts them as `sessions_without_figures` and `sessions_failed`, and the row with `currency: null` is served only for a deployment that has booked nothing.
 - **Version 50** — 2026-11-04 (#646): A run that failed before it measured anything no longer reads like a session that traded and broke even — such a [deployments](/api/v1/docs/deployments) session serves no figure and no currency (null, not `0.0` and the empty string), every session in the detail carries `booking_state` (`booked`, `failed`, `not_booked_yet`), and a [sweep](/api/v1/docs/sweeps) combination's figures are nullable in the schema while a ranked one never carries null.

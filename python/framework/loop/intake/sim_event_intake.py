@@ -10,15 +10,18 @@ from typing import Iterator, List, Optional, Sequence, Tuple
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.loop.event_sequencer import EventSequencer
-from python.framework.loop.tick_slicer import tick_event_msc, tick_receipt_msc
-from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
+from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.types.loop_types.loop_event_types import (
     DataSliceEvent,
     LoopEvent,
     ResolutionEvent,
     TimeEvent,
 )
-from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.market_types.market_data_types import (
+    TickData,
+    tick_event_msc,
+    tick_receipt_msc,
+)
 
 
 class SimEventIntake:
@@ -50,7 +53,7 @@ class SimEventIntake:
     def __init__(
         self,
         ticks: Sequence[TickData],
-        simulator: TradeSimulator,
+        simulator: AbstractTradeExecutor,
         sequencer: EventSequencer,
         timer_interval_ms: int,
         gap_threshold_ms: float,

@@ -90,7 +90,7 @@ def chain(tmp_path_factory):
     }
     yield sessions
     for session in sessions.values():
-        remove_run_dir(session._run_dir)
+        remove_run_dir(session.get_run_dir())
 
 
 @pytest.fixture(scope='module')
@@ -124,7 +124,7 @@ class TestTheIdentityTravels:
     def test_every_session_is_a_declared_run(self, chain):
         """A session that inherits holds only what the run store declares too (#621)."""
         for session in chain.values():
-            assert_run_dir_declared(Path(session._run_dir))
+            assert_run_dir_declared(Path(session.get_run_dir()))
 
     def test_both_ledger_rows_name_it(self, chain, rows):
         """
@@ -193,7 +193,7 @@ class TestTheFlagsNarrowARealSession:
                 run_session(carry_over, one_off=True)
             assert deployed._deployment_id in str(caught.value)
         finally:
-            remove_run_dir(deployed._run_dir)
+            remove_run_dir(deployed.get_run_dir())
 
     def test_new_deployment_begins_a_second_history(self, chain, rows):
         assert chain['fresh']._deployment_id

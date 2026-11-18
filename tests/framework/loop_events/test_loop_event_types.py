@@ -1,9 +1,9 @@
 """
-The loop's event vocabulary (#457): the kinds, the events that carry them, which stamp orders a
-run, and the phases of an instant.
+The loop's event vocabulary (#457): the kinds, the events that carry them and the phases of an
+instant.
 
-Nothing in the loops uses these yet; what is held here is the contract the dispatcher (#458) and
-the two drivers will be built on, so it is readable in one place before anything depends on it.
+What is held here is the contract the dispatcher (#458) and both timeline drivers (#460, #461)
+are built on, readable in one place.
 """
 
 from datetime import datetime, timezone
@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 import pytest
 
 from python.framework.types.loop_types import loop_event_types
-from python.framework.types.loop_types.event_kind_types import EventKind, EventOrdering
+from python.framework.types.loop_types.event_kind_types import EventKind
 from python.framework.types.loop_types.instant_phase_types import InstantPhase
 from python.framework.types.loop_types.loop_event_types import (
     DataSliceEvent,
@@ -47,22 +47,6 @@ class TestEveryKindHasItsEvent:
         assert ResolutionEvent(ts_event=1, ts_init=1, seq=0).kind is EventKind.RESOLUTION
         assert DataSliceEvent(ts_event=1, ts_init=1, seq=0, ticks=(_tick(1),)).kind \
             is EventKind.DATA_SLICE
-
-
-class TestEachOrderingNamesItsStamp:
-    """
-    Which stamp a run orders by is said in one place, `EventOrdering.pick`; the timeline and the
-    slicer both ask it.
-    """
-
-    def test_every_ordering_picks_one_of_the_two(self):
-        for ordering in EventOrdering:
-            assert ordering.pick('source', 'receipt') in ('source', 'receipt'), ordering
-
-    def test_the_source_ordering_takes_the_source_stamp_and_the_receipt_ordering_the_receipt(
-            self):
-        assert EventOrdering.BY_TS_EVENT.pick('source', 'receipt') == 'source'
-        assert EventOrdering.BY_TS_INIT.pick('source', 'receipt') == 'receipt'
 
 
 class TestAnEventIsCompleteWhenMade:

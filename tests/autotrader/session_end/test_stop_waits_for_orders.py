@@ -216,6 +216,7 @@ class _Stage:
                          if connection is not None else None),
         )
         MockOrderExecution().feed_tick(self.executor, bid=_BID, ask=_ASK, timestamp=at)
+        self.at = at
         self.alerts = MagicMock()
         self.holds: List[_HeldAnswer] = []
 
@@ -280,6 +281,10 @@ class _Stage:
         """
         tick_queue: queue.Queue = queue.Queue()
         tick_queue.put(None)
+        # The session's axis (#461): a venue's answer is stamped on it, on the worker thread, so
+        # the source answers a time, as a replay does — the instant of the tick fed
+        tick_source = MagicMock()
+        tick_source.get_idle_pass_time.return_value = self.at
         config = AutoTraderConfig(
             profile_name='stop_waits', symbol='BTCUSD', broker_type='kraken_spot',
             adapter_type='mock', shutdown=self.settings,
@@ -287,7 +292,7 @@ class _Stage:
         return AutotraderTickLoop(
             config=config,
             tick_queue=tick_queue,
-            tick_source=MagicMock(),
+            tick_source=tick_source,
             executor=self.executor,
             bar_controller=BarRenderingController(logger=self.logger),
             worker_orchestrator=options.pop('worker_orchestrator', MagicMock()),
@@ -992,7 +997,7 @@ def session_with_awaited_order(request):
     """
     trader, result = _run_session(request.param, _settings(), answer_after_s=0.2)
     yield trader, result
-    remove_run_dir(trader._run_dir)
+    remove_run_dir(trader.get_run_dir())
 
 
 @pytest.fixture(scope='module', params=[_SPOT_PROFILE, _MARGIN_PROFILE], ids=['spot', 'margin'])
@@ -1006,7 +1011,7 @@ def session_run_out(request):
     trader, result = _run_session(
         request.param, _settings(order_wait_s=0.1), answer_after_s=1.0, bot_suffix='ro')
     yield trader, result
-    remove_run_dir(trader._run_dir)
+    remove_run_dir(trader.get_run_dir())
 
 
 @pytest.fixture(scope='module', params=[_SPOT_PROFILE, _MARGIN_PROFILE], ids=['spot', 'margin'])
@@ -1021,7 +1026,7 @@ def session_venue_gone(request):
         request.param, _settings(supervisor_kill_after_s=1.0, reserve_for_records_s=0.0),
         answer_after_s=0.0, venue_stops_answering=True, bot_suffix='un')
     yield trader, result
-    remove_run_dir(trader._run_dir)
+    remove_run_dir(trader.get_run_dir())
 
 
 @pytest.fixture(scope='module', params=[_SPOT_PROFILE, _MARGIN_PROFILE], ids=['spot', 'margin'])
@@ -1036,7 +1041,7 @@ def session_nothing_awaited_short_kill(request):
         request.param, _settings(supervisor_kill_after_s=1.0, reserve_for_records_s=0.0),
         answer_after_s=0.0, bot_suffix='nk', sends_an_order=False)
     yield trader, result
-    remove_run_dir(trader._run_dir)
+    remove_run_dir(trader.get_run_dir())
 
 
 class TestAWholeSessionWithNothingAwaitedUnderAShortKill:

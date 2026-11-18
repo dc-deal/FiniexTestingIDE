@@ -45,13 +45,14 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.loop.abstract_live_pass_hooks import AbstractLivePassHooks
 from python.framework.loop.event_sequencer import EventSequencer
+from python.framework.loop.intake.lane_arrivals import LaneArrivals
+from python.framework.loop.intake.live_event_intake import LiveEventIntake
+from python.framework.loop.intake.loop_wake import LoopWake
 from python.framework.loop.loop_context import LoopContext
 from python.framework.loop.loop_event_dispatcher import (
+    dispatch_live_instant,
     dispatch_live_order_wait,
-    dispatch_live_slice,
-    dispatch_live_timer,
 )
-from python.framework.loop.tick_slicer import slice_of_tick
 from python.framework.persistence.algo_state_store import AlgoStateStore
 from python.framework.persistence.position_book_watcher import PositionBookWatcher
 from python.framework.process.indicator_series_recorder import IndicatorSeriesRecorder
@@ -86,13 +87,18 @@ from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.decision_logic_types import Decision
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
 from python.framework.types.log_level import LogLevel
+from python.framework.types.loop_types.live_intake_stats_types import LiveIntakeStats
+from python.framework.types.loop_types.live_pass_kind_types import LivePassKind
+from python.framework.types.loop_types.loop_event_types import DataSliceEvent, TimeEvent
 from python.framework.types.loop_types.loop_pass_record_types import LoopPassRecord
+from python.framework.types.loop_types.timer_kind_types import TimerKind
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.persistence_types import BaselineQuantities
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
 from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.utils.trading_day_anchor import boundary_opening
+from python.framework.validators.adapter_wiring_validator import REPLAY_TICK_SOURCE
 from python.framework.workers.worker_orchestrator import WorkerOrchestrator
 
 
@@ -271,6 +277,12 @@ class AutotraderTickLoop(AbstractLivePassHooks):
         # fires a timer event (drain + reconcile + re-poll + decision ghost-pass).
         # Config is in ms; queue.get() wants seconds.
         self._heartbeat_interval_s = config.execution.heartbeat_interval_ms / 1000.0
+        # The session's timeline (#461), built when the loop starts; a replay slices and stamps
+        # by its own time, never coalesces
+        self._intake: Optional[LiveEventIntake] = None
+        # The instants that carried ticks: the hard stop's drain window counts these (#356, #461)
+        self._tick_passes = 0
+        self._replay = config.tick_source.type == REPLAY_TICK_SOURCE
 
         # #360 ghost-pass observability — proves the heartbeat decision pass fires
         # (and how often it acts), reported once at session end.
@@ -439,14 +451,13 @@ class AutotraderTickLoop(AbstractLivePassHooks):
         self._loop_started_monotonic = time.monotonic()
         ticks_processed = 0
         ticks_clipped = 0
-        prev_msc: int = 0
         # #458: what each tick pass leaves for the steps below it, and the slices' numbering
         pass_record = LoopPassRecord()
         sequencer = EventSequencer()
 
         # #320 — Push an initial startup pulse frame so the display renders
         # the full dashboard from t=0 instead of falling back to a wait
-        # placeholder. Subsequent pulses fire from queue.Empty heartbeats.
+        # placeholder. Subsequent pulses fire from the heartbeat timer.
         self._push_pulse_frame(ticks_processed)
 
         # #348: an end requested before the first pass — a Ctrl+C or a SIGTERM while the session
@@ -463,112 +474,83 @@ class AutotraderTickLoop(AbstractLivePassHooks):
             if self._executor.get_current_time_if_set() is None:
                 self._executor.set_current_time(self._idle_pass_time())
 
+        # #461: the session's timeline — the ticks and the venue's answers on two lanes, the
+        # timers on their schedules, handed over one instant at a time
+        self._intake = self._build_intake(sequencer)
+
         while self._running:
-            # #235: one stamp per pass, tick or heartbeat — a pass that hangs stamps no more,
-            # and the liveness ping stops vouching for the loop
+            # #235: one stamp per pass — a pass that hangs stamps no more, and the liveness ping
+            # stops vouching for the loop
             self._loop_progress.stamp()
             self._signal_staleness_alerter.check()
-            try:
-                tick = self._tick_queue.get(timeout=self._heartbeat_interval_s)
-            except queue.Empty:
-                # No tick within timeout — check if source is exhausted
-                if self._tick_source and self._tick_source.is_exhausted():
-                    self._logger.info(
-                        '📭 Tick source exhausted — ending session')
-                    break
-                # #360: timer event, through the loop core (#458) — the clock on the tick
-                # source's time, the heartbeat, staleness, reconcile, the signal inbox, the
-                # drain and the ghost pass
-                ghost_order = dispatch_live_timer(self._idle_pass_time(), self._loop_context, self)
-                # #354: persist algo state on the idle timer too (hybrid cadence).
-                self._persist_state_if_due(ticks_processed)
-                # #355: a fill can resolve on the heartbeat, so the book can change here too.
-                self._persist_carry_over_if_needed(ticks_processed)
-                # #579: the cadence runs on a quiet feed too — a live session's clock is the
-                # wall clock here — and an order a ghost pass sent is a moment of its own
-                if self._state_frames is not None:
-                    safety = self._safety.get_display_state()
-                    self._state_frames.on_pass(
-                        ticks_processed, self._last_real_decision, on_tick=False, order=ghost_order,
-                        safety_blocked=safety.blocked, safety_drawdown_pct=safety.drawdown_pct)
-                if self._executor.is_session_end_requested():
-                    self._logger.info(
-                        f'🛑 Session end requested: {self._executor.get_session_end_reason()}')
-                    break
-                self._push_pulse_frame(ticks_processed)
-                continue
-
-            # Sentinel value: None = tick source finished
-            if tick is None:
-                self._logger.info(
-                    '📭 Tick source signaled end — ending session')
+            events = self._intake.next_instant()
+            if events is None:
+                self._logger.info('📭 Tick source signaled end — ending session')
+                break
+            data = next((event for event in events if isinstance(event, DataSliceEvent)), None)
+            timers = {event.timer for event in events if isinstance(event, TimeEvent)}
+            if (data is None and TimerKind.HEARTBEAT in timers and self._tick_source
+                    and self._tick_source.is_exhausted()):
+                # A quiet heartbeat with a source that has nothing more to give ends the session,
+                # before the pass, as an idle pass always did
+                self._logger.info('📭 Tick source exhausted — ending session')
                 break
 
             # === TIMING START ===
-            tick_start_ns = time.perf_counter_ns()
+            pass_start_ns = time.perf_counter_ns()
+            if data is not None:
+                ticks_processed += len(data.ticks)
+                self._ticks_processed = ticks_processed
+                self._tick_passes += 1
 
-            # Inter-tick delta for clipping detection
-            current_msc = tick.collected_msc if tick.collected_msc > 0 else tick.time_msc
-            tick_delta_ms = 0.0
-            if prev_msc > 0 and current_msc > prev_msc:
-                tick_delta_ms = float(current_msc - prev_msc)
-            if current_msc > 0:
-                prev_msc = current_msc
+            # What the backlog left behind the newest tick, and how long it waited (#461)
+            ticks_skipped, wait_ms = self._intake.get_handed_backlog()
 
-            ticks_processed += 1
-            self._ticks_processed = ticks_processed
+            # === The instant, through the loop core (#458, #461) ===
+            # Clock and day boundary, broker path, bars, signals, the venue's answers, the
+            # timers' cadence work, the drain, the algo or the ghost pass, execute, drain — this
+            # loop's own steps inside it are its hooks below
+            kind = dispatch_live_instant(events, self._executor, self._loop_context, self,
+                                         pass_record, ticks_skipped)
+            algo_ran = kind is LivePassKind.TICK_PASS
 
-            # === 0.–6b. The tick pass, through the loop core (#458) ===
-            # Signal inbox, clock and day boundary, broker path, bars, algo, safety, execute,
-            # drain — this loop's own steps inside it are its hooks below
-            dispatch_live_slice(slice_of_tick(tick, sequencer), self._loop_context, self,
-                                pass_record)
-            decision = pass_record.decision
-            order_result = pass_record.order_result
-            if self._executor.is_session_end_requested():
-                self._logger.info(
-                    f'🛑 Session end requested: {self._executor.get_session_end_reason()}')
-                break
+            # === Reconciliation (#151) and algo state (#354) by the tick count — their time
+            # part is a timer of the timeline ===
+            if data is not None:
+                self._reconcile_if_due(ticks_processed)
+                self._persist_state_if_due(ticks_processed)
+            if TimerKind.PERSISTENCE in timers:
+                self._persist_state_now(ticks_processed)
 
-            # === 6c. Reconciliation (#151, hybrid cadence, ALERT_ONLY) ===
-            # Broker truth-pull every N ticks OR M seconds. Sync (like the #320
-            # polling path); infrequent, so the periodic block is bounded.
-            self._reconcile_if_due(ticks_processed)
-
-            # === 6d. Algo State Persistence (#354, hybrid cadence) ===
-            # Restart-safe algo memory (Category B). Save every N ticks OR M seconds.
-            self._persist_state_if_due(ticks_processed)
-
-            # === 6e. Position Book Carry-Over (#355, on change) ===
-            # A spot position only survives a restart if we wrote it down. Structural changes
-            # write at once; exit levels and extrema wait for the tick cadence (§42 — one
-            # write costs 11 ms on this tree).
+            # === Position Book Carry-Over (#355, on change) ===
+            # A fill can resolve on any instant, so the book can change on any instant
             self._persist_carry_over_if_needed(ticks_processed)
 
             # === TIMING END ===
-            elapsed_ns = time.perf_counter_ns() - tick_start_ns
+            elapsed_ns = time.perf_counter_ns() - pass_start_ns
 
-            # === 7. Clipping Monitor ===
-            self._clipping_monitor.record_tick(elapsed_ns, tick_delta_ms)
-            self._clipping_monitor.record_queue_depth(self._tick_queue.qsize())
+            if data is not None:
+                # === Clipping Monitor — a measurement, never a skip (#461) ===
+                self._clipping_monitor.record_pass(elapsed_ns, len(data.ticks), ticks_skipped,
+                                                   wait_ms)
+                self._clipping_monitor.record_queue_depth(self._tick_queue.qsize())
+                report = self._clipping_monitor.get_periodic_report()
+                if report is not None:
+                    self._logger.info(
+                        f'📊 Clipping report: {report.interval_ticks} ticks in '
+                        f'{report.interval_passes} passes, '
+                        f'{report.interval_clipped} clipped, '
+                        f'avg {report.interval_avg_processing_ms:.2f}ms a pass, '
+                        f'max {report.interval_max_processing_ms:.2f}ms, '
+                        f'queue_depth_max={report.interval_max_queue_depth} arrivals'
+                    )
+                    ticks_clipped += report.interval_clipped
+                    self._ticks_clipped = ticks_clipped
 
-            # Periodic clipping report
-            report = self._clipping_monitor.get_periodic_report()
-            if report is not None:
-                self._logger.info(
-                    f'📊 Clipping report: {report.interval_ticks} ticks, '
-                    f'{report.interval_clipped} clipped, '
-                    f'avg {report.interval_avg_processing_ms:.2f}ms, '
-                    f'max {report.interval_max_processing_ms:.2f}ms, '
-                    f'queue_depth_max={report.interval_max_queue_depth}'
-                )
-                ticks_clipped += report.interval_clipped
-                self._ticks_clipped = ticks_clipped
-
-            # === 8. Display Stats ===
-            if self._display_queue is not None:
+            if algo_ran and self._display_queue is not None:
+                # === Display Stats ===
                 display_stats = self._display_exporter.build(
-                    decision, ticks_processed, tick,
+                    pass_record.decision, ticks_processed, data.ticks[-1],
                     safety=self._safety.get_display_state(),
                     recent_rejections=list(self._recent_rejections),
                     total_rejections=self._rejection_count,
@@ -577,27 +559,45 @@ class AutotraderTickLoop(AbstractLivePassHooks):
                     self._display_queue.put_nowait(display_stats)
                 except queue.Full:
                     pass  # Display will use last known state
+            elif TimerKind.HEARTBEAT in timers:
+                self._push_pulse_frame(ticks_processed)
 
-            # === 9. State Frame (#579 part A) — on its cadence, at a closed bar, at an order ===
+            # === State Frame (#579) and indicator series (#379) — only where the algo ran, as in
+            # a backtest; a timer writes the cadence through the recorder's own gate, unless a
+            # hook ended the session in the instant's delivery: no pass ran, and a backtest's
+            # instant writes nothing then ===
             # After the timing above: recording is not the algo being slow
-            if self._state_frames is not None:
+            ended_in_delivery = (kind is LivePassKind.NO_PASS
+                                 and self._executor.is_session_end_requested())
+            if self._state_frames is not None and (
+                    algo_ran or (timers and not ended_in_delivery)):
                 safety = self._safety.get_display_state()
                 self._state_frames.on_pass(
-                    ticks_processed, decision, on_tick=True,
-                    closed_timeframes=pass_record.closed_timeframes, order=order_result,
+                    ticks_processed,
+                    pass_record.decision if algo_ran else self._last_real_decision,
+                    on_tick=algo_ran,
+                    closed_timeframes=pass_record.closed_timeframes if algo_ran else frozenset(),
+                    order=pass_record.order_result if algo_ran else pass_record.ghost_order,
                     safety_blocked=safety.blocked, safety_drawdown_pct=safety.drawdown_pct)
-            # #379: each drawing worker's value for a bar that closed, in the same place
-            if self._indicator_series is not None:
-                self._indicator_series.on_pass(pass_record.closed_timeframes,
-                                               pass_record.current_bars)
+            if TimerKind.STATE_FRAME_SLOT in timers:
+                self._arm_state_frame_slot()
+            if algo_ran:
+                if self._indicator_series is not None:
+                    self._indicator_series.on_pass(pass_record.closed_timeframes,
+                                                   pass_record.current_bars)
+                # Track last valid tick/decision for the final shutdown snapshot and the
+                # heartbeat pulse frames (#320)
+                self._last_real_tick = data.ticks[-1]
+                self._last_real_decision = pass_record.decision
+                # Read back only as an age (the staleness flip, the display): a step of the wall
+                # clock lands in it — it belongs on the monotonic clock (#549)
+                self._last_real_tick_wall_time = time.time()
 
-            # Track last valid tick/decision for the final shutdown snapshot
-            # and heartbeat pulse frames (#320).
-            self._last_real_tick = tick
-            self._last_real_decision = decision
-            # Read back only as an age (the staleness flip, the display): a step of the wall clock
-            # lands in it — it belongs on the monotonic clock (#549)
-            self._last_real_tick_wall_time = time.time()
+            # After the records, as in a backtest: a session a hook ended keeps its last pass
+            if self._executor.is_session_end_requested():
+                self._logger.info(
+                    f'🛑 Session end requested: {self._executor.get_session_end_reason()}')
+                break
 
         # #630: a normal stop waits here for the orders on their way — the last moment a hook can
         # still hear a fill, with the day boundary and the carry-over watcher still in this loop
@@ -746,6 +746,82 @@ class AutotraderTickLoop(AbstractLivePassHooks):
         dispatch_live_order_wait(now, self._loop_context, self, hear)
         self._persist_carry_over_if_needed(ticks_processed)
 
+    def _build_intake(self, sequencer: EventSequencer) -> LiveEventIntake:
+        """
+        Build the session's timeline (#461): the producers told where to report an arrival, and the
+        timers armed on their schedules.
+
+        Args:
+            sequencer: The session's counter for an event's submission order
+
+        Returns:
+            The intake the loop takes its instants from
+        """
+        self._wake = LoopWake(self._tick_queue)
+        self._market_arrivals = LaneArrivals()
+        self._execution_arrivals = LaneArrivals()
+        if self._tick_source is not None:
+            self._tick_source.set_arrival_listener(self._on_ticks_arrived)
+        self._executor.set_arrival_listener(self._on_answer_arrived)
+        intake = LiveEventIntake(
+            self._tick_queue, self._market_arrivals, self._execution_arrivals,
+            sequencer, self._axis_now_msc, round(self._heartbeat_interval_s * 1000),
+            coalesce_backlog=not self._replay,
+            logger=self._logger)
+        now = self._axis_now_msc()
+        if self._reconciler is not None:
+            intake.arm(TimerKind.RECONCILE,
+                       now + round(self._reconciler.get_min_interval_seconds() * 1000))
+        if self._state_store is not None:
+            intake.arm(TimerKind.PERSISTENCE,
+                       now + round(self._state_store.get_save_interval_seconds() * 1000))
+        self._intake = intake
+        if self._state_frames is not None:
+            self._arm_state_frame_slot()
+        return intake
+
+    def _on_ticks_arrived(self) -> None:
+        """
+        A tick source put a frame's ticks on the queue — on its thread. The ticks woke the loop
+        themselves; this records when they arrived, for the backlog's lag.
+        """
+        self._market_arrivals.note(self._axis_now_msc())
+
+    def _on_answer_arrived(self) -> None:
+        """
+        The venue's answer landed in the executor's inbox — on the worker thread: record and wake
+        only. Stamped on the session's axis, as a tick is: in a replay the wall clock lies months
+        ahead of the replay's time, and a stamp from it would move the clock there and seal every
+        day in between.
+        """
+        self._execution_arrivals.note(self._axis_now_msc())
+        self._wake.notify()
+
+    def _arm_state_frame_slot(self) -> None:
+        """Schedule the state frames' next cadence period on the timeline (#579, #461)."""
+        if self._intake is None or self._state_frames is None:
+            return
+        now = datetime.fromtimestamp(self._axis_now_msc() / 1000.0, tz=timezone.utc)
+        self._intake.arm(TimerKind.STATE_FRAME_SLOT,
+                         round(self._state_frames.next_slot_start(now).timestamp() * 1000))
+
+    def _axis_now_msc(self) -> int:
+        """
+        The receipt axis now — the wall clock live, a replay's own time in a mock (#616, #461).
+
+        A replay's own time is the front of its source, and a loop running behind the replay stands
+        earlier: there the loop's own position wins, so an answer or a timer is never stamped past
+        ticks still waiting on the queue. Live, the wall clock is the receipt itself.
+
+        Returns:
+            UTC epoch milliseconds
+        """
+        source_now = round(self._idle_pass_time().timestamp() * 1000)
+        if not self._replay or self._intake is None:
+            return source_now
+        position = self._intake.get_position_msc()
+        return source_now if position is None else min(source_now, position)
+
     def _idle_pass_time(self) -> datetime:
         """
         The canonical clock for a pass with no tick: the tick source's own time (#616).
@@ -794,7 +870,8 @@ class AutotraderTickLoop(AbstractLivePassHooks):
         Args:
             tick: The tick the broker path just applied
         """
-        if self._first_tick_time is None:
+        first_tick = self._first_tick_time is None
+        if first_tick:
             self._first_tick_time = tick.timestamp
         self._last_tick_time = tick.timestamp
 
@@ -822,8 +899,9 @@ class AutotraderTickLoop(AbstractLivePassHooks):
             self._injected_outage_label(),
         )
 
-        # Capture spot equity baseline on first tick (first live price available)
-        if self._ticks_processed == 1 and self._trading_model == TradingModel.SPOT:
+        # Capture spot equity baseline on the session's first tick (first live price available);
+        # a slice can hand several ticks at once (#461), so the loop's tick count is no witness
+        if first_tick and self._trading_model == TradingModel.SPOT:
             first_price = tick.mid
             self._initial_spot_equity = self._executor.portfolio.get_spot_equity(first_price)
         # #356 — the RISK baseline, which is a different question and answers it once:
@@ -839,7 +917,7 @@ class AutotraderTickLoop(AbstractLivePassHooks):
         Value the account after the decision and run the safety layer on that value: the soft
         breaker, the hard stop and its closes (#356).
         """
-        ticks_processed = self._ticks_processed
+        tick_passes = self._tick_passes
         # ONE value definition, the same one the drawdown series uses (#356/#492). The
         # margin branch used to read `get_balance()` — settled cash, which by
         # construction moves only on REALISED P&L, so an open drawdown was invisible to
@@ -866,8 +944,8 @@ class AutotraderTickLoop(AbstractLivePassHooks):
             # #356 — the HARD stop, checked after the soft one so a session that trips
             # both reports both. Sends the closes ONCE; the drain below carries them.
             self._safety.check_emergency_flatten(
-                safety_value, safety_baseline, ticks_processed)
-        self._safety.drive_emergency_flatten(ticks_processed)
+                safety_value, safety_baseline, tick_passes)
+        self._safety.drive_emergency_flatten(tick_passes)
 
     def entries_blocked(self) -> bool:
         """
@@ -893,8 +971,8 @@ class AutotraderTickLoop(AbstractLivePassHooks):
         self._evaluate_market_data_staleness()
 
     def reconcile(self) -> None:
-        """Compare the book with the venue's when its cadence is due (#151)."""
-        self._reconcile_if_due(self._ticks_processed)
+        """Compare the book with the venue's — the timeline's reconcile timer fell due (#151, #461)."""
+        self._reconcile_now(self._ticks_processed)
 
     def count_ghost_pass(self) -> None:
         """Count a ghost pass that returned a decision (#360), for the session's GHOST line."""
@@ -1090,11 +1168,28 @@ class AutotraderTickLoop(AbstractLivePassHooks):
         """
         if self._reconciler is None or not self._reconciler.is_due(ticks_processed):
             return
+        self._reconcile_now(ticks_processed)
+
+    def _reconcile_now(self, ticks_processed: int) -> None:
+        """
+        Pull broker truth now, act on what came back, and schedule the next reconcile by time.
+
+        Every run starts the timer again, whichever gate called it — the timeline's timer or the
+        tick count — so the two never fire back to back.
+
+        Args:
+            ticks_processed: Current tick counter
+        """
+        if self._reconciler is None:
+            return
         result = self._reconciler.reconcile(ticks_processed)
         if result.attributed_orders:
             self._executor.apply_order_attributions(result.attributed_orders)
         if result.broker_truth_due:
             self._executor.record_reconcile_truth(result)
+        if self._intake is not None:
+            self._intake.arm(TimerKind.RECONCILE, self._axis_now_msc() + round(
+                self._reconciler.get_min_interval_seconds() * 1000))
 
     def _persist_state_if_due(self, ticks_processed: int) -> None:
         """
@@ -1109,11 +1204,25 @@ class AutotraderTickLoop(AbstractLivePassHooks):
         """
         if self._state_store is None or not self._state_store.is_due(ticks_processed):
             return
+        self._persist_state_now(ticks_processed)
+
+    def _persist_state_now(self, ticks_processed: int) -> None:
+        """
+        Save the algo state snapshot now, and schedule the next save by time (#354, #461).
+
+        Args:
+            ticks_processed: Current tick counter
+        """
+        if self._state_store is None:
+            return
         try:
             self._state_store.save(
                 self._decision_logic.get_state_snapshot(), ticks_processed)
         except Exception as e:
             self._logger.error(f'Algo state save failed (continuing): {e}')
+        if self._intake is not None:
+            self._intake.arm(TimerKind.PERSISTENCE, self._axis_now_msc() + round(
+                self._state_store.get_save_interval_seconds() * 1000))
 
     def _persist_carry_over_if_needed(self, ticks_processed: int = 0) -> None:
         """
@@ -1413,6 +1522,16 @@ class AutotraderTickLoop(AbstractLivePassHooks):
             True once the first day's log is open
         """
         return self._log_rotator.has_opened_day_log()
+
+    def get_intake_stats(self) -> Optional[LiveIntakeStats]:
+        """
+        What the session's timeline counted (#461): its instants, coalesced slices, the venue's
+        answers and the timers.
+
+        Returns:
+            The intake's counts; None before the loop ran
+        """
+        return self._intake.get_stats() if self._intake is not None else None
 
     def get_tick_span(self) -> Tuple[Optional[datetime], Optional[datetime]]:
         """

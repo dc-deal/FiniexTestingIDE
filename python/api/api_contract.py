@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 57
+API_CONTRACT_VERSION = 58
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,20 +36,18 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'scenario-details: algo_passes and ghost_passes (new) — a backtest computes the algo once per '
-    'arrival millisecond, so its passes can fall below its ticks; null before this contract; '
-    'non_flat_signal_pct and trades_requested_pct are per pass, algo and heartbeat, a changed '
-    'meaning',
-    'worker-decision: algo_passes and ghost_passes on a unit row (new), and algo_avg_per_pass_ms '
-    "(new), the algo path's time per pass; compute_ratio_pct is a worker's calls per algo pass, a "
-    'changed meaning',
-    'profiling: algo_passes, algo_pass_ms and avg_per_algo_pass_ms on a unit row, total_algo_passes '
-    'and avg_per_algo_pass_ms on the aggregate (new); p95_processing_ms, suggested_budget_ms and '
-    'scenarios_over_p5 are taken per algo pass, and inter_tick counts one interval per arrival — '
-    'the ticks of one millisecond once — changed meanings; a new operation instant_resolution, '
-    'the broker work of an instant without a tick',
-    'validation-checks: a new id, data_arrival_time_offset',
-    'a backtest orders its ticks by when they arrived and fills an order at its due time, so a '
-    'backtest recorded from this contract on can differ from one recorded before over the same data',
+    "order-events: ts_event on a row (new) — the venue's own stamp of the step, where it reports "
+    "one: a live order's fill in full; null in a backtest, a mock session, a dry run and on every "
+    'other event',
+    'an AutoTrader session runs on a timeline of arrivals and timers: every time it records is when '
+    "a tick or an answer reached it, no longer the venue's stamp of the tick; a backlog it fell "
+    "behind on is one slice, the algo computing once on its newest tick; a venue's answer resolves "
+    'on arrival, except while a stopping session waits for its last orders — a session recorded '
+    'from this contract on can differ from one recorded before',
+    "worker-decision: a session's ticks_processed leaves out the ticks of a backlog behind its "
+    'newest, which never reached the algorithm — a changed meaning in a session',
+    'order-events and pending-orders: a live in_flight_ms runs until the session reads the answer, '
+    'which it now does right after the answer arrives, no longer up to one heartbeat after it '
+    'except while a stopping session waits for its last orders — a changed meaning',
 ]
 

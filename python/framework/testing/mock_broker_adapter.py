@@ -703,7 +703,7 @@ class MockBrokerAdapter(AbstractAdapter):
     def parse_submit_response(
         self,
         raw: Dict[str, Any],
-        timestamp: datetime,
+        ts_init: datetime,
         direction: Optional[OrderDirection] = None,
         order_type: Optional[OrderType] = None,
     ) -> BrokerResponse:
@@ -718,14 +718,14 @@ class MockBrokerAdapter(AbstractAdapter):
             filled_lots=raw.get('filled_lots'),
             fill_fee=raw.get('fill_fee'),
             rejection_reason=raw.get('rejection_reason'),
-            timestamp=timestamp,
+            ts_init=ts_init,
         )
 
     def parse_query_response(
         self,
         raw: Dict[str, Any],
         broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
         market: Optional[TickData] = None,
     ) -> BrokerResponse:
         return BrokerResponse(
@@ -735,22 +735,22 @@ class MockBrokerAdapter(AbstractAdapter):
             filled_lots=raw.get('filled_lots'),
             fill_fee=raw.get('fill_fee'),
             rejection_reason=raw.get('rejection_reason'),
-            timestamp=timestamp,
+            ts_init=ts_init,
         )
 
-    def parse_cancel_response(self, raw: Dict[str, Any], broker_ref: str, timestamp: datetime) -> BrokerResponse:
+    def parse_cancel_response(self, raw: Dict[str, Any], broker_ref: str, ts_init: datetime) -> BrokerResponse:
         return BrokerResponse(
             broker_ref=raw['broker_ref'],
             status=self._STATUS_MAP[raw['status']],
-            timestamp=timestamp,
+            ts_init=ts_init,
         )
 
-    def parse_modify_response(self, raw: Dict[str, Any], original_broker_ref: str, timestamp: datetime) -> BrokerResponse:
+    def parse_modify_response(self, raw: Dict[str, Any], original_broker_ref: str, ts_init: datetime) -> BrokerResponse:
         return BrokerResponse(
             broker_ref=raw['broker_ref'],
             status=self._STATUS_MAP[raw['status']],
             rejection_reason=raw.get('rejection_reason'),
-            timestamp=timestamp,
+            ts_init=ts_init,
         )
 
     def parse_trades_query_response(

@@ -483,11 +483,9 @@ def setup_pipeline(
     # === Phase 10: LiveClippingMonitor ===
     clipping_monitor = LiveClippingMonitor(
         report_interval_s=config.clipping_monitor.report_interval_s,
-        strategy=config.clipping_monitor.strategy,
     )
     logger.debug(
-        f'✅ ClippingMonitor: strategy={config.clipping_monitor.strategy}, '
-        f'report_interval={config.clipping_monitor.report_interval_s}s'
+        f'✅ ClippingMonitor: report_interval={config.clipping_monitor.report_interval_s}s'
     )
 
     # === Phase 11: Planned tick-plane stale windows (#444) ===

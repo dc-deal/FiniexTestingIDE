@@ -34,10 +34,11 @@ from python.framework.trading_env.simulation.trade_simulator import TradeSimulat
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.config_types.autotrader_defaults_config_types import (
     AutotraderExecutionDefaults,
+    TickSourceConfig,
 )
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
-from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.market_types.market_data_types import TickData, arrival_slices
 from python.framework.types.persistence_types import BaselineKind
 from python.framework.types.process_data_types import (
     ProcessScenarioConfig,
@@ -276,6 +277,8 @@ def autotrader_loop(ticks: List[TickData], spot_mode: bool,
                     orchestrator: Optional[OrchestratorFactory] = None,
                     decision_events: bool = False,
                     heartbeat_interval_ms: Optional[int] = None,
+                    live_source: bool = False,
+                    display_queue: Optional[queue.Queue] = None,
                     **loop_options: Any) -> AutotraderTickLoop:
     """
     The AutoTrader tick loop over the ticks, built the way a session builds it.
@@ -297,6 +300,10 @@ def autotrader_loop(ticks: List[TickData], spot_mode: bool,
         decision_events: Hand the loop a decision event dispatcher (#348) over the probe
         heartbeat_interval_ms: How long the loop waits for a tick before an idle pass; the
             configured default when None
+        live_source: Declare the tick source a live feed, whose time between two ticks is the
+            wall clock this harness fakes — the session then stamps a quiet stretch by it and
+            coalesces a backlog (#461); a replay's own time, the default, is the loop's position
+        display_queue: Where the loop hands its display frames; none when None
         loop_options: Further collaborators the session would hand the loop, by name
 
     Returns:
@@ -304,8 +311,8 @@ def autotrader_loop(ticks: List[TickData], spot_mode: bool,
     """
     logger = logger or _logger('booking_parity_at')
     tick_queue: queue.Queue = queue.Queue()
-    for tick in ticks:
-        tick_queue.put(tick)
+    for arrival in arrival_slices(ticks):
+        tick_queue.put(arrival)
     if not idle_heartbeats:
         tick_queue.put(None)
 
@@ -332,7 +339,8 @@ def autotrader_loop(ticks: List[TickData], spot_mode: bool,
     loop = AutotraderTickLoop(
         config=AutoTraderConfig(
             profile_name='booking_parity', symbol=SYMBOL, broker_type='kraken_spot',
-            adapter_type='mock', **execution),
+            adapter_type='mock',
+            tick_source=TickSourceConfig(type='kraken' if live_source else 'mock'), **execution),
         tick_queue=tick_queue,
         tick_source=tick_source,
         executor=executor,
@@ -343,7 +351,7 @@ def autotrader_loop(ticks: List[TickData], spot_mode: bool,
         logger=logger,
         trading_model=TradingModel.SPOT if spot_mode else TradingModel.MARGIN,
         run_dir=None,
-        display_queue=None,
+        display_queue=display_queue,
         dry_run=True,
         risk_baseline=RiskBaselineTracker(
             mode=BaselineKind.SESSION_FIXED, restored=None, spot_mode=spot_mode,

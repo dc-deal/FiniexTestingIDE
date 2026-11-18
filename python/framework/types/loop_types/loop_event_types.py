@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import ClassVar, Tuple
 
 from python.framework.types.loop_types.event_kind_types import EventKind
+from python.framework.types.loop_types.timer_kind_types import TimerKind
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.signal_data_types import SignalSnapshot
 
@@ -19,10 +20,10 @@ class LoopEvent:
     One thing that happened, placed on the loop's one timeline.
 
     Two stamps travel on every event: the stamp it carries from its source, and the stamp this
-    process gave it when it received or made it. Which of the two orders the timeline is the run's
-    `EventOrdering`; the other stays as data. Both are UTC epoch milliseconds, the resolution the
-    archive records ticks in, so the timeline compares integers. Not instantiated itself — every
-    event is one of the kinds below.
+    process gave it when it received or made it. Both pipelines order by the receipt stamp
+    (`ts_init`, #460, #461); the source stamp stays as data. Both are UTC epoch milliseconds, the
+    resolution the archive records ticks in, so the timeline compares integers. Not instantiated
+    itself — every event is one of the kinds below.
 
     Not frozen, and nothing writes one after it is made: one is built for every instant a
     backtest replays, and the frozen form cost more than the loop core's whole budget per tick
@@ -87,8 +88,12 @@ class TimeEvent(LoopEvent):
     heartbeat pass does not (#457, a timer coinciding with a data slice). Its `ts_event` is the
     instant it is due at; in a replay that instant lies on the replay's own time, never on the
     machine's clock.
+
+    Args:
+        timer: What the timer is for; a backtest's timeline makes only heartbeats (#460)
     """
     KIND: ClassVar[EventKind] = EventKind.TIME
+    timer: TimerKind = TimerKind.HEARTBEAT
 
 
 @dataclass(slots=True)

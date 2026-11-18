@@ -87,7 +87,11 @@ class BrokerResponse:
             cannot be reached, and the second case is UNRESOLVED. A response carrying this
             stays PENDING, and the executor is what makes it visible (§35), because the
             adapter has no logger by design
-        timestamp: Broker response timestamp (UTC)
+        ts_init: When this process received the answer (UTC, wall clock) — our receipt, not
+            the venue's time
+        ts_event: The venue's own stamp of the state the answer reports, where it gives one —
+            when the venue closed the order, for an order it reports closed, cancelled or expired
+            (Kraken's `closetm`); None for an open order and for an answer that carries none
         raw_response: Preserved broker-specific response for debugging
     """
     broker_ref: str
@@ -97,7 +101,8 @@ class BrokerResponse:
     fill_fee: Optional[float] = None
     rejection_reason: Optional[str] = None
     undecided_reason: Optional[str] = None
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    ts_init: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    ts_event: Optional[datetime] = None
     raw_response: Optional[Dict[str, Any]] = None
 
     @property

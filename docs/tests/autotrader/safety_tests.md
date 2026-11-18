@@ -80,6 +80,7 @@ and waits for a human, this CLOSES. Driven against the real `check_emergency_fla
 | `TestTheSessionEndsOnlyAfterTheFillsArrive` | it does not end while positions are open (EMERGENCY means immediate exit, and the fills arrive later); it ends once the book is flat (`complete`); it ends anyway at the drain ceiling and NAMES what is still open (`unconfirmed`); it ends once, not on every later tick |
 | `TestSpotIsGatedAndTheAsymmetryIsDeliberate` | a spot holding is not sold by default and the operator hears why; the session still ends — without a second "check the account by hand" alarm, since nothing was sent, and the record says `holdings_kept`; with the switch on it is sold |
 | `TestACloseThatCannotBeSent` | every position is attempted and each failure is named — a close that failed silently is still open at the venue |
+| `TestTheDrainWindowCountsPasses` | #461: the drain window counts tick passes, not ticks — a coalesced backlog is one pass, so one burst cannot use up the window in a single instant. Driven through a real AutoTrader loop (`booking_day_harness.autotrader_loop`), not the stub |
 
 ### Level 1 — The Session Record (`test_safety_report.py`, #356 Phase C / #314)
 

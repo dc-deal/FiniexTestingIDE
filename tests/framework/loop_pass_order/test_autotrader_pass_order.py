@@ -5,10 +5,10 @@ What the AutoTrader tick loop calls in each kind of pass, and in which order: th
 idle pass when no tick came within the heartbeat, and the pass a stop's wait makes while orders are
 still on their way.
 
-Pinned before the passes move behind one dispatcher (#458), which must not change behaviour. These
-tests were written against the loop before the move and stay unchanged through it, so a step that
-moves, disappears or arrives twice shows here first. When the passes take the phase order of the
-event model (#461), the differences become deliberate and are written down here.
+Pinned before the passes moved behind one dispatcher (#458), which changed no behaviour. Since the
+session's timeline driver (#461) every instant runs in the phase order of the event model, as a
+backtest's does; the differences to the order before it are deliberate and written down at each
+pass below, and in the suite's documentation.
 
 Every step is recorded by a spy on the CLASS of a collaborator the loop really uses, which calls
 the real method. Where a step is the loop's own work — the signal inbox, the sealed days, the
@@ -54,23 +54,28 @@ from tests.shared.booking_day_harness import (
     ticks_across_midnight,
 )
 
-# A tick: the signal inbox is merged BEFORE the clock moves, the day boundary is checked and its
-# sealed days closed, the broker path sees the tick, the account is valued and sampled, the bars
-# render and the algo computes; the safety sample, the FLAT override's question and the execute
-# follow, then one drain. The account is sampled twice, once with its value and once for safety.
-# Reconcile, persistence and 'frame' already belong to what the loop does after the pass.
-_TICK_PASS = ['signal_inbox', 'clock', 'boundary', 'sealed_days', 'log_rotation', 'on_tick',
-              'tracker', 'account_value', 'observe', 'equity', 'render', 'algo', 'equity',
-              'safety', 'entries_blocked', 'execute', 'record_rejection', 'drain', 'reconcile',
-              'persist_state', 'carry_over', 'frame']
-# No tick within the heartbeat: the clock moves without one, the venue is heard, staleness and the
-# reconcile come before the inbox and the drain, and the ghost pass last — with no drain after it
-_IDLE_PASS_ACTING = ['clock', 'boundary', 'sealed_days', 'log_rotation', 'heartbeat', 'staleness',
-                     'reconcile', 'signal_inbox', 'drain', 'ghost', 'entries_blocked', 'execute',
-                     'record_rejection', 'persist_state', 'carry_over', 'frame']
-_IDLE_PASS_QUIET = ['clock', 'boundary', 'sealed_days', 'log_rotation', 'heartbeat', 'staleness',
-                    'reconcile', 'signal_inbox', 'drain', 'ghost', 'persist_state', 'carry_over',
-                    'frame']
+# A slice (#461), in the phase order: the clock moves to the instant and the day boundary is
+# checked; each tick reaches the broker path, renders the bars, and the market status and the
+# account value follow (before #461: the inbox first, the bars after the account); then the
+# signal inbox; then what the venue answered resolves, once, after the ticks (before: inside the
+# tick's broker path); the decision events are delivered BEFORE the algo too (before: only after
+# it); the algo, the safety sample, the FLAT override's question, the execute and the trailing
+# drain. Reconcile and persistence by the tick count, the carry-over and 'frame' follow the
+# instant.
+_TICK_PASS = ['clock', 'boundary', 'sealed_days', 'log_rotation', 'apply_tick', 'render',
+              'tracker', 'account_value', 'observe', 'equity', 'signal_inbox', 'resolve_due',
+              'drain', 'algo', 'equity', 'safety', 'entries_blocked', 'execute',
+              'record_rejection', 'drain', 'reconcile', 'persist_state', 'carry_over', 'frame']
+# A quiet heartbeat (#461): the clock moves, the signal inbox comes before the resolutions (before:
+# after the staleness), the venue is heard through the heartbeat's resolution, then the staleness,
+# the drain, the ghost pass — and a drain after it (before: none). The reconcile and the state
+# persistence run on timers of their own (before: on every idle pass, behind their gates).
+_IDLE_PASS_ACTING = ['clock', 'boundary', 'sealed_days', 'log_rotation', 'signal_inbox',
+                     'resolve_due', 'heartbeat', 'staleness', 'drain', 'ghost', 'entries_blocked',
+                     'execute', 'record_rejection', 'drain', 'carry_over', 'frame']
+_IDLE_PASS_QUIET = ['clock', 'boundary', 'sealed_days', 'log_rotation', 'signal_inbox',
+                    'resolve_due', 'heartbeat', 'staleness', 'drain', 'ghost', 'drain',
+                    'carry_over', 'frame']
 # A stop's wait: the orders' side of an idle pass, and nothing for the algo. What it settles is
 # heard before the session-end event and not after it.
 _WAIT_PASS_HEARD = ['clock', 'boundary', 'sealed_days', 'log_rotation', 'heartbeat', 'drain',
@@ -98,7 +103,8 @@ def live_steps(steps: PassSteps) -> PassSteps:
     steps.spy(BookingPeriodRecorder, 'check_boundary', 'boundary')
     steps.spy(AutotraderTickLoop, '_close_sealed_days', 'sealed_days')
     steps.spy(SessionLogRotator, 'check_daily_rotation', 'log_rotation')
-    steps.spy(LiveTradeExecutor, 'on_tick', 'on_tick')
+    steps.spy(LiveTradeExecutor, 'apply_tick', 'apply_tick')
+    steps.spy(LiveTradeExecutor, 'resolve_due', 'resolve_due')
     steps.spy(LiveTradeExecutor, 'heartbeat', 'heartbeat')
     steps.spy(MarketDataEpisodeTracker, 'on_tick', 'tracker')
     steps.spy(AutotraderTickLoop, '_observe_account_value', 'account_value')
@@ -152,7 +158,7 @@ def _repeats(names: List[str], one_pass: List[str]) -> int:
 
 class TestTickPass:
 
-    def test_inbox_before_the_clock_then_broker_account_bars_algo_safety_execute_drain(
+    def test_clock_ticks_bars_account_then_signals_resolutions_drain_algo_execute_drain(
             self, live_steps):
         loop = autotrader_loop(_ticks(2), spot_mode=False, orchestrator=live_steps.orchestrator(),
                                decision_events=True, state_frames=live_steps.frames())
@@ -161,6 +167,105 @@ class TestTickPass:
 
         assert live_steps.names == (
             _TICK_PASS * 2 + _SESSION_END_EVENT + _SESSION_END_ORDERS)
+
+
+class TestABacklog:
+    """
+    #461: live, the ticks that waited on the queue are one slice — the broker path and the bars
+    see each, the algo computes once, on the newest, and the workers count the ticks it computed
+    for, as a backtest counts only its unclipped ticks. A replay slices by arrival millisecond.
+    """
+
+    def test_a_live_backlog_is_one_pass_counted_for_its_newest_tick(self, live_steps):
+        ticks = _ticks(3)
+        loop = autotrader_loop(ticks, spot_mode=False, orchestrator=live_steps.orchestrator(),
+                               decision_events=True, live_source=True)
+
+        loop.run()
+
+        assert live_steps.names.count('apply_tick') == 3
+        assert live_steps.algo_ticks == [(ticks[-1], 1)]
+
+    def test_a_replay_computes_on_each_arrival(self, live_steps):
+        ticks = _ticks(3)
+        loop = autotrader_loop(ticks, spot_mode=False, orchestrator=live_steps.orchestrator(),
+                               decision_events=True)
+
+        loop.run()
+
+        assert live_steps.algo_ticks == [(tick, 1) for tick in ticks]
+
+
+class TestASessionAHookEnds:
+    """
+    #461: a hook that asks for the session end in the trailing drain leaves the frame and the
+    series of its pass, as a backtest's last pass does; one that asks for it in the delivery before
+    the algo leaves neither — the algo never ran, and the session ends after that instant.
+    """
+
+    @staticmethod
+    def _end_at_drain(monkeypatch: pytest.MonkeyPatch, loop: AutotraderTickLoop,
+                      which: int) -> None:
+        spied = DecisionEventDispatcher.drain
+        drains = [0]
+
+        def drain(dispatcher: DecisionEventDispatcher, *args: Any, **kwargs: Any) -> Any:
+            result = spied(dispatcher, *args, **kwargs)
+            drains[0] += 1
+            if drains[0] == which:
+                loop._executor.request_session_end('a hook ended the session')
+            return result
+        monkeypatch.setattr(DecisionEventDispatcher, 'drain', drain)
+
+    def test_an_end_in_the_trailing_drain_keeps_the_passes_records(self, live_steps, monkeypatch):
+        loop = autotrader_loop(_ticks(2), spot_mode=False, orchestrator=live_steps.orchestrator(),
+                               decision_events=True, state_frames=live_steps.frames(),
+                               indicator_series=live_steps.series())
+        self._end_at_drain(monkeypatch, loop, which=2)
+
+        loop.run()
+
+        assert live_steps.names[:len(_TICK_PASS) + 1] == _TICK_PASS + ['series']
+        assert live_steps.names.count('algo') == 1, 'no second pass'
+
+    def test_an_end_in_the_delivery_before_the_algo_leaves_no_records(self, live_steps,
+                                                                      monkeypatch):
+        loop = autotrader_loop(_ticks(2), spot_mode=False, orchestrator=live_steps.orchestrator(),
+                               decision_events=True, state_frames=live_steps.frames(),
+                               indicator_series=live_steps.series())
+        self._end_at_drain(monkeypatch, loop, which=1)
+
+        loop.run()
+
+        delivered = _TICK_PASS[:_TICK_PASS.index('drain') + 1]
+        assert live_steps.names[:len(delivered)] == delivered
+        assert not {'algo', 'frame', 'series'} & set(live_steps.names)
+
+    def test_an_end_in_a_heartbeats_delivery_leaves_no_frame(self, live_steps, monkeypatch):
+        """No ghost pass ran, so the timer writes no frame — the cadence's gate is not reached."""
+        ticks = _ticks(2)
+        after_the_ticks = ticks[-1].timestamp + timedelta(seconds=1)
+
+        class _WallClock(datetime):
+            @classmethod
+            def now(cls, tz: Optional[Any] = None) -> datetime:
+                return after_the_ticks
+
+        monkeypatch.setattr(tick_loop_module, 'datetime', _WallClock)
+        loop = autotrader_loop(ticks, spot_mode=False,
+                               orchestrator=live_steps.orchestrator(
+                                   [Decision(action=DecisionLogicAction.FLAT)]),
+                               decision_events=True, state_frames=live_steps.frames(),
+                               idle_heartbeats=2, heartbeat_interval_ms=5)
+        # Two slices drain twice each; the heartbeat's delivery is the fifth
+        self._end_at_drain(monkeypatch, loop, which=5)
+
+        loop.run()
+
+        delivered = _IDLE_PASS_QUIET[:_IDLE_PASS_QUIET.index('drain') + 1]
+        after_the_slices = live_steps.names[len(_TICK_PASS) * 2:]
+        assert after_the_slices[:len(delivered) + 1] == delivered + ['carry_over']
+        assert not {'ghost', 'frame'} & set(after_the_slices)
 
 
 class TestTheIndicatorSeries:
@@ -184,13 +289,14 @@ class TestTheIndicatorSeries:
         loop.run()
 
         tick_pass = [step for step in _TICK_PASS if step != 'frame'] + ['series']
-        tick_pass.insert(tick_pass.index('render') + 1, 'closed')
+        # Read once, after the slice's last tick (#461), as a backtest reads them
+        tick_pass.insert(tick_pass.index('signal_inbox'), 'closed')
         assert live_steps.names == tick_pass * 2 + _SESSION_END_EVENT + _SESSION_END_ORDERS
 
 
 class TestIdlePass:
 
-    def test_clock_boundary_heartbeat_staleness_reconcile_inbox_drain_then_ghost(
+    def test_clock_inbox_resolutions_staleness_drain_ghost_then_drain(
             self, live_steps, monkeypatch: pytest.MonkeyPatch):
         """Two ticks, then two heartbeats with no tick: the first ghost decision acts."""
         ticks = _ticks(2)

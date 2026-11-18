@@ -708,7 +708,7 @@ def _session_log(trader: AutotraderMain) -> str:
     Returns:
         The text
     """
-    run_dir = Path(trader._run_dir)
+    run_dir = Path(trader.get_run_dir())
     files = [run_dir / 'autotrader_session.log', *sorted((run_dir / 'session_logs').glob('*.log'))]
     return ''.join(file.read_text(encoding='utf-8') for file in files)
 
@@ -756,7 +756,7 @@ def session_under_sigterm(request):
         ACCOUNT_MODELS[request.param], ShutdownDefaults(order_wait_s=10.0), answer_after_s=0.3,
         bot_suffix='sg')
     yield built
-    remove_run_dir(built[0]._run_dir)
+    remove_run_dir(built[0].get_run_dir())
 
 
 class TestASigtermInASession:
@@ -822,7 +822,7 @@ def session_under_sigterm_run_out(request):
         ShutdownDefaults(order_wait_s=0.2, request_worker_join_s=0.1),
         answer_after_s=1.0, bot_suffix='sr')
     yield built
-    remove_run_dir(built[0]._run_dir)
+    remove_run_dir(built[0].get_run_dir())
 
 
 class TestASigtermWhoseWaitRunsOut:
@@ -863,7 +863,7 @@ def session_with_the_display_on():
         ACCOUNT_MODELS['spot'], ShutdownDefaults(order_wait_s=10.0), answer_after_s=0.3,
         bot_suffix='sd', display=True, terminal=True)
     yield built
-    remove_run_dir(built[0]._run_dir)
+    remove_run_dir(built[0].get_run_dir())
 
 
 class TestTheDisplayThroughAStop:
@@ -924,7 +924,7 @@ class TestADisplayWithNoTerminal:
             _lines_in_order(console, _THE_LINES_OF_A_STOP_WITH_AN_ORDER)
             assert result.get_exit_code() == 0
         finally:
-            remove_run_dir(trader._run_dir)
+            remove_run_dir(trader.get_run_dir())
 
 
 class TestACountThatFails:
@@ -971,7 +971,7 @@ class TestAFillTimeoutInsideAWholeStop:
             assert len(result.open_positions) == 1
             assert result.get_exit_code() == 0
         finally:
-            remove_run_dir(trader._run_dir)
+            remove_run_dir(trader.get_run_dir())
 
 
 class TestACrashWhileStopping:
@@ -995,7 +995,7 @@ class TestACrashWhileStopping:
             patch.setattr(AutotraderMain, '_shutdown', crashing_shutdown)
             with pytest.raises(RuntimeError, match='the stop crashed'):
                 trader.run()
-        remove_run_dir(trader._run_dir)
+        remove_run_dir(trader.get_run_dir())
 
         display.stop.assert_called_once()
         kind, level, title, detail = watched['alerts'].send.call_args.args

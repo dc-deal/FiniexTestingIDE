@@ -36,18 +36,20 @@ session. Same classes, same interfaces. Only the runner and the executor change.
     ║                                                         ║
     ║  Thread 1              Thread 2 (Main — Algo Loop)      ║
     ║  ┌────────────┐        ┌─────────────────────────────┐  ║
-    ║  │ TickSource │  queue │ 1. executor.on_tick()       │  ║
-    ║  │ (mock or   │───────►│ 2. bar_controller           │  ║
-    ║  │  websocket)│ Queue  │ 3. workers → decision       │  ║
-    ║  └────────────┘        │ 4. decision_logic → executor│  ║
-    ║                        │ 5. clipping_monitor.record()│  ║
+    ║  │ TickSource │  queue │ intake.next_instant()       │  ║
+    ║  │ (mock or   │───────►│ 1. executor.apply_tick()    │  ║
+    ║  │  websocket)│ Queue  │ 2. bar_controller           │  ║
+    ║  └────────────┘        │ 3. executor.resolve_due()   │  ║
+    ║                        │ 4. workers → decision, once │  ║
+    ║                        │ 5. decision_logic → executor│  ║
+    ║                        │ 6. clipping_monitor         │  ║
     ║                        └─────────────────────────────┘  ║
     ║                          │            │                 ║
     ║              ┌───────────┘            │                 ║
     ║              ▼                        ▼                 ║
     ║  ┌──────────────────┐   ┌──────────────────────┐        ║
     ║  │ LiveTradeExecutor│   │ ClippingMonitor      │        ║
-    ║  │ + MockAdapter    │   │ (per-tick timing)    │        ║
+    ║  │ + MockAdapter    │   │ (per-pass timing)    │        ║
     ║  └──────────────────┘   └──────────────────────┘        ║
     ╚═════════════════════════════════════════════════════════╝
 ```

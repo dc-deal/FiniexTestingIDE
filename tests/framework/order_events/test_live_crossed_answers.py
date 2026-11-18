@@ -199,7 +199,7 @@ class TestACancelTheVenueDidNotCarryOut:
             order_id=order_id,
             broker_response=BrokerResponse(
                 broker_ref=pending.broker_ref, status=BrokerOrderStatus.EXPIRED,
-                timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc))))
+                ts_init=datetime(2026, 1, 1, tzinfo=timezone.utc))))
 
         ending = events[-1]
         assert (ending.event_type, ending.initiator, ending.end_reason) == (

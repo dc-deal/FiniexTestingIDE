@@ -64,7 +64,7 @@ class KrakenTickSource(AbstractTickSource):
     Live tick source connecting to Kraken WS v2 trade channel.
 
     Runs asyncio.run(_ws_loop()) in a daemon thread (Threading model 8.a).
-    Pushes TickData to queue.Queue for the main algo thread.
+    Pushes each frame's TickData as one tuple to queue.Queue for the main algo thread.
 
     Features:
     - Endless reconnect with exponential backoff (1s -> 60s cap, jitter); the backoff starts
@@ -202,6 +202,7 @@ class KrakenTickSource(AbstractTickSource):
                     self._tick_queue.put_nowait(None)
                 except queue.Full:
                     pass
+                self._notify_arrival()
 
     def stop(self) -> None:
         """
@@ -675,17 +676,19 @@ class KrakenTickSource(AbstractTickSource):
 
     def _emit(self, ticks: Optional[List[TickData]]) -> None:
         """
-        Hand parsed ticks to the tick loop.
+        Hand parsed ticks to the tick loop: one frame's trades as one item, a tuple, since they
+        arrived together. The loop counts what waited behind a busy pass by these items, not by
+        the milliseconds the parser stamped while reading one frame (#461).
 
         Args:
             ticks: What one frame yielded, or None
         """
         if not ticks:
             return
-        for tick in ticks:
-            self._tick_queue.put(tick)
-            self._ticks_emitted += 1
+        self._tick_queue.put(tuple(ticks))
+        self._ticks_emitted += len(ticks)
         self._last_tick_time = datetime.now(timezone.utc)
+        self._notify_arrival()
 
     async def _connection_monitor(self, ws) -> None:
         """

@@ -414,6 +414,15 @@ class AutotraderMain:
         finally:
             self._bot_lock.release()
 
+    def get_run_dir(self) -> Optional[Path]:
+        """
+        The session's run directory, where its logs and records are written.
+
+        Returns:
+            The directory, or None before `run()` created it
+        """
+        return self._run_dir
+
     def _run(self) -> AutoTraderResult:
         """
         The session itself, run while this bot's lock is held.
@@ -1703,6 +1712,7 @@ class AutotraderMain:
         # #451: the tick-domain episodes + counters; the signal domain is collected
         # from the orchestrator, so both staleness domains travel as ONE list.
         if self._tick_loop:
+            result.intake_stats = self._tick_loop.get_intake_stats()
             result.disturbance_episodes = self._tick_loop.get_disturbance_episodes()
             result.market_data_tick_stats = self._tick_loop.get_market_data_tick_stats()
             result.first_tick_time, result.last_tick_time = self._tick_loop.get_tick_span()

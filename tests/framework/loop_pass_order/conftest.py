@@ -5,6 +5,7 @@ The step recorder both pass-order suites write into: a spy patched onto a collab
 appends a short step name and calls the real method, so the run behaves as it would without it.
 """
 
+from datetime import timedelta
 from typing import Any, Callable, List, Optional, Tuple
 from unittest.mock import MagicMock
 
@@ -99,6 +100,9 @@ class PassSteps:
         """
         recorder = MagicMock()
         recorder.on_pass.side_effect = lambda *args, **kwargs: self.names.append('frame')
+        # The session's timeline arms the cadence's next period (#461): a day ahead, so no
+        # cadence timer falls inside a test's few passes
+        recorder.next_slot_start.side_effect = lambda instant: instant + timedelta(days=1)
         return recorder
 
     def series(self) -> MagicMock:

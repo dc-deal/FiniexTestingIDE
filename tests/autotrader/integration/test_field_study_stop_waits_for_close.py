@@ -42,7 +42,7 @@ def _session(config):
     """
     trader = AutotraderMain(config)
     result = trader.run()
-    run_dir = Path(trader._run_dir)
+    run_dir = Path(trader.get_run_dir())
     capture = run_dir / 'field_study.jsonl'
     lines = [json.loads(line) for line in capture.read_text(encoding='utf-8').splitlines()
              if line.strip()]

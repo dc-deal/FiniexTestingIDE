@@ -91,6 +91,29 @@ harness (#450).
 | `test_the_ticks_of_one_millisecond_count_once` | Three ticks at +0, two at +5, one at +20 give the intervals 5 and 15 — one per slice, none inside one |
 | `test_a_burst_leaves_the_p5_above_zero` | Ten ticks in four arrivals 10 ms apart give a P5 of 10 ms; counted per tick, six of nine gaps were 0 ms and the P5 was 0 |
 
+### `test_live_event_intake.py`
+
+The AutoTrader's intake (#461) against lanes a test fills by hand and an axis it sets.
+
+| Test | What it pins |
+|---|---|
+| `TestTheMarketDataLane` | Each item on the lane is one arrival. A backlog of arrivals is one slice the algo computes on once, stamped with its newest arrival, counted as coalesced, its arrivals before the newest clipped; the ticks of one arrival are one slice and no backlog — also a venue message read across a millisecond, which arrived at once behind nothing; messages that waited behind a pass count by message even when read in one millisecond; a replay hands each arrival as a slice of its own, as a backtest's millisecond, and a straggler inside an arrival keeps its slice at the receipt that opened it, and is no reordering; a single tick put on its own is refused, not read as nothing; the lane ends after its last ticks |
+| `TestTimersRunAtTheirTime` | A due timer splits the backlog at its due time — the ticks before it, the timer at its time, the ticks after — and never splits an arrival: a venue message whose newest trade is past the due leaves whole, after the timer; a timer is never stamped before its due time, and a late one is no reordering; the heartbeat falls due one interval after the last instant with ticks or the last heartbeat — stamped when it is read, never before its due time — and never in a steady stream; one read before its interval is up on the axis holds at the last instant; the venue's answers do not hold it off, and it joins a pass that holds only answers; a replay's timer waits until the replay has reached it rather than stamping past ticks not yet put; the heartbeat cannot be armed |
+| `TestTheExecutionLane` | The venue's answers join the first instant at or after their receipt and resolve after its ticks; with nothing else they are an instant of their own; two answers in one pass are one resolution at the earlier receipt, which drains both, and both are counted; an answer wakes the loop at once |
+| `TestTheLoopsPosition` | None before the first instant; then the last instant handed, advanced by the time since on the monotonic clock — where a replay's session stamps what arrives between its ticks |
+| `TestTheStampsNeverGoBack` | A wall clock stepped back a minute moves no stamp back — the tick read on it joins the running instant and is counted, the heartbeat read on it holds at the last instant; an arrival stamped before the last instant joins the running one and is counted |
+
+### `test_intake_wake_and_arrivals.py`
+
+The two signals a worker thread gives the AutoTrader's intake (#461) and the producers that give
+them. A producer tells the loop only after it put what it announces, so the loop always finds it.
+
+| Test | What it pins |
+|---|---|
+| `TestTheWake` | The execution lane wakes the loop on the tick queue it blocks on — one blocking primitive for both lanes; a tick and the lane's end are no wake |
+| `TestTheLaneArrivals` | Nothing arrived reads as none; the earliest receipt and the count are handed over once, with a monotonic companion; arrivals from many threads are all counted |
+| `TestTheProducersSignal` | An answer put in the executor's inbox is announced after it lies there, with no stamp — the session stamps it on its own axis; a Kraken frame is one arrival, put whole and announced once; a replay announces each arrival and its end, and puts one millisecond as one arrival, so the loop never reads it in two parts |
+
 ## Running the Tests
 
 ```bash

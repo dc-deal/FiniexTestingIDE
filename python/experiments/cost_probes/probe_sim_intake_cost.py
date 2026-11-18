@@ -8,10 +8,11 @@ measured for #458; this probe measures only what the intake adds: grouping the t
 next due time, and merging. #460 budgets the whole mechanism at 1.5 µs a tick on MT5 data, where
 almost no ticks share a stamp and nothing is saved by grouping.
 
-It runs three forms over a synthetic tick array: today's drive, one single-tick slice per tick
-(I0); an intake that merges through the event timeline of #457, a heap, refilled after every
-instant (I1); and an intake that compares the next data stamp and the next due time directly and
-builds the instant itself (I2). Each runs on two arrays — MT5-like, where every tick has its own
+It runs its forms over a synthetic tick array: the drive before #460, one single-tick slice per
+tick (I0), and an intake that compares the next data stamp and the next due time directly and
+builds the instant itself (I2). A form I1 merged through the event timeline of #457, a heap
+refilled after every instant; it went with the timeline (#461), and its figures stand in the
+record below. Each runs on two arrays — MT5-like, where every tick has its own
 arrival millisecond, and Kraken-like, where about half the ticks share one with a neighbour — and
 with no order in flight or with one in flight about every fiftieth instant, due 30 ms later. Rounds
 alternate the forms in a shuffled order, and the figure for a form is its difference to I0 in the
@@ -44,6 +45,8 @@ Recorded results:
       paid only when a run profiles. The algo path moved between +0.4 and +10.7 µs from pair to
       pair; with garbage collection off, one profile per tree shows the same indicator time on both.
       Read: inside #460's 1.5 µs a tick.
+  2026-11-16 — no measurement: #461 weighed the timeline of #457 for the live driver and removed
+      it, with the form I1; the live intake compares its stamps directly, as the backtest's does.
 
 Usage:
     python python/experiments/cost_probes/probe_sim_intake_cost.py [--ticks N] [--rounds N]
@@ -55,15 +58,16 @@ import os
 import random
 import statistics
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Tuple
 
 from python.framework.loop.event_sequencer import EventSequencer
-from python.framework.loop.event_timeline import EventTimeline
-from python.framework.loop.tick_slicer import slice_of_tick, tick_event_msc, tick_receipt_msc
-from python.framework.types.loop_types.event_kind_types import EventOrdering
 from python.framework.types.loop_types.loop_event_types import DataSliceEvent, ResolutionEvent
-from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.market_types.market_data_types import (
+    TickData,
+    tick_event_msc,
+    tick_receipt_msc,
+)
 
 _START = datetime(2026, 4, 1, 10, tzinfo=timezone.utc)
 _SYMBOL = 'BTCUSD'
@@ -133,7 +137,7 @@ def _ticks(count: int, shared_share: float, seed: int) -> List[TickData]:
 
 def _today(ticks: List[TickData], due: _DueSource) -> int:
     """
-    I0 — today's drive: one single-tick slice per tick, no merge.
+    I0 — the drive before #460: one single-tick slice per tick, no merge.
 
     Args:
         ticks: The tick array
@@ -145,7 +149,8 @@ def _today(ticks: List[TickData], due: _DueSource) -> int:
     sequencer = EventSequencer()
     handed = 0
     for tick in ticks:
-        event = slice_of_tick(tick, sequencer)
+        event = DataSliceEvent(tick_event_msc(tick), tick_receipt_msc(tick), sequencer.next_seq(),
+                               (tick,))
         handed += len(event.ticks)
     return handed
 
@@ -172,43 +177,6 @@ def _next_slice(ticks: List[TickData], cursor: int, sequencer: EventSequencer
     group = tuple(ticks[cursor:end])
     return DataSliceEvent(max(tick_event_msc(tick) for tick in group), stamp,
                           sequencer.next_seq(), group), end
-
-
-def _heap_intake(ticks: List[TickData], due: _DueSource) -> int:
-    """
-    I1 — the intake through #457's event timeline, refilled after every instant.
-
-    Args:
-        ticks: The tick array
-        due: The due times
-
-    Returns:
-        How many ticks were handed over
-    """
-    sequencer = EventSequencer()
-    timeline = EventTimeline(EventOrdering.BY_TS_INIT)
-    data, cursor = _next_slice(ticks, 0, sequencer)
-    if data is not None:
-        timeline.push(data)
-    queued_due: Optional[int] = None
-    handed = 0
-    while len(timeline):
-        next_due = due.peek_next_due_msc()
-        if next_due is not None and (queued_due is None or next_due < queued_due):
-            timeline.push(ResolutionEvent(next_due, next_due, sequencer.next_seq()))
-            queued_due = next_due
-        instant = timeline.pop_instant()
-        stamp = instant[0].ts_init
-        for event in instant:
-            if isinstance(event, DataSliceEvent):
-                handed += len(event.ticks)
-                data, cursor = _next_slice(ticks, cursor, sequencer)
-                if data is not None:
-                    timeline.push(data)
-            else:
-                queued_due = None
-        due.after_instant(stamp)
-    return handed
 
 
 def _direct_intake(ticks: List[TickData], due: _DueSource) -> int:
@@ -284,7 +252,6 @@ def _direct_fast_intake(ticks: List[TickData], due: _DueSource) -> int:
 
 _FORMS: Dict[str, Callable[[List[TickData], _DueSource], int]] = {
     'I0 today': _today,
-    'I1 heap timeline': _heap_intake,
     'I2 direct merge': _direct_intake,
     'I3 direct, fast': _direct_fast_intake,
 }

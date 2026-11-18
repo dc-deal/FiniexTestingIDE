@@ -416,8 +416,8 @@ class WorkerOrchestrator:
             bar_history: Historical bars per timeframe
             bar_render_state: Bar-lifecycle transitions for this pass (close set);
                 drives ON_BAR_CLOSE worker recompute. Defaults to no closes.
-            tick_weight: How many unclipped ticks this pass computes for — one, except where a
-                backtest's slice holds several; the tick counts add it
+            tick_weight: How many unclipped ticks this pass computes for — the ticks of the
+                slice's newest arrival live, of the slice in a backtest; the tick counts add it
 
         Returns:
             Decision object (from DecisionLogic)

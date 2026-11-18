@@ -323,7 +323,14 @@ class AutotraderSessionSummary:
         if clipping.total_ticks > 0:
             print(f'  Clipping ratio: {clipping.clipping_ratio:.1%} '
                   f'(max stale: {clipping.max_stale_ms:.1f}ms, '
-                  f'avg proc: {clipping.avg_processing_ms:.2f}ms)')
+                  f'avg proc: {clipping.avg_processing_ms:.2f}ms a pass, '
+                  f'{clipping.total_passes:,} passes)')
+        intake = result.intake_stats
+        if intake is not None and intake.instants > 0:
+            print(f'  Timeline:       {intake.instants:,} instants · '
+                  f'{intake.coalesced_slices:,} coalesced (max {intake.max_slice_ticks:,} ticks) · '
+                  f'{intake.execution_arrivals:,} venue answers · '
+                  f'{intake.timers_fired:,} timers · {intake.reordered_stamps:,} reordered')
 
         # Feed disturbance (#451) — a session that ran through an outage must say so here.
         disturbance = (

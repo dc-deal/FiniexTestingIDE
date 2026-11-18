@@ -1448,7 +1448,7 @@ class AutoTraderLiveDisplay:
             f'          last {n:,} ticks',
             f'Clipped:  [{clip_color}]{stats.total_ticks_clipped} ({clipping_pct:.2f}%)[/{clip_color}]',
             f'          [{clip_color}]{clip_bar}[/{clip_color}]',
-            f'Queue:    {stats.queue_depth}',
+            f'Queue:    {stats.queue_depth} arrivals',
         ]
         return Panel('\n'.join(lines), title='[bold]TICK PROCESSING[/bold]', box=box.ROUNDED)
 

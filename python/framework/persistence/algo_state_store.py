@@ -23,7 +23,6 @@ equals the calendar-day count.
 
 import json
 import os
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -98,7 +97,6 @@ class AlgoStateStore:
                       / f'{carry_over_key(profile, symbol, bot_id)}.json')
 
         self._last_save_tick: int = 0
-        self._last_save_time: float = time.monotonic()
         self._save_count: int = 0
 
         self._logger.info(
@@ -114,17 +112,23 @@ class AlgoStateStore:
 
     def is_due(self, tick_counter: int) -> bool:
         """
-        Whether a save is due — hybrid cadence (ticks OR wall-clock).
+        Whether a save is due by the tick count. Its time part is a timer on the session's
+        timeline (#461), which `get_save_interval_seconds` schedules.
 
         Args:
             tick_counter: Current tick-loop counter
 
         Returns:
-            True if save_interval_ticks elapsed OR save_interval_seconds elapsed
+            True if save_interval_ticks elapsed since the last save
         """
-        if tick_counter - self._last_save_tick >= self._config.save_interval_ticks:
-            return True
-        return (time.monotonic() - self._last_save_time) >= self._config.save_interval_seconds
+        return tick_counter - self._last_save_tick >= self._config.save_interval_ticks
+
+    def get_save_interval_seconds(self) -> float:
+        """
+        Returns:
+            How long after a save the next one falls due by time — the timeline's timer
+        """
+        return self._config.save_interval_seconds
 
     # ============================================
     # Save
@@ -142,7 +146,6 @@ class AlgoStateStore:
         # empty snapshot still resets the trackers so we don't re-snapshot every
         # tick once due (the per-tick cost would otherwise be the snapshot call).
         self._last_save_tick = tick_counter
-        self._last_save_time = time.monotonic()
 
         # Empty snapshot → nothing to persist (no carcass file). This is the
         # silent-bypass path for algos that opted in but hold no state yet.

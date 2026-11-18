@@ -121,7 +121,7 @@ class DryRunOrderSimulator:
     def submit(
         self,
         lots: float,
-        timestamp: datetime,
+        ts_init: datetime,
         direction: OrderDirection,
         order_type: OrderType,
         limit_price: Optional[float] = None,
@@ -135,7 +135,7 @@ class DryRunOrderSimulator:
 
         Args:
             lots: Order size (preserved for the eventual fill)
-            timestamp: Response timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
             direction: LONG for a buy, SHORT for a sell — decides which side of the quote
                 a fill uses and which way a trigger points
             order_type: Which fill rule applies
@@ -158,13 +158,13 @@ class DryRunOrderSimulator:
         return BrokerResponse(
             broker_ref=broker_ref,
             status=BrokerOrderStatus.PENDING,
-            timestamp=timestamp,
+            ts_init=ts_init,
         )
 
     def query(
         self,
         broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
         market: Optional[TickData] = None,
     ) -> BrokerResponse:
         """
@@ -183,7 +183,7 @@ class DryRunOrderSimulator:
 
         Args:
             broker_ref: Synthetic DRYRUN-* reference
-            timestamp: Response timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
             market: The current quote, or None when none is available
 
         Returns:
@@ -198,7 +198,7 @@ class DryRunOrderSimulator:
                 return BrokerResponse(
                     broker_ref=broker_ref,
                     status=BrokerOrderStatus.FILLED,
-                    timestamp=timestamp,
+                    ts_init=ts_init,
                 )
             return BrokerResponse(
                 broker_ref=broker_ref,
@@ -206,7 +206,7 @@ class DryRunOrderSimulator:
                 undecided_reason=(
                     f'{broker_ref} was never issued by this simulator — nothing here knows '
                     f'what happened to it, and answering FILLED would invent a fill'),
-                timestamp=timestamp,
+                ts_init=ts_init,
             )
 
         order.remaining_polls -= 1
@@ -217,13 +217,13 @@ class DryRunOrderSimulator:
                 broker_ref=broker_ref,
                 status=BrokerOrderStatus.PENDING,
                 undecided_reason=refusal,
-                timestamp=timestamp,
+                ts_init=ts_init,
             )
         if fill_price is None or order.remaining_polls > 0:
             return BrokerResponse(
                 broker_ref=broker_ref,
                 status=BrokerOrderStatus.PENDING,
-                timestamp=timestamp,
+                ts_init=ts_init,
             )
 
         filled_lots = order.lots
@@ -234,17 +234,17 @@ class DryRunOrderSimulator:
             status=BrokerOrderStatus.FILLED,
             fill_price=fill_price,
             filled_lots=filled_lots,
-            timestamp=timestamp,
+            ts_init=ts_init,
         )
 
-    def cancel(self, broker_ref: str, timestamp: datetime) -> BrokerResponse:
+    def cancel(self, broker_ref: str, ts_init: datetime) -> BrokerResponse:
         """
         Cancel a dry-run order. Idempotent — removes from state if
         present, always returns CANCELLED.
 
         Args:
             broker_ref: Synthetic DRYRUN-* reference
-            timestamp: Response timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
 
         Returns:
             BrokerResponse(status=CANCELLED)
@@ -253,13 +253,13 @@ class DryRunOrderSimulator:
         return BrokerResponse(
             broker_ref=broker_ref,
             status=BrokerOrderStatus.CANCELLED,
-            timestamp=timestamp,
+            ts_init=ts_init,
         )
 
     def modify(
         self,
         broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
         new_limit_price: Optional[float] = None,
         new_trigger_price: Optional[float] = None,
     ) -> BrokerResponse:
@@ -275,7 +275,7 @@ class DryRunOrderSimulator:
 
         Args:
             broker_ref: Synthetic DRYRUN-* reference (unchanged by the amend)
-            timestamp: Response timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
             new_limit_price: New limit price (None = keep current)
             new_trigger_price: New trigger price of a triggered type (None = keep current)
 
@@ -293,7 +293,7 @@ class DryRunOrderSimulator:
         return BrokerResponse(
             broker_ref=broker_ref,
             status=BrokerOrderStatus.PENDING,
-            timestamp=timestamp,
+            ts_init=ts_init,
         )
 
     def _decide(

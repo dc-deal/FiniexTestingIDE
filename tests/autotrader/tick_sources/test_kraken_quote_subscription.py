@@ -274,7 +274,7 @@ def test_a_refusal_on_reconnect_drops_the_quote_from_before_the_drop(frames):
     source._running = True
     asyncio.run(source._receive_loop(FakeWebSocket([json.dumps(frames['trade_buy'])])))
     traded = frames['trade_buy']['data'][0]['price']
-    tick = source._tick_queue.get_nowait()
+    (tick,) = source._tick_queue.get_nowait()
     assert tick.bid == traded and tick.ask == traded
 
 

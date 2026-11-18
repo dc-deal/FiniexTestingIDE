@@ -525,7 +525,7 @@ MockOrderExecution
         +-- close_position()   → register_pending_close(broker_ref=None) + submit_close_order_async
         +-- modify_limit_order → processor.modify_order_sync
         +-- cancel_limit_order → processor.cancel_order_sync
-        +-- on_tick(tick):
+        +-- on_tick(tick)       (a session reaches the same through apply_tick + resolve_due, #461):
               Phase 0: processor.drain_inbox()    (worker responses)
               Phase 1: query_order_sync per pending  (MARKET in processor)
               Phase 2: query_order_sync per active   (LIMIT in _active_limit_orders)
@@ -962,6 +962,31 @@ than a duration. `PendingOrderTiming.submitted_monotonic` carries the second sta
 blank column; reported as a wall-clock difference it costs an investigation into a venue that
 did nothing wrong. This mirrors the rule that a missing injected clock raises instead of
 falling back.
+
+### test_live_instant_resolution.py — how a session's instant resolves what the venue answered (#461)
+
+The session hands its executor one instant at a time: the clock moves to its stamp, every tick of
+the slice applies, then what the venue answered resolves once. After a tick that is the tick's own
+order processing, with its synchronous status read of a MARKET order or a close in transit — so a
+market fill the venue already made is booked in the instant of its tick, as before the timeline.
+Without a tick it is the heartbeat's work.
+
+| Class | Description |
+|---|---|
+| `TestTheTwoFormsOfResolution` | after a tick, `resolve_due` takes the tick's order processing; in the next instant without a tick, the heartbeat's — the tick of the instant before does not count; `begin_instant` sets the clock to the instant's stamp |
+| `TestAFailingArrivalListener` | the arrival listener runs on the request processor's worker thread; one that raises costs the wake, never the worker — two MARKET orders in a row both reach the venue and are booked, and the failure is logged once into the error pot |
+
+### test_answer_receipt_stamp.py — an answer's stamp is its receipt (#461)
+
+A venue's answer carries `ts_init`, when this process received it. It is read as the answer comes
+back, after the venue call — never when the request left, which would be the send time under a
+receipt's name — and a failed call is stamped when the failure surfaced. Each test gives a fake
+venue a 50 ms round trip and checks the stamp lies past it.
+
+| Class | Description |
+|---|---|
+| `TestAnAnswersStampIsItsReceipt` | a status answer and a cancel answer read synchronously, a failed status read (`UNRESOLVED`), and a submit answered on the worker are each stamped after the round trip; the submit's stamp is no later than the moment the loop is told it arrived |
+| `TestEveryCallThatStampsAnAnswer` | every dispatcher on the worker — submit, edit, cancel, position modify, status query — answered and failed, and the synchronous modify and a failed synchronous cancel, each stamped after the round trip. The order-resolve dispatcher is not among them: the answer it puts in the inbox carries no stamp |
 
 ## test_write_identity.py — every write carries an identity we can ask about (#487)
 

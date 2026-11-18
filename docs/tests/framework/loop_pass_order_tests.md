@@ -49,15 +49,26 @@ one second apart; the suite runs in about a second.
 | Backtest slice | clock → day boundary → scheduled modifies and cancels → for each tick: broker `apply_tick` → bars → equity sample → booking observation; then the closed bars → what came due → drain → market-data tracker → algo → execute → drain → state frame (the drains only with a dispatcher) |
 | Backtest clipped slice | the same up to the first drain, and nothing after |
 | Backtest ghost pass | clock → day boundary → scheduled modifies and cancels → what came due → drain → ghost compute → execute (only when the ghost decided something) → drain → state frame |
-| AutoTrader tick | signal inbox → clock → day boundary → sealed days → log rotation → broker `on_tick` → market-data tracker → account value (booking observation, equity sample) → bars → algo → equity sample for safety → safety check → entries blocked? → execute → rejection record → drain → reconcile → state persistence → carry-over → state frame |
-| AutoTrader idle pass | clock → day boundary → sealed days → log rotation → executor heartbeat → staleness → reconcile → signal inbox → drain → ghost compute → (entries blocked? → execute → rejection record, when the ghost decided something) → state persistence → carry-over → state frame — no drain after the ghost |
+| AutoTrader slice (#461) | clock → day boundary → sealed days → log rotation → for each tick: broker `apply_tick` → bars → market-data tracker → account value (booking observation, equity sample); then the closed bars → signal inbox → what the venue answered (`resolve_due`) → drain → algo → equity sample for safety → safety check → entries blocked? → execute → rejection record → drain → reconcile and state persistence by the tick count → carry-over → state frame |
+| AutoTrader heartbeat (#461) | clock → day boundary → sealed days → log rotation → signal inbox → what the venue answered (the heartbeat's resolution) → staleness → drain → ghost compute → (entries blocked? → execute → rejection record, when the ghost decided something) → drain → carry-over → state frame |
 | A stop's order wait | clock → day boundary → sealed days → log rotation → executor heartbeat → drain (only before the session-end event) → carry-over |
 
-Three differences between the pipelines show in the table and are kept on purpose until the
-AutoTrader takes the phase order too (#461): the AutoTrader merges its signal inbox before the
-clock moves; it samples the account after the algo computes as well as before, where the backtest
-samples once per tick, before its clipping gate; and it delivers the decision events only after
-the algo, where the backtest delivers them before it as well.
+Since #461 both pipelines run an instant in the phase order of the event model. Against the
+AutoTrader's order before it, seven steps moved on purpose:
+
+| Step | Before #461 | Since #461 |
+|---|---|---|
+| signal inbox, tick | first, before the clock moves | after the slice's ticks and bars |
+| bars | after the market status and the account value | before them, for each tick |
+| the venue's answers, tick | inside the tick's broker path (`on_tick`) | once, after all of the slice's ticks (`resolve_due`) |
+| decision events, tick | delivered only after the algo | before the algo as well |
+| signal inbox, heartbeat | after the staleness and the reconcile | before the venue's answers |
+| decision events, heartbeat | before the ghost pass only | after it as well |
+| reconcile and state persistence, quiet market | on every idle pass, behind their gates | on timers of their own; by the tick count after a slice |
+
+What stays the AutoTrader's own: the account is sampled again after the algo for the safety layer,
+which may turn a decision into FLAT, and a pass has no clipping gate — a session measures how far
+it falls behind and does not skip.
 
 ## What Is Tested
 
@@ -79,11 +90,13 @@ the algo, where the backtest delivers them before it as well.
 
 | Test | What it pins |
 |---|---|
-| `test_inbox_before_the_clock_then_broker_account_bars_algo_safety_execute_drain` | Two tick passes, then the session-end event and the outcomes of its orders, each drained |
-| `test_clock_boundary_heartbeat_staleness_reconcile_inbox_drain_then_ghost` | Two ticks, then two idle passes on a fixed wall clock a second later: the first ghost decision executes, the second is None, and neither is drained after |
+| `test_clock_ticks_bars_account_then_signals_resolutions_drain_algo_execute_drain` | Two slices — a replay slices by arrival millisecond — then the session-end event and the outcomes of its orders, each drained |
+| `test_clock_inbox_resolutions_staleness_drain_ghost_then_drain` | Two ticks, then two quiet heartbeats on a fixed wall clock a second later: the first ghost decision executes, the second is None, and both are drained after |
 | `test_a_ghost_decision_executes_as_flat_while_entries_are_blocked` | With the safety layer blocking entries, a ghost pass's BUY reaches the logic as FLAT — the override the idle pass applies between the decision and its execution |
 | `test_clock_boundary_heartbeat_drain_carry_over` | A stop asked for before the first pass with a market buy on its way: no tick or idle pass, wait passes until the buy is settled, each heard, then the session end |
-| `TestTheIndicatorSeries` (#379) | the indicator series right after the state frame on every tick pass; with the series alone the closed bars are still read, right after the bars render |
+| `TestABacklog` (#461) | live, three ticks waiting on the queue are one slice: each reaches the broker path, the algo computes once, on the newest, and the workers count one tick — a backlog's ticks behind the newest never reached the algorithm; a replay computes on each arrival |
+| `TestASessionAHookEnds` (#461) | a hook that asks for the session end in the trailing drain leaves its pass's state frame and indicator series, and no second pass runs; one that asks for it in the delivery before the algo leaves no algo pass, no frame and no series — as a backtest's instant does; one that asks for it in a heartbeat's delivery leaves no ghost pass and no frame |
+| `TestTheIndicatorSeries` (#379) | the indicator series right after the state frame on every slice; with the series alone the closed bars are still read, once after the slice's ticks |
 | `test_after_the_session_end_event_nothing_is_heard` | Nothing on its way before the stop, an order sent from the session-end event: the second wait's passes drain nothing, and the outcomes of that order are delivered after it |
 
 A stop's wait makes as many passes as the venue's answer takes to arrive, which is the venue's
