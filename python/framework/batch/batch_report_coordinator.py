@@ -342,7 +342,7 @@ class BatchReportCoordinator:
                 for result, scenario in zip(
                     process_results, self._batch_execution_summary.single_scenario_list)),
             warmup_from_record=any(
-                result.tick_loop_results is not None and scenario.warmup_from_run
+                result.event_loop_results is not None and scenario.warmup_from_run
                 for result, scenario in zip(
                     process_results, self._batch_execution_summary.single_scenario_list)),
             indicator_series_opened=any(

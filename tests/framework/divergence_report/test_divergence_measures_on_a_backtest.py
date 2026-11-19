@@ -44,7 +44,7 @@ from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from python.scenario.scenario_set import ScenarioSet
 from tests.shared.fixture_helpers import (
     extract_process_result,
-    extract_tick_loop_results,
+    extract_event_loop_results,
     remove_run_dir,
 )
 
@@ -72,7 +72,7 @@ def _run_with_frames(tmp_path: Path, model: str) -> Tuple[List[OrderEventRow], L
     summary = BatchOrchestrator(scenario_set, app_config).run()
     run_dir = Path(scenario_set.logger.get_log_dir())
     try:
-        results = extract_tick_loop_results(extract_process_result(summary, 0))
+        results = extract_event_loop_results(extract_process_result(summary, 0))
         events = [order_event_row(event, 'my_scenario') for event in results.order_events or []]
         frame_file, = sorted((run_dir / 'io').glob('state_frames_*.jsonl'))
         lines = [json.loads(line) for line in frame_file.read_text(encoding='utf-8').splitlines()]
