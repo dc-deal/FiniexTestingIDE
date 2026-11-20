@@ -385,6 +385,11 @@ given, and a bar file is proven readable at the moment it is written.
 - `origin_classes` and the seam `collected_from` survive a reload; a file from before the stamp answers nothing
 - The seam is the start of the first tick file not from a venue's published history; one origin alone has no seam
 - A warmup whose first bar opens before the seam is external; a file of external history only is external throughout; collected data alone never is
+- A symbol's origin is read once over its timeframes — the classes in their declared order, and the seam; an unstamped symbol has neither (#647)
+
+**TestAServerWithoutABarArchive** (#647):
+- A missing bar index is said once per process, as an info line, and never warned on each request — a server that renders no bars reads the index on every broker and bar route
+- An index file that exists and cannot be read is still a warning
 
 Uses `RecordingLogger` (`tests/shared/recording_logger.py`): the project's loggers do not
 route through the stdlib `logging` module, so `caplog` cannot see them, and these cases

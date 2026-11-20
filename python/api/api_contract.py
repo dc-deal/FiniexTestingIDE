@@ -37,7 +37,7 @@ API_PREFIX = '/api/v1'
 # read this repository.
 CHANGES: List[str] = [
     "market-data: origin_classes on a symbol's coverage (new) — whose data its bars were rendered "
-    "from, over every timeframe: external for a venue's published history; empty where the bars "
+    "from, over every timeframe, comma-joined: external for a venue's published history; empty where the bars "
     "predate the origin stamp",
     "market-data: collected_since on a symbol's coverage (new) — where our own collection takes over "
     "from a venue's published history, ISO-8601 UTC; null where the bars hold no external history "

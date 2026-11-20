@@ -41,6 +41,7 @@ from python.framework.types.api.api_types import (
     IndicatorPointResponse,
 )
 from python.framework.types.config_types.data_origin_config_types import OriginClass
+from python.framework.types.data_origin_types import joined_distinct
 from python.framework.types.indicator_types import MaType
 from python.framework.utils.time_utils import ensure_utc_aware
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
@@ -121,7 +122,7 @@ def get_coverage(broker: str, symbol: str) -> CoverageResponse:
         start=min(start_times).isoformat(),
         end=max(end_times).isoformat(),
         timeframes=sorted(stats.keys()),
-        origin_classes=origin.origin_classes,
+        origin_classes=joined_distinct([origin_class.value for origin_class in origin.origin_classes]),
         collected_since=origin.collected_since.isoformat() if origin.collected_since else None,
     )
 

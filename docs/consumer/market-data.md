@@ -31,7 +31,7 @@ The first four nest, and each answer is the next one's path:
 /brokers                                        → ["kraken_spot", "mt5"]
 /brokers/kraken_spot/symbols                    → [{"symbol": "BTCUSD", "market_type": "crypto", "tick_size": 0.1}]
 /brokers/kraken_spot/symbols/BTCUSD/coverage    → {"start": …, "end": …, "timeframes": [ … ],
-                                                   "origin_classes": [ … ], "collected_since": …}
+                                                   "origin_classes": "…", "collected_since": …}
 /brokers/kraken_spot/symbols/BTCUSD/bars?timeframe=H1&from=…&to=…
 ```
 
@@ -39,8 +39,9 @@ Both lists come from the bar index, so they describe what has been **rendered**,
 collected: a venue whose ticks are imported but whose bars are not rendered does not appear in
 `/brokers`, and neither do its symbols.
 
-Coverage also says **whose data** the bars were rendered from. `origin_classes` lists the data
-origins of the symbol's bars over every timeframe: `external` is a venue's published history,
+Coverage also says **whose data** the bars were rendered from. `origin_classes` names the data
+origins of the symbol's bars over every timeframe, distinct, sorted and comma-joined, as every other
+`origin_classes` this API serves: `external` is a venue's published history,
 brought in for the years before our own collection, `production` and `development` are what our
 collectors recorded. It is empty where the bars were rendered before the origin was stamped.
 `collected_since` is where our own collection takes over from that published history, ISO-8601 UTC;

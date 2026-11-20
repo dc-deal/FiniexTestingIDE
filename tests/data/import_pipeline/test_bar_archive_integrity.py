@@ -439,3 +439,32 @@ class TestTheOriginOfABarFileSurvivesIntoTheIndex:
         preparator = SimpleNamespace(bar_index_manager=self._index(tmp_path))
         assert not SharedDataPreparator._warmup_reaches_external(
             preparator, 'kraken_spot', 'ETHUSD', 'D1', self._bars(10, 11))
+
+
+class TestAServerWithoutABarArchive:
+    """
+    A server that renders no bars — the bot's run host serves its runs and nothing else — reads the
+    bar index on every broker and bar request. An absent index is its normal state: said once per
+    process, never warned on each request. A file that exists and cannot be read keeps its warning.
+    """
+
+    def test_a_missing_index_is_said_once_and_never_warned(self, tmp_path):
+        logger = RecordingLogger()
+        manager = BarsIndexManager(logger=logger, data_dir=str(tmp_path / 'no_archive'))
+
+        manager.load_index()
+        manager.load_index()
+        BarsIndexManager(logger=logger, data_dir=str(tmp_path / 'no_archive')).load_index()
+
+        assert manager.index == {}
+        assert logger.levels() == ['info']
+
+    def test_an_unreadable_index_is_still_a_warning(self, tmp_path):
+        logger = RecordingLogger()
+        manager = BarsIndexManager(logger=logger, data_dir=str(tmp_path))
+        manager.index_file.write_bytes(b'not a parquet file')
+
+        manager.load_index()
+
+        assert manager.index == {}
+        assert 'warning' in logger.levels()

@@ -38,8 +38,9 @@ cannot ship without its entry.
 Coverage and the scenario details say whose data was there and whose was read.
 
 - [Market data](/api/v1/docs/market-data): **`origin_classes`** on a symbol's coverage (new) —
-  whose data its bars were rendered from, over every timeframe: `external` for a venue's published
-  history, `production` and `development` for our own collection; empty where the bars were
+  whose data its bars were rendered from, over every timeframe, comma-joined like every other
+  `origin_classes`: `external` for a venue's published history, `production` and `development` for
+  our own collection; empty where the bars were
   rendered before the origin was stamped.
 - [Market data](/api/v1/docs/market-data): **`collected_since`** on a symbol's coverage (new) —
   where our own collection takes over from a venue's published history, ISO-8601 UTC; `null` where

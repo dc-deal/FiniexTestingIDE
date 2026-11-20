@@ -291,7 +291,7 @@ class TestCoverage:
         assert 'start' in data
         assert 'end' in data
         assert set(data['timeframes']) == {'M30', 'H1'}
-        assert data['origin_classes'] == []
+        assert data['origin_classes'] == ''
         assert data['collected_since'] is None
 
     def test_coverage_says_whose_data_and_where_our_collection_takes_over(self, client):
@@ -304,7 +304,8 @@ class TestCoverage:
             r = client.get('/api/v1/brokers/kraken_spot/symbols/BTCUSD/coverage')
         assert r.status_code == 200
         data = r.json()
-        assert data['origin_classes'] == [OriginClass.PRODUCTION.value, OriginClass.EXTERNAL.value]
+        # Comma-joined, sorted — the shape of every other served origin_classes
+        assert data['origin_classes'] == 'external,production'
         assert data['collected_since'] == '2026-01-24T14:20:20+00:00'
 
     def test_unknown_symbol_returns_404(self, client):
