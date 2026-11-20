@@ -205,6 +205,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Scenario Generator](tests/data/scenario_generator_tests.md) | Block generation tests |
 | [Batch Validations](tests/framework/batch_validations_tests.md) | Phase 0 validation: ScenarioValidator, BrokerDataPreparator map filtering |
 | [Config Tests (Cascade + Merge Utility + Loader Field Coverage)](tests/framework/config_cascade_tests.md) | execution_config 3-level cascade, nested sub-group merge, unknown-key safety net (#137), deep_merge list_merge_keys unit tests, every AutoTrader config-block field reachable from JSON, app_config strictness, what a producing instance's identity means here, and the installation's minted host identity |
+| [Suite Runner Contract](tests/framework/suite_runner_contract_tests.md) | How the test runner names the way a suite ended, and that its defaults are the ones the operator reads in the config file |
 | [Worker Tests](tests/framework/worker_tests.md) | Worker framework validation |
 | [Live Telemetry Tests](tests/framework/live_telemetry_tests.md) | Frame serialization, the signal-transport block in the operator's CONNECTION panel, every dashboard panel rendered from a full frame, the progress screen, and how a failing panel is reported |
 | [Reporting Pipeline Tests](tests/framework/reporting_tests.md) | Unified reporting (#391–#403): builders, IO/store, console renderers — including the two signal planes and what a live-adapter session may not claim |
