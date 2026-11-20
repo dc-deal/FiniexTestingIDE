@@ -281,3 +281,23 @@ class TestServerClockRuleRoundTrip:
         manager.build_index()
 
         assert manager.index['kraken_spot']['LTCUSD'][0]['server_clock_rule'] is None
+
+
+class TestOriginCountsPerSymbol:
+    """The tick status counts a symbol's files and ticks per origin class (#647)."""
+
+    def test_the_counts_follow_the_declared_order(self, tmp_path):
+        manager = TickIndexManager(data_dir=str(tmp_path))
+        manager.index = {'kraken_spot': {'ETHUSD': [
+            {'origin_class': 'production', 'tick_count': 10},
+            {'origin_class': 'external', 'tick_count': 1000},
+            {'origin_class': 'production', 'tick_count': 5},
+        ]}}
+
+        counts = manager.get_symbol_origin_counts('kraken_spot', 'ETHUSD')
+
+        assert [(c.origin_class, c.files, c.ticks) for c in counts] == [
+            ('production', 2, 15), ('external', 1, 1000)]
+
+    def test_a_symbol_the_index_does_not_hold_has_no_counts(self, tmp_path):
+        assert TickIndexManager(data_dir=str(tmp_path)).get_symbol_origin_counts('mt5', 'EURUSD') == []

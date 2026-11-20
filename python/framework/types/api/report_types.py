@@ -1159,6 +1159,11 @@ class DataBrokerRow(BaseModel):
     scenario_count: int
     symbols: list[str]      # sorted, distinct
     price_bases: str = ''   # distinct, sorted, comma-joined across this broker's scenarios
+    # Whose data the scenarios over this broker read (#647) — the data origin of their input files,
+    # distinct, sorted, comma-joined, as each scenario row already says it. `external` names a
+    # venue's published history; empty where no scenario recorded one (a scenario that failed
+    # before its data was mounted)
+    origin_classes: str = ''
 
 
 class ScenarioDetailsReport(RunScopedReport):

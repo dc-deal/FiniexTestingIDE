@@ -26,6 +26,9 @@ from python.framework.discoveries.data_coverage.gap_listing import (
     recent_gap_listing,
 )
 from python.framework.discoveries.data_coverage.gap_timeline import GapTimeline
+from python.framework.discoveries.data_coverage.trade_id_gap_summary import (
+    build_trade_id_gap_report,
+)
 from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.coverage_report_types import Gap, GapYearOriginSummary
 from python.framework.types.trading_env_types.broker_types import BrokerType
@@ -432,6 +435,38 @@ class DataCoverageReport:
 
         return lines
 
+    def _missing_trades_section(self) -> List[str]:
+        """
+        Build the missing-trades section from the tick index (#647).
+
+        How many of the venue's trades our files do not hold, where every trade carries its id.
+        A stretch whose files carry no ids is named as not measurable, never counted as complete.
+        Render path only, like the version spans.
+
+        Returns:
+            Report lines for the section
+        """
+        lines = [f"\n{'─'*60}", 'MISSING TRADES (venue trade ids):', f"{'─'*60}"]
+        report = build_trade_id_gap_report(self._tick_entries())
+        for summary in report.summaries:
+            share = f'{summary.missing / summary.span * 100:.3f} %' if summary.span else 'n/a'
+            lines.append(
+                f'   {summary.origin_class:<12} {summary.measured_files:,} file(s) · '
+                f'ids {summary.span:,} · missing {summary.missing:,} ({share}) · '
+                f'longest run {summary.longest_run:,} trades ({summary.longest_run_seconds:.0f} s) · '
+                f'over the limit {summary.files_over_limit}')
+        if not report.summaries:
+            lines.append('   no file carries trade ids')
+        for span in report.unmeasured_spans[:MAX_VERSION_SPANS_DISPLAYED]:
+            lines.append(
+                f"   {span.start_time.strftime('%Y-%m-%d %H:%M')} → "
+                f"{span.end_time.strftime('%Y-%m-%d %H:%M')} (format {span.version}, "
+                f'{span.file_count} file(s)): not measurable')
+        if len(report.unmeasured_spans) > MAX_VERSION_SPANS_DISPLAYED:
+            lines.append(f'   ... and {len(report.unmeasured_spans) - MAX_VERSION_SPANS_DISPLAYED} '
+                         f'more stretches without trade ids')
+        return lines
+
     def attribute_gaps(self) -> None:
         """
         Resolve which file(s) each gap falls in, and whose data they are, from the tick index.
@@ -656,6 +691,9 @@ class DataCoverageReport:
 
         # === SECTION 1b: Data Format Version ===
         report.extend(self._version_spans_section())
+
+        # === SECTION 1c: Missing trades ===
+        report.extend(self._missing_trades_section())
 
         # === SECTION 2: Gap Summary ===
         report.append(f"\n{'─'*60}")

@@ -81,12 +81,13 @@ def _data_brokers(rows: list, market_types: Dict[str, str]) -> list:
     grouped: dict = {}
     for row in rows:
         entry = grouped.setdefault(
-            row.data_broker_type, {'symbols': set(), 'count': 0, 'bases': []})
+            row.data_broker_type, {'symbols': set(), 'count': 0, 'bases': [], 'classes': []})
         entry['count'] += 1
         entry['symbols'].add(row.symbol)
         # Already joined at the row; split again so the roll-up de-duplicates across
         # scenarios rather than concatenating their strings.
         entry['bases'].extend(b for b in row.price_bases.split(',') if b)
+        entry['classes'].extend(c for c in row.origin_classes.split(',') if c)
     return [
         DataBrokerRow(
             data_broker_type=broker_type,
@@ -94,6 +95,7 @@ def _data_brokers(rows: list, market_types: Dict[str, str]) -> list:
             scenario_count=entry['count'],
             symbols=sorted(entry['symbols']),
             price_bases=joined_distinct(entry['bases']),
+            origin_classes=joined_distinct(entry['classes']),
         )
         for broker_type, entry in sorted(grouped.items())
     ]

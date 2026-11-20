@@ -805,6 +805,28 @@
             }
         },
         {
+            "name": "🔍 Disc - Data Coverage: Trade Completeness",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": [
+                "data-coverage",
+                "trade-completeness",
+                "kraken_spot",
+                "${input:tradeCompletenessSymbol}",
+                "--start",
+                "${input:tradeCompletenessStart}",
+                "--end",
+                "${input:tradeCompletenessEnd}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_coverage",
+                "order": 13
+            }
+        },
+        {
             "name": "🔍 Disc - Data Coverage: Validate All",
             "type": "debugpy",
             "request": "launch",
@@ -817,7 +839,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 13
+                "order": 14
             }
         },
         {
@@ -835,7 +857,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 14
+                "order": 15
             }
         },
         {
@@ -853,7 +875,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 15
+                "order": 16
             }
         },
         {
@@ -871,7 +893,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 16
+                "order": 17
             }
         },
         {
@@ -889,7 +911,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 17
+                "order": 18
             }
         },
         {
@@ -907,7 +929,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 18
+                "order": 19
             }
         },
         {
@@ -925,7 +947,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 19
+                "order": 20
             }
         },
         {
@@ -943,7 +965,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 20
+                "order": 21
             }
         },
         // ====================================================
@@ -4917,6 +4939,22 @@
             "type": "promptString",
             "description": "Fixture catalog entry (the list entry names them), or --all",
             "default": "report_coverage"
+        },
+        {
+            "id": "tradeCompletenessSymbol",
+            "type": "promptString",
+            "description": "Kraken symbol to compare with the venue's trade list, e.g. ETHUSD",
+            "default": "ETHUSD"
+        },
+        {
+            "id": "tradeCompletenessStart",
+            "type": "promptString",
+            "description": "Window start, ISO-8601 UTC, e.g. 2026-11-16T00:00:00+00:00"
+        },
+        {
+            "id": "tradeCompletenessEnd",
+            "type": "promptString",
+            "description": "Window end, ISO-8601 UTC, excluded — about one second per thousand trades"
         },
         {
             "id": "docsSearchQuery",

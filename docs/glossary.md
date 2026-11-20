@@ -260,6 +260,12 @@ a commit nobody could read is a stand of its own. The deployment view compares e
 with the previous session's. See
 [Deployment Ledger](user_guides/deployment_ledger_guide.md#a-code-change-draws-one-row-per-repository-and-one-dated-warning).
 
+**collected since** (`collected_since` on a symbol's coverage) — The instant our own collection
+takes over from a venue's published history for that symbol: the *seam*, as the bar files record
+it. A bar opening before it was rendered from the venue's record, not ours; `null` where the
+symbol's bars hold no external history before collected data. See
+[Market data](consumer/market-data.md).
+
 **combination** — One point of a sweep's parameter grid, run as one ordinary backtest. See
 [Parameter Optimization](architecture/parameter_optimization_system.md).
 
@@ -986,7 +992,8 @@ streams' lines of that day into *day records*; the log lines say `Booking period
 published history and our first collected tick, for instance. A gap there takes the origin class of
 the file before it. The coverage report words it as "where the external data ends and the production
 data begins", and the gaps route serves two different classes in `origin_class` and
-`origin_class_after`; "seam" is the documents' word for it. Not the seam of the code — a point where
+`origin_class_after`; "seam" is the documents' word for it, and a symbol's coverage serves its
+instant as *collected since*. Not the seam of the code — a point where
 a later change attaches, such as the hard stop's hook for its latch — which stays inside the code
 and its documents.
 

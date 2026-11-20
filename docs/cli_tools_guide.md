@@ -23,7 +23,7 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 | `run_config_cli.py` | Run Config Store (#538) | list, history, show |
 | `config_directory_cli.py` | Every configuration that can start a run (#554) | list, show |
 | `store_cli.py` | Every data store and its index (#486) | catalog, entry-members, run-footprint, rebuild |
-| `discoveries_cli.py` | Volatility Profiles, Discoveries & Data Coverage | volatility-profile, extreme-moves, data-coverage (build/show/validate/status/clear), signal-coverage (validate/show), cache (rebuild-all/status) |
+| `discoveries_cli.py` | Volatility Profiles, Discoveries & Data Coverage | volatility-profile, extreme-moves, data-coverage (build/show/trade-completeness/validate/status/clear), signal-coverage (validate/show), cache (rebuild-all/status) |
 | `generator_cli.py` | Block & Generator-Profile Generation | generate-blocks, generate-profile, generate-all-profiles |
 | `strategy_runner_cli.py` | Backtesting | run, run --generator-profile, validate |
 | `docs_search_cli.py` | Search the whole documentation tree | search |
@@ -479,6 +479,30 @@ BY YEAR AND ORIGIN (short · moderate · large, and the hours without data):
    • Short gaps in our collection - likely MT5 restarts or connection blips (usually harmless)
    • 🔴 Large gaps in our collection - consider re-collecting data for these periods
    …
+```
+
+### 📊 Data Coverage: Trade Completeness
+
+| | |
+|---|---|
+| **VS Code** | `🔍 Disc - Data Coverage: Trade Completeness` |
+| **CLI** | `python discoveries_cli.py data-coverage trade-completeness kraken_spot ETHUSD --start 2026-11-16T00:00:00+00:00 --end 2026-11-16T06:00:00+00:00` |
+| **Purpose** | Our trades against the venue's own trade list over a window |
+
+The gap report and its missing-trades section count what our files lack by the venue's trade ids,
+which is an upper bound: a venue may allocate ids that never become public trades. This reads the
+venue's public trade list over the window — no account, about one page of a thousand trades a
+second — and compares it with our files trade by trade. A list it could not read is reported as not
+read, never as a window without trades. It changes nothing in the archive; filling what it finds is
+the tick backfiller's.
+
+```
+🔎 TRADE COMPLETENESS: kraken_spot/ETHUSD
+Window:        2026-11-16 00:00:00 → 2026-11-16 06:00:00 UTC
+Our trades:    8,886
+Venue trades:  8,889
+Missing:       3 (0.034 %) in 1 run(s)
+   2026-11-16 03:47:22 UTC        3 trade(s) over 0 s
 ```
 
 ### 📊 Data Coverage: Build Cache

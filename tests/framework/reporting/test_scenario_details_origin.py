@@ -215,3 +215,15 @@ class TestTheDataBrokerRollUpIsDerivedOnce:
             _scenario(['1.7.0'], ['production'], ['stamped'], broker='kraken_spot'))
 
         assert sources[0].price_bases == ''
+
+    def test_the_data_origin_is_rolled_up_per_broker(self):
+        """#647: whose data each broker's scenarios read, de-duplicated like the price basis."""
+        sources = self._sources(
+            _scenario(['1.7.0'], ['external'], ['stamped'], broker='kraken_spot'),
+            _scenario(['1.7.0', '1.7.0'], ['external', 'production'], ['stamped', 'stamped'],
+                      broker='kraken_spot'),
+            _scenario(['1.5.0'], ['production'], ['attested'], broker='mt5'))
+
+        by_broker = {s.data_broker_type: s for s in sources}
+        assert by_broker['kraken_spot'].origin_classes == 'external,production'
+        assert by_broker['mt5'].origin_classes == 'production'

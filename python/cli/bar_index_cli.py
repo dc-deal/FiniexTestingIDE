@@ -23,6 +23,7 @@ from python.data_management.importers.bar_importer import BarImporter
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.reporting.console.index_origin_summary import print_bar_origin
 from python.framework.types.run_origin_types import RunChannel
 from python.framework.utils.activity_volume_provider import get_activity_provider
 from python.framework.utils.interrupt_utils import sigterm_as_interrupt
@@ -154,6 +155,8 @@ class BarIndexCli:
                     version_str = f'{source_version_min} - {source_version_max}'
 
                 print(f'      Source:     {broker_type} (collector v{version_str})')
+                print_bar_origin(
+                    self.index_manager.get_symbol_origin(broker_type, symbol), indent='      ')
                 print(f'      Market:     {market_type}')
 
                 # Activity metrics using provider

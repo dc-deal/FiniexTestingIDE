@@ -35,6 +35,7 @@ from python.framework.types.chart_types.drawing_style_types import DrawingRole
 from python.framework.types.chart_types.indicator_series_entry_types import IndicatorSeriesEntry
 from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.coverage_report_types import Gap, GapCategory
+from python.framework.types.data_origin_types import SymbolDataOrigin
 from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_origin_types import CodeStand, RepositoryStand
 from python.framework.validators.validation_check_catalog import VALIDATION_CHECKS_BY_ID
@@ -68,6 +69,8 @@ def _mock_index(broker_types=None, symbols=None, stats=None, bar_file=None):
         },
     }
     m.get_bar_file.return_value = bar_file or Path('/fake/bars.parquet')
+    # Whose data the bars were rendered from (#647): none stamped and no seam, unless a test says so
+    m.get_symbol_origin.return_value = SymbolDataOrigin(origin_classes=[], collected_since=None)
     # The nested index the router reads the stamped price basis from. A MagicMock would
     # answer every lookup with another mock, which is not a header value — and would hide
     # that the basis now comes from the FILE rather than from a constant.
@@ -288,6 +291,21 @@ class TestCoverage:
         assert 'start' in data
         assert 'end' in data
         assert set(data['timeframes']) == {'M30', 'H1'}
+        assert data['origin_classes'] == []
+        assert data['collected_since'] is None
+
+    def test_coverage_says_whose_data_and_where_our_collection_takes_over(self, client):
+        """#647: the symbol's origin classes and the seam, as the bar index derives them."""
+        index = _mock_index()
+        index.get_symbol_origin.return_value = SymbolDataOrigin(
+            origin_classes=[OriginClass.PRODUCTION, OriginClass.EXTERNAL],
+            collected_since=datetime(2026, 1, 24, 14, 20, 20, tzinfo=timezone.utc))
+        with patch('python.api.endpoints.bars_router.BarsIndexManager', return_value=index):
+            r = client.get('/api/v1/brokers/kraken_spot/symbols/BTCUSD/coverage')
+        assert r.status_code == 200
+        data = r.json()
+        assert data['origin_classes'] == [OriginClass.PRODUCTION.value, OriginClass.EXTERNAL.value]
+        assert data['collected_since'] == '2026-01-24T14:20:20+00:00'
 
     def test_unknown_symbol_returns_404(self, client):
         index = _mock_index()

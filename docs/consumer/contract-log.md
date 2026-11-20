@@ -33,6 +33,23 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 60 — 2026-11-20 (#647)
+
+Coverage and the scenario details say whose data was there and whose was read.
+
+- [Market data](/api/v1/docs/market-data): **`origin_classes`** on a symbol's coverage (new) —
+  whose data its bars were rendered from, over every timeframe: `external` for a venue's published
+  history, `production` and `development` for our own collection; empty where the bars were
+  rendered before the origin was stamped.
+- [Market data](/api/v1/docs/market-data): **`collected_since`** on a symbol's coverage (new) —
+  where our own collection takes over from a venue's published history, ISO-8601 UTC; `null` where
+  the bars hold no external history before collected data.
+- [Scenario details](/api/v1/docs/scenario-details): **`origin_classes`** on each entry of
+  `data_brokers` (new) — whose data that broker's scenarios read, comma-joined, as each scenario
+  row already says it.
+
+Three fields added; nothing changed or removed.
+
 ## Version 59 — 2026-11-19 (#647)
 
 What a run read says more, and one count says what its name says: a file without a stamp.

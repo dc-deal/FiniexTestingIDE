@@ -37,6 +37,7 @@ from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.data_preparation.shared_data_preparator import SharedDataPreparator
 from python.framework.discoveries.discovery_cache_index import DISCOVERY_INDEX_FILE
 from python.framework.exceptions.data_quality_errors import BarFileVerificationException
+from python.framework.types.config_types.data_origin_config_types import OriginClass
 from tests.data.import_pipeline.conftest import (
     build_minimal_tick_json,
     write_json_fixture,
@@ -386,6 +387,21 @@ class TestTheOriginOfABarFileSurvivesIntoTheIndex:
 
         assert index.get_origin_classes('kraken_spot', 'ETHUSD', 'D1') == []
         assert index.get_collected_from('kraken_spot', 'ETHUSD', 'D1') is None
+
+    def test_a_symbols_origin_is_read_once_over_its_timeframes(self, tmp_path):
+        """#647: the classes in their declared order, and the seam — what coverage and status print."""
+        self._write(tmp_path, 'external,production', '2026-01-15T08:30:00+00:00')
+        origin = self._index(tmp_path).get_symbol_origin('kraken_spot', 'ETHUSD')
+
+        assert origin.origin_classes == [OriginClass.PRODUCTION, OriginClass.EXTERNAL]
+        assert origin.collected_since == datetime(2026, 1, 15, 8, 30, tzinfo=timezone.utc)
+
+    def test_an_unstamped_symbol_has_no_origin_and_no_seam(self, tmp_path):
+        self._write(tmp_path, None, None)
+        origin = self._index(tmp_path).get_symbol_origin('kraken_spot', 'ETHUSD')
+
+        assert origin.origin_classes == []
+        assert origin.collected_since is None
 
     def test_the_seam_is_where_the_first_collected_file_starts(self):
         entries = [

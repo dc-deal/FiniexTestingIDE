@@ -18,6 +18,7 @@ import pandas as pd
 
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.reporting.console.index_origin_summary import print_tick_origin
 
 vLog = get_global_logger()
 
@@ -104,6 +105,7 @@ class TickIndexCli:
             print(f"Size:        {coverage['total_size_mb']:.1f} MB")
             print(f"Start:       {coverage['start_time']}")
             print(f"End:         {coverage['end_time']}")
+            print_tick_origin(self.index_manager.get_symbol_origin_counts(broker_type, symbol))
             print('\nFiles:')
             for file in coverage['files']:
                 print(f'   • {file}')

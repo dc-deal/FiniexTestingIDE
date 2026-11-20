@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 59
+API_CONTRACT_VERSION = 60
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,16 +36,13 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "sweeps: unstamped_input_files on a combination counts the files no stamp attests (evidence "
-    "grade other than stamped), whatever their class — a venue's published history carries the "
-    "converter's stamp and no longer counts; a row with logic_version 21 or older keeps the old "
-    "meaning, the files that were not production data stamped by their producer — a changed meaning",
-    "sweeps: server_clock_rules on a combination (new) — the server clock rules its tick files' times "
-    "were converted with, comma-joined; empty where no file stated one",
-    "sweeps: external_warmup_timeframes on a combination (new) — the bar timeframes whose warmup "
-    "reached back into a venue's published history, comma-joined; empty where none did",
-    "warnings-errors: a mock session reports what its replay read as a backtest does — "
-    "data_origin_external for a venue's published history, data_origin_unstamped for files no "
-    "producer stamped, and what the files lack — new rows on such a session",
+    "market-data: origin_classes on a symbol's coverage (new) — whose data its bars were rendered "
+    "from, over every timeframe: external for a venue's published history; empty where the bars "
+    "predate the origin stamp",
+    "market-data: collected_since on a symbol's coverage (new) — where our own collection takes over "
+    "from a venue's published history, ISO-8601 UTC; null where the bars hold no external history "
+    "before collected data",
+    "scenario-details: origin_classes on each data broker of the roll-up (new) — whose data the "
+    "broker's scenarios read, comma-joined",
 ]
 

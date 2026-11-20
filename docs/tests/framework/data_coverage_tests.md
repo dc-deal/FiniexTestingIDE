@@ -143,6 +143,33 @@ refused. A new category without a kind fails here instead of being treated as ne
 - Short, moderate and large are data gaps
 - Weekend and holiday are market closures
 
+### test_trade_id_gap_report.py
+
+**TestMissingTradesPerOrigin:** the coverage report's missing-trades section (#647) sums the
+tick index's trade-id gaps per origin, so our collection is read apart from a venue's published
+history, and names a stretch without trade ids as not measurable.
+- The measured files are summed per origin, in the classes' declared order; a file whose longest
+  run exceeds the limit counts as over it
+- A stretch without trade ids is named by its format version, never counted
+- No file with trade ids yields no summary — never a zero
+
+**TestTheSectionReads:** the section as the report prints it — one line per origin with its
+figures, and the stretch without trade ids named not measurable.
+
+### test_trade_completeness_check.py
+
+**TestTheComparison:** our trades against the venue's own trade list (#647), trade by trade.
+- The trades we lack are counted in runs, longest first, each with its first and last trade's time
+- A trade our files hold that the venue's list does not is counted apart
+
+**TestTheVenueSide:** a list that could not be read is reported as not read, never as a window
+without trades.
+- A reader that gave up leaves the venue side empty and names why
+- A venue without a trade list we read says so
+- A list that was read is compared
+- A window whose tick files carry no trade ids is named not measurable — every venue trade would
+  otherwise read as missing
+
 ---
 
 ## Architecture

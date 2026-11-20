@@ -109,8 +109,9 @@ being enough.
 
 `data_brokers` groups the rows by broker, sorted by broker type. Each entry carries that broker's
 `market_type`, its `scenario_count` — failed scenarios included, because it is a roll-up of the
-same rows — the distinct `symbols` it served, sorted, and the `price_bases` de-duplicated across
-all of that broker's scenarios rather than concatenated.
+same rows — the distinct `symbols` it served, sorted, and the `price_bases` and `origin_classes`
+de-duplicated across all of that broker's scenarios rather than concatenated. `origin_classes` there
+says whose data was read over that broker; `external` marks a venue's published history.
 
 The grouping is derived once and served to every surface rather than rebuilt by whoever wants it,
 so two consumers grouping the same rows cannot arrive at two answers.

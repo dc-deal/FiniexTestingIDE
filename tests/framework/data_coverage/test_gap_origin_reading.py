@@ -78,7 +78,8 @@ def _report(broker_type: str, *gaps: Gap) -> DataCoverageReport:
 def unread_index():
     """The tick index is never read: the gaps are attributed already."""
     with patch.object(DataCoverageReport, 'attribute_gaps'), \
-            patch.object(DataCoverageReport, '_version_spans_section', return_value=[]):
+            patch.object(DataCoverageReport, '_version_spans_section', return_value=[]), \
+            patch.object(DataCoverageReport, '_missing_trades_section', return_value=[]):
         yield
 
 

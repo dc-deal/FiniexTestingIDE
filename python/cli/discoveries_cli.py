@@ -16,10 +16,15 @@ import sys
 from typing import List, Optional
 
 from python.configuration.discoveries_config_loader import DiscoveriesConfigLoader
+from python.configuration.market_config_manager import MarketConfigManager
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
     DataCoverageReportCache,
+)
+from python.data_management.index.tick_index_manager import TickIndexManager
+from python.framework.discoveries.data_coverage.trade_completeness_check import (
+    TradeCompletenessCheck,
 )
 from python.framework.discoveries.discovery_cache import DiscoveryCache
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
@@ -39,12 +44,17 @@ from python.framework.discoveries.volatility_profile_analyzer.volatility_profile
 from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_report import (
     print_volatility_profile,
 )
+from python.framework.factory.venue_history_reader_factory import public_trade_reader
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.reporting.console.trade_completeness_summary import (
+    print_trade_completeness,
+)
 from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.market_types.market_volatility_profile_types import (
     SymbolVolatilityProfile,
 )
 from python.framework.types.run_origin_types import RunChannel
+from python.framework.utils.time_utils import parse_datetime
 
 vLog = get_global_logger()
 
@@ -195,6 +205,26 @@ class DiscoveriesCli:
         cache = DataCoverageReportCache()
         report = cache.get_report(broker_type, symbol, force_rebuild=force)
         print(report.generate_report())
+
+    def cmd_data_coverage_trade_completeness(
+        self, broker_type: str, symbol: str, start: str, end: str
+    ) -> None:
+        """
+        Compare our trades with the venue's own trade list over a window.
+
+        Args:
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+            start: The window's start, ISO-8601
+            end: The window's end, ISO-8601
+        """
+        tick_index = TickIndexManager()
+        tick_index.load_index()
+        policy = MarketConfigManager().get_broker_entry(broker_type).broker_transport.connection
+        check = TradeCompletenessCheck(
+            tick_index, public_trade_reader(broker_type, policy, get_global_logger()))
+        print_trade_completeness(check.run(
+            broker_type, symbol, parse_datetime(start), parse_datetime(end)))
 
     def cmd_signal_coverage_show(
         self, data_sentiment_type: str, symbol: str
@@ -472,6 +502,19 @@ def main():
         '--force', action='store_true', default=False,
         help='Force regeneration (ignore cache)')
 
+    # coverage trade-completeness
+    cov_completeness = coverage_sub.add_parser(
+        'trade-completeness',
+        help="Compare our trades with the venue's own trade list over a window")
+    cov_completeness.add_argument(
+        'broker_type', help='Broker type (e.g., kraken_spot)')
+    cov_completeness.add_argument(
+        'symbol', help='Symbol (e.g., ETHUSD)')
+    cov_completeness.add_argument(
+        '--start', required=True, help='Window start, ISO-8601 (e.g., 2026-11-16T00:00:00+00:00)')
+    cov_completeness.add_argument(
+        '--end', required=True, help='Window end, ISO-8601, excluded')
+
     # coverage validate
     coverage_sub.add_parser(
         'validate', help='Validate all symbols, show gap summary')
@@ -566,6 +609,10 @@ def main():
                 symbol=args.symbol,
                 force=args.force
             )
+        elif args.coverage_command == 'trade-completeness':
+            cli.cmd_data_coverage_trade_completeness(
+                broker_type=args.broker_type, symbol=args.symbol,
+                start=args.start, end=args.end)
         elif args.coverage_command == 'validate':
             cli.cmd_data_coverage_validate()
         elif args.coverage_command == 'clear':

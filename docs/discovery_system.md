@@ -293,6 +293,31 @@ validity on the bar file's mtime, while the tick index changes independently of 
 span list could go stale unnoticed. The batch validation path never renders the report and therefore
 never pays for the index load.
 
+### Missing trades
+
+A gap is a stretch with no bar. A file can also lose trades **inside** a stretch that has bars — a
+reconnect drops a few seconds of trades, and the bars around them still look complete. Where every
+trade carries the venue's id (collector format 1.7.0 on, and a venue's published history), the tick
+index counts the ids a file does not hold (`trade_id_gaps`), and the report sums them per origin.
+A missing id is an upper bound — a venue may allocate ids that never become public trades — and
+`data-coverage trade-completeness` asks the venue's own trade list over a window when the exact
+count matters ([CLI Tools Guide](cli_tools_guide.md), *Data Coverage: Trade Completeness*):
+
+```
+MISSING TRADES (venue trade ids):
+   production   109 file(s) · ids 3,124,510 · missing 2,548 (0.082 %) · longest run 194 trades (15 s) · over the limit 0
+   external     188 file(s) · ids 60,013,484 · missing 0 (0.000 %) · longest run 0 trades (0 s) · over the limit 0
+   2026-08-20 10:37 → 2026-09-18 10:46 (format 1.5.0, 26 file(s)): not measurable
+```
+
+Our own collection and a venue's published history are counted apart, because they answer
+different questions: the first how much our collector may have lost, the second whether the venue's record
+is complete. *Over the limit* counts the files whose loss amounts to a hole rather than reconnect
+noise — more than 1 % of a file's id span, or one run longer than five minutes; such a file carries
+the deficiency `missing_trades`. A stretch whose files carry no trade ids is **not measurable** and
+is named as such, never counted as complete. Like the version spans, the section is built at render
+time from the tick index.
+
 ## Signal Coverage Details
 
 The signal-source sibling of Data Coverage, keyed by `(data_sentiment_type, symbol)`.

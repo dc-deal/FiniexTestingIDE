@@ -155,6 +155,22 @@ recovered", both staleness contracts in ONE fast session driven by the
 
 **Runtime:** ~10 seconds (one shared session; includes the 2 s deliberate freeze).
 
+### test_external_history_replay.py
+
+A mock session over a venue's published history (`external_history_replay_test.json`, ETHUSD on
+2025-06-02, before our own collection began) reports what it read as a backtest does (#647). External
+data is not admitted by default, so the test admits it for its own run, as an operator widens
+`admitted_origin_classes`; a plain run of the profile is refused at that gate. Where the archive holds
+no external ETHUSD history for that day — a published dataset never carries it — the test is
+skipped, not failed.
+
+| Test | What it validates |
+|------|-------------------|
+| `test_external_data_is_reported_with_the_warmup_into_it` | `data_origin_external` names the venue's published history and the warmup that reached into it |
+| `test_what_the_files_lack_is_reported` | the deficiency finding for the missing quote (`data_no_quote`) |
+
+**Runtime:** ~7 seconds (one shared session).
+
 ### test_tick_outage_stress.py
 
 The #444 drill (`tick_outage_stress_test.json`): a PLANNED stale window on the tick source,

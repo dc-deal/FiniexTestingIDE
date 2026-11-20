@@ -264,6 +264,9 @@ class SimExecutiveSummary(AbstractBatchSummarySection):
             # no basis to report, and an empty line would read as an answer.
             if broker.price_bases:
                 print(f'{"":24}price basis: {broker.price_bases}')
+            # Whose data was read (#647): external marks a venue's published history
+            if broker.origin_classes:
+                print(f'{"":24}data origin: {broker.origin_classes}')
 
     def _render_first_failure(self, renderer: ConsoleRenderer):
         """

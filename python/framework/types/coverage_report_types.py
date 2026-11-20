@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.utils.time_utils import format_duration
@@ -66,6 +66,97 @@ class DataFormatVersionSpan:
     end_time: datetime
     file_count: int
     tick_count: int
+
+
+@dataclass
+class TradeIdGapSummary:
+    """
+    The venue's trade ids one origin's tick files of a symbol do not hold, summed over its files.
+
+    Args:
+        origin_class: Whose files these are — our collection, or a venue's published history
+        measured_files: Files whose trade ids were measured
+        span: Ids from each file's first to its last trade, summed
+        missing: Ids in those spans the files do not hold, summed
+        longest_run: Ids in the longest run of one file
+        longest_run_seconds: Event time around that run
+        files_over_limit: Files whose gaps amount to a hole (decision 7 of #561)
+    """
+    origin_class: str
+    measured_files: int
+    span: int
+    missing: int
+    longest_run: int
+    longest_run_seconds: float
+    files_over_limit: int
+
+
+@dataclass
+class TradeIdGapReport:
+    """
+    A symbol's missing trades per origin, and where they cannot be measured (#647).
+
+    Measured only where every trade carries its id (collector format 1.7.0 on, and a venue's
+    published history); a file without ids is named in an unmeasured span, never counted as
+    complete.
+
+    Args:
+        summaries: One per origin class with measured files, in the classes' declared order
+        unmeasured_spans: The stretches whose files carry no trade ids, by data format version
+    """
+    summaries: List[TradeIdGapSummary]
+    unmeasured_spans: List[DataFormatVersionSpan]
+
+
+@dataclass
+class MissingTradeRun:
+    """
+    Consecutive trades of the venue's list our files do not hold.
+
+    Args:
+        trades: How many trades the run holds
+        first_at: When its first trade executed, as the venue stamps it
+        last_at: When its last trade executed
+    """
+    trades: int
+    first_at: datetime
+    last_at: datetime
+
+
+@dataclass
+class TradeCompletenessResult:
+    """
+    Our files' trades against the venue's own trade list over one window (#647).
+
+    The venue's list, not the run of trade ids, says which trades there were: a venue may allocate
+    ids that never become public trades, so a missing id is an upper bound and a missing trade is a
+    fact.
+
+    Args:
+        broker_type: The broker
+        symbol: The symbol
+        start: The window's start, included
+        end: The window's end, excluded
+        our_trades: Trades our files hold in the window
+        venue_trades: Trades the venue published in the window; None where its list could not be read
+        missing_trades: The venue's trades our files lack; None where the list could not be read
+        extra_trades: Trades our files hold that the venue's list does not; None likewise
+        runs: The runs of missing trades, longest first
+        not_read_because: Why the venue's list was not read, '' where it was
+        not_measurable_because: Why our side cannot be compared — tick files in the window carry no
+            trade ids, so every venue trade would read as missing; '' where every file carries them
+    """
+    broker_type: str
+    symbol: str
+    start: datetime
+    end: datetime
+    our_trades: int
+    venue_trades: Optional[int]
+    missing_trades: Optional[int]
+    extra_trades: Optional[int]
+    runs: List[MissingTradeRun]
+    not_read_because: str = ''
+    not_measurable_because: str = ''
 
 
 @dataclass

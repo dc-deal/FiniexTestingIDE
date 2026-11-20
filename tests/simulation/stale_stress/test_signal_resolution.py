@@ -149,6 +149,22 @@ class TestThresholdIsAParameter:
         assert clean.stale_ticks == 0 and tight.stale_ticks > 0
 
 
+class TestTheMountRecordsWhatItRead:
+    """
+    A scenario records what it read, per input file (#647). The server clock rule is a TICK file's —
+    the rule its times were converted with — so the mount collects it over the tick files only, while
+    the origin classes cover the signal files too.
+    """
+
+    def test_one_clock_rule_per_tick_file_and_none_for_a_signal_file(self, summary):
+        scenario = summary.single_scenario_list[0]
+
+        assert scenario.data_format_versions, 'the scenario read tick files'
+        assert len(scenario.server_clock_rules) == len(scenario.data_format_versions)
+        assert len(scenario.origin_classes) > len(scenario.data_format_versions), \
+            'the signal files are inputs too, and carry no clock rule'
+
+
 @pytest.fixture(scope='module')
 def report(summary):
     """The signal report the batch's counters project into."""

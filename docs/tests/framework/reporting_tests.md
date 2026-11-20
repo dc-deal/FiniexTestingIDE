@@ -341,6 +341,12 @@ python -m pytest tests/framework/reporting/ -v
 
 Or via launch.json: `🧩 Pytest: Reporting (All)`.
 
+## `test_index_origin_summary.py` — whose data the index status shows (#647)
+
+The bar and tick index status print whose data an archive holds. For a symbol's bars: the origin
+classes and where our own collection takes over, or *not stamped* and no seam for bars rendered
+before the stamp. For its tick files: one line per origin class with its files and ticks.
+
 ## `test_scenario_details_origin.py` — which SCENARIO read what (#518)
 
 The ledger records per run; this row records per scenario, in the same encoding, so the two can

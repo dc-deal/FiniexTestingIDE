@@ -26,7 +26,9 @@ from python.data_management.index.index_entry_times import entry_time_bounds
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.store.abstract_store_index import store_index_filename
+from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.data_deficiency_types import DataDeficiency, TradeIdGaps
+from python.framework.types.data_origin_types import OriginFileCount
 from python.framework.types.import_types.tick_index_types import (
     TickIndexMethod,
     TickIndexRebuildReason,
@@ -861,6 +863,28 @@ class TickIndexManager:
             'end_time': entries[-1]['end_time'],
             'files': [e['file'] for e in entries]
         }
+
+    def get_symbol_origin_counts(self, broker_type: str, symbol: str) -> List[OriginFileCount]:
+        """
+        How many of a symbol's tick files, and ticks, carry each origin class (#647).
+
+        Args:
+            broker_type: Broker type identifier
+            symbol: Trading symbol
+
+        Returns:
+            One count per class present, in the classes' declared order; a value outside them last
+        """
+        counts: Dict[str, List[int]] = {}
+        for entry in self.index.get(broker_type, {}).get(symbol, []):
+            count = counts.setdefault(entry.get('origin_class', OriginClass.UNKNOWN.value), [0, 0])
+            count[0] += 1
+            count[1] += entry['tick_count']
+        declared = [origin.value for origin in OriginClass]
+        ordered = sorted(counts, key=lambda origin: (
+            declared.index(origin) if origin in declared else len(declared), origin))
+        return [OriginFileCount(origin_class=origin, files=counts[origin][0], ticks=counts[origin][1])
+                for origin in ordered]
 
     # =========================================================================
     # UTILITY METHODS

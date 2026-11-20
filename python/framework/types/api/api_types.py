@@ -251,6 +251,12 @@ class CoverageResponse(BaseModel):
     start: str          # ISO-8601 UTC
     end: str            # ISO-8601 UTC
     timeframes: list[str]
+    # Whose data the symbol's bars were rendered from (#647): `external` marks a venue's published
+    # history, the rest our own collection. Empty where the bar files predate the origin stamp
+    origin_classes: list[OriginClass] = []
+    # Where our own collection takes over from a venue's published history — the seam, ISO-8601 UTC.
+    # None where the bars hold no external history before collected data
+    collected_since: Optional[str] = None
 
 
 class BarResponse(BaseModel):

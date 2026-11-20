@@ -22,6 +22,8 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.store.abstract_store_index import store_index_filename
+from python.framework.types.config_types.data_origin_config_types import OriginClass
+from python.framework.types.data_origin_types import SymbolDataOrigin
 from python.framework.types.store_types import StoreId
 
 vLog = get_global_logger()
@@ -432,6 +434,29 @@ class BarsIndexManager:
         if not entry or not entry.get('collected_from'):
             return None
         return pd.Timestamp(entry['collected_from']).tz_convert('UTC').to_pydatetime()
+
+    def get_symbol_origin(self, broker_type: str, symbol: str) -> SymbolDataOrigin:
+        """
+        Whose data a symbol's bars were rendered from, over every timeframe (#647).
+
+        Each bar file carries the seam its ticks state, so the timeframes agree on it; should they
+        not, the earliest is taken.
+
+        Args:
+            broker_type: Broker the bars belong to
+            symbol: Trading symbol
+
+        Returns:
+            The origin classes in their declared order, and the seam
+        """
+        timeframes = self.get_available_timeframes(broker_type, symbol)
+        classes = {origin for timeframe in timeframes
+                   for origin in self.get_origin_classes(broker_type, symbol, timeframe)}
+        seams = [seam for seam in (self.get_collected_from(broker_type, symbol, timeframe)
+                                   for timeframe in timeframes) if seam is not None]
+        return SymbolDataOrigin(
+            origin_classes=[origin for origin in OriginClass if origin.value in classes],
+            collected_since=min(seams) if seams else None)
 
     def get_available_timeframes(self, broker_type: str, symbol: str) -> List[str]:
         """Get list of available timeframes for a symbol."""
