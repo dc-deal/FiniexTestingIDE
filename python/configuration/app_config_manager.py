@@ -296,6 +296,15 @@ class AppConfigManager:
         """
         return [list(command) for command in self._app_config.docs_search.extra_commands]
 
+    def get_docs_search_snapshot_stamps(self) -> Dict[str, str]:
+        """
+        Where a searched folder records when its contents were fetched.
+
+        Returns:
+            Folder → '<file>::<key>'; empty when no folder is a snapshot
+        """
+        return dict(self._app_config.docs_search.snapshot_stamps)
+
     # ============================================
     # Development Config
     # ============================================

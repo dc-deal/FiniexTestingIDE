@@ -7,6 +7,7 @@ the same ranking, then runs each configured extra command with the search term a
 """
 import json
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from python.cli.docs_search_cli import DocsSearchCli
@@ -112,3 +113,46 @@ class TestOneFolderAlone:
         out = capfd.readouterr().out
         assert 'MY_COLLECTION' in out
         assert out.index('MY_COLLECTION') < out.index('collection searched')
+
+
+class TestASnapshotSaysHowOldItIs:
+    """
+    A folder kept current from elsewhere — a snapshot — prints its age on its count line, so a copy
+    that stopped being kept current shows where it is read (`docs_search.snapshot_stamps`).
+    """
+
+    def _snapshot(self, root: Path, fetched_at: datetime) -> dict:
+        _write(root, 'top.md', 'The quokka ledger explains itself.')
+        (root / 'meta.json').write_text(
+            json.dumps({'fetched_at': fetched_at.strftime('%Y-%m-%dT%H:%M:%SZ')}), encoding='utf-8')
+        return {str(root): 'meta.json::fetched_at'}
+
+    def test_a_fresh_snapshot_prints_its_age(self, tmp_path: Path, capsys):
+        stamps = self._snapshot(tmp_path, datetime.now(timezone.utc) - timedelta(hours=2))
+
+        DocsSearchConsole(tmp_path, [], stamps).run_folder('quokka', 3)
+
+        out = capsys.readouterr().out
+        assert '(snapshot 2h' in out
+        assert 'stopped' not in out
+
+    def test_a_snapshot_older_than_a_day_is_flagged(self, tmp_path: Path, capsys):
+        stamps = self._snapshot(tmp_path, datetime.now(timezone.utc) - timedelta(hours=30))
+
+        DocsSearchConsole(tmp_path, [], stamps).run_folder('quokka', 3)
+
+        assert 'it has stopped being kept current' in capsys.readouterr().out
+
+    def test_a_folder_that_is_no_snapshot_prints_no_age(self, tmp_path: Path, capsys):
+        _write(tmp_path, 'top.md', 'The quokka ledger explains itself.')
+
+        DocsSearchConsole(tmp_path, [], {}).run_folder('quokka', 3)
+
+        assert 'snapshot' not in capsys.readouterr().out
+
+    def test_an_unreadable_stamp_is_said_not_guessed(self, tmp_path: Path, capsys):
+        _write(tmp_path, 'top.md', 'The quokka ledger explains itself.')
+
+        DocsSearchConsole(tmp_path, [], {str(tmp_path): 'meta.json::fetched_at'}).run_folder('quokka', 3)
+
+        assert 'snapshot age unknown' in capsys.readouterr().out

@@ -72,6 +72,21 @@ search after it. Its block is announced by the folder's name:
 
 The repository names none of these folders; only your own configuration does.
 
+**A folder kept current from elsewhere says how old it is.** Where such a folder is a snapshot that a
+service refreshes, `docs_search.snapshot_stamps` names the JSON file inside it and the key that
+records when it was fetched. Its block then carries the snapshot's age, and a snapshot older than a
+day is flagged — a refresh that stopped shows where the copy is read, not only where somebody looks:
+
+```json
+"docs_search": {
+  "snapshot_stamps": {"/path/to/my_snapshot": "meta.json::fetched_at"}
+}
+```
+
+```
+  1727 passages in my_snapshot, best 5   (snapshot 2h 51m old)
+```
+
 ---
 
 

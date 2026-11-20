@@ -73,8 +73,9 @@
     }
   },
   "docs_search": {
-    "_comment": "The terminal search (docs_search_cli.py) searches the documentation tree. Each entry here is one more command it runs afterwards, with the search term appended as the last argument - for collections a maintainer keeps outside the repository. Empty in a fresh clone.",
-    "extra_commands": []
+    "_comment": "The terminal search (docs_search_cli.py) searches the documentation tree. Each entry here is one more command it runs afterwards, with the search term appended as the last argument - for collections a maintainer keeps outside the repository. snapshot_stamps maps such a folder to '<file>::<key>', the JSON file inside it and the key holding when its contents were fetched; the folder's search then prints the snapshot's age. Both empty in a fresh clone.",
+    "extra_commands": [],
+    "snapshot_stamps": {}
   },
   "autotrader": {
     "tick_source": {

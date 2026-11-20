@@ -7,14 +7,22 @@ by the same search, followed by the output of each further search command config
 installation (`app_config.json::docs_search.extra_commands`). Collections that cannot live in the
 repository are searched there, so the repository never has to name them. Such a command can be this
 search itself, pointed at one folder (`--root`): it then searches that folder alone, one level deep,
-and runs no extra search of its own.
+and runs no extra search of its own. Where the folder is a snapshot kept current from elsewhere, its
+count line says how old the snapshot is, so a copy that stopped being kept current shows where it is
+read (`docs_search.snapshot_stamps`).
 """
+import json
 import os
 import subprocess
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from python.framework.docs_search.docs_search_index import DocsSearchIndex
+from python.framework.utils.time_utils import format_duration, parse_iso_datetime
+
+# A snapshot kept current every few hours that is older than this has stopped being kept current
+_SNAPSHOT_STALE_AFTER = timedelta(days=1)
 
 
 class DocsSearchConsole:
@@ -24,6 +32,7 @@ class DocsSearchConsole:
     Args:
         docs_root: The documentation tree
         extra_commands: Further search commands, each run with the term appended
+        snapshot_stamps: Folder → '<file>::<key>' where a snapshot folder records when it was fetched
     """
 
     # One search prints several blocks under each other, and several searches scroll into one
@@ -32,9 +41,11 @@ class DocsSearchConsole:
     _HEAVY = '\u2550' * 78
     _LIGHT = '\u2500' * 78
 
-    def __init__(self, docs_root: Path, extra_commands: List[List[str]]):
+    def __init__(self, docs_root: Path, extra_commands: List[List[str]],
+                 snapshot_stamps: Optional[Dict[str, str]] = None):
         self._docs_root = docs_root
         self._extra_commands = extra_commands
+        self._snapshot_stamps = snapshot_stamps or {}
 
     def run(self, query: str, hits: int) -> int:
         """
@@ -93,7 +104,8 @@ class DocsSearchConsole:
             print(f'  {heading} \u2014 {index.get_passage_count()} passages, best {len(found)}\n')
         else:
             folder = Path(os.path.relpath(self._docs_root)).as_posix()
-            print(f'  {index.get_passage_count()} passages in {folder}, best {len(found)}\n')
+            print(f'  {index.get_passage_count()} passages in {folder}, best {len(found)}'
+                  f'{self._snapshot_age()}\n')
         for score, passage in found:
             # Relative to where the search was started — in the workspace that is the path an
             # editor's terminal turns into a link.
@@ -104,6 +116,32 @@ class DocsSearchConsole:
             print('  nothing matched')
         if unknown:
             print(f'\n  no document carries: {", ".join(unknown)}')
+
+    def _snapshot_age(self) -> str:
+        """
+        How old the searched folder's snapshot is, where the folder is declared one.
+
+        The age is the wall clock against the instant the snapshot recorded — a point in time
+        compared with now, the only clock both share.
+
+        Returns:
+            The suffix for the count line; '' where the folder is no declared snapshot
+        """
+        stamp = next((value for folder, value in self._snapshot_stamps.items()
+                      if Path(folder).resolve() == self._docs_root.resolve()), None)
+        if stamp is None:
+            return ''
+        file_name, _, key = stamp.partition('::')
+        try:
+            fetched_at = parse_iso_datetime(
+                json.loads((self._docs_root / file_name).read_text(encoding='utf-8'))[key])
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            return f'   (snapshot age unknown: {error})'
+        age = datetime.now(timezone.utc) - fetched_at
+        text = f'snapshot {format_duration(max(age.total_seconds(), 0.0))} old'
+        if age > _SNAPSHOT_STALE_AFTER:
+            return f'   ⚠️  ({text} — it has stopped being kept current)'
+        return f'   ({text})'
 
     def _run_extra_search(self, command: List[str], query: str) -> None:
         """

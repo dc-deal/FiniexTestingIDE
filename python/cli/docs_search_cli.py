@@ -36,7 +36,8 @@ class DocsSearchCli:
             Process exit code
         """
         if root is not None:
-            return DocsSearchConsole(root, []).run_folder(query, hits)
+            stamps = AppConfigManager().get_docs_search_snapshot_stamps()
+            return DocsSearchConsole(root, [], stamps).run_folder(query, hits)
         extra_commands = AppConfigManager().get_docs_search_extra_commands()
         return DocsSearchConsole(DOCS_ROOT, extra_commands).run(query, hits)
 
