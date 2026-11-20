@@ -107,6 +107,8 @@ LEDGER_FIGURES: Dict[str, FigureDeclaration] = {
     'origin_evidence_grades': FigureDeclaration(Reduction.UNION),
     'price_bases': FigureDeclaration(Reduction.UNION),
     'features_beyond_venue': FigureDeclaration(Reduction.UNION),
+    'server_clock_rules': FigureDeclaration(Reduction.UNION),
+    'external_warmup_timeframes': FigureDeclaration(Reduction.UNION),
 
     # --- flows and counters: the rows partition them, so adding is correct
     # The first of them are what the row of a run that measured nothing leaves empty — an error row

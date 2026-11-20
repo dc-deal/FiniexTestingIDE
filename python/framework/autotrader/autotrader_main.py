@@ -1579,7 +1579,8 @@ class AutotraderMain:
             result, self._config,
             uncommitted_code_allowed=self._uncommitted_code_allowed,
             code_identity=self._code_identity,
-            readings_note=self._readings_note).validate()
+            readings_note=self._readings_note,
+            replayed_scenario=self._replayed_scenario).validate()
         self._generate_reports(result)
         return result
 

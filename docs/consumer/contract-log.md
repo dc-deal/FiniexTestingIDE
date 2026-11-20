@@ -33,6 +33,30 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 59 — 2026-11-19 (#647)
+
+What a run read says more, and one count says what its name says: a file without a stamp.
+
+- [Sweeps](/api/v1/docs/sweeps): **`unstamped_input_files`** on a combination counts the files whose
+  origin no stamp attests — evidence grade other than `stamped` — whatever their class. A venue's
+  published history carries the stamp of the converter that brought it in, so it no longer counts.
+  A changed meaning: a row with `logic_version` 21 or older counted the files that were not
+  production data stamped by their producer, so every external file counted there.
+- [Sweeps](/api/v1/docs/sweeps): **`server_clock_rules`** (new) — the server clock rules the
+  combination's tick files' times were converted with, comma-joined, such as `UTC+0h`; empty where no
+  file stated one.
+- [Sweeps](/api/v1/docs/sweeps): **`external_warmup_timeframes`** (new) — the bar timeframes whose
+  warmup reached back before our own collection, into a venue's published history; empty where none
+  did.
+- [Warnings and errors](/api/v1/docs/warnings-errors): a mock session reports what its replay read,
+  as a backtest does — `data_origin_external` for a venue's published history,
+  `data_origin_unstamped` for files no producer stamped, and what the files lack.
+
+**A row recorded before this contract** carries `logic_version` 21 or older, the old meaning of
+`unstamped_input_files`, and empty values in the two new fields.
+
+Two fields added, one meaning changed; nothing removed.
+
 ## Version 58 — 2026-11-16 (#461)
 
 An AutoTrader session runs on a timeline, as a backtest does since version 57: it waits for the next

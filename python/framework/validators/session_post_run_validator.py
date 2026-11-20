@@ -15,6 +15,10 @@ budget while a session has only what it observed.
 Observed feed outages are deliberately NOT a check: they are facts and belong to the
 feed-stability section, which states experience where this states intent.
 
+What a replayed session READ is reported as the sim reports it (#647): external data and data a
+producer did not stamp, and what the files lack. Only a mock session replays archive files; a
+live-adapter session reads a socket and takes its warmup from the venue, so it has nothing to say.
+
 Real orders from uncommitted code (#551) are decided at STARTUP, by the guard that lets them
 through under `--allow-dirty`. This validator receives that verdict rather than deriving it a
 second time — the same shape as the stress-test check, which also reports a start-time fact so a
@@ -28,6 +32,7 @@ from python.framework.reporting.builders.portfolio_report_builder import usable_
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.run_origin_types import CodeIdentity
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import (
     Severity,
     ValidationDomain,
@@ -35,6 +40,8 @@ from python.framework.types.validation_types import (
     ValidationResult,
 )
 from python.framework.validators.shared_advisory_checks import (
+    check_data_deficiencies,
+    check_data_origin,
     check_order_event_stream,
     check_stress_test,
     check_unversioned_code,
@@ -62,6 +69,7 @@ class SessionPostRunValidator:
         uncommitted_code_allowed: bool = False,
         code_identity: Optional[CodeIdentity] = None,
         readings_note: str = '',
+        replayed_scenario: Optional[SingleScenario] = None,
     ):
         """
         Initialize the session post-run validator.
@@ -76,12 +84,15 @@ class SessionPostRunValidator:
                 baseline its carry-over held, as its start logged it; '' when it continued them
                 or had a reason nobody needs told — a first run, `persist_baseline` off, a new
                 deployment (#626)
+            replayed_scenario: The scenario a mock session replayed from the archive, with what its
+                mount read; None for a live-adapter session, which reads a socket
         """
         self._result = result
         self._config = config
         self._uncommitted_code_allowed = uncommitted_code_allowed
         self._code_identity = code_identity
         self._readings_note = readings_note
+        self._replayed_scenario = replayed_scenario
 
     def validate(self) -> None:
         """Run all post-run advisory checks; append a run-scoped ValidationResult per finding."""
@@ -92,6 +103,8 @@ class SessionPostRunValidator:
         self._check_order_event_stream()
         self._check_usable_funds()
         self._check_carried_readings()
+        self._check_data_origin()
+        self._check_data_deficiencies()
 
     def _add_finding(self, finding: ValidationFinding) -> None:
         """
@@ -111,6 +124,20 @@ class SessionPostRunValidator:
         finding = check_stress_test(
             [(name, settings.stress_test_config)], _SESSION_UNIT_LABEL)
         if finding is not None:
+            self._add_finding(finding)
+
+    def _check_data_origin(self) -> None:
+        """Report external and not producer-stamped files the replay read (shared with the sim)."""
+        if self._replayed_scenario is None:
+            return
+        for finding in check_data_origin([self._replayed_scenario]):
+            self._add_finding(finding)
+
+    def _check_data_deficiencies(self) -> None:
+        """Say what the files the replay read LACK (shared with the sim)."""
+        if self._replayed_scenario is None:
+            return
+        for finding in check_data_deficiencies([self._replayed_scenario]):
             self._add_finding(finding)
 
     def _check_order_event_stream(self) -> None:

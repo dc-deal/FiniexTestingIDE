@@ -662,8 +662,9 @@ def _consumption_scenario(features: List[OrderFeature]) -> Any:
     Returns:
         The stand-in
     """
-    return SimpleNamespace(data_format_versions=[], origin_classes=[], origin_evidence_grades=[],
-                           price_bases=[], features_beyond_venue=features)
+    return SimpleNamespace(data_format_versions=[], server_clock_rules=[], origin_classes=[],
+                           origin_evidence_grades=[], price_bases=[], features_beyond_venue=features,
+                           external_warmup_timeframes=[])
 
 
 class TestALiveExecutorHoldsNoLevel:

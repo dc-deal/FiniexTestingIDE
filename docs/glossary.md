@@ -75,6 +75,12 @@ or a profile (`primary_activity_metric`, a bar's tick count). See
 of the framework uses. Chosen by `adapter_type`: `mock` for the broker-neutral `MockBrokerAdapter`,
 `live` for a real venue's adapter. See [Adapter Development](user_guides/adapter/adapter_development_guide.md).
 
+**admissible for a parity measurement** (`is_admissible_for_measurement`) — An archived file a parity
+measurement may read: data origin `production` with the *evidence grade* `stamped`, the producer's
+own stamp. External, development, unknown and attested data never are, however complete. Not the
+connection ladder's `inadmissible`, the outcome of a call a run cannot start or continue without.
+See [Data Provenance](architecture/data_provenance.md).
+
 **adopted** (`adopted` order event, `orders_adopted`) — An order a previous session sent and this
 one took over at its start: a resting order found at the venue under this bot's key. Counted apart from `orders_submitted`, which is what this
 session sent; an execution rate divides by both. See *carry-over*.
@@ -113,6 +119,11 @@ idle pass, and not a *liveness ping*, which goes to the monitor. See
 **archive** (tick archive) — The imported tick data a backtest and a mock session replay. The one
 part of the application that stays backward compatible: data from every collector format ever
 accepted is still read. See [Data Import](data_pipeline/data_import_pipeline.md).
+
+**attestation** (`attestations` in `configs/data_origins.json`) — A dated claim we recorded about
+archive files written before their producer could stamp its own identity, keyed on the archive and
+the last format version written without one. A file it covers has the *evidence grade* `attested`,
+never `stamped`. See [Data Provenance](architecture/data_provenance.md).
 
 **AutoTrader session** — One start of an AutoTrader profile: one run, run type `autotrader`, one
 run unit. A mock session, a dry run or a real-money session. See
@@ -234,12 +245,12 @@ venue message — that waited behind a newer arrival of its slice, mostly becaus
 and a replay never clips. The session's `clipping_ratio` is its clipped ticks over all its ticks. See
 *backlog coalescing*, and [Observability](autotrader/autotrader_observability.md#clipping-monitor-197).
 
+**close type** (`close_type` on an order-history row and a trade) — Whether a close took the whole
+position (`full`) or part of it (`partial`). Set once the close fills; empty on every other row.
+
 **closed** (a run) — A run that wrote its *footprint*, its very last step: everything it was going
 to write is written. Not *completed*, which means its results reached the ledger — the step just
 before. See [Store Entry Members](architecture/store_entry_members.md#the-footprint-a-run-closes-with).
-
-**close type** (`close_type` on an order-history row and a trade) — Whether a close took the whole
-position (`full`) or part of it (`partial`). Set once the close fills; empty on every other row.
 
 **code stand** (`code_stand` on a session's ledger row, `code_stands` on a deployment) — Which code
 a session started on, per repository: the commit, any uncommitted changes on it, the commit's message
@@ -322,7 +333,7 @@ the operating system's home directory (`~`), where the list of what runs on the 
 [Data Storage Layout](architecture/data_storage_layout.md).
 
 **data origin** — Which kind of source produced an archived file: `origin_class` (`production`,
-`development`, `unknown`, `external`) with its evidence grade, stamped at import and carried into
+`development`, `unknown`, `external`) with its *evidence grade*, stamped at import and carried into
 every run's consumption record. Not the *broker*. See [Data Provenance](architecture/data_provenance.md).
 
 **data slice** (`DataSliceEvent`) — The ticks of one *instant*, as one event of the loop core: in a
@@ -425,10 +436,17 @@ only on a line written before the session's first market data — an order adopt
 the `session_start` *broker truth* line. A point in time — not the
 *execution time*, which is a duration.
 
+**evidence grade** (`origin_evidence`; `origin_evidence_grades` on a run) — How well an archived
+file's *data origin* is known: `stamped` (its producer wrote its identity into the file), `attested`
+(an *attestation* covers it) or `unknown` (nobody has said anything). Not how good the data is. Its
+`unknown` is not the origin class `unknown`, which means no producer could be named, and a grade
+is not the *evidence runs* of a certificate. A run counts its files without a stamp in
+`unstamped_input_files`. See [Data Provenance](architecture/data_provenance.md).
+
 **evidence runs** (`evidence_runs` on a study certificate) — The runs a release certificate rests on,
 each with its run id, the commit its code came from and its start. A declared release fails when
 it is generated on another commit than theirs, and its `valid_until` counts from the first one's
-start. Not the *evidence grade* of a run's data (see *data origin*). See
+start. Not the *evidence grade* of a run's data. See
 [Field Study](tests/live_field_study/field_study_guide.md#certificate).
 
 **execution time** — How long a run or one of its units took on the *wall clock*:
@@ -484,16 +502,16 @@ rebuilt in full once. Not the *code identity* of a run, and not an `IDENTITY` co
 two *price lines*, of one series, such as the channel between the upper and lower Bollinger bands.
 Never between a plot and a price line. See [Indicator series](consumer/indicator-series.md).
 
-**first start** (`--first-start`, served as `origin.first_start`) — A start declared the bot's
-first: the one way a session trading real money starts without a carry-over to continue. A
-declared first start that finds a usable carry-over is refused. See
-[Unattended Operation](autotrader/unattended_operation.md).
-
 **figure** — A number a report serves about a run or a part of it: a P&L, a count, a drawdown, a
 rate. What a *fold table* declares per figure is how it combines when several rows are read as one.
 Not a *field*, which is any attribute a served model carries — an id and a label are fields, not
 figures — and not the robustness or ranking *metric*, the one figure a sweep or a robustness run
 is judged by. See [Reporting Pipeline](architecture/reporting_pipeline.md).
+
+**first start** (`--first-start`, served as `origin.first_start`) — A start declared the bot's
+first: the one way a session trading real money starts without a carry-over to continue. A
+declared first start that finds a usable carry-over is refused. See
+[Unattended Operation](autotrader/unattended_operation.md).
 
 **fixture** — Never used alone. *Fixture run* (`run_purpose: fixture`): a run constructed to show
 something — every run a test starts, and every run a consumer pins; its numbers are built, not
@@ -614,14 +632,14 @@ session* or *real-money session*; for the other senses see *compute basis*, *liv
 was real and `synthetic` when it was generated — not the *data origin* entry, which names the
 class of instance that produced an archived file.
 
-**live-adapter session** — An AutoTrader session on a real venue's adapter: a dry run or a
-real-money session.
-
 **live telemetry** — The real-time view of a run while it runs, in both pipelines: the progress
 display of a backtest batch and the dashboard of an AutoTrader session, fed by the stats a run
 exports as it goes. Here *live* means "as it happens", which is why the code under this name
 (`live_progress_display`, `live_stats_*`, `process_live_export`) belongs to every kind of run. See
 [Live Telemetry](architecture/live_telemetry_architecture.md).
+
+**live-adapter session** — An AutoTrader session on a real venue's adapter: a dry run or a
+real-money session.
 
 **live trading** — A real-money session. Nothing else is called live trading.
 
@@ -759,7 +777,8 @@ its start, served on the run list and the activity list as `origin_channel`, `or
 `origin_principal` and `origin_host`. The word
 keeps this one meaning: the configuration directory row's `origin` (where a file lives), a
 feed-health episode's `origin` (real or stress-injected) and the `origin_classes` /
-`origin_evidence_grades` of a run's data (see *data origin*) are being renamed (#581, #582). See
+`origin_evidence_grades` of a run's data (see *data origin* and *evidence grade*) are being renamed
+(#581, #582). See
 [Run Origin & Code Identity](architecture/run_origin_and_code_identity.md).
 
 **own exit** · **own level** (`OwnExitLevels`, `close_position(..., exit=OwnExit(...))`) — A stop
@@ -813,13 +832,13 @@ processor is the machine doing its work, while memory that runs out is the momen
 system ends a process. Not a log level, and not the machine's *host* identity (see
 [Asking the server about itself](consumer/server.md)).
 
+**price basis** — Which price a bar was rendered from, stamped on the bar file: the traded price
+for an order-driven venue, the mid for a quote-driven one. See [Market Model](architecture/market_model.md).
+
 **price · mid · last** — `tick.price` is what the market trades at: the traded price where the
 venue prints one, else the mid. The *mid* is `(bid + ask) / 2`; *last* is the traded price, absent
 (never zero) where the venue prints none. Strategies read the price, valuation reads the mid. See
 [Market Model](architecture/market_model.md).
-
-**price basis** — Which price a bar was rendered from, stamped on the bar file: the traded price
-for an order-driven venue, the mid for a quote-driven one. See [Market Model](architecture/market_model.md).
 
 **price formation** — How a venue forms its prices: `order_driven` (a central order book, every
 trade prints) or `quote_driven` (a dealer quotes both sides, nothing prints). See

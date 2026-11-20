@@ -11,7 +11,6 @@ pipeline makes no decisions — the verdict ("does this warrant a warning?") liv
 reads the structured result. See docs/architecture/warnings_errors_tiers.md.
 """
 
-from collections import Counter
 from datetime import datetime, timezone
 from typing import Dict, Optional, Tuple
 
@@ -26,13 +25,7 @@ from python.framework.reporting.builders.worker_decision_breakdown_builder impor
 )
 from python.framework.types.api.report_types import WalkForwardClass
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.config_types.robustness_config_types import RobustnessMetric
-from python.framework.types.data_deficiency_types import (
-    DEFICIENCY_DECLARATIONS,
-    DataDeficiency,
-)
-from python.framework.types.data_origin_types import is_admissible_for_measurement
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.run_origin_types import CodeIdentity
 from python.framework.types.scenario_types.scenario_set_performance_types import (
@@ -48,6 +41,8 @@ from python.framework.types.validation_types import (
 )
 from python.framework.utils.version_utils import parse_version
 from python.framework.validators.shared_advisory_checks import (
+    check_data_deficiencies,
+    check_data_origin,
     check_order_event_stream,
     check_stress_test,
     check_unversioned_code,
@@ -202,110 +197,14 @@ class PostRunValidator:
             f'    python python/cli/tick_index_cli.py rebuild'))
 
     def _check_data_origin(self) -> None:
-        """
-        Report how much of what this run read carries no production stamp of its own.
-
-        One finding for the whole run, deliberately. The per-scenario gate decides whether a
-        scenario may run at all; this measures the distance to a state where a parity
-        comparison is possible, and that distance is a property of the archive rather than of
-        any one scenario. Reported as a count rather than a verdict: the data is usable, and it
-        is not comparable, which are two different sentences.
-
-        It stays silent once every file read carries a producer's own stamp — which is the
-        state the thirty-day run needs and the only one that says nothing.
-        """
-        total_files = 0
-        unstamped_files = 0
-        external_files = 0
-        external_scenarios = set()
-        for scenario in self._batch.single_scenario_list:
-            for origin_class, evidence in zip(scenario.origin_classes,
-                                              scenario.origin_evidence_grades):
-                total_files += 1
-                # A venue's published history IS stamped — by the converter that brought it in —
-                # so it is said in a finding of its own rather than counted as unstamped, where
-                # it would contradict that finding beside it.
-                if origin_class == OriginClass.EXTERNAL.value:
-                    external_files += 1
-                    external_scenarios.add(scenario.name)
-                    continue
-                # Asked of the shared rule rather than spelled out here. It decides whether
-                # a measurement may use a file, and a second copy of that sentence would
-                # eventually answer a different question than the first — with the copy
-                # nobody reads being the one that decays.
-                if not is_admissible_for_measurement(origin_class, evidence):
-                    unstamped_files += 1
-
-        # A warmup reaching back into a venue's published history needs no admission — the
-        # ticks traded on are what admission guards — so it is said here rather than refused.
-        warmup_scenarios = sorted(
-            f'{scenario.name} ({", ".join(scenario.external_warmup_timeframes)})'
-            for scenario in self._batch.single_scenario_list
-            if scenario.external_warmup_timeframes)
-        if external_files:
-            lines = [
-                f'EXTERNAL DATA — {external_files} of {total_files} input file(s) are a venue\'s '
-                f'published history, not recorded by our collectors',
-                '  → never admissible for a parity measurement',
-                f'  → scenarios: {", ".join(sorted(external_scenarios))}']
-        elif warmup_scenarios:
-            lines = [
-                'EXTERNAL DATA — the warmup history reached back before our collection, into a '
-                'venue\'s published history',
-                '  → the ticks traded on are our own; the indicators started from bars rendered '
-                'from external ticks']
-        else:
-            lines = []
-        if warmup_scenarios:
-            lines.append(f'  → warmup from external history: {", ".join(warmup_scenarios)}')
-        if lines:
-            self._add('data_origin_external', ValidationDomain.DATA, '\n'.join(lines))
-
-        if unstamped_files == 0:
-            return
-
-        self._add('data_origin_unstamped', ValidationDomain.DATA, (
-            f'Data origin not producer-stamped for {unstamped_files}/{total_files} file(s) — '
-            f'usable, and NOT comparable\n'
-            f'  → a parity measurement reads only data a producer stamped itself\n'
-            f'  → docs/architecture/data_provenance.md'))
+        """Report external and not producer-stamped input files (shared with the AutoTrader check)."""
+        for finding in check_data_origin(self._batch.single_scenario_list):
+            self._add_finding(finding)
 
     def _check_data_deficiencies(self) -> None:
-        """
-        Say once per run what the data this run read LACKS — counted, never repeated (#561).
-
-        One finding per deficiency present, over every input file of every scenario, with the
-        files grouped by where they came from: the same lack has a different reason in a
-        venue's published history than in a file our collector wrote under an older format.
-        A standing condition is still reported on every run, because dropping it would make a
-        run on complete data and one on deficient data look alike — but as one line with its
-        count, its explanation living in the check catalog. This replaces the spreadless
-        advisory, which guessed the missing quote from venue and format version and so stayed
-        silent for converted history declaring format 1.7.0.
-        """
-        total_files = 0
-        found: Dict[DataDeficiency, Counter] = {}
-        for scenario in self._batch.single_scenario_list:
-            versions = scenario.data_format_versions
-            for position, (origin_class, deficiencies) in enumerate(
-                    zip(scenario.origin_classes, scenario.data_deficiencies)):
-                total_files += 1
-                group = _input_group(origin_class, versions[position] if position < len(versions) else None)
-                for deficiency in deficiencies:
-                    found.setdefault(deficiency, Counter())[group] += 1
-
-        for deficiency in DataDeficiency:
-            groups = found.get(deficiency)
-            # `synthetic` is said before the run, per scenario, where both pipelines mount
-            # their signals — an AutoTrader session has no post-run counter of this kind
-            if not groups or deficiency == DataDeficiency.SYNTHETIC:
-                continue
-            declaration = DEFICIENCY_DECLARATIONS[deficiency]
-            breakdown = ' · '.join(f'{count} {group}' for group, count in sorted(groups.items()))
-            self._add(declaration.check, ValidationDomain.DATA, (
-                f'{declaration.title} — {sum(groups.values())} of {total_files} input file(s): '
-                f'{declaration.consequence}\n'
-                f'  → {breakdown}'))
+        """Say once per run what the data read LACKS (shared with the AutoTrader check)."""
+        for finding in check_data_deficiencies(self._batch.single_scenario_list):
+            self._add_finding(finding)
 
     def _check_modelled_spread(self) -> None:
         """
@@ -648,21 +547,3 @@ class PostRunValidator:
             inter_tick_intervals_ms=pd.inter_tick_intervals_ms,
             gap_threshold_s=pd.gap_threshold_s,
             ticks_total=pd.ticks_total)
-
-
-def _input_group(origin_class: str, data_format_version: Optional[str]) -> str:
-    """
-    Name the group an input file is counted in, for a deficiency finding's breakdown.
-
-    Args:
-        origin_class: The file's resolved origin class
-        data_format_version: The tick file's declared format, None for a signal file
-
-    Returns:
-        'external', 'collected at format X', or 'signal'
-    """
-    if origin_class == OriginClass.EXTERNAL.value:
-        return 'external'
-    if data_format_version is None:
-        return 'signal'
-    return f'collected at format {data_format_version}'

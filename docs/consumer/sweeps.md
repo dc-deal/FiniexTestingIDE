@@ -171,9 +171,14 @@ that before trusting the order:
 - `input_plane` · `data_format_versions` · `origin_classes` · `origin_evidence_grades` ·
   `price_bases` — what kind of data the run read, over all its scenarios, as
   [scenario details](/api/v1/docs/scenario-details) says it per scenario; `input_files` counts the
-  files it read and `unstamped_input_files` those that were not production data stamped by their
-  producer, which a measurement may not rest on. They say what kind of data and how much, never
-  which files. `features_beyond_venue` names the order features the run was allowed beyond what its
+  files it read and `unstamped_input_files` those whose origin no stamp attests, whatever their
+  class. A venue's published history carries its converter's stamp and does not count there, but no
+  measurement may rest on it either: a parity measurement reads only production data its producer
+  stamped. On a row with `logic_version` 21 or older the count held the files that were not
+  production data stamped by their producer. `server_clock_rules` names the server clock rules the
+  tick files' times were converted with, empty where no file stated one, and
+  `external_warmup_timeframes` the bar timeframes whose warmup reached back into a venue's published
+  history. They say what kind of data and how much, never which files. `features_beyond_venue` names the order features the run was allowed beyond what its
   venue's API holds, empty for every other row. Empty, and the counts null, on a row written before they existed.
 - `rendered_config_id` · `broker_config_id` — what the combination ran with: the run-config
   store's ids of its rendered scenario set and of the broker configuration it traded under,

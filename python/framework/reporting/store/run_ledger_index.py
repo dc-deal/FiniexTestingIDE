@@ -150,7 +150,14 @@ class RunLedgerIndex(AbstractStoreIndex):
     # from its header's code identity. Appended, no existing value changes; an older fragment
     # reads back None: no stand, never a change. Nothing is back-filled, because nothing needs the
     # old rows to say more.
-    LOGIC_VERSION: int = 21
+    # 21 → 22 (contract 59, #647): `unstamped_input_files` counts the files whose origin no stamp
+    # attests — evidence grade other than `stamped` — whatever their class. A fragment written
+    # before this version keeps the old meaning, the files not production-and-stamped, so every
+    # stamped external file counts there; its `logic_version` says which, and the sweep ranking's
+    # mixed-version advisory flags a ranking over both generations. `server_clock_rules`
+    # and `external_warmup_timeframes` appended; an older fragment reads them back ''. Nothing is
+    # back-filled: the old count is a different measure, not a wrong one.
+    LOGIC_VERSION: int = 22
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

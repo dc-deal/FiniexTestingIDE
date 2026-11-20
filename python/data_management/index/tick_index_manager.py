@@ -45,7 +45,7 @@ vLog = get_global_logger()
 # by nothing; giving it a read path is what makes a column addition safe to deploy.
 # The proper mechanism is `AbstractStoreIndex.LOGIC_VERSION`, which these three legacy managers
 # do not have — adopting it is #583's, and this is the stopgap until then.
-INDEX_SCHEMA_VERSION = b'2.5'
+INDEX_SCHEMA_VERSION = b'2.6'
 
 # How many file checks an update runs at once. A check is one stat; on a mounted drive each waits
 # milliseconds and in parallel the waits overlap — measured 2026-11-09 on this container's bridged
@@ -462,6 +462,12 @@ class TickIndexManager:
             b'origin_class', b'unknown').decode('utf-8')
         origin_evidence = custom_metadata.get(
             b'origin_evidence', b'unknown').decode('utf-8')
+        # The server clock rule the importer converted the file's times with (#562), e.g.
+        # 'America/New_York+7h'. None where the header states none: a file imported before the
+        # rule was written down says nothing, and a guessed rule would claim a conversion nobody
+        # recorded
+        server_clock_rule = custom_metadata.get(b'server_clock_rule')
+        server_clock_rule = server_clock_rule.decode('utf-8') if server_clock_rule else None
         # Read from the producer's VERBATIM block rather than from a stamp of its own. The
         # three values above are stamped because `class` and `evidence` are JUDGEMENTS that
         # must never be re-derived; the host is neither judged nor decided on, so a second
@@ -514,6 +520,7 @@ class TickIndexManager:
             'origin_collected_on': origin_collected_on,
             'origin_class': origin_class,
             'origin_evidence': origin_evidence,
+            'server_clock_rule': server_clock_rule,
             'deficiencies': measurement.deficiencies,
             'trade_id_gaps': measurement.trade_id_gaps,
         }
@@ -631,6 +638,8 @@ class TickIndexManager:
                         'origin_class': entry.get('origin_class', 'unknown'),
                         'origin_evidence': entry.get('origin_evidence', 'unknown'),
                         'origin_collected_on': entry.get('origin_collected_on', ''),
+                        # '' is the storage form of None: no rule stated in the file's header
+                        'server_clock_rule': entry.get('server_clock_rule') or '',
                         'deficiencies': ','.join(
                             deficiency.value for deficiency in entry.get('deficiencies', [])),
                         'trade_id_gaps': (
@@ -649,7 +658,7 @@ class TickIndexManager:
             'anchor_resyncs', 'anchor_max_correction_ms',
             'statistics', 'sessions', 'data_format_version',
             'origin_instance_id', 'origin_collected_on', 'origin_class',
-            'origin_evidence', 'deficiencies', 'trade_id_gaps',
+            'origin_evidence', 'server_clock_rule', 'deficiencies', 'trade_id_gaps',
         ]
         df = pd.DataFrame(rows, columns=columns) if rows else pd.DataFrame(
             columns=columns)
@@ -762,6 +771,7 @@ class TickIndexManager:
                 # Written by every index of this schema version, so no tolerance is needed:
                 # an older index is rebuilt before it is read (_schema_outdated)
                 'processed_at': row['processed_at'],
+                'server_clock_rule': row['server_clock_rule'] or None,
                 'deficiencies': [
                     DataDeficiency(value) for value in (row['deficiencies'] or '').split(',')
                     if value],

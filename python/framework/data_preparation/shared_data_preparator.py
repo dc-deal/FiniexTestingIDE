@@ -280,6 +280,10 @@ class SharedDataPreparator:
             )
             scenario.data_format_versions = [
                 entry.get('data_format_version', 'unknown') for entry in overlapping]
+            # Tick files only, like the format version: the rule says how a TICK file's times
+            # were converted, and a signal file has none to state
+            scenario.server_clock_rules = [
+                entry.get('server_clock_rule') for entry in overlapping]
             # Ticks AND signals in one list, because the question the gate asks is about
             # everything this scenario read, not about one archive. A run that consumed
             # development SIGNAL data is exactly as incomparable as one that consumed

@@ -22,6 +22,7 @@ from python.framework.reporting.builders.deployment_history_builder import (
     build_deployment_histories,
     deployment_code_summary,
 )
+from python.framework.reporting.store.run_ledger_index import RunLedgerIndex
 from python.framework.reporting.store.run_results_ledger import (
     LEDGER_COLUMNS,
     RUN_END_COLUMNS,
@@ -306,7 +307,8 @@ def test_what_a_run_consumed_reaches_the_row(tmp_ledger, make_run_summary, make_
     prov = make_provenance(
         run_id='r1', input_plane='archive', data_format_versions='1.5.0,1.7.0',
         origin_classes='production', origin_evidence_grades='attested,stamped',
-        input_files=41, unstamped_input_files=3, price_bases='order_driven')
+        input_files=41, unstamped_input_files=3, price_bases='order_driven',
+        server_clock_rules='America/New_York+7h', external_warmup_timeframes='D1')
     tmp_ledger.append(make_run_summary(), prov)
 
     row = tmp_ledger.read().iloc[0]
@@ -317,6 +319,20 @@ def test_what_a_run_consumed_reaches_the_row(tmp_ledger, make_run_summary, make_
     assert row['input_files'] == 41
     assert row['unstamped_input_files'] == 3
     assert row['price_bases'] == 'order_driven'
+    assert row['server_clock_rules'] == 'America/New_York+7h'
+    assert row['external_warmup_timeframes'] == 'D1'
+
+
+def test_the_clock_rules_and_the_external_warmup_read_back_typed(tmp_ledger, make_run_summary,
+                                                                 make_provenance):
+    """The two #647 columns reach the served row, and the row says which ledger version wrote it."""
+    tmp_ledger.append(make_run_summary(), make_provenance(
+        run_id='r_647', server_clock_rules='UTC+0h', external_warmup_timeframes='D1,H4'))
+
+    row = tmp_ledger.read_rows()[0]
+    assert row.server_clock_rules == 'UTC+0h'
+    assert row.external_warmup_timeframes == 'D1,H4'
+    assert row.logic_version == RunLedgerIndex.LOGIC_VERSION
 
 
 def test_a_failed_run_still_records_what_it_read(tmp_ledger, make_run_summary, make_provenance):

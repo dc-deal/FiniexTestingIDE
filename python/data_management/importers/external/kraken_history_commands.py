@@ -202,6 +202,14 @@ class KrakenHistoryCommands:
 
         zip_path = finished_dir / ARCHIVES_DIR / zip_name
         create_directory(zip_path.parent, holds='the zipped history archive')
+        # Mode 'a' on a file that is no zip does not fail: it writes a new archive BEHIND those
+        # bytes, and the result still opens and passes `testzip`. A file a failed write left behind
+        # is exactly that, so it is refused here rather than built upon (#647)
+        if zip_path.exists() and zip_path.stat().st_size > 0 and not zipfile.is_zipfile(zip_path):
+            print(f'❌ {zip_path} exists and is no zip — a failed write may have left it. Nothing '
+                  f'appended, nothing removed.\n'
+                  f'   → Move it aside, check what it holds, then run this step again.')
+            return 1
         with zipfile.ZipFile(zip_path, 'a', compression=zipfile.ZIP_DEFLATED) as archive:
             present = set(archive.namelist())
             for path in loose:
@@ -210,6 +218,13 @@ class KrakenHistoryCommands:
         with zipfile.ZipFile(zip_path) as archive:
             bad = archive.testzip()
             stored = {info.filename: info.file_size for info in archive.infolist()}
+            # An archive that does not start at the file's first byte sits behind something else
+            starts_at = min((info.header_offset for info in archive.infolist()), default=0)
+        if starts_at:
+            print(f'❌ {zip_path.name} starts {starts_at:,} bytes into the file — something sits in '
+                  f'front of the archive. The loose copies stay.\n'
+                  f'   → Move the zip aside, check what it holds, then run this step again.')
+            return 1
         if bad or any(stored.get(path.name) != path.stat().st_size for path in loose):
             print(f'❌ {zip_path.name} does not hold every file intact ({bad or "size mismatch"}) '
                   f'— the loose copies stay.')

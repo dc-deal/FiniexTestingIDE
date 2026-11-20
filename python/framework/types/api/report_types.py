@@ -1964,10 +1964,20 @@ class RunResultRow(BaseModel):
     origin_classes: str = ''
     origin_evidence_grades: str = ''
     input_files: int | None = None
+    # The files whose origin no stamp attests (evidence grade other than `stamped`), whatever their
+    # class. On a row of `logic_version` 21 or older: the files not production-and-stamped, so
+    # there every stamped external file counted.
     unstamped_input_files: int | None = None
     price_bases: str = ''
     # Order features this backtest was allowed beyond what its venue's API holds (#625)
     features_beyond_venue: str = ''
+    # The server clock rules the run's tick files were converted with (#562), comma-joined, e.g.
+    # 'America/New_York+7h'. Empty when no file read stated a rule — a stream session, or a file
+    # imported before the rule was written down. On a row of `logic_version` 21 or older: not recorded
+    server_clock_rules: str = ''
+    # The bar timeframes whose warmup reached back into a venue's published history (#561),
+    # comma-joined. Empty when none did; on a row of `logic_version` 21 or older: not recorded
+    external_warmup_timeframes: str = ''
     deployment_id: str = ''
     # The bot's DECLARED identity (#538) — live only, and the one identity on this row that does
     # not move. `scenario_set_name` is what the profile is CALLED, `deployment_id` is minted per

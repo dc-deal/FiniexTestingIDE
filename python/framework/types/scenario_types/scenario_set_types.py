@@ -118,6 +118,10 @@ class SingleScenario:
     # run on purpose: one set spans symbols, brokers and windows, so a run-level answer would
     # be an aggregate over things that do not share one — and an aggregate is not a description.
     data_format_versions: List[str] = field(default_factory=list)
+    # The server clock rule each of those TICK files' times were converted with (#562), in the
+    # order of `data_format_versions` — a signal file has no such rule. None where the file's
+    # header states none (imported before the rule was written down).
+    server_clock_rules: List[Optional[str]] = field(default_factory=list)
     origin_classes: List[str] = field(default_factory=list)
     origin_evidence_grades: List[str] = field(default_factory=list)
     # What each of those files LACKS (#561), in the same order as `origin_classes` — the tick

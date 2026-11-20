@@ -80,10 +80,17 @@ class RunProvenance:
     # the same bytes for "nothing to read" and "we were not looking".
     input_plane: str = ''                   # 'archive' (sim) | 'stream' (live)
     data_format_versions: str = ''          # distinct, sorted, comma-joined
+    # The server clock rules the tick files' times were converted with (#562), e.g.
+    # 'America/New_York+7h'. Empty when no file read states a rule — a stream session, or tick
+    # files imported before the rule was written into their header — never a rule of its own.
+    server_clock_rules: str = ''            # distinct, sorted, comma-joined
     origin_classes: str = ''                # distinct, sorted, comma-joined
     origin_evidence_grades: str = ''        # distinct, sorted, comma-joined
     input_files: int = 0                    # files the scenarios actually read
-    unstamped_input_files: int = 0          # of those, the ones not production-and-stamped
+    # Of those, the ones whose origin no stamp attests: evidence grade other than `stamped`,
+    # whatever the class. Ledger logic version 21 and older counted the files that were not
+    # production-and-stamped instead, so every stamped external file counted there.
+    unstamped_input_files: int = 0
     # WHICH PRICE the bars this run read were rendered from (§31c). Joined-distinct like the
     # three above, because a run spans brokers and timeframes and a half-re-rendered archive
     # legitimately answers 'order_driven,unknown' — which is the condition the stamp exists to
@@ -93,6 +100,10 @@ class RunProvenance:
     # The order features this backtest was allowed beyond what its venue's API holds (#625):
     # a row produced under an exception must say so wherever it is ranked or compared.
     features_beyond_venue: str = ''         # distinct, sorted, comma-joined
+    # The bar timeframes whose warmup reached back before our own collection, into bars rendered
+    # from a venue's published history (decision 4 of #561). Allowed, and said here so a row
+    # whose indicators started from external bars is never read as one that did not.
+    external_warmup_timeframes: str = ''    # distinct, sorted, comma-joined
     # WAS this run declared part of a continuous deployment, and WHICH one (#497). The
     # RESOLVED answer: a profile declaring continuous under `--one-off` records ''. Without
     # it a reader cannot tell a session that belongs to no deployment from one whose

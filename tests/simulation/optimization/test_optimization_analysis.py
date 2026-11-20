@@ -431,6 +431,21 @@ class TestARankingThatSpansLogicVersions:
             row.logic_version = version
         return rows
 
+    def test_the_two_generations_of_the_unstamped_count_are_flagged(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        """
+        `unstamped_input_files` counts something else from logic version 22 on (#647): files without
+        a stamp, where version 21 counted the files that were not production-and-stamped. A ranking
+        over a row of each is flagged rather than read as one measure.
+        """
+        current = RunLedgerIndex.LOGIC_VERSION
+        rows = self._sweep(tmp_ledger, make_run_summary, make_provenance, [current - 1, current])
+
+        advisory = mixed_logic_version_advisory(rows)
+
+        assert advisory is not None
+        assert advisory.versions == [current - 1, current]
+
     def test_one_version_is_not_a_warning(self, tmp_ledger, make_run_summary, make_provenance):
         rows = self._sweep(tmp_ledger, make_run_summary, make_provenance, [3, 3, 3])
 

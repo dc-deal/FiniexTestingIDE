@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 58
+API_CONTRACT_VERSION = 59
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,18 +36,16 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "order-events: ts_event on a row (new) — the venue's own stamp of the step, where it reports "
-    "one: a live order's fill in full; null in a backtest, a mock session, a dry run and on every "
-    'other event',
-    'an AutoTrader session runs on a timeline of arrivals and timers: every time it records is when '
-    "a tick or an answer reached it, no longer the venue's stamp of the tick; a backlog it fell "
-    "behind on is one slice, the algo computing once on its newest tick; a venue's answer resolves "
-    'on arrival, except while a stopping session waits for its last orders — a session recorded '
-    'from this contract on can differ from one recorded before',
-    "worker-decision: a session's ticks_processed leaves out the ticks of a backlog behind its "
-    'newest, which never reached the algorithm — a changed meaning in a session',
-    'order-events and pending-orders: a live in_flight_ms runs until the session reads the answer, '
-    'which it now does right after the answer arrives, no longer up to one heartbeat after it '
-    'except while a stopping session waits for its last orders — a changed meaning',
+    "sweeps: unstamped_input_files on a combination counts the files no stamp attests (evidence "
+    "grade other than stamped), whatever their class — a venue's published history carries the "
+    "converter's stamp and no longer counts; a row with logic_version 21 or older keeps the old "
+    "meaning, the files that were not production data stamped by their producer — a changed meaning",
+    "sweeps: server_clock_rules on a combination (new) — the server clock rules its tick files' times "
+    "were converted with, comma-joined; empty where no file stated one",
+    "sweeps: external_warmup_timeframes on a combination (new) — the bar timeframes whose warmup "
+    "reached back into a venue's published history, comma-joined; empty where none did",
+    "warnings-errors: a mock session reports what its replay read as a backtest does — "
+    "data_origin_external for a venue's published history, data_origin_unstamped for files no "
+    "producer stamped, and what the files lack — new rows on such a session",
 ]
 

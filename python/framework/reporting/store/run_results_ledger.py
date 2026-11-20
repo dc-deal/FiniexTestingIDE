@@ -2,7 +2,7 @@
 Run Results Ledger (#390) — the persistent accumulating store the Parameter
 Optimization system ranks over.
 
-A flat directory of parquet fragments, ONE file per run (`<run_id>.parquet`):
+A flat directory of parquet fragments, ONE file per run (`<scenario_set_name>_<run_id>.parquet`):
 parquet is immutable, so "one file per run" is the lock-free append. Read the whole
 directory back as a single logical table. All identity (param_hash, sweep_id,
 scenario_set_name, …) is COLUMNS, never folder structure — the free-text config name
@@ -140,6 +140,11 @@ LEDGER_COLUMNS: List[str] = [
     # cannot: a strategy from another repository moves neither that nor `git_dirty`. None on a
     # backtest and on a fragment written before the column existed: no stand, never a change.
     'code_stand',
+    # More of WHICH DATA the row was produced over (#647): the server clock rules its tick files'
+    # times were converted with (#562), and the bar timeframes whose warmup reached into a venue's
+    # published history (decision 4 of #561). Joined-distinct like the #518 block above. Appended,
+    # so older fragments read back ''.
+    'server_clock_rules', 'external_warmup_timeframes',
     # WHEN this row was written, which is within seconds of when the run ENDED — the reports
     # are persisted at its close and the append is the last step. The ledger had no end of any
     # kind, and `SweepSummary.duration_s` says so in its own comment ("last - first run start,
@@ -532,6 +537,8 @@ class RunResultsLedger:
             'broker_config_id': p.broker_config_id,
             'code_stand': (json.dumps(p.code_stand.model_dump(), sort_keys=True)
                            if p.code_stand is not None else None),
+            'server_clock_rules': p.server_clock_rules,
+            'external_warmup_timeframes': p.external_warmup_timeframes,
             # Empty at birth: the records exist, because the run that wrote this row just
             # produced them. Only `mark_records_pruned` ever fills it.
             'records_pruned_at': '',
