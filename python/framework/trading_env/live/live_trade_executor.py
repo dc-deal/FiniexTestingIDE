@@ -169,6 +169,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         resolution_config: Optional[UnresolvedResolutionDefaults] = None,
         venue_read_settle_seconds: float = 5.0,
         shutdown_config: Optional[ShutdownDefaults] = None,
+        portfolio_cache: bool = True,
     ):
         """
         Initialize live trade executor.
@@ -193,6 +194,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 that never reach a venue do not need one.
             shutdown_config: The waits of the session's stop (#630), of which the executor
                 spends the request worker's join.
+            portfolio_cache: Whether the portfolio marks open positions lazily; False keeps every
+                one current at every event, the reference a verification run compares (#653)
         """
         super().__init__(
             broker_config=broker_config,
@@ -203,6 +206,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             trade_history_max=trade_history_max,
             spot_mode=spot_mode,
             initial_balances=initial_balances,
+            portfolio_cache=portfolio_cache,
         )
 
         # Validate adapter supports live execution

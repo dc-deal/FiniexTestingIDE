@@ -45,6 +45,7 @@ from python.framework.types.api.report_types import (
     DeploymentSummary,
     PendingOrdersReport,
     PendingOrdersUnitRow,
+    SessionBookingState,
     TradeHistoryReport,
     TradeHistoryRow,
 )
@@ -216,9 +217,11 @@ class TestTheKeyActuallySeparatesTheRows:
     def test_a_session_row_needs_its_currency_too(self):
         rows = [
             DeploymentSessionRow(index=1, run_id='r1', started=None, net_pnl=1.0,
-                                 max_drawdown=0.0, max_drawdown_pct=0.0, currency='USD'),
+                                 max_drawdown=0.0, max_drawdown_pct=0.0, currency='USD',
+                                 booking_state=SessionBookingState.BOOKED),
             DeploymentSessionRow(index=1, run_id='r1', started=None, net_pnl=0.1,
-                                 max_drawdown=0.0, max_drawdown_pct=0.0, currency='BTC'),
+                                 max_drawdown=0.0, max_drawdown_pct=0.0, currency='BTC',
+                                 booking_state=SessionBookingState.BOOKED),
         ]
         assert _distinct(rows, SESSION_KEY) == 2
         assert _distinct(rows, ('run_id',)) == 1

@@ -52,7 +52,8 @@ INVALID_TIMESTAMP = ApiErrorKind(
 STATE_FRAMES_NOT_RECORDED = ApiErrorKind(
     404, 'state_frames_not_recorded',
     "Run '{run_id}' records no state frames — a session from before they were recorded, one with "
-    "the recording switched off (state_frames.enabled in its profile), or a backtest")
+    "the recording switched off (state_frames.enabled in its profile), or a backtest, whose frames "
+    "are not served even where its scenario records them")
 STATE_FRAME_NOT_WRITTEN_YET = ApiErrorKind(
     404, 'state_frame_not_written_yet',
     "Run '{run_id}' has not written its first state frame yet — ask again after one cadence")
@@ -90,7 +91,9 @@ MARKET_TYPE_NOT_CONFIGURED = ApiErrorKind(
 # --- Ledger: deployments and sweeps ----------------------------------------------------------
 
 DEPLOYMENT_NOT_FOUND = ApiErrorKind(
-    404, 'deployment_not_found', "No deployment '{deployment_id}' in the run-results ledger")
+    404, 'deployment_not_found',
+    "No deployment '{deployment_id}': no session in the run index and no row in the run-results "
+    'ledger names it')
 SWEEP_NOT_FOUND = ApiErrorKind(
     404, 'sweep_not_found', "No sweep '{sweep_id}' in the run-results ledger")
 

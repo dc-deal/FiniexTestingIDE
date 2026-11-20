@@ -446,6 +446,16 @@ Execution settings cascade individually, allowing performance testing with diffe
 > flip one while inheriting the other from global. Architecture and reasoning: see
 > [performance_tracking_layers.md](architecture/performance_tracking_layers.md).
 
+> **Note:** `state_frames` is a second sub-group (`enabled`, `cadence_timeframe`), off by default. A
+> scenario that switches it on records its state on the cadence's slots into
+> `io/state_frames_{scenario}.jsonl` — the same frame a live session records, so the two can be laid
+> side by side ([Live Telemetry](architecture/live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream)).
+
+> **Note:** `verification` is another sub-group: switches that by design change no result.
+> `portfolio_cache: true` is the ordinary lazy marking of open positions; `false` keeps every
+> position current at every event, so a run can be compared against the lazy one — what an algo
+> reads must not differ ([Algo Masks](user_guides/algo_masks.md)).
+
 ---
 
 ### 4. `trade_simulator_config` (Per-Parameter Merge, 3-Level)
@@ -596,11 +606,21 @@ These parameters are **scenario-specific only** - no inheritance:
   "start_date": "2025-09-19",          // Scenario-specific
   "end_date": "2025-09-21",            // Scenario-specific
   "max_ticks": 4000,                   // Scenario-specific
-  "enabled": true                      // Scenario-specific
+  "enabled": true,                     // Scenario-specific
+  "warmup_from_run": "20261124_000501_ab12cd34", // start from that run's recorded warmup (#512)
+  "broker_config_document": "3f1d…"   // trade with that frozen broker configuration (#512)
 }
 ```
 
 **These are NOT overrides** - they define what the scenario tests!
+
+The last two are what a backtest of a live session's window reads instead of the archive's
+warmup and the broker's configuration file; the comparison of a session with its backtest writes
+them, and a hand-written set rarely needs them. `warmup_from_run` names a run that recorded
+`io/warmup_history.json` for the scenario's symbol, and the scenario starts from exactly those bars
+([Warmup History](architecture/warmup_history.md)). `broker_config_document` names a
+`broker_config_id` in the run-config store, and every scenario of that broker in the set must name
+the same one: a run trades one configuration per broker (`broker_config_sources_differ`).
 
 ### Set-Level Declarations
 

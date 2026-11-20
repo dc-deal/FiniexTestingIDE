@@ -183,6 +183,7 @@ A 100-tick mock replay with the channel builder swapped for one wired to the sta
 |---|---|
 | `test_a_session_says_it_started_and_how_it_ended` | two messages; the started one names the framework's commit; the loop stamped the very progress the pinger reads; an ordinary last ping |
 | `test_an_abort_is_one_message_and_a_fail_ping` | STARTUP FAILED once, no second message at the end, the fail URL at once |
+| `test_a_crash_in_the_loop_reports_how_far_the_session_got` | #636 — a crash provoked in a call the loop makes on every tick, after 40 ticks: the result, the last state frame and the RUNTIME ERROR alert all carry the 41 ticks counted, the tick of the crash included |
 | `test_a_crash_while_shutting_down_is_said_and_fails_the_ping` | a crash in the report phase is alerted, pings the fail URL, and still raises |
 | `test_a_refused_start_is_one_message_quoting_why_and_no_ping` | a cold start refusing an unattended restart: STARTUP REFUSED with its reason, graded by what it logged, and no ping for a loop that never ran |
 | `test_a_refused_start_whose_shutdown_crashes_shuts_down_once` | the refusal runs the one guarded shutdown — a crash in it is SESSION CRASHED, never a second STARTUP message |

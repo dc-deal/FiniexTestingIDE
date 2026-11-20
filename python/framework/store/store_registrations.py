@@ -25,6 +25,7 @@ from python.framework.config_directory.config_directory_index import (
     CONFIG_DIRECTORY_INDEX_FILE,
     ConfigDirectoryIndex,
 )
+from python.framework.constants.divergence_report_constants import DIVERGENCE_REPORT_FILE
 from python.framework.constants.run_layout_constants import (
     GLOBAL_LOG_FILE,
     IMPORT_LOG_SUBDIR,
@@ -42,12 +43,16 @@ from python.framework.reporting.certificates.certificate_index import (
     CERTIFICATE_INDEX_FILE,
     CertificateIndex,
 )
+from python.framework.reporting.store.divergence_report_store import divergence_root
 from python.framework.reporting.store.run_index import RunIndex
 from python.framework.reporting.store.run_ledger_index import (
     LEDGER_INDEX_FILE,
     RunLedgerIndex,
 )
 from python.framework.reporting.store.run_results_ledger import LEDGER_COLUMNS
+from python.framework.store.entry_members.divergence_entry_members import (
+    DIVERGENCE_ENTRY_MEMBERS,
+)
 from python.framework.store.entry_members.run_entry_members import (
     RUN_ENTRY_MEMBERS,
     run_member_path,
@@ -145,6 +150,20 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
                  'combinations are runs, kept in the run store inside the sweep\'s directory. A '
                  'sweep is counted by its mount build\'s log, so one run with mount reuse '
                  'switched off is not counted here; the ledger lists it.',
+        ),
+        StoreId.DIVERGENCE: StoreDescriptor(
+            store_id=StoreId.DIVERGENCE,
+            kind=StoreKind.RECORD,
+            purpose='one folder per live-against-backtest comparison',
+            doc='docs/architecture/data_storage_layout.md#a-divergence-comparison-keeps-its-own-record',
+            root=divergence_root(),
+            key='report_id',
+            form=RetrievalForm.DOCUMENT,
+            backend=StoreBackend.DISK,
+            entry_glob=f'*/{DIVERGENCE_REPORT_FILE}',
+            entry_members=DIVERGENCE_ENTRY_MEMBERS,
+            note='A comparison keeps no index of its own: it is opened by its report id, and its '
+                 'backtests are runs of the run store, named in its report and never copied.',
         ),
         StoreId.RUN_CONFIGS: StoreDescriptor(
             store_id=StoreId.RUN_CONFIGS,

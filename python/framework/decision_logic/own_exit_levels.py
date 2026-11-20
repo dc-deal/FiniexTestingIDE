@@ -16,10 +16,10 @@ process is not running — the same as every exit a strategy decides for itself.
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.trading_env.algo_masks.algo_position import AlgoPosition
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
-from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderResult
 from python.framework.types.trading_env_types.own_exit_types import OwnExit, PositionExitLevels
 from python.framework.utils.trading_math.price_trigger import is_limit_reached, is_stop_reached
@@ -139,7 +139,7 @@ class OwnExitLevels:
     def due(
         self,
         symbol: str,
-        positions: List[Position],
+        positions: List[AlgoPosition],
         bid: float,
         ask: float,
     ) -> List[Tuple[str, OwnExit]]:
@@ -254,7 +254,7 @@ class OwnExitLevels:
             restored += 1
         return restored
 
-    def _seed(self, position: Position) -> Optional[PositionExitLevels]:
+    def _seed(self, position: AlgoPosition) -> Optional[PositionExitLevels]:
         """
         Give a position without levels the ones its entry price and the seed distances make.
 

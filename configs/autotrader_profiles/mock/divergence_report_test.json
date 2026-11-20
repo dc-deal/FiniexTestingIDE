@@ -1,0 +1,69 @@
+{
+  "profile_name": "divergence_report_test",
+  "run_purpose": "fixture",
+  "bot_id": "diverg01",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "mock",
+  "deployment": {
+    "_comment": "One deployment, so the divergence report has one to compare with a backtest of its window — across a trading-day boundary (00:00 UTC), so one whole day is sealed and compared, inside the collector's own data.",
+    "continuous": true
+  },
+  "strategy_config": {
+    "decision_logic_type": "CORE/simple_consensus",
+    "worker_instances": {
+      "rsi_fast": "CORE/rsi",
+      "bollinger_main": "CORE/bollinger",
+      "obv_volume": "CORE/obv"
+    },
+    "workers": {
+      "rsi_fast": {
+        "periods": {
+          "M5": 14
+        }
+      },
+      "bollinger_main": {
+        "periods": {
+          "M30": 20
+        },
+        "deviation": 2
+      },
+      "obv_volume": {
+        "periods": {
+          "M5": 20
+        }
+      }
+    },
+    "decision_logic_config": {
+      "rsi_oversold": 30,
+      "rsi_overbought": 70,
+      "bollinger_lower_threshold": 0.3,
+      "bollinger_upper_threshold": 0.7,
+      "min_confidence": 0.5,
+      "lot_size": 0.1,
+      "min_entry_capital": 1000,
+      "obv_filter_enabled": true,
+      "obv_block_opposite_trend": true,
+      "obv_confidence_boost": 0.1
+    }
+  },
+  "tick_source": {
+    "type": "mock"
+  },
+  "display": {
+    "enabled": false
+  },
+  "state_frames": {
+    "_comment": "The divergence report (#512) reads each day's decision from the frames, on the slots the backtest records too.",
+    "enabled": true,
+    "cadence_timeframe": "M1"
+  },
+  "scenario_settings": {
+    "start_date": "2026-01-25T20:00:00+00:00",
+    "end_date": "2026-01-27T00:30:00+00:00",
+    "balances": {
+      "USD": 10000.0,
+      "BTC": 0.0
+    }
+  }
+}

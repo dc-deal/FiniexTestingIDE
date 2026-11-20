@@ -1359,6 +1359,46 @@
             }
         },
         {
+            "name": "🔀 Divergence Report: aa (prompt)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/divergence_report_cli.py",
+            "args": [
+                "aa",
+                "--deployment",
+                "${input:deploymentId}",
+                "--release-tree",
+                "${input:aaReleaseTree}",
+                "--window",
+                "${input:aaWindow}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 9
+            }
+        },
+        {
+            "name": "🔀 Divergence Report: compare (prompt)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/divergence_report_cli.py",
+            "args": [
+                "compare",
+                "--deployment",
+                "${input:deploymentId}",
+                "--decision-timeframe",
+                "D1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 10
+            }
+        },
+        {
             "name": "🖥️ Activities: Check Free Memory (prompt)",
             "type": "debugpy",
             "request": "launch",
@@ -1372,7 +1412,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 9
+                "order": 11
             }
         },
         {
@@ -1387,7 +1427,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 10
+                "order": 12
             }
         },
         {
@@ -1404,7 +1444,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 11
+                "order": 13
             }
         },
         {
@@ -1422,7 +1462,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 12
+                "order": 14
             }
         },
         {
@@ -1440,7 +1480,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 13
+                "order": 15
             }
         },
         // ====================================================
@@ -2321,6 +2361,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Cache Transparency (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/cache_transparency/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 14
+            }
+        },
+        {
             "name": "🧩 Pytest: Capital Allocation (#489)",
             "type": "debugpy",
             "request": "launch",
@@ -2334,7 +2391,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 14
+                "order": 15
             }
         },
         {
@@ -2351,7 +2408,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 15
+                "order": 16
             }
         },
         {
@@ -2368,7 +2425,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 16
+                "order": 17
             }
         },
         {
@@ -2385,7 +2442,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 17
+                "order": 18
             }
         },
         {
@@ -2402,7 +2459,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 18
+                "order": 19
             }
         },
         {
@@ -2419,7 +2476,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 19
+                "order": 20
             }
         },
         {
@@ -2436,7 +2493,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 20
+                "order": 21
             }
         },
         {
@@ -2454,7 +2511,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 21
+                "order": 22
             }
         },
         {
@@ -2471,7 +2528,24 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 22
+                "order": 23
+            }
+        },
+        {
+            "name": "🧩 Pytest: Divergence Report (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/divergence_report/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 24
             }
         },
         {
@@ -2488,7 +2562,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 23
+                "order": 25
             }
         },
         {
@@ -2506,7 +2580,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 24
+                "order": 26
             }
         },
         {
@@ -2524,7 +2598,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 25
+                "order": 27
             }
         },
         {
@@ -2542,7 +2616,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 26
+                "order": 28
             }
         },
         {
@@ -2558,7 +2632,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 27
+                "order": 29
             }
         },
         {
@@ -2575,7 +2649,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 28
+                "order": 30
             }
         },
         {
@@ -2592,7 +2666,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 29
+                "order": 31
             }
         },
         {
@@ -2609,7 +2683,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 30
+                "order": 32
             }
         },
         {
@@ -2626,7 +2700,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 31
+                "order": 33
             }
         },
         {
@@ -2643,7 +2717,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 32
+                "order": 34
             }
         },
         {
@@ -2660,7 +2734,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 33
+                "order": 35
             }
         },
         {
@@ -2677,7 +2751,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 34
+                "order": 36
             }
         },
         {
@@ -2694,7 +2768,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 35
+                "order": 37
             }
         },
         {
@@ -2711,7 +2785,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 36
+                "order": 38
             }
         },
         {
@@ -2728,7 +2802,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 37
+                "order": 39
             }
         },
         {
@@ -2745,7 +2819,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 38
+                "order": 40
             }
         },
         {
@@ -2762,7 +2836,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 39
+                "order": 41
             }
         },
         {
@@ -2780,7 +2854,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 40
+                "order": 42
             }
         },
         {
@@ -2797,7 +2871,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 41
+                "order": 43
             }
         },
         {
@@ -2814,7 +2888,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 42
+                "order": 44
             }
         },
         {
@@ -2832,7 +2906,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 43
+                "order": 45
             }
         },
         {
@@ -2851,7 +2925,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 44
+                "order": 46
             }
         },
         {
@@ -2868,7 +2942,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 45
+                "order": 47
             }
         },
         {
@@ -2885,7 +2959,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 46
+                "order": 48
             }
         },
         {
@@ -2902,7 +2976,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 47
+                "order": 49
             }
         },
         {
@@ -2920,7 +2994,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 48
+                "order": 50
             }
         },
         {
@@ -2937,7 +3011,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 49
+                "order": 51
             }
         },
         {
@@ -2954,7 +3028,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 50
+                "order": 52
             }
         },
         {
@@ -2972,7 +3046,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 51
+                "order": 53
             }
         },
         {
@@ -2987,7 +3061,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 52
+                "order": 54
             }
         },
         {
@@ -3004,7 +3078,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 54
+                "order": 56
             }
         },
         {
@@ -3021,7 +3095,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 55
+                "order": 57
             }
         },
         {
@@ -3038,7 +3112,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 56
+                "order": 58
             }
         },
         {
@@ -3055,7 +3129,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 57
+                "order": 59
             }
         },
         {
@@ -3072,7 +3146,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 58
+                "order": 60
             }
         },
         {
@@ -3083,7 +3157,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 59
+                "order": 61
             }
         },
         {
@@ -3100,7 +3174,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 60
+                "order": 62
             }
         },
         {
@@ -3117,7 +3191,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 61
+                "order": 63
             }
         },
         {
@@ -3134,7 +3208,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 62
+                "order": 64
             }
         },
         {
@@ -3151,7 +3225,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 63
+                "order": 65
             }
         },
         {
@@ -3168,7 +3242,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 64
+                "order": 66
             }
         },
         {
@@ -3186,7 +3260,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 65
+                "order": 67
             }
         },
         {
@@ -3204,7 +3278,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 66
+                "order": 68
             }
         },
         {
@@ -3221,7 +3295,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 67
+                "order": 69
             }
         },
         {
@@ -3238,7 +3312,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 68
+                "order": 70
             }
         },
         {
@@ -3255,7 +3329,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 69
+                "order": 71
             }
         },
         {
@@ -3272,7 +3346,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 70
+                "order": 72
             }
         },
         {
@@ -3289,7 +3363,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 71
+                "order": 73
             }
         },
         {
@@ -3306,7 +3380,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 72
+                "order": 74
             }
         },
         {
@@ -3323,7 +3397,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 73
+                "order": 75
             }
         },
         {
@@ -3340,7 +3414,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 74
+                "order": 76
             }
         },
         {
@@ -3357,7 +3431,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 75
+                "order": 77
             }
         },
         {
@@ -3374,7 +3448,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 76
+                "order": 78
             }
         },
         {
@@ -3391,7 +3465,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 77
+                "order": 79
             }
         },
         {
@@ -3408,7 +3482,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 78
+                "order": 80
             }
         },
         {
@@ -3425,7 +3499,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 79
+                "order": 81
             }
         },
         {
@@ -3442,7 +3516,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 80
+                "order": 82
             }
         },
         {
@@ -3459,7 +3533,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 81
+                "order": 83
             }
         },
         {
@@ -3476,7 +3550,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 82
+                "order": 84
             }
         },
         {
@@ -3493,7 +3567,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 83
+                "order": 85
             }
         },
         {
@@ -3510,7 +3584,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 84
+                "order": 86
             }
         },
         {
@@ -3527,7 +3601,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 85
+                "order": 87
             }
         },
         {
@@ -3544,7 +3618,24 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 86
+                "order": 88
+            }
+        },
+        {
+            "name": "🧩 Pytest: Venue History (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/venue_history/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 89
             }
         },
         {
@@ -3561,7 +3652,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 87
+                "order": 90
             }
         },
         {
@@ -3578,7 +3669,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 88
+                "order": 91
             }
         },
         // ====================================================
@@ -3625,6 +3716,26 @@
             }
         },
         {
+            "name": "🧪 AutoTrader: Divergence Report Test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/mock/divergence_report_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13b_manual_inspection",
+                "order": 3
+            }
+        },
+        {
             "name": "🧪 AutoTrader: Duplicate Signal Guard",
             "type": "debugpy",
             "request": "launch",
@@ -3641,7 +3752,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 3
+                "order": 4
             }
         },
         {
@@ -3661,7 +3772,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 4
+                "order": 5
             }
         },
         {
@@ -3681,7 +3792,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 5
+                "order": 6
             }
         },
         {
@@ -3701,7 +3812,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 6
+                "order": 7
             }
         },
         {
@@ -3721,7 +3832,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 7
+                "order": 8
             }
         },
         {
@@ -3741,7 +3852,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 8
+                "order": 9
             }
         },
         {
@@ -3761,7 +3872,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 9
+                "order": 10
             }
         },
         {
@@ -3781,7 +3892,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 10
+                "order": 11
             }
         },
         {
@@ -3801,7 +3912,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 11
+                "order": 12
             }
         },
         {
@@ -3821,7 +3932,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 12
+                "order": 13
             }
         },
         {
@@ -3841,7 +3952,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 13
+                "order": 14
             }
         },
         {
@@ -3861,7 +3972,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 14
+                "order": 15
             }
         },
         {
@@ -3881,7 +3992,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 15
+                "order": 16
             }
         },
         {
@@ -3901,7 +4012,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 16
+                "order": 17
             }
         },
         {
@@ -3921,7 +4032,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 17
+                "order": 18
             }
         },
         {
@@ -3941,7 +4052,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 18
+                "order": 19
             }
         },
         {
@@ -3961,7 +4072,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 19
+                "order": 20
             }
         },
         {
@@ -3981,7 +4092,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 20
+                "order": 21
             }
         },
         {
@@ -4001,7 +4112,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 21
+                "order": 22
             }
         },
         {
@@ -4017,7 +4128,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 22
+                "order": 23
             }
         },
         {
@@ -4033,7 +4144,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 23
+                "order": 24
             }
         },
         {
@@ -4049,7 +4160,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 24
+                "order": 25
             }
         },
         {
@@ -4065,7 +4176,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 25
+                "order": 26
             }
         },
         {
@@ -4081,7 +4192,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 26
+                "order": 27
             }
         },
         {
@@ -4097,7 +4208,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 27
+                "order": 28
             }
         },
         {
@@ -4113,7 +4224,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 28
+                "order": 29
             }
         },
         {
@@ -4129,7 +4240,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 29
+                "order": 30
             }
         },
         {
@@ -4145,7 +4256,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 30
+                "order": 31
             }
         },
         {
@@ -4161,7 +4272,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 31
+                "order": 32
             }
         },
         {
@@ -4177,7 +4288,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 32
+                "order": 33
             }
         },
         {
@@ -4193,7 +4304,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 33
+                "order": 34
             }
         },
         {
@@ -4209,7 +4320,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 34
+                "order": 35
             }
         },
         {
@@ -4225,7 +4336,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 35
+                "order": 36
             }
         },
         {
@@ -4241,7 +4352,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 36
+                "order": 37
             }
         },
         {
@@ -4257,7 +4368,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 37
+                "order": 38
             }
         },
         {
@@ -4273,7 +4384,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 38
+                "order": 39
             }
         },
         {
@@ -4289,7 +4400,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 39
+                "order": 40
             }
         },
         {
@@ -4305,7 +4416,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 40
+                "order": 41
             }
         },
         // ====================================================
@@ -4748,6 +4859,16 @@
             "type": "promptString",
             "description": "Deployment id to report on (e.g. deploy_20260918_091413 — the `deployments` entry lists them)",
             "default": "deploy_20260918_091413"
+        },
+        {
+            "id": "aaReleaseTree",
+            "type": "promptString",
+            "description": "A checkout of the release the sessions ran (git worktree add --detach <dir> v1.5.0)"
+        },
+        {
+            "id": "aaWindow",
+            "type": "promptString",
+            "description": "The window to backtest on both code stands: <start>,<end> (UTC) — one where the strategy trades"
         },
         {
             "id": "optimizationSweepId",

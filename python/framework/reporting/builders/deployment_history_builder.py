@@ -5,6 +5,10 @@ A live bot that restarts writes one ledger row per session, each under its own r
 #497 those rows name a common deployment, so they can be read back as one history — the life
 of one bot across its restarts.
 
+Which sessions a deployment holds is the run index's answer, and what they booked the ledger's
+(#645). A session books its first row when it seals its first trading day, so a history read
+from the ledger alone left a new deployment out of every list until then, while it ran.
+
 This is DERIVE (§12). It lived in the console module until #539 asked for the same history over
 HTTP; two derivations of one deployment are two chances to disagree about what its drawdown is,
 so the grouping, the marks and the roll-up moved here and the renderers kept only their columns.
@@ -15,7 +19,7 @@ and whether a gap was acceptable is a judgement a person makes. All three are re
 collapsed into a verdict (#527 owns the richer surface; the console is the floor beneath it).
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from python.framework.reporting.builders.code_stand_comparison import (
@@ -31,10 +35,16 @@ from python.framework.types.api.report_types import (
     DeploymentComparabilityAdvisory,
     DeploymentSessionRow,
     DeploymentSummary,
+    ParentKind,
+    RunInfo,
     RunResultRow,
+    SessionBookingState,
 )
 from python.framework.types.run_origin_types import CodeStand
 from python.framework.utils.time_utils import ensure_utc_aware
+
+# Where a session without a start sorts among those without booked figures: after every start.
+_NO_START = datetime.min.replace(tzinfo=timezone.utc)
 
 
 def summarize_deployments(
@@ -57,18 +67,23 @@ def summarize_deployments(
     Returns:
         One summary per (deployment × account currency), most recent first. Per currency and
         not per deployment: a P&L column added up over two currencies is not a number, and the
-        row count would report a two-currency bot as having run twice as often
+        row count would report a two-currency bot as having run twice as often. The sessions
+        that have booked nothing yet have no currency and share one summary of their own, after
+        the deployment's other rows
     """
     summaries: List[DeploymentSummary] = []
     for deployment, all_sessions in histories.items():
-        by_currency: Dict[str, List[DeploymentSessionRow]] = {}
+        by_currency: Dict[Optional[str], List[DeploymentSessionRow]] = {}
         for session in all_sessions:
             by_currency.setdefault(session.currency, []).append(session)
         for sessions in by_currency.values():
             if not sessions:
                 continue
             summaries.append(_summarize_one(deployment, sessions, advisories, code_summaries))
-    return sorted(summaries, key=lambda s: (s.deployment_id, s.currency), reverse=True)
+    # The currency's PRESENCE before its value: None does not compare with a string, and the row
+    # that has booked nothing belongs after the deployment's booked rows.
+    return sorted(summaries, key=lambda s: (s.deployment_id, s.currency is not None, s.currency or ''),
+                  reverse=True)
 
 
 def _summarize_one(
@@ -95,14 +110,20 @@ def _summarize_one(
     measured = [s for s in sessions if s.max_drawdown is not None]
     deepest = max(measured, key=lambda s: abs(s.max_drawdown)) if measured else None
     gaps = [s.gap_hours for s in sessions if s.gap_hours is not None]
+    starts = [s.started for s in sessions if s.started is not None]
     advisory = advisories.get(deployment)
     code_summary = code_summaries.get(deployment)
     return DeploymentSummary(
         deployment_id=deployment,
         sessions=len(sessions),
-        first_started=sessions[0].started,
-        last_started=sessions[-1].started,
-        net_pnl=sum(s.net_pnl for s in sessions),
+        # Earliest and latest rather than first and last: the sessions without booked figures take
+        # their starts from two sources, a ledger row and the run index.
+        first_started=min(starts, key=ensure_utc_aware) if starts else None,
+        last_started=max(starts, key=ensure_utc_aware) if starts else None,
+        # None on the row of the sessions that have booked nothing: no figure was measured, and
+        # a sum over them would claim a zero
+        net_pnl=(sum(s.net_pnl for s in sessions)
+                 if all(s.net_pnl is not None for s in sessions) else None),
         max_drawdown=deepest.max_drawdown if deepest else None,
         max_drawdown_pct=deepest.max_drawdown_pct if deepest else None,
         currency=sessions[0].currency,
@@ -242,7 +263,9 @@ def build_deployment_histories(rows: List[RunResultRow]) -> Dict[str, List[Deplo
         rows: Ledger rows, in any order
 
     Returns:
-        Deployment identity → its sessions, ordered by run timestamp
+        Deployment identity → its sessions: each currency's series by run timestamp, then the
+        sessions without booked figures — runs that failed before they measured anything — oldest
+        first
     """
     grouped: Dict[str, List[RunResultRow]] = {}
     for row in rows:
@@ -284,7 +307,7 @@ def build_deployment_histories(rows: List[RunResultRow]) -> Dict[str, List[Deplo
             fell_back = previous is not None and ended is None
             if fell_back:
                 ended = _parse(previous.run_timestamp)
-            sessions.append(DeploymentSessionRow(
+            session = DeploymentSessionRow(
                 index=position,
                 run_id=row.run_id,
                 started=started,
@@ -292,6 +315,7 @@ def build_deployment_histories(rows: List[RunResultRow]) -> Dict[str, List[Deplo
                 max_drawdown=row.account_max_drawdown,
                 max_drawdown_pct=row.account_max_drawdown_pct,
                 currency=row.currency,
+                booking_state=SessionBookingState.BOOKED,
                 bot=row.scenario_set_name,
                 bot_id=row.bot_id,
                 ended=_session_end(row),
@@ -315,12 +339,143 @@ def build_deployment_histories(rows: List[RunResultRow]) -> Dict[str, List[Deplo
                     code_changes_between(previous_stand, row.code_stand)
                     if previous_stand is not None and row.code_stand is not None and row.currency
                     else []),
-            ))
+            )
+            # A run that failed before it measured anything has no currency to stand under: it
+            # joins the sessions without booked figures, which mark no gap and no change (#646).
+            sessions.append(_without_figures(session, SessionBookingState.FAILED)
+                            if row.measured_nothing() else session)
             previous = row
             if row.code_stand is not None:
                 previous_stand = row.code_stand
-        histories[deployment] = sessions
+        histories[deployment] = _order_without_figures(sessions)
     return histories
+
+
+def add_unbooked_sessions(
+    histories: Dict[str, List[DeploymentSessionRow]],
+    rows: List[RunResultRow],
+    runs: List[RunInfo],
+) -> Dict[str, List[DeploymentSessionRow]]:
+    """
+    Add the sessions the run index registered that no ledger row of their deployment names (#645).
+
+    Every session registers in the run index at its start, naming its deployment, and books its
+    first ledger row only when it seals its first trading day. Read from the ledger alone, a new
+    deployment therefore stood in no list for up to a day, and its detail answered 404, while its
+    session ran and recorded. #539 defines a deployment by the runs that name it; this is that
+    definition.
+
+    Such a session has booked nothing yet: it runs before its first seal, or it ended before
+    reaching it, and the run list's recording verdict says which. It is added with its start and
+    without figures, as a series of its own after the booked ones: no currency, no P&L, no
+    drawdown — None, never a zero, because nothing was measured.
+
+    Args:
+        histories: Deployment identity → its booked sessions, as `build_deployment_histories`
+            returns them
+        rows: The ledger rows the histories were built from
+        runs: The runs of the run index to look through
+
+    Returns:
+        Deployment identity → its sessions: the booked ones unchanged, then every session without
+        booked figures — those that failed before they measured anything and those not booked yet
+        — as one series, oldest first and numbered from 1; a deployment only the run index names is
+        added
+    """
+    merged = {deployment: list(sessions) for deployment, sessions in histories.items()}
+    for deployment, members in unbooked_runs(rows, runs).items():
+        sessions = merged.setdefault(deployment, [])
+        for position, run in enumerate(members, start=1):
+            sessions.append(DeploymentSessionRow(
+                index=position,
+                run_id=run.run_id,
+                started=_parse(run.start_time),
+                net_pnl=None,
+                max_drawdown=None,
+                max_drawdown_pct=None,
+                currency=None,
+                booking_state=SessionBookingState.NOT_BOOKED_YET,
+                bot=run.name,
+                orders_to=run.orders_to,
+            ))
+        merged[deployment] = _order_without_figures(sessions)
+    return merged
+
+
+def unbooked_runs(rows: List[RunResultRow], runs: List[RunInfo]) -> Dict[str, List[RunInfo]]:
+    """
+    The runs a deployment holds that no ledger row of that deployment names yet (#645).
+
+    Args:
+        rows: Ledger rows
+        runs: The runs of the run index to look through
+
+    Returns:
+        Deployment identity → its runs that have booked nothing yet, oldest first; a deployment
+        with none is absent
+    """
+    # Booked per DEPLOYMENT and run: a session is booked for the deployment its rows name.
+    booked = {(row.deployment_id, row.run_id) for row in rows if row.deployment_id}
+    unbooked: Dict[str, List[RunInfo]] = {}
+    for run in sorted(runs, key=lambda r: r.start_time):
+        # DEPLOYMENT explicitly: a sweep id has the same shape, so the kind is what makes the
+        # filter exact (#386). A run indexed before the kind existed is not matched: an unknown
+        # kind is not a claim that it is this one.
+        if run.parent_kind != ParentKind.DEPLOYMENT or not run.parent_id:
+            continue
+        if (run.parent_id, run.run_id) not in booked:
+            unbooked.setdefault(run.parent_id, []).append(run)
+    return unbooked
+
+
+def _without_figures(
+    session: DeploymentSessionRow,
+    state: SessionBookingState,
+) -> DeploymentSessionRow:
+    """
+    A session as one without booked figures: no currency, and no gap or change measured against
+    a predecessor, as a session the run index names before its first seal carries none (#645).
+
+    Args:
+        session: The session as its series built it
+        state: Why it has no figures
+
+    Returns:
+        The session without currency, gap or change marks
+    """
+    return session.model_copy(update={
+        'currency': None,
+        'booking_state': state,
+        'gap_hours': None,
+        'gap_between_starts': False,
+        'strategy_changed': False,
+        'operation_changed': False,
+        'orders_to_changed': False,
+        'code_changes': [],
+    })
+
+
+def _order_without_figures(sessions: List[DeploymentSessionRow]) -> List[DeploymentSessionRow]:
+    """
+    A deployment's sessions, those without booked figures as one series after the others.
+
+    Their starts come from two sources, a ledger row's timestamp and the run index's start, so
+    they are compared as UTC instants, and a session without a start sorts last.
+
+    Args:
+        sessions: The deployment's sessions
+
+    Returns:
+        The booked sessions as they came, then those without booked figures oldest first,
+        numbered from 1
+    """
+    booked = [s for s in sessions if s.booking_state is SessionBookingState.BOOKED]
+    without = sorted(
+        (s for s in sessions if s.booking_state is not SessionBookingState.BOOKED),
+        key=lambda s: (s.started is None,
+                       ensure_utc_aware(s.started) if s.started is not None else _NO_START))
+    return booked + [s.model_copy(update={'index': position})
+                     for position, s in enumerate(without, start=1)]
 
 
 def _session_end(row: RunResultRow) -> Optional[datetime]:

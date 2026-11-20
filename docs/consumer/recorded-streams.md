@@ -20,7 +20,8 @@ writes when it ends.
 
 Reached with a grant on the `reports` surface — `reports:<run_id>`, or `reports:*` for every run.
 A unit is a session in an AutoTrader run, named as its state frames name it (`unit_name` on the
-state frames route). A backtest records no stream over time yet.
+state frames route). A backtest's streams over time are not served yet, not even the state frames its
+scenario can record.
 
 ## The timeline
 
@@ -111,7 +112,7 @@ only where one millisecond holds more (below).
 | 400 | `invalid_range` | `from` is not earlier than `to` |
 | 400 | `invalid_timestamp` | `from` or `to` is not ISO-8601 |
 | 404 | `run_not_found` | no run of that id |
-| 404 | `streams_not_recorded` | the run records no stream over time — a backtest records none yet |
+| 404 | `streams_not_recorded` | the run records no stream over time — a backtest's are not served yet |
 | 404 | `unit_not_found` | the run records no unit of that name |
 | 404 | `state_frame_not_written_yet` | the session opened its stream and has not written its header yet |
 | 409 | `artifact_unreadable` | a stream cannot be read |

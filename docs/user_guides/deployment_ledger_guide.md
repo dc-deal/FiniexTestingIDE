@@ -80,14 +80,16 @@ python python/cli/run_index_cli.py deployments
 ```
 
 ```
-3 deployment(s)
+4 deployment(s)
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 deployment                       bot                    bot id               orders to        sessions since                 net P&L      max DD  idle max
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+deploy_20261103_090000_a1b2c3d4  ethusd_rehearsal       —                    simulated               1 2026-11-03 09:00            —           —         —
 deploy_20260820_090000_5e3f91a7  ethusd_production      ethlive01            venue                   1 2026-08-20 09:00        12.00      -30.00         —
 deploy_20260901_060000_ab12c9d0  dotusd_production      dotlive01            venue                   4 2026-09-01 06:00       136.10     -212.75     6.6 d ⚠
 deploy_20260712_051500_77c1e4b2  dotusd_production      dotlive01            venue                   2 2026-07-12 05:15      -402.88     -991.40     2.1 d ⚠ code 64 d ago
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+— under net P&L = sessions without booked figures: they failed before they measured anything, run before their first seal, or ended before it.
 ⚠ = the sessions were not all produced by the same configuration; the detail view draws the break.
 ⚠ code N d ago = the sessions started on different code, last N days ago; the detail view draws each change.
 Two rows sharing a BOT ID = one bot restarted with --new-deployment. The older history stays readable.
@@ -100,6 +102,12 @@ histories stay readable under their own names.
 
 Note what the two number columns do: **`net P&L` adds up across the sessions, `max DD` does
 not** — it is the largest of them. The reason is in the detail view below.
+
+**A deployment is listed from its first session's start.** `ethusd_rehearsal` started this morning
+and has not sealed its first trading day: it stands with a dash for every figure and for its bot
+id, which only a booked day records. At its first seal its row fills in. A deployment whose earlier
+sessions booked days and whose newest session has not shows that session in a row of its own,
+beside the booked one.
 
 **With an id you descend into one** — what happened inside it:
 
@@ -390,7 +398,10 @@ A session books each trading day into the ledger as the day seals, and the row o
 the **last** step. A session killed before that — a crash, a reboot, a hard stop in the debugger —
 keeps the days it sealed, and the row of its close is missing: in the session table it has no `ended`
 and no length, and the gap after it is measured between the starts. A session killed before its
-first seal appears nowhere in the table. It is not hidden; nothing of it was recorded yet.
+first seal has no row at all. It stands in the table with its start, a dash for every figure and
+the note `nothing booked yet`, because nothing of it was booked. A session that failed before it
+measured anything — refused at its start, say — stands beside it the same way, with the note
+`failed before it measured anything`: its ledger row records the failure and no figure.
 
 The run index is what still holds every one of them, because a run registers from its header
 before anything can fail. The report reads both and names the difference:
@@ -406,11 +417,11 @@ before anything can fail. The report reads both and names the difference:
 
 Two things follow, and both matter more than they look.
 
-**The session count above the table counts the sessions the ledger holds** — the completed ones
-and those that sealed at least one day. A session killed before its first seal is not among
-them, so a deployment whose bot was killed that early reports fewer sessions than it ran. The
-"never completed" count beside it overlaps with the table and is never added to it; the block
-below the table names every one of those runs, in the table or not.
+**The session count above the table counts every session the deployment ran** — the run index
+names them, the ledger says what they booked (#645). A session killed before its first seal is
+among them, with no figures. The "not completed" count beside it names the runs that never
+reached their close, each of them in the table, so it is never added to it; the block below the
+table names every one of those runs.
 
 **A session running RIGHT NOW looks exactly the same** — a header, the rows of its sealed days, no
 row of a close. The wording says "not completed" rather than "aborted" for that reason; the run
@@ -546,8 +557,12 @@ expect.
 
 The response also carries `unfinished`: the runs of this deployment that never reached their
 close. One that sealed a day is in the list with `ended` null; one killed before its first seal
-is missing from it — so the two overlap. A bare count would be a number with nothing to doubt
-about it.
+is in it with no currency and no figures. Every run the count names is in the list, so the two
+are never added.
+
+**A new deployment is listed from its first session's start (#645).** Before that session seals
+its first trading day, the list carries a row for it with `currency: null` and no figures, and the
+detail answers with the session in it.
 
 A token needs the `deployments` grant — `deployments:*` for every bot, or one deployment's id
 for one of them.

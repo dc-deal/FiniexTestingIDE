@@ -30,6 +30,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.market_data_episode_tracker import MarketDataEpisodeTracker
 from python.framework.process.process_live_export import process_live_export, process_live_setup
+from python.framework.process.state_frame_recorder import StateFrameRecorder
 from python.framework.process.tick_pipeline_core import (
     execute_algo_path,
     render_bars_for_tick,
@@ -45,6 +46,7 @@ from python.framework.stress_test.stale_data_stress_driver import (
 )
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
+from python.framework.types.decision_logic_types import Decision
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.process_data_types import (
@@ -70,6 +72,9 @@ def _run_sim_heartbeats(
     decision_event_dispatcher: Optional[DecisionEventDispatcher],
     booking: BookingPeriodRecorder,
     seal_source,
+    state_frames: Optional[StateFrameRecorder] = None,
+    ticks_processed: int = 0,
+    last_decision: Optional[Decision] = None,
 ) -> bool:
     """
     Drive decision ghost-passes in the simulated-time gap between two data ticks (#360).
@@ -96,6 +101,9 @@ def _run_sim_heartbeats(
             ghost instant, because these passes are the only thing that advances the canonical
             clock across a quiet stretch and a fill can resolve at any of them (#537)
         seal_source: Callable handing the recorder its records + snapshot when a seal happens
+        state_frames: The scenario's state-frame recorder, or None when it records none
+        ticks_processed: The scenario's tick counter, for the frames
+        last_decision: The last tick's decision — what a heartbeat frame records, as live
 
     Returns:
         True if the algo requested session end during a ghost-pass (caller stops)
@@ -118,10 +126,15 @@ def _run_sim_heartbeats(
         if decision_event_dispatcher is not None:
             decision_event_dispatcher.drain()
         decision = run_ghost_pass(worker_coordinator)
+        ghost_order = None
         if decision is not None:
-            decision_logic.execute_decision(decision, tick=None)
+            ghost_order = decision_logic.execute_decision(decision, tick=None)
         if decision_event_dispatcher is not None:
             decision_event_dispatcher.drain()
+        # #579 part B item 3: a heartbeat fills the slot it reaches, with the last tick's decision
+        # and no closed bar — as a live session's heartbeat does
+        if state_frames is not None:
+            state_frames.on_pass(ticks_processed, last_decision, on_tick=False, order=ghost_order)
         if trade_simulator.is_session_end_requested():
             return True
         k += 1
@@ -137,7 +150,8 @@ def execute_tick_loop(
     scenario_logger: ScenarioLogger,
     ticks: Tuple[TickData, ...],
     live_queue: Optional[Queue] = None,
-    decision_event_dispatcher: Optional[DecisionEventDispatcher] = None
+    decision_event_dispatcher: Optional[DecisionEventDispatcher] = None,
+    state_frames: Optional[StateFrameRecorder] = None,
 ) -> ProcessTickLoopResult:
     """
     Execute tick processing loop with live update support.
@@ -154,6 +168,9 @@ def execute_tick_loop(
         scenario_logger: Logger for this scenario
         ticks: Deserialized tick data
         live_queue: Queue for live updates (optional)
+        decision_event_dispatcher: The decision event channel (#348), or None
+        state_frames: The scenario's state-frame recorder (#579 part B item 3), or None when it
+            records none
 
     Returns:
         ProcessTickLoopResult with loop results
@@ -188,6 +205,8 @@ def execute_tick_loop(
         # How many ticks reached the broker path — measured again after the loop, so a session
         # that ended early reports the market time it processed rather than the time it loaded.
         processed_count = 0
+        # The last tick's decision — what a heartbeat frame and the final frame record
+        last_decision: Optional[Decision] = None
 
         live_setup = process_live_setup(
             scenario_logger, config, ticks, live_queue)
@@ -283,7 +302,7 @@ def execute_tick_loop(
                 if _run_sim_heartbeats(
                         prev_interval_msc, current_msc, config, trade_simulator,
                         worker_coordinator, decision_logic, decision_event_dispatcher,
-                        booking, seal_source):
+                        booking, seal_source, state_frames, processed_count, last_decision):
                     scenario_logger.info(
                         f'🛑 Session end requested: {trade_simulator.get_session_end_reason()}')
                     break
@@ -320,6 +339,10 @@ def execute_tick_loop(
             if profiling_enabled:
                 profile_times['bar_rendering'] += (time.perf_counter() - t3) * 1000
                 profile_counts['bar_rendering'] += 1
+            # #579 part B item 3: which bars this tick closed — read before the algo path
+            # consumes them, and only when the scenario records frames
+            closed_timeframes = (bar_rendering_controller.get_pending_closed_timeframes()
+                                 if state_frames is not None else frozenset())
 
             # === 2b. Equity sample (#497) ===
             # BEFORE the clipping gate, with the broker path and the bar rendering, and for
@@ -342,7 +365,7 @@ def execute_tick_loop(
             # price, spot multiplies a balance. This raises the sim's throughput floor, so
             # the BENCHMARK baseline and its certificate are re-registered BY HAND with this
             # as the stated reason (§42): a deliberate regression must not look like one
-            # that crept in. #366's stop-out pass rides this sample rather than opening a
+            # that crept in. #515's stop-out pass rides this sample rather than opening a
             # second one.
             if profiling_enabled: t14 = time.perf_counter()
             # The booking period's VALUATION half rides this sample rather than opening a
@@ -394,7 +417,7 @@ def execute_tick_loop(
             # === 5. Order Execution ===
             if profiling_enabled: t9 = time.perf_counter()
             try:
-                decision_logic.execute_decision(decision, tick)
+                order_result = decision_logic.execute_decision(decision, tick)
             except Exception as e:
                 raise RuntimeError(
                     f'Order execution failed: {e} \n{traceback.format_exc()}')
@@ -412,10 +435,17 @@ def execute_tick_loop(
                 if profiling_enabled:
                     profile_times['decision_events'] += (time.perf_counter() - t13) * 1000
                     profile_counts['decision_events'] += 1
-                if trade_simulator.is_session_end_requested():
-                    scenario_logger.info(
-                        f'🛑 Session end requested: {trade_simulator.get_session_end_reason()}')
-                    break
+
+            # === 5c. State Frame (#579 part B item 3) — at the end of the pass, before an end ===
+            if state_frames is not None:
+                state_frames.on_pass(processed_count, decision, on_tick=True,
+                                     closed_timeframes=closed_timeframes, order=order_result)
+            last_decision = decision
+
+            if decision_event_dispatcher is not None and trade_simulator.is_session_end_requested():
+                scenario_logger.info(
+                    f'🛑 Session end requested: {trade_simulator.get_session_end_reason()}')
+                break
 
 
             # === 6. LIVE UPDATES (Time-based) ===
@@ -459,6 +489,9 @@ def execute_tick_loop(
         # consequence of that decision, not an orphan.
         trade_simulator.finish_remaining_orders()
         trade_simulator.check_clean_shutdown(expect_flat=False)
+        # #579 part B item 3: the scenario's last frame, at the state its report describes
+        if state_frames is not None:
+            state_frames.write_shutdown(processed_count, last_decision)
         # update live the last time - to show final balance correctly
         live_updated = process_live_export(
             live_setup, config, current_index, current_tick, portfolio, worker_coordinator, current_bars)
@@ -469,6 +502,8 @@ def execute_tick_loop(
         scenario_logger.error(
             f'Error in Tick Loop - Runtime - try to collect statistics now.: {e}')
         tick_loop_error = e
+        if state_frames is not None:
+            state_frames.close()
 
     try:
         # === CLEANUP COORDINATOR ===

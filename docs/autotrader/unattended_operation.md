@@ -92,7 +92,7 @@ true — a recurrence before the all-clear keeps the episode open.
 | STARTUP FAILED — a step of the start broke | ⛔ |
 | STARTUP REFUSED — a step of the start declined, quoting why: a restart that may not adopt under `operator_confirm`, a Field Study account that holds a resting order | ⛔ |
 | REFUSED AT THE FIRST TICK, and what had been sent before it | ⛔ |
-| RUNTIME ERROR — the session aborted | ⛔ |
+| RUNTIME ERROR — the session aborted, and how many ticks it had processed | ⛔ |
 | EMERGENCY STOP, and EMERGENCY STOP incomplete — check the account by hand (only when closes were sent; kept spot holdings are said in the first message) | ⛔ |
 | TICK LOOP STALLED — the process is alive and not trading; with Telegram on, also when the liveness ping is off | ⛔ |
 | SESSION CRASHED while shutting down — the report may be incomplete | ⛔ |

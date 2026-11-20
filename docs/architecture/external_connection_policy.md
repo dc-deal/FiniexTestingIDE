@@ -344,6 +344,8 @@ Refusal, as the operator reads it:
 | 7 | Broker config + balance (boot) | broker policy, budget 3 | falls back to a cached copy, warning louder as it ages; no cache → refuse |
 | 8 | Operator alerts — Telegram (#235) | 2 s → 60 s, jitter, budget 5 per message — never unlimited, or the boot check would wait out a whole outage; `retry_after` honoured | an exhausted budget drops that one message; a refused token or chat closes the channel for the session. At boot a refusal refuses the start, an unreachable Telegram does not |
 | 9 | Liveness ping (#235) | its interval (60 s) is the ladder | a 4xx on the ping URL — wrong URL, deleted check — or a URL the HTTP stack cannot request stops the pings, and the monitor then raises its alarm; the same on the fail URL stops only the fail pings. A URL nothing could request is refused at boot |
+| 10 | Venue public trade list — the divergence report confirming the trades our archive lacks (#512, #127) | the broker's policy per page, the pages a second apart | any give-up **raises**: a stretch read in part would read as one without trades, so the report names the stretch as unread |
+| 11 | Venue ledger of an account — the divergence report reading its movements (#512) | the broker's policy per request, the requests three seconds apart, with a key that may only read | any give-up **raises**, and the report says the ledger was not read — the state frames then judge a restart |
 
 Row 7 is a fourth pattern worth naming: it does not retry into the void, it **degrades to an
 older copy and gets louder the staler that copy is**. That is a TRANSIENT whose answer in
@@ -365,7 +367,7 @@ and jitter and the give-up action keep the policy's defaults.
 |---|---|
 | `configs/sentiment_config.json` → `stream.connection` / `stream.boot_connection` | 1, 2 |
 | AutoTrader profile → `tick_source` | 4 |
-| `configs/market_config.json` → `broker_transport.connection` | 5, 6, 7 |
+| `configs/market_config.json` → `broker_transport.connection` | 5, 6, 7, 10, 11 |
 | `configs/app_config.json` → `autotrader.operator_alerts.telegram.connection` | 8 |
 
 **A live session refuses a broker ladder that never gives up.** Budget 0 means retry for ever —

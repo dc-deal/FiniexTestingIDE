@@ -96,6 +96,7 @@ class TradeSimulator(AbstractTradeExecutor):
         spot_mode: bool = False,
         initial_balances: Optional[Dict[str, float]] = None,
         modelled_quote_runs: Tuple[Tuple[int, int], ...] = (),
+        portfolio_cache: bool = True,
     ):
         """
         Initialize trade simulator.
@@ -115,6 +116,8 @@ class TradeSimulator(AbstractTradeExecutor):
             initial_balances: Asset inventory for spot mode (e.g., {'USD': 50.0, 'ETH': 0.0})
             modelled_quote_runs: The stretches whose ticks carry a modelled quote, as (first,
                 last) tick time in epoch milliseconds (#602)
+            portfolio_cache: Whether the portfolio marks open positions lazily; False keeps every
+                one current at every event, the reference a verification run compares (#653)
         """
         # Initialize common infrastructure (portfolio, broker, counters, fill logic)
         super().__init__(
@@ -126,6 +129,7 @@ class TradeSimulator(AbstractTradeExecutor):
             trade_history_max=trade_history_max,
             spot_mode=spot_mode,
             initial_balances=initial_balances,
+            portfolio_cache=portfolio_cache,
         )
 
         # Order latency simulator with deterministic ms-based delays
@@ -497,7 +501,7 @@ class TradeSimulator(AbstractTradeExecutor):
             request: OpenOrderRequest with all order parameters
 
         Returns:
-            OrderResult with PENDING status (or rejection)
+            OrderResult with PENDING status, or DENIED when a check here refused it
         """
         request = self._normalize_order_request(request)
 

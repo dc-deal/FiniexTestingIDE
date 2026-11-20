@@ -45,6 +45,7 @@ and a written one cannot drift apart (#621). The tables, the shapes and how a fi
 | 1d | `runs/fixture_productions.jsonl` | RECORD | `entry_id` + `produced_at` — one line per production | none — one file, read whole | B · set |
 | 1e | `logs/imports/` | RECORD | import id — the UTC start plus a random half, e.g. `20261010_090011_a3f9c2d1` | none — opened by the id its file is named after | A · document |
 | 1f | `runs/simulation/sweeps/` — the parameter sweeps; their combinations are runs of row 1 | RECORD | `sweep_id` | none — its figures are the ledger's rows, `ranked.csv` an export of them | A · document |
+| 1g | `runs/divergence/` — comparisons of a live deployment with backtests of its windows; the backtests are runs of row 1 | RECORD | `report_id` | none — opened by its id | A · document |
 | 2 | `runs/ledger/` | RECORD | `(run_id, unit, period_no, currency)` — columns, never a path | `run_ledger_index.parquet` | B · set |
 | 3 | `tests/*/reports/` | RECORD | family + version + date | `certificates_index.parquet` | A · document |
 | 4 | `data/runtime/session_state/` | **CARRY-OVER** | `<bot_id>_<symbol>`, separator reserved | none — opened by key | A · document |
@@ -74,6 +75,20 @@ and the ranking the report command writes, and each combination is a run of row 
 ([Parameter Optimization](parameter_optimization_system.md#what-a-sweep-directory-holds)). The sweep
 store declares both files and that it holds runs; it keeps no index, because what a sweep is and how
 its combinations rank are read from the ledger.
+
+### A divergence comparison keeps its own record
+
+One directory per comparison of a live deployment with backtests of its windows (#512), under
+`runs/divergence/<report_id>/`, the id minted like a run's. It holds, per segment, the scenario set
+it generated and the warmup history the segment's backtest started from — copied from the session,
+whose own record lies on another machine — and, where live orders filled, the set of the second
+backtest at their measured latency. Beside them: the run index it read a copy's sessions
+through, only where the sessions were read from a copy of another machine's data home, and its
+report, as `report.json` and as the `report.txt` the command printed. Its backtests are runs of row
+1: found by the scenario set's name, named in the report, never copied into it. An A/A — one
+window backtested on the sessions' release and on the current tree — keeps its two scenario sets
+per window and its report (`aa_report.json`, `aa_report.txt`) the same way. It keeps no index; a
+comparison is opened by its id.
 
 **Ticks and bars are two stores, and bars are DERIVED.** Ticks are IMPORTED from the collector's
 JSON; bars are GENERATED from those ticks, by a render that writes each symbol's files anew from

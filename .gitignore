@@ -212,7 +212,9 @@ user_algos/
 *.pkl
 *.h5
 
-# Docker Compose user overrides (external volumes, ports, etc.)
+# Docker Compose user overrides (external volumes, ports, etc.). Only `docker compose` picks
+# this up on its own; the devcontainer names one compose file explicitly, so a container started
+# from the IDE ignores it without a word.
 docker-compose.override.yml
 
 # Local tool server registration (machine-specific paths)

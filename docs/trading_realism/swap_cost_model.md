@@ -95,7 +95,7 @@ B — SHORT, swap_short = +3.80 (credit), over the Wednesday triple
 Swap is **not** part of the margin *requirement* (that is size-based). But accrued swap
 flows into **equity** (`equity = balance + Σ unrealized_pnl`, and `unrealized_pnl` includes
 swap), so it lowers **free margin** and the **margin level** — a position bleeding swap moves
-closer to a stop-out (interacts with simulated liquidation, #366).
+closer to a stop-out (interacts with margin liquidation, #515).
 
 ---
 

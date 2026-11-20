@@ -65,6 +65,7 @@ class StoreId(StrEnum):
     """
     RUNS = 'runs'
     SWEEPS = 'sweeps'
+    DIVERGENCE = 'divergence'
     RUN_CONFIGS = 'run_configs'
     RUN_PATCHES = 'run_patches'
     RUN_LEDGER = 'run_ledger'

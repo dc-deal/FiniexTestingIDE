@@ -130,6 +130,19 @@ once the seam has closed.
 | `test_a_live_session_records_the_history_after_the_seam` | the boot read, then the re-read timeframes and the bars after the seam |
 | `test_without_a_path_nothing_is_written` | no path, no file |
 
+### `test_warmup_from_record.py`
+
+A backtest of a session's window starts from the bars the session recorded (#512): the record read
+back through its JSON and fed to the renderer.
+
+| Test | Description |
+|------|-------------|
+| `test_the_record_survives_its_json` | what the reader parses equals what the writer built |
+| `test_fed_back_it_holds_the_archive_history` | fed back for the same first tick, the history equals the archive path's, timeframe by timeframe |
+| `test_a_first_tick_in_a_later_period` | a first tick in a later period than the record reaches is refused at that tick — the bars in between exist nowhere |
+| `test_a_record_that_names_no_instant` | a record with no selection instant is refused |
+| `test_a_record_missing_a_key` | a record from another version of the writer is not read with a guess |
+
 ### `test_first_tick_refusal.py`
 
 A session that cannot close its warmup seam says it refused, not that it crashed — console, session

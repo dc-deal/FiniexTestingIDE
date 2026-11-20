@@ -722,6 +722,8 @@ def _build_executor(
         # at a number no file states.
         order_history_max=AppConfigManager().get_order_history_max(),
         trade_history_max=AppConfigManager().get_trade_history_max(),
+        # #653 — the reference mode a verification run compares the lazy marking against
+        portfolio_cache=config.execution.verification.portfolio_cache,
     )
     # The session log's event-time column pulls from the canonical clock. Attachable only
     # HERE: the logger goes INTO build_live_executor above, so it necessarily exists first.

@@ -11,7 +11,10 @@ with the session's own report.
 
 Not here: the appender the frames are written through — `tests/framework/reporting/`
 (`test_run_stream_appender.py`); serving the latest frame (#611); the simulation's frames (#579
-part B).
+part B item 3) — `tests/framework/divergence_report/` (`test_inputs_of_record_events.py`). The recorder
+itself is shared by both pipelines since #512 (`framework/process/state_frame_recorder.py`); its tests
+stay here, `TestABacktestFrameChangesNothing` among them: a backtest's frame re-marks no position and
+values the account on a tick pass only, a session's does both on every pass.
 
 ## Tests
 

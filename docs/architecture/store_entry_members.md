@@ -235,6 +235,7 @@ behind its `write_strategy_files` parameter.
 | [`trade_history_csv`](reporting_pipeline.md#report-sections--domain--migration-status) | `io/trade_history.csv` | report output | at end | at end | `artifacts` | — |
 | [`order_events`](order_event_stream.md#storage) | `io/order_events.jsonl` | stream · v2 | at end — a scenario recorded an order event | at start — the session got through its startup checks | `stream_files` | `…/order-events` |
 | [`state_frames`](live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream) | `io/state_frames.jsonl` | stream · v1 | — | at start — the profile records state frames | `stream_files` | `…/state-frames/latest` · `…/units/{unit_name}/recorded-streams` · `…/units/{unit_name}/recorded-streams/window` |
+| [`scenario_state_frames`](live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream) | `io/state_frames_{scenario}.jsonl` | stream · v1 | as it runs — the scenario records state frames | — | — | — |
 | [`tick_stream_events`](../autotrader/autotrader_architecture.md#what-a-session-records) | `io/tick_stream_events.jsonl` | stream · v1 | — | at start — the session reads its ticks from a venue | — | — |
 | [`diagnostics_rows`](diagnostics_csv_sink.md#lifecycle-framework-owned) | `diagnostics/{sink}.jsonl` | stream · v1 | — | as it runs — the logic declared a diagnostics sink | — | — |
 | [`trades`](../autotrader/autotrader_architecture.md#what-a-session-records) | `io/trades.jsonl` | stream · v1 | — | at start — the session reached its tick loop | — | — |
@@ -244,6 +245,7 @@ behind its `write_strategy_files` parameter.
 | [`trades_day`](run_stream_day_records.md#what-a-day-record-holds) | `days/{day}/io/trades.parquet` | day record | — | as it runs — the session reached its tick loop, and a trading day ended while the session ran | — | — |
 | [`diagnostics_rows_day`](run_stream_day_records.md#what-a-day-record-holds) | `days/{day}/diagnostics/{sink}.parquet` | day record | — | as it runs — the logic declared a diagnostics sink, and a trading day ended while the session ran | — | — |
 | [`warmup_history`](warmup_history.md#what-a-session-records) | `io/warmup_history.json` | snapshot | — | at start — a worker requires bars | — | — |
+| [`scenario_warmup_history`](warmup_history.md#what-a-session-records) | `io/warmup_history_{scenario}.json` | snapshot | at start — the scenario starts from a session's recorded warmup history | — | — | — |
 | [`algo_state_restored`](../user_guides/algo_state_persistence_guide.md#lifecycle) | `io/algo_state_restored.json` | snapshot | — | at start — the logic keeps its state and a saved state was found | — | — |
 <!-- end of generated table -->
 

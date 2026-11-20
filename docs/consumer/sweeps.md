@@ -110,7 +110,9 @@ null on a combination recorded before that, when a period carried none.
 
 A row's `status` is `ok` or `error`, and `error` means the run produced no usable data, with
 `error` carrying the reason. Those rows are recorded in the ledger but never rank — so the detail
-list leaves them out while the sweep's own `error_count` still counts them.
+list leaves them out while the sweep's own `error_count` still counts them. Which is why the
+figures a run that measured nothing leaves empty — `net_pnl`, `win_rate`, `total_fees` and the
+trade counts — are nullable in the schema and still never null in this list.
 
 The two counts are also counted over different things: `run_count` in the list counts
 **combinations**, while `count` in the detail counts **rows** — one per combination and account

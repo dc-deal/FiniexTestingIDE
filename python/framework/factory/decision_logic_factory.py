@@ -45,6 +45,7 @@ from python.framework.decision_logic.core.test_probes.margin_stress_probe import
 from python.framework.decision_logic.core.test_probes.multi_position_probe import (
     MultiPositionProbe,
 )
+from python.framework.decision_logic.core.test_probes.observer_probe import ObserverProbe
 from python.framework.decision_logic.core.test_probes.outage_probe import (
     OutageProbe,
 )
@@ -101,6 +102,7 @@ class DecisionLogicFactory:
             self._registry['CORE/test_probes/multi_position_probe'] = (MultiPositionProbe, None)
             self._registry['CORE/test_probes/event_probe'] = (EventProbe, None)
             self._registry['CORE/test_probes/outage_probe'] = (OutageProbe, None)
+            self._registry['CORE/test_probes/observer_probe'] = (ObserverProbe, None)
             self._registry['CORE/live_field_study/live_field_study'] = (LiveFieldStudy, None)
             self._registry['CORE/security_cert_study/security_cert_study'] = (
                 SecurityCertStudy, None)

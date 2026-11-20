@@ -142,6 +142,18 @@ tests/
 │   ├── algo_clock_validator/ unit — wall-clock ban, runtime startup validator: AST scan of loaded algos (CORE + user) + batch pre-flight (#359)
 │   ├── discovery_validity/ unit — the three discovery caches compare the config fingerprint they were already writing (#486 finding 57); a config change moves no bar file, so mtime alone kept serving a stale cache
 │   ├── static_analysis/   unit — undefined-name gate (pyflakes) over python/ + tests/; the ruff/vulture backlog tier is measured, not gated
+│   ├── cache_transparency/ unit + integration — nothing an algo sees depends on the portfolio's lazy marking: the observer
+│   │                      probe's record with the cache on and off, a session read at its tick, the read-only algo mask (#653)
+│   ├── divergence_report/ unit + integration — a live session against a backtest of its window: the backtest built from the session's
+│   │                      record — rendered profile, frozen broker document, recorded warmup — every block declared; the live
+│   │                      side's segments, windows and trading days, each day compared or excluded with every cause; the
+│   │                      gate — code path, strategy, configuration, broker document, window — that refuses a pair; the
+│   │                      measures — each day's decision, each order, the account values, the day attribution — on
+│   │                      real backtests too; the window's gaps and what they leave out; what the venue's own record
+│   │                      confirms and refutes — its trades, the account's movements in its ledger; the verdict by
+│   │                      the rules, and the command that joins it all (#512)
+│   ├── venue_history/     unit — what a venue itself records, read from Kraken: the public trade list and an account's
+│   │                      ledger at the venue, against recorded answers; the seam that hands readers out (#512, #127)
 │   ├── composite/         unit — which accounts may add up: the composite definition and its floor, the key projected from
 │   │                      the rendered configuration, joins and splits, the excluded member, every shipped value classified (#615)
 │   ├── rendered_config/   unit — what a run records it ran with: the one strategy renderer and its portable type key, every shipped

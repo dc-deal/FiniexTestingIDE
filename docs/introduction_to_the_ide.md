@@ -134,6 +134,14 @@ what the comparison backtest reads, counting its gaps rather than assuming it sa
 saw. What the session missed is recorded instead: every outage of its tick stream, with the venue's
 public trade ids around it.
 
+**A comparison asks what two records hold, never when they were made.** Every record also carries
+stamps from the clock of the machine that wrote it — when a configuration was fetched, a file
+written, an export or a copy taken. They say where a record came from, not what it holds, so a
+comparison leaves them out, and two records that differ only there count as the same. The time of
+an event — a tick, a bar's close, a decision, a fill — is not such a stamp: it is what a comparison
+measures. The comparison of a session with its backtest works this way
+([Comparing a Live Bot With Its Backtest](user_guides/divergence_report_guide.md)).
+
 The mechanics stay with each part: the store in
 [Data Storage Layout](architecture/data_storage_layout.md), the code in
 [Run Origin & Code Identity](architecture/run_origin_and_code_identity.md), the data in

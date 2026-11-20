@@ -333,6 +333,10 @@ rule for telling them apart:
 (the methods you override + the injected collaborators), not a catch-all facade for every
 utility — so what a component actually depends on stays readable at the top of its file.
 
+What the injected `trading_api` hands back is never the engine's own object: an open position comes
+as a read-only `AlgoPosition` that computes its price and P&L when read. Which fields it shows and
+where each comes from: [Algo Masks](algo_masks.md).
+
 ---
 
 ## The Contract Model

@@ -363,7 +363,8 @@ by leaving them blank rather than inventing them.
 **A document without a file is frozen by content** (#547) — the rendered profile and the broker
 configuration an AutoTrader session records at its start. The same document is one entry and one
 copy in its own subdirectory; a changed one mints a new id; a source kind is refused from content;
-a rebuild finds both kinds by their directory. And the one property the design hangs on: a
+it reads back by its id where it is of the kind asked for, and an unknown id or another kind says
+so; a rebuild finds both kinds by their directory. And the one property the design hangs on: a
 document NEVER answers a lookup by file name — its source columns stay empty, so the profile's
 `history()` and `resolve()` keep returning the profile and not its own rendering.
 

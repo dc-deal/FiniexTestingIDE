@@ -52,9 +52,11 @@ from python.framework.constants.run_layout_constants import (
     SCENARIO_DETAILS_ARTIFACT_FILE,
     SCENARIO_DIAGNOSTICS_FILE_PATTERN,
     SCENARIO_EVENTS_FILE_PATTERN,
+    SCENARIO_STATE_FRAMES_FILE_PATTERN,
     SCENARIO_LOG_NAME_PATTERN,
     SCENARIO_LOGS_SUBDIR,
     SCENARIO_STRATEGY_FILE_PATTERN,
+    SCENARIO_WARMUP_HISTORY_FILE_PATTERN,
     SECURITY_CERT_CAPTURE,
     SESSION_DAY_LOG_FILE_PATTERN,
     SESSION_EVENTS_FILE,
@@ -403,6 +405,14 @@ RUN_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
         day_record=RunEntryMemberId.STATE_FRAMES_DAY,
         recorded_stream_kind=RecordedStreamKind.STATE_FRAMES),
     EntryMember(
+        RunEntryMemberId.SCENARIO_STATE_FRAMES, f'{IO_SUBDIR}/{SCENARIO_STATE_FRAMES_FILE_PATTERN}',
+        EntryMemberShape.STREAM, 'what a backtest scenario held and decided, moment by moment',
+        (EntryMemberWrite(RUN_TYPE_SIMULATION, EntryMemberMoment.AS_IT_RUNS,
+                          'the scenario records state frames'),),
+        EntryMemberWriteMode.APPEND_LINES,
+        'docs/architecture/live_telemetry_architecture.md#the-recorded-state-frame--not-this-stream',
+        schema_version=STATE_FRAMES_SCHEMA_VERSION, time_fields=('frame_time',)),
+    EntryMember(
         RunEntryMemberId.TICK_STREAM_EVENTS, f'{IO_SUBDIR}/{TICK_STREAM_EVENTS_FILE}',
         EntryMemberShape.STREAM, 'the tick stream\'s outages and the trades it refused',
         (EntryMemberWrite(RUN_TYPE_AUTOTRADER, EntryMemberMoment.RUN_START,
@@ -454,6 +464,15 @@ RUN_ENTRY_MEMBERS: Tuple[EntryMember, ...] = (
         'the seam',
         (EntryMemberWrite(RUN_TYPE_AUTOTRADER, EntryMemberMoment.RUN_START,
                           'a worker requires bars'),),
+        EntryMemberWriteMode.ATOMIC_REPLACE,
+        'docs/architecture/warmup_history.md#what-a-session-records'),
+    EntryMember(
+        RunEntryMemberId.SCENARIO_WARMUP_HISTORY,
+        f'{IO_SUBDIR}/{SCENARIO_WARMUP_HISTORY_FILE_PATTERN}', EntryMemberShape.SNAPSHOT,
+        'the warmup bars a backtest scenario injected from a session\'s record, written again '
+        'when its first tick closes the seam',
+        (EntryMemberWrite(RUN_TYPE_SIMULATION, EntryMemberMoment.RUN_START,
+                          'the scenario starts from a session\'s recorded warmup history'),),
         EntryMemberWriteMode.ATOMIC_REPLACE,
         'docs/architecture/warmup_history.md#what-a-session-records'),
     EntryMember(

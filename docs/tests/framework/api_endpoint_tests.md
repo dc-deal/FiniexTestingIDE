@@ -277,8 +277,10 @@ and what the sweep view must:
 ## Deployment routes (`TestDeployments`)
 
 A deployment is the life of ONE bot across its restarts, and it is not a run: no header, no
-directory, no artifacts. Its rows live in the ledger and nowhere else, which is why these routes
-read the ledger and only the ledger.
+directory, no artifacts. Which sessions it holds is the run index's answer, and what they booked
+the ledger's: every session registers in the index at its start and books its first ledger row
+only at its first seal (#645). By default the class's run index knows no run, so a test reads only
+the ledger it hands over.
 
 | Test | Description |
 |------|-------------|
@@ -289,15 +291,21 @@ read the ledger and only the ledger.
 | `test_a_configuration_change_is_reported_before_the_table` | The advisory rides on the response rather than inside a row, so a client cannot render the table and drop the sentence that says whether the strategy parameters, the operational configuration or the orders' destination changed across the rows |
 | `test_a_code_change_alone_is_changed_with_no_advisory` | #559 — the state the contract log names: `changed` true with `advisory` null, `configuration_changed` false, the reason in `code_summary` and `code_changes`, and no path of the machine in any of them |
 | `test_a_configuration_change_alone_keeps_its_old_answer` | The same answer as before the code stands, with `code_summary` null |
-| `test_a_session_that_never_reached_its_close_is_counted` | The ledger row is written last, so a killed session is absent from the list by construction |
-| `test_unknown_deployment_is_a_404_and_not_an_empty_history` | An empty list would read as a deployment that ran and did nothing |
+| `test_a_session_that_never_reached_its_close_is_counted` | The ledger's row of a close is written last, so a killed session stands in the list with no end, or with no figures when it sealed no day; the count tells it from one still running |
+| `test_a_deployment_is_listed_from_its_first_sessions_start` | #645 — a deployment only the run index names is listed, with `currency`, `net_pnl` and both drawdowns null, never zero, and `bot`, `orders_to` and `first_started` from the index |
+| `test_its_detail_answers_with_the_session_that_booked_nothing` | the detail answers 200 with that session in `sessions`, without figures and without an end, and `unfinished` counts it |
+| `test_its_booking_periods_are_an_empty_list_and_not_a_404` | an empty list, and the session counted in `sessions_without_periods` |
+| `test_a_new_session_of_a_booked_deployment_stands_in_a_row_of_its_own` | before its first seal a session has no currency, so it stands in a row with `currency` null after the booked USD row, and last in the detail |
+| `test_a_failed_start_serves_no_figure_and_says_why` | #646 — a run that failed before it measured anything serves no figure and no currency, stands in the null-currency row beside a session not booked yet, and its `booking_state` reads `failed` |
+| `test_a_sweep_naming_the_same_id_is_not_a_session` | the parent's KIND decides, not the shape of its id |
+| `test_unknown_deployment_is_a_404_and_not_an_empty_history` | An empty list would read as a deployment that ran and did nothing; the sentence names both stores it asked |
 | `test_the_detail_route_filters_in_the_store` | `read_rows(deployment_id=...)`, not a full read followed by a filter |
 | `test_the_periods_of_every_session_come_back_in_one_call` | `/deployments/{id}/booking-periods` — the thirty-day picture without walking the sessions |
 | `test_every_period_names_the_session_that_booked_it` | `period_no` restarts wherever a session wrote no carry-over floor, so two periods of one deployment can both be #1; `run_id` is what tells them apart |
 | `test_a_row_that_books_no_period_is_skipped_and_counted` | Every row written before the booking journal is one of those — skipped, and its session counted, so an incomplete history is not read as a quiet one |
 | `test_the_periods_carry_their_own_band_not_the_cumulative_one` | `period_max_drawdown`, not `account_max_drawdown` — the running figure would repeat the same number down the column |
 | `test_there_is_no_reconciliation_and_that_is_deliberate` | Pinned as an ABSENCE: across many runs no second, independently derived figure exists, so a check could only compare the rows with themselves |
-| `test_periods_of_an_unknown_deployment_are_a_404` | An id with no ledger rows |
+| `test_periods_of_an_unknown_deployment_are_a_404` | An id that no session and no ledger row names |
 
 ## TestGaps — `/brokers/{broker}/symbols/{symbol}/gaps`
 

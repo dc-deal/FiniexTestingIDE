@@ -16,6 +16,7 @@ from python.framework.types.config_types.performance_tracking_config_types impor
     AutoTraderPerformanceTrackingConfig,
 )
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
+from python.framework.types.config_types.verification_config_types import VerificationConfig
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 
@@ -78,6 +79,8 @@ class AutotraderExecutionDefaults(StrictConfigModel):
     venue_read_settle_seconds: float = 5.0
     unresolved_resolution: UnresolvedResolutionDefaults = UnresolvedResolutionDefaults()
     performance_tracking: AutoTraderPerformanceTrackingConfig = AutoTraderPerformanceTrackingConfig()
+    # Switches that change no result by design; turned off only to compare (#653)
+    verification: VerificationConfig = VerificationConfig()
 
 
 class ClippingMonitorDefaults(StrictConfigModel):
