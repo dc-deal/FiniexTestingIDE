@@ -19,6 +19,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from python.framework.exceptions.store_errors import StoreIndexReplacedError
 from python.framework.types.store_types import StoreId
 from python.framework.utils.file_utils import create_directory
 
@@ -103,7 +104,11 @@ class AbstractStoreIndex(ABC):
         """
         if not self._path.exists():
             return pd.DataFrame(columns=self.COLUMNS)
-        return pd.read_parquet(self._path)
+        try:
+            return pd.read_parquet(self._path)
+        except FileNotFoundError as error:
+            # It existed a moment ago: another process is replacing it right now
+            raise StoreIndexReplacedError(self._path, 'read') from error
 
     def write(self, frame: pd.DataFrame, logic_version: Optional[int] = None) -> None:
         """
@@ -128,7 +133,12 @@ class AbstractStoreIndex(ABC):
 
         tmp_path = self._path.with_suffix(self._path.suffix + '.tmp')
         pq.write_table(table, tmp_path)
-        os.replace(tmp_path, self._path)
+        try:
+            os.replace(tmp_path, self._path)
+        except FileNotFoundError as error:
+            # Every writer of this index uses the one temporary name, so a second writer that
+            # replaced first took this writer's file with it
+            raise StoreIndexReplacedError(self._path, 'replaced') from error
 
     def write_incremental(self, frame: pd.DataFrame) -> None:
         """

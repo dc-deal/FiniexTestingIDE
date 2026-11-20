@@ -59,6 +59,21 @@ directory is measured whole — a run's size used to be its header's bytes — a
 entries hold another store's counts only its own files, so a sweep's combinations are measured
 once, as runs.
 
+## `test_store_index_replaced.py`
+
+**An index that vanishes under its reader or writer says so (#650).** Two processes that rebuild
+one index at the same moment collide where a replace is a delete followed by a rename: one of
+them finds the file gone between two of its own steps. Each test makes the file really vanish at
+that step, and none mocks the error into being:
+
+- a reader finds the index gone between its existence check and the open;
+- a second writer's replace takes the one temporary file both writers wrote;
+- the ledger index is gone between its write and the date its rebuild sets on it.
+
+Each time the error is still a `FileNotFoundError`, so whoever caught the bare one catches it, and
+its text names the index, the likely cause, that nothing is lost and the issue that removes the
+collision.
+
 ## `test_run_entry_members.py`
 
 **The store's declaration of what a run directory and a sweep directory may hold (#621).** It reads

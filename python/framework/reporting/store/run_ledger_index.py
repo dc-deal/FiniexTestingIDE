@@ -17,6 +17,7 @@ from typing import List, Optional
 
 import pandas as pd
 
+from python.framework.exceptions.store_errors import StoreIndexReplacedError
 from python.framework.store.abstract_store_index import (
     AbstractStoreIndex,
     store_index_filename,
@@ -239,4 +240,7 @@ class RunLedgerIndex(AbstractStoreIndex):
             read_started_ns: The instant the fragment read started
         """
         path = self.get_path()
-        os.utime(path, ns=(read_started_ns, read_started_ns))
+        try:
+            os.utime(path, ns=(read_started_ns, read_started_ns))
+        except FileNotFoundError as error:
+            raise StoreIndexReplacedError(path, 'dated after its rebuild') from error
