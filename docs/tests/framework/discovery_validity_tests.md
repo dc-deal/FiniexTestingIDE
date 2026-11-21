@@ -32,6 +32,8 @@ produced the content, but the configuration it was produced under.
 |---|---|
 | `test_a_matching_fingerprint_is_valid_and_a_changed_one_is_not` | Parameterized over all **three** families: a cache built under the current config stays valid; a changed fingerprint invalidates it while the source file has not moved |
 | `test_a_cache_without_a_fingerprint_is_not_valid` | A file written before the fingerprint existed cannot vouch for itself and is rebuilt |
+| `test_a_cache_of_another_method_is_not_valid` | A volatility cache without `method_version`, or with another one, is rebuilt although its fingerprint matches (#647) |
+| `test_the_fingerprint_a_generated_profile_checks_is_the_config_s_alone` | The method version stays out of the fingerprint a generated profile records, so a new method does not call the committed profiles stale |
 | `test_it_returns_every_key_decoded` | `read_cache_metadata` yields every key from ONE file open |
 | `test_a_missing_file_is_none_rather_than_an_error` | An absent cache is `None`, never an exception |
 
@@ -60,19 +62,21 @@ there and enters it in the index in the same step.
 | `test_a_rewritten_file_keeps_one_row_and_leaves_no_temporary_file` | A second write of the same file replaces its row, and nothing but the file is left in the folder |
 | `test_no_module_writes_a_parquet_file_past_it` | No module under `python/framework/discoveries/` other than the index unit calls `write_table` or `to_parquet` — a family writing past the index would bring the stale index back with the suite green |
 
-## The volatility profile ranks every period in one pass
+## The volatility profile measures each period against its trailing year
 
-`test_volatility_profile_ranks.py`. Each period's `atr_percentile` is the share of periods whose
-ATR lies strictly below its own. It used to be counted against every period, per period — a cost
-that grew with the square of the history, and on a decade of hourly Kraken periods took most of an
-import's cache step. One sort and a binary search give the same count with the same arithmetic, so
-the ranks may not move by a bit. A one-hour period takes its session from its hour, which every bar
-in it shares, instead of counting the most frequent one. The frames are synthetic.
+`test_volatility_profile_ranks.py` (#647). Each period's `atr` is its ATR over close divided by the
+mean of the periods of the 365 days up to and including it, and its `atr_percentile` the share of
+those periods strictly below it. One rolling pass over the period starts computes both; a
+comparison against every period of the year, per period, would grow with the history times the
+year. A one-hour period takes its session from its hour, which every bar in it shares. The frames
+are synthetic.
 
 | Test | Asserts |
 |---|---|
-| `test_each_rank_is_the_share_strictly_below` | Ties share a rank, and the rank counts only the values strictly below |
-| `test_ranks_match_the_count_against_every_value_bit_for_bit` | On random values with ties, the ranks equal the former per-value count exactly, in the same dtype |
-| `test_no_values_give_no_ranks` | No periods, no ranks — never an error |
-| `test_every_period_carries_the_rank_of_its_own_atr` | A built profile's periods carry the ranks of their own ATR ratios |
+| `test_each_rank_is_the_share_of_its_year_strictly_below` | Ties share a rank, each period is ranked among the periods up to and including it |
+| `test_ranks_and_means_match_a_plain_count_over_each_year` | On irregular starts across three years with tied values, the ranks equal a plain count over each year exactly and the means agree |
+| `test_a_year_forgets_what_lies_before_it` | A reference a year on holds none of the periods before that year |
+| `test_no_periods_give_no_reference` | No periods, no reference — never an error |
+| `test_every_period_carries_the_ratio_and_rank_of_its_own_atr_over_close` | A built profile's ratios and ranks equal a count by hand over each hour's mean ATR over close |
 | `test_a_one_hour_period_takes_the_session_of_its_hour` | Every one-hour period's session is the session of its UTC hour |
+| `test_a_price_that_grows_a_hundredfold_at_steady_volatility_reads_as_ordinary` | Over 400 days of a price growing a hundredfold at a steady 2 % range every period reads `medium` — against the whole history's absolute ATR its first months read very low and its last very high |

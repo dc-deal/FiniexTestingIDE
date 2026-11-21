@@ -942,7 +942,7 @@ Gap detection (`DataCoverageReport`) uses timestamp jumps between consecutive ba
 - **MODERATE** (30 min – 4h) — requires attention, blocks scenario generation
 - **LARGE** (> 4h) — data collection problem, blocks scenario generation
 
-Allowed gap categories are configured in `app_config.json` → `data_validation.allowed_gap_categories`. The block generator splits only at non-allowed gap categories.
+Allowed gap categories are configured in `app_config.json` → `data_validation.allowed_gap_categories`. The block generator splits only at non-allowed gap categories, and never at a gap in a venue's published history: before the seam, an hour without trades is the venue's silence, not lost data.
 
 ---
 

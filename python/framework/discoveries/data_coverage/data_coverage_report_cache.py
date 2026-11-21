@@ -244,6 +244,12 @@ class DataCoverageReportCache:
                 metadata.get(b'gap_counts', b'{}').decode()
             )
 
+            # The seam the gaps are judged by, from the bar index whose file they were detected
+            # on. A render writes every timeframe of a symbol at once, so a seam that moved has
+            # moved the detection file's mtime too, and this cache is no longer valid
+            report.set_data_origin(
+                self._get_bar_index().get_symbol_origin(broker_type, symbol))
+
             # Hydrate gaps column by column. A venue's published history holds hundreds of
             # thousands of gaps, and row by row this cost 3.4 s for kraken_spot BTCUSD's
             # 117,757 — paid by every run that validates a scenario on the symbol (measured

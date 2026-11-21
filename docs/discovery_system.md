@@ -113,11 +113,23 @@ spread_estimate_cli.py build [<broker> <symbol>] [--force]
 
 Analyzes M5 bar data per symbol:
 - Groups bars into 1-hour periods
-- Classifies volatility regime (VERY_LOW to VERY_HIGH) relative to average ATR
+- Classifies volatility regime (VERY_LOW to VERY_HIGH) by each period's ATR over close (NATR)
+  against the mean of the 365 days up to and including it, and ranks it within that year
 - Aggregates by trading session (Sydney/Tokyo, London, New York, Transition)
 - Computes cross-instrument ranking (ATR%, liquidity, combined score)
 
 Output: `SymbolVolatilityProfile` dataclass with `periods`, `session_summaries`, `regime_distribution`.
+
+**Why the reference is the trailing year over the close (#647).** Measured against the whole
+history in price units, a venue's published record that begins a decade before our collection
+labelled whole years by other years' prices: ETHUSD's December 2017 daily range was 111 times its
+January's, while its ATR over price stayed near 9.9 %. The ATR over the close removes the price
+level, and the trailing year keeps a regime from being set by a market that no longer exists. In a
+symbol's first year the reference covers the stretch there is. Each period also keeps its mean ATR
+in price units (`atr_absolute`), which a generated profile re-bases on — so a profile generated
+over the same range carries the same windows as before. The cache records the method it was built
+by (`method_version`, apart from the config fingerprint a generated profile checks), and a cache
+of another method is rebuilt once.
 
 **Session bucketing**: All markets — including 24/7 crypto — are bucketed into the same four
 time-of-day windows (Sydney/Tokyo, London, New York, Transition). For forex this maps directly to
@@ -198,7 +210,24 @@ the venue, and there is nothing to re-collect — the line says so and the recom
 out. Where the class before and after a gap differ, the gap is the **seam** between two origins: the
 line reads "where the external data ends and the production data begins", and the gaps route serves
 two different classes in `origin_class` and `origin_class_after`. A gap no tick file could be found
-for is `unattributed`, and a report holding one closes with "Not judged" rather than a clean bill.
+for is `unattributed` in the listing.
+
+Whether a gap is an **issue** of ours is judged by the seam, not by the files: the bar file records
+its origin classes and the instant our collection took over (`collected_since`), and a gap ending at
+or before that instant lies in the venue's history — every gap of a bar file holding nothing but
+external data too. The issue count (`has_issues()`, `data-coverage validate`), the recommendations,
+the scenario validation and the generator's regions all ask the report the same question
+(`seam_side()`), and none of them reads the tick index for it. A gap in the venue's history is
+admitted whatever its category: the venue's record lists every trade, so the gap is an hour nobody
+traded there, not data that is missing. Gaps after the seam are judged by their category as before.
+Bars rendered before origins were stamped state no side; a report whose gaps lie there closes with
+"Not judged" rather than a clean bill. Measured 2026-11-20 over the whole archive: the seam and the
+per-file attribution placed all 2,074,368 data gaps on the same side — 1,992,978 in the venue's
+history, 81,390 in collected data.
+
+That the venue's silence is no missing data is this project's choice rather than an industry norm:
+some data vendors leave out an interval without trades, others emit a bar carried forward from the
+last price. It rests on the venue's published record being its complete list of trades.
 
 A gap starts at the open of the last bar before it, and that bar's ticks run on to its end, so the
 file before a gap is the last one that opened before that bar closed — a file whose first tick falls

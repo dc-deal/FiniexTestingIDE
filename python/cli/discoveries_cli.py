@@ -321,7 +321,7 @@ class DiscoveriesCli:
                         issues_found = True
                     elif report.unjudged_gap_count():
                         print(f'  ❔ {symbol}: {report.unjudged_gap_count()} gaps not judged — '
-                              f'no tick file was found for them')
+                              f'its bars were rendered before their origin was stamped')
                         issues_found = True
                     else:
                         print(f'  ✅ {symbol}: No issues')

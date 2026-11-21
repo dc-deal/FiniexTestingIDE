@@ -4,14 +4,14 @@ A coverage report stand-in for tests that drive the scenario validator.
 The validator asks a tick coverage report by time window (`gap_containing`, `gaps_in_window`),
 so a bare MagicMock would answer every question with another mock — which the validator reads
 as a gap. The stub answers from the gaps it is given, through the same timeline the real report
-uses.
+uses, and states no side of the seam, so every gap is judged by its category.
 """
 
 from typing import List, Optional
 from unittest.mock import MagicMock
 
 from python.framework.discoveries.data_coverage.gap_timeline import GapTimeline
-from python.framework.types.coverage_report_types import Gap
+from python.framework.types.coverage_report_types import Gap, SeamSide
 
 
 def coverage_report_stub(gaps: Optional[List[Gap]] = None) -> MagicMock:
@@ -29,4 +29,5 @@ def coverage_report_stub(gaps: Optional[List[Gap]] = None) -> MagicMock:
     timeline = GapTimeline(report.gaps)
     report.gap_containing.side_effect = timeline.gap_containing
     report.gaps_in_window.side_effect = timeline.gaps_in_window
+    report.seam_side.return_value = SeamSide.UNSTATED
     return report

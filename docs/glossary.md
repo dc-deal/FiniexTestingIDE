@@ -993,7 +993,8 @@ published history and our first collected tick, for instance. A gap there takes 
 the file before it. The coverage report words it as "where the external data ends and the production
 data begins", and the gaps route serves two different classes in `origin_class` and
 `origin_class_after`; "seam" is the documents' word for it, and a symbol's coverage serves its
-instant as *collected since*. Not the seam of the code — a point where
+instant as *collected since*. A gap ending at or before it lies in the venue's history and is
+admitted by the scenario validation and the generator whatever its category. Not the seam of the code — a point where
 a later change attaches, such as the hard stop's hook for its latch — which stays inside the code
 and its documents.
 

@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from python.framework.types.coverage_report_types import Gap, GapCategory
+from python.framework.types.coverage_report_types import Gap, GapCategory, SeamSide
 from python.framework.types.market_types.market_volatility_profile_types import (
     TradingSession,
     VolatilityPeriod,
@@ -87,6 +87,7 @@ def make_period(
         end_time=start + timedelta(hours=1),
         session=session,
         atr=0.5,
+        atr_absolute=0.5,
         atr_percentile=0.5,
         regime=regime,
         tick_count=tick_count,
@@ -157,6 +158,8 @@ def mock_coverage_report(
     report.start_time = start
     report.end_time = end
     report.gaps = gaps or []
+    # No bar origin read: every gap is judged by its category, as before the seam (#647)
+    report.seam_side.return_value = SeamSide.UNSTATED
     report.gap_counts = {
         'weekend': sum(1 for g in report.gaps if g.category == GapCategory.WEEKEND),
         'holiday': sum(1 for g in report.gaps if g.category == GapCategory.HOLIDAY),

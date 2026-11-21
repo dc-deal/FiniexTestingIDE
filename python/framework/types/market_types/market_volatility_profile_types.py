@@ -100,8 +100,11 @@ class VolatilityPeriod:
     end_time: datetime
     session: TradingSession
 
-    # Volatility metrics
+    # Volatility metrics — the ratio, rank and regime say where the period stands against a
+    # reference: the analyzer's is the trailing year's ATR over close, a generated profile's its
+    # own range (re-based on atr_absolute)
     atr: float
+    atr_absolute: float    # the period's mean ATR in price units
     atr_percentile: float
     regime: VolatilityRegime
 

@@ -370,13 +370,14 @@ Phase 7: Building summary...
 
 ### Issue: "MODERATE/LARGE gap detected in tick stretch"
 **Phase:** 5 (Quality Validation)
-**Solution:** Adjust start_date to avoid gap period. Weekend/holiday gaps are allowed by default (`app_config.json` → `allowed_gap_categories`). Only real data gaps (MODERATE/LARGE) block scenarios.
+**Solution:** Adjust start_date to avoid gap period. Weekend/holiday gaps are allowed by default (`app_config.json` → `allowed_gap_categories`). Only real data gaps (MODERATE/LARGE) in collected data block scenarios: a gap in a venue's published history (before the seam the bar file records) is an hour nobody traded at the venue and is admitted whatever its category (#647).
 
 ### Issue: "start_date … is inside moderate gap … Next valid start: …"
 **Phase:** 5 (Quality Validation)
 **Solution:** A start inside a data gap moves to the gap's end by itself when the run admits that
 gap: a short gap always, a moderate or large one when `allowed_gap_categories` lists it — the same
-gap would pass in the middle of the window, so the start check agrees with the stretch check. The
+gap would pass in the middle of the window, so the start check agrees with the stretch check. A data gap
+in a venue's published history moves the start likewise, whatever its length, and the warning says so. The
 shift is reported as a warning (`start_date shifted … (inside moderate gap, +16min)`). A gap the run
 does not admit, and a market closure (weekend, holiday), stay an error: move the start to the time
 the message names, or admit the category deliberately.

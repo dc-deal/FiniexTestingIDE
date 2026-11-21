@@ -8,8 +8,10 @@ written for MT5's collector printed for every broker. It now reads each gap by t
 of the tick files around it, counts them per year and origin, and recommends only for our own
 collection, with the MT5 advice for an MT5 broker only.
 
-The gaps here carry their files and origin classes already; the tick-index read that stamps
-them is replaced, so the tests do not depend on this machine's archive.
+Whether a gap is an issue of ours is judged by the seam the bar file records (#647), the
+listing's words by the files around each gap. The gaps here carry their files and origin
+classes already, and each report its bars' origin; the tick-index read that stamps them is
+replaced, so the tests do not depend on this machine's archive.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -21,6 +23,7 @@ import pytest
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
 from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.coverage_report_types import Gap, GapCategory
+from python.framework.types.data_origin_types import SymbolDataOrigin
 
 EXTERNAL = OriginClass.EXTERNAL
 PRODUCTION = OriginClass.PRODUCTION
@@ -54,13 +57,15 @@ def _gap(start: datetime, hours: float, category: GapCategory,
                origin_class_after=after if after is not None else before)
 
 
-def _report(broker_type: str, *gaps: Gap) -> DataCoverageReport:
+def _report(broker_type: str, *gaps: Gap,
+            origin: Optional[SymbolDataOrigin] = None) -> DataCoverageReport:
     """
     A report holding the given gaps, its tick-index reads replaced.
 
     Args:
         broker_type: The broker the report is for
         gaps: Its gaps
+        origin: Its bars' origin; None leaves it unread, as for bars rendered before the stamp
 
     Returns:
         The report; use it inside the `_attributed` patch
@@ -69,6 +74,8 @@ def _report(broker_type: str, *gaps: Gap) -> DataCoverageReport:
     report.start_time = datetime(2013, 1, 1, tzinfo=timezone.utc)
     report.end_time = datetime(2026, 10, 1, tzinfo=timezone.utc)
     report.gaps = list(gaps)
+    if origin is not None:
+        report.set_data_origin(origin)
     for gap in gaps:
         report.gap_counts[gap.category.value] += 1
     return report
@@ -84,6 +91,13 @@ def unread_index():
 
 
 T = datetime(2025, 11, 1, 15, 2, tzinfo=timezone.utc)
+
+# The venue's history up to half a day after T, our collection from there on
+SEAMED = SymbolDataOrigin(origin_classes=[PRODUCTION, EXTERNAL],
+                          collected_since=T + timedelta(hours=12))
+# Bars rendered from our collection alone, and from the venue's history alone
+COLLECTED_ONLY = SymbolDataOrigin(origin_classes=[PRODUCTION], collected_since=None)
+EXTERNAL_ONLY = SymbolDataOrigin(origin_classes=[EXTERNAL], collected_since=None)
 
 
 @pytest.mark.usefixtures('unread_index')
@@ -165,26 +179,28 @@ class TestTheYearlySummaryByOrigin:
 class TestRecommendationsAreForOurOwnCollection:
 
     def test_the_venue_s_history_alone_needs_none(self):
-        report = _report('kraken_spot', _gap(T, 6.7, GapCategory.LARGE, EXTERNAL))
+        report = _report('kraken_spot', _gap(T, 6.7, GapCategory.LARGE, EXTERNAL),
+                         origin=SEAMED)
         assert report.get_recommendations() == []
         assert '1 lie in the venue\'s own history (external)' in report.generate_report()
 
     def test_our_kraken_collection_gets_the_collector_advice_not_mql5(self):
-        report = _report('kraken_spot', _gap(T, 5.1, GapCategory.LARGE, PRODUCTION))
+        report = _report('kraken_spot', _gap(T, 5.1, GapCategory.LARGE, PRODUCTION),
+                         origin=COLLECTED_ONLY)
         advice = ' '.join(report.get_recommendations())
         assert 'consider re-collecting' in advice and 'MQL5' not in advice
 
     def test_an_mt5_collection_gets_the_mql5_advice(self):
-        report = _report('mt5', _gap(T, 5.1, GapCategory.LARGE, PRODUCTION))
+        report = _report('mt5', _gap(T, 5.1, GapCategory.LARGE, PRODUCTION),
+                         origin=COLLECTED_ONLY)
         assert 'Check if MQL5 TickCollector was stopped intentionally' in (
             report.get_recommendations())
 
-    def test_an_unattributed_gap_is_not_ours_to_judge(self):
-        report = _report('kraken_spot', _gap(T, 5.1, GapCategory.LARGE, None,
-                                             file_before=None, file_after=None))
+    def test_a_gap_whose_side_the_bars_do_not_state_is_not_ours_to_judge(self):
+        report = _report('kraken_spot', _gap(T, 5.1, GapCategory.LARGE, PRODUCTION))
         assert report.get_recommendations() == []
         closing = report.generate_report().strip('\n=').split('\n')[-1]
-        assert 'could not be matched to a tick file' in closing
+        assert 'lie in bars rendered before their origin was stamped' in closing
         assert closing.startswith('⚠️  Not judged') and '✅' not in closing
 
 
@@ -194,18 +210,25 @@ class TestValidateJudgesOurOwnCollection:
 
     def test_the_venue_s_history_alone_is_no_issue(self):
         report = _report('kraken_spot', _gap(T, 6.7, GapCategory.LARGE, EXTERNAL),
-                         _gap(T + timedelta(days=1), 1.0, GapCategory.MODERATE, EXTERNAL))
+                         _gap(T + timedelta(days=1), 1.0, GapCategory.MODERATE, EXTERNAL),
+                         origin=EXTERNAL_ONLY)
         assert not report.has_issues() and report.unjudged_gap_count() == 0
 
     def test_a_large_gap_in_our_collection_is_counted_as_ours(self):
         report = _report('kraken_spot', _gap(T, 6.7, GapCategory.LARGE, EXTERNAL),
-                         _gap(T + timedelta(days=1), 5.1, GapCategory.LARGE, PRODUCTION))
+                         _gap(T + timedelta(days=1), 5.1, GapCategory.LARGE, PRODUCTION),
+                         origin=SEAMED)
         assert report.has_issues()
         assert report.collected_gap_counts()[GapCategory.LARGE] == 1
 
-    def test_a_gap_no_tick_file_was_found_for_is_not_judged(self):
+    def test_a_gap_no_tick_file_was_found_for_is_still_judged_by_the_seam(self):
+        """The issue count reads the bar file, not the tick index: a missing file entry is no excuse."""
         report = _report('mt5', _gap(T, 2.0, GapCategory.MODERATE, None,
-                                     file_before=None, file_after=None))
+                                     file_before=None, file_after=None), origin=COLLECTED_ONLY)
+        assert report.has_issues() and report.unjudged_gap_count() == 0
+
+    def test_bars_rendered_before_the_origin_stamp_are_not_judged(self):
+        report = _report('mt5', _gap(T, 2.0, GapCategory.MODERATE, PRODUCTION))
         assert not report.has_issues() and report.unjudged_gap_count() == 1
 
 
@@ -217,7 +240,7 @@ class TestThePrintedReport:
                               0.1, GapCategory.SHORT, EXTERNAL) for day in range(30)]
         ours = [_gap(datetime(2026, 9, 20, 19, 48, tzinfo=timezone.utc), 12.8, GapCategory.LARGE,
                      PRODUCTION, file_after='B.parquet', resumed_s=46217)]
-        return _report('kraken_spot', *(venue_history + ours)).generate_report()
+        return _report('kraken_spot', *(venue_history + ours), origin=SEAMED).generate_report()
 
     def test_the_newest_ten_of_a_long_category_with_its_count(self):
         assert 'SHORT — the last 10 of 30' in self._text()
