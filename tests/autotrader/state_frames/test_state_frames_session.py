@@ -41,9 +41,9 @@ def session():
     """One session of the suite's profile, its run directory, and what it recorded."""
     trader = AutotraderMain(load_autotrader_config(PROFILE))
     result = trader.run()
-    header, frames = _read(trader._run_dir)
-    yield result, trader._run_dir, header, frames
-    remove_run_dir(trader._run_dir)
+    header, frames = _read(trader.get_run_dir())
+    yield result, trader.get_run_dir(), header, frames
+    remove_run_dir(trader.get_run_dir())
 
 
 class TestTheRecord:
@@ -122,6 +122,6 @@ class TestSwitchedOff:
         trader = AutotraderMain(config)
         try:
             trader.run()
-            assert not (trader._run_dir / IO_SUBDIR / STATE_FRAMES_FILE).exists()
+            assert not (trader.get_run_dir() / IO_SUBDIR / STATE_FRAMES_FILE).exists()
         finally:
-            remove_run_dir(trader._run_dir)
+            remove_run_dir(trader.get_run_dir())

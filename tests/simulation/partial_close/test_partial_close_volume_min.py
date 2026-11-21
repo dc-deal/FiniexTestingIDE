@@ -32,6 +32,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
     RejectionReason,
 )
+from tests.shared.null_logger import NullLogger
 
 _KRAKEN_CONFIG = 'configs/brokers/kraken/kraken_spot_broker_config.json'
 
@@ -47,16 +48,6 @@ _START_QUOTE = 1_000.0
 _CLOCK = datetime(2026, 9, 23, 12, 0, tzinfo=timezone.utc)
 
 
-class _NullLogger:
-    """Minimal duck-typed logger — the arithmetic under test does not log."""
-
-    def verbose(self, *args, **kwargs): pass
-    def debug(self, *args, **kwargs): pass
-    def info(self, *args, **kwargs): pass
-    def warning(self, *args, **kwargs): pass
-    def error(self, *args, **kwargs): pass
-
-
 def _simulator(held: float = _HELD) -> TradeSimulator:
     """
     A Kraken spot simulator already holding one position.
@@ -69,7 +60,7 @@ def _simulator(held: float = _HELD) -> TradeSimulator:
     """
     simulator = TradeSimulator(
         broker_config=BrokerConfigFactory.build_broker_config(_KRAKEN_CONFIG),
-        initial_balance=_START_QUOTE, account_currency=_QUOTE, logger=_NullLogger(),
+        initial_balance=_START_QUOTE, account_currency=_QUOTE, logger=NullLogger(),
         spot_mode=True, initial_balances={_QUOTE: _START_QUOTE, _BASE: held})
     simulator.on_tick(_tick(0))
     simulator.portfolio.open_positions['p1'] = _position(held)

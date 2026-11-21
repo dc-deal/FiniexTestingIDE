@@ -6,7 +6,7 @@ What a prune was asked to do, what it decided, and what it actually did.
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
-from typing import List, Optional
+from typing import FrozenSet, List, Optional
 
 
 @dataclass
@@ -33,10 +33,14 @@ class PruneSelectors:
     # Directories in the tree that are not runs: no header, not in the index, not a sweep
     # directory, not a run's own substructure.
     orphans: bool = False
-    # Let the selectors reach the runs of the fixture catalog's SUPERSEDED verified productions
-    # (#576) — a consumer may still pin them until it has moved to the new ids. A current
-    # production is never released: to drop one, produce its entry again.
+    # Remove the runs of the fixture catalog's SUPERSEDED verified productions (#576), once the
+    # consumer has moved to the new ids. A selector of its own that reaches exactly those runs:
+    # given alone it touches nothing else in their families, and without it every other selector
+    # keeps them, because a consumer may still pin them. A current production is never released:
+    # to drop one, produce its entry again.
     release_fixtures: bool = False
+    # Runs no selector removes, named by id: a run a consumer still reads outside the catalog.
+    keep_run_ids: FrozenSet[str] = frozenset()
 
 
 @dataclass
@@ -60,6 +64,8 @@ class PruneReport:
     to_delete_orphans: List[PruneCandidate] = field(default_factory=list)
     to_delete_redundant: List[PruneCandidate] = field(default_factory=list)
     to_delete_uncommissioned: List[PruneCandidate] = field(default_factory=list)
+    # The runs of superseded catalog productions, released by `release_fixtures` (#576)
+    to_delete_superseded_fixture: List[PruneCandidate] = field(default_factory=list)
     # The kept groups, carried so the preview can SAY why a run stayed rather than leaving
     # the operator to infer it from an absence. One group per REASON, never one per run —
     # a group that mixed two reasons would answer neither.
@@ -67,11 +73,13 @@ class PruneReport:
     kept_field_study: List[PruneCandidate] = field(default_factory=list)
     # A certificate run (#576): never deleted, by any selector, and no flag releases it.
     kept_certificate: List[PruneCandidate] = field(default_factory=list)
+    # A run the operator named to keep — no selector removes it.
+    kept_named: List[PruneCandidate] = field(default_factory=list)
     # A run of an entry's CURRENT fixture catalog production (#576) — what a consumer pins now.
     # Kept by every selector, whatever flag is given.
     kept_current_fixture: List[PruneCandidate] = field(default_factory=list)
     # A run of a SUPERSEDED production that carried its properties — a consumer may still pin
-    # it. Kept unless the operator passed `release_fixtures`.
+    # it. Kept unless the operator passed `release_fixtures`, which removes it.
     kept_superseded_fixture: List[PruneCandidate] = field(default_factory=list)
     # A directory holding a run header that the index does not list — a row lost to a
     # concurrent write. A run, not an orphan: a rebuild re-indexes it, so nothing deletes it.
@@ -107,7 +115,8 @@ class PruneReport:
             The candidates, runs and orphans first, emptied sweep directories after
         """
         return (self.to_delete_orphans + self.to_delete_redundant
-                + self.to_delete_uncommissioned + self.emptied_sweep_dirs)
+                + self.to_delete_uncommissioned + self.to_delete_superseded_fixture
+                + self.emptied_sweep_dirs)
 
     def total_bytes(self) -> int:
         """

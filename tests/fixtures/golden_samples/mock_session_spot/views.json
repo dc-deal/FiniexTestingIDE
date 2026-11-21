@@ -1,0 +1,23 @@
+{
+ "run_list_figures": {
+  "20261110_143714_cda3c190": {
+   "results": [
+    {
+     "currency": "USD",
+     "net_pnl": -1.3564160000000116,
+     "total_trades": 1
+    }
+   ],
+   "run_outcome": "success",
+   "error_count": 0,
+   "warning_count": 0,
+   "log_warning_count": 0,
+   "tick_timespan_seconds": 4019.998
+  }
+ },
+ "deployments": [],
+ "deployment_details": {},
+ "deployment_booking_periods": {},
+ "sweeps": [],
+ "sweep_details": {}
+}

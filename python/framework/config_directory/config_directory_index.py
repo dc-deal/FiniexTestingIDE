@@ -49,5 +49,6 @@ class ConfigDirectoryIndex(AbstractStoreIndex):
         Returns:
             0 — nothing is indexed until the next refresh
         """
-        self.get_path().unlink(missing_ok=True)
+        with self.updating():
+            self.get_path().unlink(missing_ok=True)
         return 0

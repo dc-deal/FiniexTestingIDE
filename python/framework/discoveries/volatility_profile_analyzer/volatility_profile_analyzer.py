@@ -7,7 +7,7 @@ Used by scenario generator and discovery system for market profiling.
 
 import math
 from datetime import timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -37,6 +37,13 @@ from python.framework.utils.trading_math.indicators.atr import atr_series
 from python.framework.utils.trading_math.pip_math import derive_pip_size
 
 vLog = get_global_logger()
+
+# The measure a period carries, raised whenever it changes: a cache written under another one is
+# rebuilt. 2 — ATR over close, against the trailing year (#647).
+VOLATILITY_METHOD_VERSION = '2'
+
+# What each period is measured against: the periods of the year up to and including it
+TRAILING_REFERENCE_WINDOW = '365D'
 
 
 class VolatilityProfileAnalyzer:
@@ -424,18 +431,20 @@ class VolatilityProfileAnalyzer:
 
     def _calculate_atr(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Calculate Average True Range for bars.
+        Calculate Average True Range for bars, and the same over the bar's close.
 
         Args:
             df: Bar dataframe with OHLC
 
         Returns:
-            Dataframe with 'atr' column added
+            Dataframe with 'atr' and 'natr' columns added
         """
         period = self._config.atr_period
 
         # ATR = Wilder's average of True Range
         df['atr'] = atr_series(df['high'], df['low'], df['close'], period)
+        # NATR: the ATR in the price it traded at, so a decade of growing prices is comparable
+        df['natr'] = df['atr'] / df['close']
 
         return df
 
@@ -450,6 +459,12 @@ class VolatilityProfileAnalyzer:
     ) -> List[VolatilityPeriod]:
         """
         Classify data grouped by time periods into volatility regimes.
+
+        Each period's ATR over close is measured against the mean of the periods of the year up
+        to and including it (#647). Against the whole history, a venue's published record that
+        starts years before our collection labelled whole years by the prices of others: ETHUSD's
+        December 2017 daily range was 111 times its January's, while its ATR over price stayed
+        near 9.9 %. In a symbol's first year the reference covers the stretch there is.
 
         Filters out periods without real data (synthetic-only from weekends/gaps).
 
@@ -471,7 +486,7 @@ class VolatilityProfileAnalyzer:
         periods = []
         grouped = df.groupby('period')
 
-        # First pass: collect all valid periods to calculate avg ATR
+        # First pass: collect all valid periods for the trailing reference
         valid_period_data = []
 
         for period_start, group in grouped:
@@ -499,6 +514,7 @@ class VolatilityProfileAnalyzer:
                 'period_start': period_start,
                 'group': group,
                 'avg_atr': avg_atr,
+                'avg_natr': group['natr'].mean(),
                 'tick_count': tick_count,
                 'activity': activity,
                 'bar_count_in_period': len(group)
@@ -507,36 +523,42 @@ class VolatilityProfileAnalyzer:
         if not valid_period_data:
             return []
 
-        # Calculate average ATR for relative classification
-        all_atrs = [p['avg_atr'] for p in valid_period_data]
-        avg_atr_global = np.mean(all_atrs)
+        references, atr_percentiles = self._trailing_year_reference(
+            [p['period_start'] for p in valid_period_data],
+            np.array([p['avg_natr'] for p in valid_period_data], dtype=float))
 
         # Second pass: classify periods
-        for period_data in valid_period_data:
+        for period_index, period_data in enumerate(valid_period_data):
             period_start = period_data['period_start']
             group = period_data['group']
             avg_atr = period_data['avg_atr']
+            avg_natr = period_data['avg_natr']
             tick_count = period_data['tick_count']
             activity = period_data['activity']
 
             period_end = period_start + timedelta(hours=granularity)
 
-            # Get dominant session
-            session_str = group['session'].mode().iloc[0]
+            # Get dominant session. The session follows the bar's UTC hour, so within a one-hour period
+            # every bar has the same one, and the mode is its first value; counting it per period
+            # cost a quarter of the remaining time
+            if granularity == 1:
+                session_str = group['session'].iloc[0]
+            else:
+                session_str = group['session'].mode().iloc[0]
             session = TradingSession(session_str)
 
             # Metrics
             tick_density = tick_count / granularity
 
-            # Regime classification (relative to average ATR)
-            # Uses relative thresholds for consistent classification across symbols.
-            ratio = avg_atr / avg_atr_global
-            if avg_atr == 0:
-                regime = VolatilityRegime.VERY_LOW
+            # Regime classification (relative to the trailing year's mean ATR over close)
+            # Uses relative thresholds for consistent classification across symbols. The year holds
+            # the period itself, so a reference of zero means the period did not move either.
+            reference = references[period_index]
+            ratio = avg_natr / reference if reference > 0 else 0.0
             regime = self._classify_regime(ratio)
 
             # Calculate percentile for reference
-            atr_percentile = self._get_percentile(avg_atr, np.array(all_atrs))
+            atr_percentile = atr_percentiles[period_index]
 
             # Bar statistics
             bar_count = len(group)
@@ -551,6 +573,7 @@ class VolatilityProfileAnalyzer:
                 end_time=period_end.to_pydatetime(),
                 session=session,
                 atr=ratio,
+                atr_absolute=avg_atr,
                 atr_percentile=atr_percentile,
                 regime=regime,
                 tick_count=tick_count,
@@ -564,20 +587,32 @@ class VolatilityProfileAnalyzer:
 
         return periods
 
-    def _get_percentile(self, value: float, all_values: np.ndarray) -> float:
+    @staticmethod
+    def _trailing_year_reference(
+        period_starts: List[pd.Timestamp],
+        values: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Get percentile rank of a value.
+        Each period's reference and rank among the periods of the year up to and including it.
+
+        One rolling pass over the period starts: a comparison against every period of the year,
+        per period, would grow with the history times the year — a decade of hours on Kraken.
 
         Args:
-            value: Value to rank
-            all_values: All values for comparison
+            period_starts: The periods' starts, ascending
+            values: Each period's ATR over close, finite
 
         Returns:
-            Percentile (0-100)
+            Tuple (the mean over each period's year, the share of that year's periods strictly
+            below it as a percentile 0-100), in the order of the periods
         """
-        if len(all_values) == 0:
-            return 0.0
-        return (all_values < value).sum() / len(all_values) * 100
+        if len(values) == 0:
+            return np.array([], dtype=float), np.array([], dtype=float)
+        window = pd.Series(values, index=pd.DatetimeIndex(period_starts)).rolling(
+            TRAILING_REFERENCE_WINDOW)
+        # The lowest rank of a tie is one more than the values strictly below it
+        below = window.rank(method='min').to_numpy() - 1
+        return window.mean().to_numpy(), below / window.count().to_numpy() * 100
 
     def _classify_regime(self, ratio: float) -> VolatilityRegime:
         """

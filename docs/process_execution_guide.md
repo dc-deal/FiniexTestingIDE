@@ -173,10 +173,16 @@ timeframe, as the last N bars complete at the scenario's first tick, and its dat
 refused the scenario if a timeframe had none. The process only hands it on:
 
 ```python
-warmup_history = WarmupHistory.from_package(
-    symbol=config.symbol, package=shared_data, logger=scenario_logger)
+if config.warmup_record is not None:
+    warmup_history = WarmupHistory.from_record(config.warmup_record, logger=scenario_logger)
+else:
+    warmup_history = WarmupHistory.from_package(
+        symbol=config.symbol, package=shared_data, logger=scenario_logger)
 warmup_history.inject_into(bar_rendering_controller)
 ```
+
+A scenario that names `warmup_from_run` is a backtest of a live session's window: the loader read
+that run's recorded history, and the process starts from it instead of the archive's selection.
 
 `inject_into` goes through `BarRenderingController.inject_warmup_bars`, which refuses a bar not
 complete at that instant, a repeated period or one out of order — the same route the AutoTrader
@@ -196,7 +202,12 @@ and handed to the subprocesses with only the symbols the run's scenarios trade. 
 symbol specifications from the runtime cache — machine-local, and refreshed by a live-adapter
 session start or `broker_config_cli.py sync`, never by a backtest — and the fee structure from the
 tracked seed ([Broker Configuration](broker_config_guide.md)). When an entry it read was older than
-seven days, the run says so once per symbol afterwards (`broker_spec_stale`).
+seven days, the run says so once per symbol afterwards (`broker_spec_stale`). A scenario that names
+`broker_config_document` trades with that frozen configuration instead — a backtest of a session's
+window trades with what the session traded with. The loader reads the document before the batch
+begins and refuses one the run-config store does not hold; a document no configuration can be built
+from is that scenario's error (`broker_config_document_unavailable`). Neither read touches a store
+from the preparation or the scenario process.
 
 Before the scenarios execute, the run freezes the configuration the mount carries: a copy goes
 into the run-config store, and the run's broker section names it `broker_config_id`, beside
@@ -208,12 +219,12 @@ true](introduction_to_the_ide.md#a-run-is-a-record-and-an-old-one-stays-true).
 
 ---
 
-## Tick Loop Execution
+## Event Loop Execution
 
 ### 6-Step Processing Pipeline
 
-**Function:** `execute_tick_loop(config, worker_coordinator, trade_simulator, bar_rendering_controller, decision_logic, scenario_logger, ticks, live_queue)`  
-**Located:** `python/framework/process/process_tick_loop.py`
+**Function:** `execute_event_loop(config, worker_coordinator, trade_simulator, bar_rendering_controller, decision_logic, scenario_logger, ticks, live_queue)`  
+**Located:** `python/framework/process/process_event_loop.py`
 
 **Per-Tick Operations:**
 
@@ -333,7 +344,7 @@ ProcessPool uses `fork()` on Linux, which copies entire process memory including
 **Required Cleanups:**
 
 ```python
-# In process_tick_loop.py - after execution
+# In process_event_loop.py - after execution
 1. worker_coordinator.cleanup()     # Close ThreadPool (if enabled)
 2. scenario_logger.close()          # Close log file handles
 3. logging.shutdown()               # Close ALL Python logging handlers
@@ -385,7 +396,7 @@ Display Update (Rich Console)
 ```
 
 **Key Properties:**
-- **Non-blocking:** Never blocks tick loop
+- **Non-blocking:** Never blocks event loop
 - **Lossy:** Drops updates if queue full (acceptable)
 - **Time-based:** Throttled by update_interval_ms
 - **Conditional:** Exports only requested data
@@ -462,7 +473,7 @@ if config.live_stats_config.export_current_bars:
 ```python
 INIT_PROCESS       # Subprocess started
     ↓
-RUNNING            # Tick loop active
+RUNNING            # Event loop active
     ↓
 COMPLETED          # Successful completion
     or
@@ -567,7 +578,7 @@ ticks = process_deserialize_ticks_batch(
 ```
 
 **Why Deserialize?**
-- Tick loop needs mutable list for iteration
+- Event loop needs mutable list for iteration
 - Convert from immutable tuple → mutable list
 - Happens ONCE per subprocess (not per tick)
 
@@ -590,7 +601,7 @@ ProcessResult(
     symbol="GBPUSD",
     scenario_index=1,
     execution_time_ms=1546.0,
-    tick_loop_results=ProcessTickLoopResult(...),  # Full results
+    event_loop_results=ProcessEventLoopResult(...),  # Full results
     scenario_logger_buffer=[(timestamp, message), ...]
 )
 ```
@@ -629,8 +640,8 @@ try:
     # Startup preparation — returns one ProcessPipelineBundle
     pipeline = process_startup_preparation(config, shared_data, scenario_logger)
     
-    # Tick loop execution
-    tick_loop_results = execute_tick_loop(
+    # Event loop execution
+    event_loop_results = execute_event_loop(
         config, pipeline.worker_coordinator, pipeline.trade_simulator,
         pipeline.bar_rendering_controller, pipeline.decision_logic,
         scenario_logger, pipeline.ticks, live_queue)
@@ -846,7 +857,7 @@ runs/autotrader/<name>/<run_id>/
     autotrader_session_YYYYMMDD.log
 ```
 
-### 7. 6-Step Tick Loop Pipeline
+### 7. 6-Step Event Loop Pipeline
 **Rationale:** Clear separation of concerns, profiling granularity  
 **Benefit:** Identify bottlenecks per operation  
 **Trade-off:** Slight overhead from profiling (< 1%)

@@ -4,7 +4,7 @@ Scenario-details report builder (#391/#393) — the per-scenario execution/signa
 Maps each scenario's `ProcessResult` (+ its index-synced `SingleScenario`) to a
 `ScenarioDetailsRow`: status (success/failed/hybrid), execution metadata, tick range, and the
 decision-logic signal counts. **Sim-only** (AutoTrader has no scenario grid) and reads the
-batch directly — NOT via `RunUnit`, because failed scenarios carry no `tick_loop_results` yet
+batch directly — NOT via `RunUnit`, because failed scenarios carry no `event_loop_results` yet
 must still appear (the section is the full scenario status view).
 """
 
@@ -81,12 +81,13 @@ def _data_brokers(rows: list, market_types: Dict[str, str]) -> list:
     grouped: dict = {}
     for row in rows:
         entry = grouped.setdefault(
-            row.data_broker_type, {'symbols': set(), 'count': 0, 'bases': []})
+            row.data_broker_type, {'symbols': set(), 'count': 0, 'bases': [], 'classes': []})
         entry['count'] += 1
         entry['symbols'].add(row.symbol)
         # Already joined at the row; split again so the roll-up de-duplicates across
         # scenarios rather than concatenating their strings.
         entry['bases'].extend(b for b in row.price_bases.split(',') if b)
+        entry['classes'].extend(c for c in row.origin_classes.split(',') if c)
     return [
         DataBrokerRow(
             data_broker_type=broker_type,
@@ -94,6 +95,7 @@ def _data_brokers(rows: list, market_types: Dict[str, str]) -> list:
             scenario_count=entry['count'],
             symbols=sorted(entry['symbols']),
             price_bases=joined_distinct(entry['bases']),
+            origin_classes=joined_distinct(entry['classes']),
         )
         for broker_type, entry in sorted(grouped.items())
     ]
@@ -143,19 +145,21 @@ def _to_row(result: ProcessResult, scenario: SingleScenario,
         error_message=result.error_message or '',
     )
 
-    tick_loop = getattr(result, 'tick_loop_results', None)
-    if tick_loop is None:
+    event_loop = getattr(result, 'event_loop_results', None)
+    if event_loop is None:
         # Pure failure — preparation/validation failed, no execution data
         return ScenarioDetailsRow(status='failed', **common)
 
-    decision = tick_loop.decision_statistics
-    coordination = tick_loop.coordination_statistics
-    tick_range = tick_loop.tick_range_stats
+    decision = event_loop.decision_statistics
+    coordination = event_loop.coordination_statistics
+    tick_range = event_loop.tick_range_stats
     # Only a tracker counts decisions; without one the counters are unknown, not zero.
     counted = decision is not None and decision.tracked
     return ScenarioDetailsRow(
         status='hybrid' if has_error else 'success',
         ticks_processed=coordination.ticks_processed,
+        algo_passes=coordination.algo_passes,
+        ghost_passes=coordination.ghost_passes,
         first_tick_time=tick_range.first_tick_time.isoformat() if tick_range.first_tick_time else '',
         last_tick_time=tick_range.last_tick_time.isoformat() if tick_range.last_tick_time else '',
         # No tick processed is no market time — 0.0, as the row declares, never None.

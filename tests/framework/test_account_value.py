@@ -17,16 +17,18 @@ quantity is the subject.
 """
 
 from datetime import datetime, timezone
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 import pytest
 
+from python.framework.exceptions.algo_clock_errors import ClockNotInjectedError
 from python.framework.factory.broker_config_factory import BrokerConfigFactory
 from python.framework.trading_env.portfolio_manager import PortfolioManager
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.persistence_types import AccountDrawdownCarryOver
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.trading_env_types.order_types import OrderDirection
+from tests.shared.null_logger import NullLogger
 
 _MT5_CONFIG = 'configs/brokers/mt5/mt5_broker_config.json'
 _SYMBOL = 'EURUSD'
@@ -36,19 +38,14 @@ _BALANCE = 10_000.0
 _CLOCK = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
 
 
-class _NullLogger:
-    """Minimal duck-typed logger — the arithmetic under test does not log."""
-
-    def verbose(self, *args, **kwargs): pass
-    def debug(self, *args, **kwargs): pass
-    def info(self, *args, **kwargs): pass
-    def warning(self, *args, **kwargs): pass
-    def error(self, *args, **kwargs): pass
+def _fixed_clock() -> datetime:
+    return _CLOCK
 
 
 def _portfolio(
     spot_mode: bool = False,
     initial_balances: Optional[Dict[str, float]] = None,
+    clock_fn: Optional[Callable[[], datetime]] = _fixed_clock,
 ) -> PortfolioManager:
     """
     Build a portfolio over the real MT5 broker config.
@@ -57,17 +54,18 @@ def _portfolio(
         spot_mode: Build the asset-inventory portfolio instead of the margin one
         initial_balances: Asset inventory for spot mode — a holding is what makes a spot
             account value move at all, since it lives in the balances and not in a position
+        clock_fn: The canonical clock; a fixed instant unless a test needs another, None for none
 
     Returns:
-        A PortfolioManager with a fixed clock
+        A PortfolioManager with the clock given
     """
     return PortfolioManager(
-        logger=_NullLogger(), initial_balance=_BALANCE, account_currency='USD',
+        logger=NullLogger(), initial_balance=_BALANCE, account_currency='USD',
         broker_config=BrokerConfigFactory.build_broker_config(_MT5_CONFIG),
         leverage=500, margin_call_level=50.0, stop_out_level=20.0,
         spot_mode=spot_mode,
         initial_balances=initial_balances,
-        clock_fn=lambda: _CLOCK)
+        clock_fn=clock_fn)
 
 
 def _mark(portfolio: PortfolioManager, price: float) -> None:
@@ -284,6 +282,47 @@ class TestTheDrawdownPercentageIsMeasuredAgainstThePeakOfTheMoment:
         stats = portfolio.get_portfolio_statistics()
         assert stats.account_max_drawdown_pct == pytest.approx((peak - trough) / peak * 100)
         assert stats.account_max_drawdown_pct > stats.account_max_drawdown / stats.max_equity * 100
+
+
+class TestTheCurveBeginsOnTheRunsOwnClock:
+    """
+    When the curve began is an instant of the run, not of the machine (#497). It was the wall
+    clock, so a backtest of last September said its curve began on the day it ran, and two runs of
+    one scenario differed in it.
+    """
+
+    def test_the_start_is_the_canonical_clock_at_the_first_sample(self):
+        portfolio = _portfolio()
+
+        portfolio.sample_equity()
+
+        assert portfolio.get_portfolio_statistics().drawdown_started_at == _CLOCK.isoformat()
+
+    def test_a_later_sample_does_not_move_it(self):
+        clock = [_CLOCK]
+        portfolio = _portfolio(clock_fn=lambda: clock[0])
+        portfolio.sample_equity()
+        clock[0] = datetime(2026, 9, 15, 9, 30, tzinfo=timezone.utc)
+
+        portfolio.sample_equity()
+
+        assert portfolio.get_portfolio_statistics().drawdown_started_at == _CLOCK.isoformat()
+
+    def test_a_clock_never_set_leaves_it_unrecorded(self):
+        """A session that ends before its first pass has no instant to name."""
+        def unset() -> datetime:
+            raise ClockNotInjectedError('the loop has not set the clock yet')
+
+        portfolio = _portfolio(clock_fn=unset)
+        portfolio.sample_equity()
+
+        assert portfolio.get_portfolio_statistics().drawdown_started_at == ''
+
+    def test_a_portfolio_built_without_a_clock_still_refuses(self):
+        portfolio = _portfolio(clock_fn=None)
+
+        with pytest.raises(ClockNotInjectedError):
+            portfolio.sample_equity()
 
 
 class TestTheCurveContinuesAcrossARestart:

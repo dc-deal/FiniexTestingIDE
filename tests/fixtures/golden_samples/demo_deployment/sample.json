@@ -1,0 +1,129 @@
+{
+ "entry_id": "demo_deployment",
+ "produced_at": "2026-11-10T15:01:48.224736+00:00",
+ "report_contract": 53,
+ "frozen_at": "2026-11-10T15:02:00.218646Z",
+ "composed_at": "2026-11-10T15:02:00.218646Z",
+ "runs": [
+  {
+   "run_id": "20261110_145808_d1ce0565",
+   "run_type": "autotrader",
+   "started_at": "2026-11-10T14:58:08.143091Z",
+   "commit": "6a375c1a",
+   "branch": "dev-1-6-0",
+   "dirty": false,
+   "diff_hash": null,
+   "sections": [
+    "portfolio.json",
+    "trade_history.json",
+    "order_history.json",
+    "execution_stats.json",
+    "pending_orders.json",
+    "worker_decision.json",
+    "signal.json",
+    "feed_stability.json",
+    "booking_periods.json",
+    "run_summary.json"
+   ]
+  },
+  {
+   "run_id": "20261110_145848_f16e76f8",
+   "run_type": "autotrader",
+   "started_at": "2026-11-10T14:58:48.342886Z",
+   "commit": "6a375c1a",
+   "branch": "dev-1-6-0",
+   "dirty": false,
+   "diff_hash": null,
+   "sections": [
+    "portfolio.json",
+    "trade_history.json",
+    "order_history.json",
+    "execution_stats.json",
+    "pending_orders.json",
+    "worker_decision.json",
+    "signal.json",
+    "feed_stability.json",
+    "booking_periods.json",
+    "run_summary.json"
+   ]
+  },
+  {
+   "run_id": "20261110_145930_c1df9fa3",
+   "run_type": "autotrader",
+   "started_at": "2026-11-10T14:59:30.526906Z",
+   "commit": "6a375c1a",
+   "branch": "dev-1-6-0",
+   "dirty": false,
+   "diff_hash": null,
+   "sections": [
+    "portfolio.json",
+    "trade_history.json",
+    "order_history.json",
+    "execution_stats.json",
+    "pending_orders.json",
+    "worker_decision.json",
+    "signal.json",
+    "feed_stability.json",
+    "booking_periods.json",
+    "run_summary.json"
+   ]
+  },
+  {
+   "run_id": "20261110_150009_54b215d0",
+   "run_type": "autotrader",
+   "started_at": "2026-11-10T15:00:09.647855Z",
+   "commit": "6a375c1a",
+   "branch": "dev-1-6-0",
+   "dirty": false,
+   "diff_hash": null,
+   "sections": [
+    "portfolio.json",
+    "trade_history.json",
+    "order_history.json",
+    "execution_stats.json",
+    "pending_orders.json",
+    "worker_decision.json",
+    "signal.json",
+    "feed_stability.json",
+    "booking_periods.json",
+    "run_summary.json"
+   ]
+  },
+  {
+   "run_id": "20261110_150047_2028c175",
+   "run_type": "autotrader",
+   "started_at": "2026-11-10T15:00:47.747364Z",
+   "commit": "6a375c1a",
+   "branch": "dev-1-6-0",
+   "dirty": false,
+   "diff_hash": null,
+   "sections": []
+  },
+  {
+   "run_id": "20261110_150107_90e88f45",
+   "run_type": "autotrader",
+   "started_at": "2026-11-10T15:01:07.151060Z",
+   "commit": "6a375c1a",
+   "branch": "dev-1-6-0",
+   "dirty": false,
+   "diff_hash": null,
+   "sections": [
+    "portfolio.json",
+    "trade_history.json",
+    "order_history.json",
+    "execution_stats.json",
+    "pending_orders.json",
+    "worker_decision.json",
+    "signal.json",
+    "feed_stability.json",
+    "booking_periods.json",
+    "run_summary.json"
+   ]
+  }
+ ],
+ "deployment_ids": [
+  "deploy_20261110_145808_6b55f50f",
+  "deploy_20261110_150107_11c4d414"
+ ],
+ "sweep_ids": []
+}

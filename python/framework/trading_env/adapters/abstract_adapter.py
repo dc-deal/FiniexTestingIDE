@@ -408,7 +408,7 @@ class AbstractAdapter(ABC):
 
         OPTIONAL — Real adapters determine market state broker-side and
         typically ignore this. Mock/simulation adapters use it to keep
-        their internal market view in sync with the tick loop so that
+        their internal market view in sync with the event loop so that
         execute_order() can fill at the current market price.
 
         Default: no-op.
@@ -637,7 +637,7 @@ class AbstractAdapter(ABC):
     def parse_submit_response(
         self,
         raw: Dict[str, Any],
-        timestamp: datetime,
+        ts_init: datetime,
         direction: Optional[OrderDirection] = None,
         order_type: Optional[OrderType] = None,
     ) -> BrokerResponse:
@@ -654,7 +654,7 @@ class AbstractAdapter(ABC):
 
         Args:
             raw: Raw broker response dict
-            timestamp: Response receipt timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
             direction: Order direction — which side of the quote a dry-run fill takes
             order_type: Which dry-run fill rule applies
 
@@ -669,7 +669,7 @@ class AbstractAdapter(ABC):
         self,
         raw: Dict[str, Any],
         broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
         market: Optional[TickData] = None,
     ) -> BrokerResponse:
         """
@@ -680,7 +680,7 @@ class AbstractAdapter(ABC):
         Args:
             raw: Raw broker response dict
             broker_ref: The broker reference that was queried
-            timestamp: Response receipt timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
             market: DRY-RUN only — the quote when the poll was decided, so the simulated
                 venue can answer whether the market has reached the order's price (#505).
                 A real broker knows its own book and ignores it
@@ -696,7 +696,7 @@ class AbstractAdapter(ABC):
         self,
         raw: Dict[str, Any],
         broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
     ) -> BrokerResponse:
         """
         Convert a raw broker cancel response into a BrokerResponse.
@@ -706,7 +706,7 @@ class AbstractAdapter(ABC):
         Args:
             raw: Raw broker response dict
             broker_ref: The broker reference that was cancelled
-            timestamp: Response receipt timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
 
         Returns:
             BrokerResponse with cancellation status
@@ -719,7 +719,7 @@ class AbstractAdapter(ABC):
         self,
         raw: Dict[str, Any],
         original_broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
     ) -> BrokerResponse:
         """
         Convert a raw broker modify response into a BrokerResponse.
@@ -732,7 +732,7 @@ class AbstractAdapter(ABC):
         Args:
             raw: Raw broker response dict
             original_broker_ref: The pre-modification broker reference
-            timestamp: Response receipt timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
 
         Returns:
             BrokerResponse with (potentially new) broker_ref

@@ -10,6 +10,7 @@ from typing import Any, Dict
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.config_directory.config_directory_discovery import is_user_owned
 from python.framework.types.autotrader_types.autotrader_config_types import (
+    AdapterType,
     AutoTraderConfig,
     DeploymentConfig,
 )
@@ -22,6 +23,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     ColdStartDefaults,
     DisplayDefaults,
     DriftAuditConfig,
+    IndicatorSeriesDefaults,
     OrderGuardDefaults,
     ReconciliationDefaults,
     SafetyConfig,
@@ -75,6 +77,7 @@ _KNOWN_RECONCILIATION_KEYS: frozenset       = allowlist_from(ReconciliationDefau
 _KNOWN_API_MONITOR_KEYS: frozenset          = allowlist_from(ApiMonitorConfig)
 _KNOWN_STATE_PERSISTENCE_KEYS: frozenset    = allowlist_from(StatePersistenceDefaults)
 _KNOWN_STATE_FRAMES_KEYS: frozenset         = allowlist_from(StateFramesDefaults)
+_KNOWN_INDICATOR_SERIES_KEYS: frozenset     = allowlist_from(IndicatorSeriesDefaults)
 _KNOWN_COLD_START_KEYS: frozenset           = allowlist_from(ColdStartDefaults)
 _KNOWN_SESSION_END_KEYS: frozenset          = allowlist_from(SessionEndDefaults)
 _KNOWN_SHUTDOWN_KEYS: frozenset             = allowlist_from(ShutdownDefaults)
@@ -164,6 +167,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     api_monitor_raw = raw.get('api_monitor', {})
     state_persistence_raw = raw.get('state_persistence', {})
     state_frames_raw = raw.get('state_frames', {})
+    indicator_series_raw = raw.get('indicator_series', {})
     cold_start_raw = raw.get('cold_start', {})
     session_end_raw = raw.get('session_end', {})
     shutdown_raw = raw.get('shutdown', {})
@@ -208,6 +212,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     check_unknown_keys('api_monitor',         api_monitor_raw,  _KNOWN_API_MONITOR_KEYS)
     check_unknown_keys('state_persistence',   state_persistence_raw, _KNOWN_STATE_PERSISTENCE_KEYS)
     check_unknown_keys('state_frames',        state_frames_raw, _KNOWN_STATE_FRAMES_KEYS)
+    check_unknown_keys('indicator_series',    indicator_series_raw, _KNOWN_INDICATOR_SERIES_KEYS)
     check_unknown_keys('cold_start',          cold_start_raw,   _KNOWN_COLD_START_KEYS)
     check_unknown_keys('session_end',         session_end_raw,  _KNOWN_SESSION_END_KEYS)
     check_unknown_keys('shutdown',            shutdown_raw,     _KNOWN_SHUTDOWN_KEYS)
@@ -225,8 +230,14 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     # explicitly. The provenance check uses the pre-merge profile dict
     # captured above — `raw['drift_audit']['enabled']` would always be `true`
     # post-merge because app_config.json sets the global default that way.
-    adapter_type_resolved = raw.get('adapter_type', 'mock')
-    if adapter_type_resolved == 'mock' and not profile_explicitly_set_drift_enabled:
+    adapter_type_raw = raw.get('adapter_type', AdapterType.MOCK.value)
+    try:
+        adapter_type_resolved = AdapterType(adapter_type_raw)
+    except ValueError:
+        raise ValueError(
+            f"Profile '{path.name}': `adapter_type` is {adapter_type_raw!r}; it must be one of "
+            f'{[adapter.value for adapter in AdapterType]}.') from None
+    if adapter_type_resolved is AdapterType.MOCK and not profile_explicitly_set_drift_enabled:
         drift_audit_enabled_resolved = False
     else:
         drift_audit_enabled_resolved = drift_audit_raw.get('enabled', True)
@@ -236,14 +247,14 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     # order would read as a false orphan. Auto-disable for mock UNLESS the profile
     # sets `enabled` explicitly (same provenance pattern as drift_audit). Live
     # adapters inherit the app_config default (enabled).
-    if adapter_type_resolved == 'mock' and not profile_explicitly_set_reconciliation_enabled:
+    if adapter_type_resolved is AdapterType.MOCK and not profile_explicitly_set_reconciliation_enabled:
         reconciliation_enabled_resolved = False
     else:
         reconciliation_enabled_resolved = reconciliation_raw.get('enabled', True)
 
     # API monitor: same mock-auto-disable rationale — a mock adapter has no real
     # _fetch_private transport, so the monitor would record nothing useful.
-    if adapter_type_resolved == 'mock' and not profile_explicitly_set_api_monitor_enabled:
+    if adapter_type_resolved is AdapterType.MOCK and not profile_explicitly_set_api_monitor_enabled:
         api_monitor_enabled_resolved = False
     else:
         api_monitor_enabled_resolved = api_monitor_raw.get('enabled', True)
@@ -252,7 +263,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     # replay, not a real restart context, and would otherwise write a
     # state file for a test profile. Auto-disable for mock UNLESS the profile sets
     # `enabled` explicitly (same provenance pattern as drift_audit/reconciliation).
-    if adapter_type_resolved == 'mock' and not profile_explicitly_set_state_persistence_enabled:
+    if adapter_type_resolved is AdapterType.MOCK and not profile_explicitly_set_state_persistence_enabled:
         state_persistence_enabled_resolved = False
     else:
         state_persistence_enabled_resolved = state_persistence_raw.get('enabled', True)
@@ -264,11 +275,11 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     profile_alerts_raw = raw_profile_only.get('operator_alerts', {})
     telegram_raw = operator_alerts_raw.get('telegram', {})
     liveness_raw = operator_alerts_raw.get('liveness', {})
-    if adapter_type_resolved == 'mock' and 'enabled' not in profile_alerts_raw.get('telegram', {}):
+    if adapter_type_resolved is AdapterType.MOCK and 'enabled' not in profile_alerts_raw.get('telegram', {}):
         telegram_enabled_resolved = False
     else:
         telegram_enabled_resolved = telegram_raw.get('enabled', False)
-    if adapter_type_resolved == 'mock' and 'enabled' not in profile_alerts_raw.get('liveness', {}):
+    if adapter_type_resolved is AdapterType.MOCK and 'enabled' not in profile_alerts_raw.get('liveness', {}):
         liveness_enabled_resolved = False
     else:
         liveness_enabled_resolved = liveness_raw.get('enabled', False)
@@ -326,6 +337,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         deployment=DeploymentConfig(**_block(deployment_raw)),
         state_persistence=StatePersistenceDefaults(**_block(state_persistence_raw, enabled=state_persistence_enabled_resolved)),
         state_frames=StateFramesDefaults(**_block(state_frames_raw)),
+        indicator_series=IndicatorSeriesDefaults(**_block(indicator_series_raw)),
         config_path=path,
     )
     # On the RESOLVED config: the tick source's type comes from the app_config cascade when a

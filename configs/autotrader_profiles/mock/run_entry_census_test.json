@@ -39,6 +39,10 @@
     "enabled": true,
     "cadence_timeframe": "M1"
   },
+  "indicator_series": {
+    "_comment": "Recorded, so the census sees the indicator series stream of the RSI worker and, across the day boundary, its sealed day.",
+    "enabled": true
+  },
   "api_monitor": {
     "_comment": "Switched on, so the census sees the venue API section (#631). The mock adapter calls no endpoint, so the section lists none.",
     "enabled": true

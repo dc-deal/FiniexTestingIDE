@@ -28,7 +28,11 @@ from python.framework.reporting.store.run_provenance_builder import (
     build_run_provenance_from_session,
     consumption_record,
 )
-from python.framework.types.api.report_types import RunHeader, WarningsErrorsReport
+from python.framework.types.api.report_types import (
+    RunHeader,
+    WarningsErrorsOutcome,
+    WarningsErrorsReport,
+)
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.git_info_types import GitInfo
@@ -48,7 +52,8 @@ _RUN_ID = '20260830_120000_a1b2c3d4'
 _TS = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
-def _scenario_reading(versions, classes, grades, bases=()) -> SingleScenario:
+def _scenario_reading(versions, classes, grades, bases=(), clock_rules=(),
+                      warmup=()) -> SingleScenario:
     """
     A scenario carrying the input lists the mount fills.
 
@@ -58,6 +63,8 @@ def _scenario_reading(versions, classes, grades, bases=()) -> SingleScenario:
         grades: Their resolved evidence grades
         bases: The price bases of the BAR files it mounted — a separate archive from the
             three above, which is why it is counted separately and defaults to none
+        clock_rules: The server clock rule of each TICK file, None where its header states none
+        warmup: The bar timeframes whose warmup reached into external bars
 
     Returns:
         A scenario with only those fields set — nothing else is read here
@@ -69,6 +76,8 @@ def _scenario_reading(versions, classes, grades, bases=()) -> SingleScenario:
     scenario.origin_classes = list(classes)
     scenario.origin_evidence_grades = list(grades)
     scenario.price_bases = list(bases)
+    scenario.server_clock_rules = list(clock_rules)
+    scenario.external_warmup_timeframes = list(warmup)
     return scenario
 
 
@@ -127,6 +136,24 @@ class TestSessionProvenance:
         assert p.status == 'ok'
         assert p.error is None
 
+    def test_no_report_counts_no_units(self):
+        p = _session_provenance(_config())
+        assert (p.total_units, p.failed_count) == (None, None)
+
+    def test_a_failed_session_is_one_failed_unit(self):
+        # The counts come from the warnings-errors outcome, the one the route serves (#666)
+        result = AutoTraderResult(emergency_reason='boom', shutdown_mode='emergency')
+        report = build_warnings_errors_report_from_session(_RUN_ID, result, 'my_profile', 'BTCUSD')
+        p = _session_provenance(_config(), report)
+        assert (p.total_units, p.failed_count) == (
+            report.outcome.total_units, report.outcome.failed_count) == (1, 1)
+
+    def test_a_clean_session_is_one_unit_none_failed(self):
+        result = AutoTraderResult()
+        report = build_warnings_errors_report_from_session(_RUN_ID, result, 'my_profile', 'BTCUSD')
+        p = _session_provenance(_config(), report)
+        assert (p.total_units, p.failed_count) == (1, 0)
+
     def test_status_error_on_emergency(self):
         # An emergency session (every unit failed) → a status='error' ledger row, never absent.
         result = AutoTraderResult(emergency_reason='boom', shutdown_mode='emergency')
@@ -171,6 +198,27 @@ class TestWhereTheOrdersWent:
 
         assert provenance.orders_to is OrdersTo.SIMULATED
 
+    def test_a_backtest_counts_its_units_from_its_outcome(self, tmp_path):
+        # Three scenarios, one failed: the counts the warnings-errors outcome holds, on the
+        # provenance the ledger row is written from (#666)
+        scenario = SingleScenario(
+            name='s0', scenario_index=0, symbol='BTCUSD', data_broker_type='kraken_spot',
+            start_date='2026-01-01',
+            strategy_config={'decision_logic_type': 'CORE/aggressive_trend',
+                             'worker_instances': {}})
+        scenario_set = SimpleNamespace(
+            logger=SimpleNamespace(get_log_dir=lambda: tmp_path),
+            printed_summary_logger=get_global_logger(), run_timestamp=_TS,
+            scenario_set_name='my_set')
+        report = WarningsErrorsReport(
+            run_id=_RUN_ID, outcome=WarningsErrorsOutcome(total_units=3, failed_count=1))
+
+        provenance = build_run_provenance(
+            SimpleNamespace(single_scenario_list=[scenario], broker_scenario_map={}),
+            scenario_set, _RUN_ID, warnings_errors_report=report)
+
+        assert (provenance.total_units, provenance.failed_count) == (3, 1)
+
 
 class TestWhatARunConsumed:
     """
@@ -203,6 +251,8 @@ class TestWhatARunConsumed:
         assert p.origin_classes == ''
         assert p.origin_evidence_grades == ''
         assert p.input_files == 0
+        assert p.server_clock_rules == ''
+        assert p.external_warmup_timeframes == ''
         # The ONE field that is filled for a live-adapter session, and deliberately so: such a
         # session renders its bars at runtime, so there is no file to stamp and nothing can be
         # out of date with the declaration. Blank here would defeat the field — the parity proof
@@ -251,7 +301,8 @@ class TestWhatARunConsumed:
         assert record['origin_classes'] == 'development,production'
         assert record['origin_evidence_grades'] == 'attested,stamped'
         assert record['input_files'] == 3
-        assert record['unstamped_input_files'] == 3
+        # The two attested files: the development file carries its producer's stamp
+        assert record['unstamped_input_files'] == 2
 
     def test_a_half_re_rendered_archive_answers_with_both_bases(self):
         """
@@ -281,23 +332,48 @@ class TestWhatARunConsumed:
 
         assert record['price_bases'] == ''
 
-    def test_only_production_AND_stamped_counts_as_stamped(self):
+    def test_a_file_without_a_stamp_counts_whatever_its_class(self):
         """
-        The count asks the shared rule rather than spelling it out a third time.
+        The count says which files no stamp attests, not which are admissible (#647).
 
-        `production` from a producer's own stamp and `production` from a claim we recorded are
-        the same word and a different fact — collapsing them is what would let a claim present
-        itself as a measurement.
+        A venue's published history carries the converter's stamp, so it no longer counts here —
+        before, every external file did, and 40,588 of 42,507 ledger rows said so. Whether a file
+        may enter a parity measurement is the class AND the grade, and the post-run check asks
+        exactly that; this count answers the narrower question its name asks.
         """
         scenarios = [_scenario_reading(
-            ['1.7.0'] * 4,
-            ['production', 'production', 'development', 'unknown'],
-            ['stamped', 'attested', 'stamped', 'unknown'])]
+            ['1.7.0'] * 5,
+            ['production', 'production', 'development', 'unknown', 'external'],
+            ['stamped', 'attested', 'stamped', 'unknown', 'stamped'])]
 
         record = consumption_record(scenarios)
 
-        assert record['input_files'] == 4
-        assert record['unstamped_input_files'] == 3
+        assert record['input_files'] == 5
+        assert record['unstamped_input_files'] == 2, 'the attested and the unknown file'
+
+    def test_the_clock_rules_are_those_the_tick_files_state(self):
+        """A file whose header states no rule adds nothing — never a rule of its own (#647)."""
+        record = consumption_record([
+            _scenario_reading(['1.7.0'] * 2, ['production'] * 2, ['stamped'] * 2,
+                              clock_rules=['America/New_York+7h', None]),
+            _scenario_reading(['1.7.0'], ['external'], ['stamped'], clock_rules=['UTC+0h'])])
+
+        assert record['server_clock_rules'] == 'America/New_York+7h,UTC+0h'
+
+    def test_no_stated_clock_rule_leaves_the_field_empty(self):
+        record = consumption_record([_scenario_reading(
+            ['1.5.0'], ['production'], ['attested'], clock_rules=[None])])
+
+        assert record['server_clock_rules'] == ''
+
+    def test_a_warmup_into_external_bars_reaches_the_record(self):
+        """Decision 4 of #561 allows it; the record has to say it happened (#647)."""
+        record = consumption_record([
+            _scenario_reading(['1.7.0'], ['production'], ['stamped'], warmup=['D1', 'H4']),
+            _scenario_reading(['1.7.0'], ['production'], ['stamped'], warmup=['D1']),
+            _scenario_reading(['1.7.0'], ['production'], ['stamped'])])
+
+        assert record['external_warmup_timeframes'] == 'D1,H4'
 
     def test_a_run_that_read_nothing_says_so_without_inventing_a_value(self):
         record = consumption_record([])

@@ -11,7 +11,7 @@ file lives, and which document answers which question. **It is deliberately shor
 sits in the documents below, because a single file of fifteen hundred lines is one nobody reads
 to the end.
 
-FiniexAutoTrader is the counterpart of the backtesting `process_tick_loop`. It connects tick
+FiniexAutoTrader is the counterpart of the backtesting `process_event_loop`. It connects tick
 sources through workers and decision logic to the `LiveTradeExecutor`, using the same algorithm
 classes as backtesting.
 
@@ -36,18 +36,20 @@ session. Same classes, same interfaces. Only the runner and the executor change.
     ║                                                         ║
     ║  Thread 1              Thread 2 (Main — Algo Loop)      ║
     ║  ┌────────────┐        ┌─────────────────────────────┐  ║
-    ║  │ TickSource │  queue │ 1. executor.on_tick()       │  ║
-    ║  │ (mock or   │───────►│ 2. bar_controller           │  ║
-    ║  │  websocket)│ Queue  │ 3. workers → decision       │  ║
-    ║  └────────────┘        │ 4. decision_logic → executor│  ║
-    ║                        │ 5. clipping_monitor.record()│  ║
+    ║  │ TickSource │  queue │ intake.next_instant()       │  ║
+    ║  │ (mock or   │───────►│ 1. executor.apply_tick()    │  ║
+    ║  │  websocket)│ Queue  │ 2. bar_controller           │  ║
+    ║  └────────────┘        │ 3. executor.resolve_due()   │  ║
+    ║                        │ 4. workers → decision, once │  ║
+    ║                        │ 5. decision_logic → executor│  ║
+    ║                        │ 6. clipping_monitor         │  ║
     ║                        └─────────────────────────────┘  ║
     ║                          │            │                 ║
     ║              ┌───────────┘            │                 ║
     ║              ▼                        ▼                 ║
     ║  ┌──────────────────┐   ┌──────────────────────┐        ║
     ║  │ LiveTradeExecutor│   │ ClippingMonitor      │        ║
-    ║  │ + MockAdapter    │   │ (per-tick timing)    │        ║
+    ║  │ + MockAdapter    │   │ (per-pass timing)    │        ║
     ║  └──────────────────┘   └──────────────────────┘        ║
     ╚═════════════════════════════════════════════════════════╝
 ```
@@ -150,7 +152,7 @@ recognises a study, and the capture's setup and preflight.
 ```
 python/framework/autotrader/
   autotrader_main.py             Runner: run(), shutdown, signal handling
-  autotrader_tick_loop.py        Tick processing loop (main thread, hot path)
+  autotrader_event_loop.py        Tick processing loop (main thread, hot path)
   autotrader_display_exporter.py Display frames from the live pipeline state (#400)
   deployment_resolver.py         Whether the session joins a deployment, starts one, or stands alone (#497)
   dry_run_resolver.py            Whether the session places real orders, answered once

@@ -4,7 +4,7 @@
 
 The modify_lifecycle test suite validates the async modify/cancel pattern introduced by #318 on the
 **simulation side**. Unlike most other simulation test suites which run full scenarios via
-`execute_tick_loop`, this suite instantiates `TradeSimulator` directly and drives it with controlled
+`execute_event_loop`, this suite instantiates `TradeSimulator` directly and drives it with controlled
 msc-tagged ticks. The focus is on the **shape of the modify/cancel lifecycle** — scheduling,
 in-flight state, resolve-on-next-tick — not on full P&L correctness.
 
@@ -88,7 +88,15 @@ clears. Capability gates for stop-order modify and position modify.
 | Test | Description |
 |---|---|
 | `test_modify_position_sync_fallback_for_kraken_caps` | `native_position_sl_tp=False` → instant `portfolio.modify_position` (sync fallback, `status=SUCCESS`, no entry in `_pending_position_modifications`) |
-| `test_modify_position_async_path_with_mt5_caps` | Monkey-patched `native_position_sl_tp=True` → async pending pattern: schedule registers in `_pending_position_modifications`, next tick applies SL/TP via portfolio.modify_position, tracker drained |
+| `test_modify_position_async_path_with_mt5_caps` | The capabilities replaced by a copy with `native_position_sl_tp=True` (they are frozen) → async pending pattern: schedule registers in `_pending_position_modifications`, next tick applies SL/TP via portfolio.modify_position, tracker drained |
+
+#### TestTheAlgoSeesItsOrder
+
+| Test | Description |
+|---|---|
+| `test_a_kept_mask_shows_the_modify_in_flight_then_applied` | the algo's mask of a resting limit shows `PENDING_MODIFY` and the old price while the modify is in flight, the new price and stop loss once applied, and is the same mask on the next read (#654) |
+| `test_assigning_to_the_mask_changes_nothing` | an assignment raises, and the order keeps its price |
+| `test_a_cancelled_order_leaves_the_reads` | once the cancel resolves, no mask of it is handed out |
 
 ---
 
@@ -151,7 +159,7 @@ Unlike scenario-based simulation tests (`baseline`, `sltp_limit_validation`, etc
 1. Each test creates a fresh `TradeSimulator` via the `sim_executor` fixture
 2. `feed_sim_tick` advances the sim clock with explicit msc values
 3. Tests assert lifecycle state directly via `executor._active_limit_orders`, `pending.in_flight_operation`, etc.
-4. No scenario config, no `execute_tick_loop`, no decision logic
+4. No scenario config, no `execute_event_loop`, no decision logic
 
 This makes tests sharply focused (one lifecycle step per test) and fast (the whole suite runs in <1s).
 

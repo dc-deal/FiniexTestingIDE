@@ -16,6 +16,7 @@ from typing import Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.acceptance_studies.abstract_acceptance_study import AbstractAcceptanceStudy
+from python.framework.autotrader.run_record.session_run_index import write_run_index_for_session
 from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
@@ -290,7 +291,9 @@ class AutotraderReportCoordinator:
 
         # Every artifact of this session is on disk now — the index records WHICH, so a consumer
         # knows what it can fetch instead of discovering it by 404 (#475).
-        SharedReportCoordinator.record_run_artifacts(self._run_dir)
+        write_run_index_for_session(
+            lambda index: SharedReportCoordinator.record_run_artifacts(self._run_dir, index),
+            self._summary_logger, "the session's artifacts")
 
         # Run-results ledger (#390) — append the session to the persistent cross-run store the
         # Parameter Optimization system ranks over. Same RunSummary model + provenance as the sim
@@ -344,7 +347,8 @@ class AutotraderReportCoordinator:
             closing_block=AutotraderSessionSummary(
                 result, unified.trade_history, self._run_dir, unified.run_summary,
                 warnings_errors_report, cold_start_report, safety_report,
-                venue_account_report),
+                venue_account_report, portfolio_report=unified.portfolio,
+                order_report=unified.order_history),
         )
 
         # Render once (live always full detail); capture, print to console (with colors), and
@@ -408,6 +412,11 @@ class AutotraderReportCoordinator:
                    if isinstance(self._decision_logic, AbstractAcceptanceStudy) else None)
         sinks = self._decision_logic.get_diagnostics_sinks() if self._decision_logic else []
         reach = self._result.session_reach
+        series_on = self._config.indicator_series.enabled
+        series_skipped = ('the profile records no indicator series' if not series_on
+                          else 'the session stopped before its event loop'
+                          if not reach.event_loop_entered
+                          else 'no worker of the session draws')
         log_members = (RunEntryMemberId.SESSION_GLOBAL_LOG, RunEntryMemberId.SESSION_SUMMARY_LOG,
                        RunEntryMemberId.SESSION_BOOT_LOG)
         return [
@@ -415,7 +424,7 @@ class AutotraderReportCoordinator:
                           'log files are switched off') for member_id in log_members),
             expectation_after(RunEntryMemberId.SESSION_DAY_LOG, logs_on, reach.day_log_opened,
                               'log files are switched on', 'log files are switched off',
-                              'the session made no pass of its tick loop'),
+                              'the session made no pass of its event loop'),
             expectation_after(RunEntryMemberId.ORDER_EVENTS, True, reach.order_record_opened,
                               'the session opened its order record', '',
                               'the session stopped before it opened its order record'),
@@ -437,16 +446,19 @@ class AutotraderReportCoordinator:
                         'the logic recorded a diagnostics row',
                         'the logic recorded no diagnostics row'),
             expectation_after(RunEntryMemberId.DIAGNOSTICS_ROWS, bool(sinks),
-                              reach.tick_loop_entered, 'the logic declared a diagnostics sink',
+                              reach.event_loop_entered, 'the logic declared a diagnostics sink',
                               'the logic declared no diagnostics sink',
-                              'the session stopped before its tick loop'),
+                              'the session stopped before its event loop'),
             expectation_after(RunEntryMemberId.STATE_FRAMES, self._config.state_frames.enabled,
-                              reach.tick_loop_entered, 'the profile records state frames',
+                              reach.event_loop_entered, 'the profile records state frames',
                               'the profile records no state frames',
-                              'the session stopped before its tick loop'),
-            expectation_after(RunEntryMemberId.TRADES, True, reach.tick_loop_entered,
-                              'the session reached its tick loop', '',
-                              'the session stopped before its tick loop'),
+                              'the session stopped before its event loop'),
+            expectation(RunEntryMemberId.INDICATOR_SERIES, reach.indicator_series_opened,
+                        'the profile records indicator series and a worker draws',
+                        series_skipped),
+            expectation_after(RunEntryMemberId.TRADES, True, reach.event_loop_entered,
+                              'the session reached its event loop', '',
+                              'the session stopped before its event loop'),
             expectation(RunEntryMemberId.ALGO_STATE_RESTORED, reach.algo_state_found,
                         'a saved algo state was found at the start',
                         'no saved algo state was found at the start'),

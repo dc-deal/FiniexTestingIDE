@@ -3,7 +3,7 @@ Profiling Report Builder + Aggregator Tests (#399).
 
 `build_profiling_report_from_batch` maps each scenario's raw `ProcessProfileData` to a
 `ProfilingUnitRow` (operation timing + inter-tick + clipping) and rolls them up via
-`aggregate_profiling`. Tested with **real** ProcessResult / ProcessTickLoopResult /
+`aggregate_profiling`. Tested with **real** ProcessResult / ProcessEventLoopResult /
 ProcessProfileData / BatchExecutionSummary fixtures (the reporting-test convention) — plus a
 Layer-B-off scenario (no profiling) and the clipping path; the aggregator is exercised directly
 on real `ProfilingUnitRow` rows.
@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 
 from python.framework.reporting.builders.profiling_report_builder import (
     build_profiling_report_from_batch,
+    with_warmup_shares,
 )
 from python.framework.reporting.builders.report_aggregators import aggregate_profiling
 from python.framework.reporting.console.profiling_summary import ProfilingSummary
@@ -35,7 +36,7 @@ from python.framework.types.process_data_types import (
     ClippingStats,
     ProcessProfileData,
     ProcessResult,
-    ProcessTickLoopResult,
+    ProcessEventLoopResult,
 )
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.utils.console_renderer import ConsoleRenderer
@@ -46,21 +47,27 @@ _RUN_ID = '20260830_120000_a1b2c3d4'
 _DT = datetime(2025, 10, 13, tzinfo=timezone.utc)
 
 
-def _ppd(times, ticks, intervals=None) -> ProcessProfileData:
-    """Raw profile payload: per-op total times (+ the special total_per_tick) and counts."""
+def _ppd(times, ticks, intervals=None, passes=None) -> ProcessProfileData:
+    """
+    Raw profile payload: per-op total times (+ the special total_per_tick) and counts, and where
+    `passes` is given — (count, time) — the special total of the algo passes (#460).
+    """
     profile_times = dict(times)
     profile_times['total_per_tick'] = sum(times.values())
+    profile_counts = {op: ticks for op in times}
+    if passes is not None:
+        profile_counts['total_per_algo_pass'], profile_times['total_per_algo_pass'] = passes
     return ProcessProfileData(
-        profile_times=profile_times, profile_counts={op: ticks for op in times},
+        profile_times=profile_times, profile_counts=profile_counts,
         inter_tick_intervals_ms=intervals, gap_threshold_s=300.0, ticks_total=0)
 
 
-def _result(name, idx, times, ticks, intervals=None) -> ProcessResult:
-    tick_loop = ProcessTickLoopResult(
-        profiling_data=_ppd(times, ticks, intervals),
+def _result(name, idx, times, ticks, intervals=None, passes=None) -> ProcessResult:
+    event_loop = ProcessEventLoopResult(
+        profiling_data=_ppd(times, ticks, intervals, passes),
         coordination_statistics=WorkerCoordinatorPerformanceStats(ticks_processed=ticks))
     return ProcessResult(success=True, scenario_name=name, scenario_index=idx,
-                         tick_loop_results=tick_loop)
+                         event_loop_results=event_loop)
 
 
 def _scenario(name, idx, symbol='EURUSD') -> SingleScenario:
@@ -91,6 +98,24 @@ class TestBuild:
         assert round(row.operations[0].avg_time_ms, 3) == 0.12  # 600 / 5000
         assert row.bottleneck_operation == 'live_update' and round(row.bottleneck_pct, 1) == 60.0
 
+    def test_the_time_of_one_algo_pass_beside_the_time_per_tick(self):
+        # Five ticks reached the algo path in three passes: the ticks that arrived in one
+        # millisecond are computed once, so a pass takes longer than a tick (#460)
+        batch = _batch([_result('s1', 0, {'worker_decision': 90.0}, 5, passes=(3, 84.0))],
+                       [_scenario('s1', 0)])
+        row = build_profiling_report_from_batch(_RUN_ID, batch).units[0]
+        assert row.avg_per_tick_ms == 18.0                      # 90 / 5
+        assert row.algo_passes == 3 and row.algo_pass_ms == 84.0
+        assert row.avg_per_algo_pass_ms == 28.0                 # 84 / 3
+        # Both totals time whole instants: neither is listed as an operation
+        assert [o.operation for o in row.operations] == ['worker_decision']
+
+    def test_no_pass_time_where_the_algo_never_computed(self):
+        batch = _batch([_result('s1', 0, {'trade_simulator': 10.0}, 0)], [_scenario('s1', 0)])
+        row = build_profiling_report_from_batch(_RUN_ID, batch).units[0]
+        assert row.algo_passes == 0
+        assert row.avg_per_algo_pass_ms is None
+
     def test_inter_tick_mapped(self):
         batch = _batch(
             [_result('s1', 0, {'worker_decision': 100.0}, 100, intervals=[1.0, 2.0, 3.0, 4.0, 5.0])],
@@ -120,22 +145,26 @@ class TestBuild:
 
     def test_layer_b_off_scenario_skipped(self):
         # profile_times empty → no operation timing → unit skipped
-        tick_loop = ProcessTickLoopResult(
+        event_loop = ProcessEventLoopResult(
             profiling_data=ProcessProfileData(profile_times={}, profile_counts={}),
             coordination_statistics=WorkerCoordinatorPerformanceStats(ticks_processed=100))
         result = ProcessResult(success=True, scenario_name='off', scenario_index=0,
-                               tick_loop_results=tick_loop)
+                               event_loop_results=event_loop)
         report = build_profiling_report_from_batch(_RUN_ID, _batch([result], [_scenario('off', 0)]))
         assert report.units == []
 
 
 class TestAggregate:
-    def _unit(self, name, ops, ticks, total_ms, bottleneck, p5):
+    def _unit(self, name, ops, ticks, total_ms, bottleneck, p5, passes=None):
+        """A unit row; `passes` = (count, time) of its algo passes, absent on an older record."""
+        pass_fields = {} if passes is None else {
+            'algo_passes': passes[0], 'algo_pass_ms': passes[1],
+            'avg_per_algo_pass_ms': passes[1] / passes[0]}
         return ProfilingUnitRow(
             name=name, symbol='EURUSD', total_ticks=ticks, total_ms=total_ms,
             avg_per_tick_ms=total_ms / ticks, bottleneck_operation=bottleneck,
             operations=[ProfilingOperationRow(operation=o, avg_time_ms=a) for o, a in ops],
-            inter_tick=InterTickStatsRow(p5_ms=p5))
+            inter_tick=InterTickStatsRow(p5_ms=p5), **pass_fields)
 
     def test_aggregate_basics(self):
         u1 = self._unit('s1', [('live_update', 0.8), ('worker_decision', 0.3)], 1000, 1000.0, 'live_update', 1.0)
@@ -169,6 +198,44 @@ class TestAggregate:
         agg = aggregate_profiling([u], budget_active=False)
         assert agg.p95_processing_ms == 1.2                  # only avg/tick
         assert agg.suggested_budget_ms == round(1.2 * 1.1, 3)  # P95 + 10%
+
+    def test_the_budget_is_taken_per_algo_pass(self):
+        # 1,000 ticks in 400 passes: 1.2 ms a tick is 3.0 ms a pass, and a pass is what a budget
+        # clips (#460). Per tick the unit fits its P5 of 2.0 ms; per pass it does not.
+        u = self._unit('s1', [('worker_decision', 0.3)], 1000, 1200.0, 'worker_decision', 2.0,
+                       passes=(400, 1200.0))
+        agg = aggregate_profiling([u], budget_active=False)
+        assert agg.p95_processing_ms == 3.0
+        assert agg.suggested_budget_ms == 3.3
+        assert agg.scenarios_over_p5 == 1
+
+    def test_the_time_of_one_pass_over_the_units_from_their_sums(self):
+        u1 = self._unit('s1', [('worker_decision', 0.3)], 1000, 1200.0, 'worker_decision', 1.0,
+                        passes=(400, 1200.0))
+        u2 = self._unit('s2', [('worker_decision', 0.3)], 500, 600.0, 'worker_decision', 1.0,
+                        passes=(100, 600.0))
+        agg = aggregate_profiling([u1, u2], budget_active=False)
+        assert agg.total_algo_passes == 500
+        # 1,800 ms over 500 passes — not the mean of 3.0 and 6.0
+        assert agg.avg_per_algo_pass_ms == 3.6
+
+    def test_a_record_written_before_contract_56_keeps_its_budget_per_tick(self):
+        u = self._unit('s1', [('worker_decision', 0.3)], 1000, 1200.0, 'worker_decision', 2.0)
+        agg = aggregate_profiling([u], budget_active=False)
+        assert agg.total_algo_passes is None and agg.avg_per_algo_pass_ms is None
+        assert agg.p95_processing_ms == 1.2
+        assert agg.scenarios_over_p5 == 0
+
+    def test_a_unit_whose_algo_never_computed_takes_no_part_in_the_budget(self):
+        # A contract-57 unit with no pass: no time per pass, and no per-tick stand-in for it —
+        # its 5.0 ms a tick would otherwise be the P95 and a second unit over its P5
+        quiet = self._unit('quiet', [('trade_simulator', 0.1)], 1000, 5000.0, 'trade_simulator', 2.0
+                           ).model_copy(update={'algo_passes': 0, 'algo_pass_ms': 0.0})
+        busy = self._unit('busy', [('worker_decision', 0.3)], 1000, 1200.0, 'worker_decision', 2.0,
+                          passes=(400, 1200.0))
+        agg = aggregate_profiling([quiet, busy], budget_active=False)
+        assert agg.p95_processing_ms == 3.0
+        assert agg.scenarios_over_p5 == 1
 
     def test_clipping_totals(self):
         u = ProfilingUnitRow(
@@ -241,12 +308,35 @@ class TestTheVerdictsLeftThePrintout:
         out = self._render([self._unit('fast', total_ms=500.0, p5=1.0)])
         assert 'no clipping risk detected' in out
 
+    def _render_scenario(self, unit) -> str:
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            ProfilingSummary(ProfilingReport(
+                run_id=_RUN_ID, units=[unit],
+                aggregate=aggregate_profiling([unit], budget_active=False))).render_per_scenario(
+                    ConsoleRenderer())
+        return re.sub(r'\x1b\[[0-9;]*m', '', buf.getvalue())
+
+    def test_the_time_of_one_pass_is_printed_beside_the_time_per_tick(self):
+        unit = self._unit().model_copy(update={
+            'algo_passes': 400, 'algo_pass_ms': 3000.0, 'avg_per_algo_pass_ms': 7.5})
+        assert 'Avg/Tick: 3.000ms  |  Avg/Pass: 7.500ms  |  Total: 3000.00ms' in (
+            self._render_scenario(unit))
+        aggregated = self._render([unit])
+        assert 'Avg/Tick: 3.000ms  |  Avg/Pass: 7.500ms' in aggregated
+        assert 'P95 time per algo pass: 7.500ms' in aggregated
+
+    def test_a_record_written_before_contract_56_prints_no_pass_time(self):
+        out = self._render_scenario(self._unit())
+        assert 'Avg/Tick: 3.000ms  |  Total: 3000.00ms' in out
+        assert 'Avg/Pass' not in out
+
 
 class TestRenderWarmup:
     """render_warmup (#399, 3c) — the folded warmup breakdown, model-fed."""
 
     def _render(self, phases) -> str:
-        report = ProfilingReport(run_id=_RUN_ID, units=[], warmup_phases=phases)
+        report = with_warmup_shares(ProfilingReport(run_id=_RUN_ID, units=[], warmup_phases=phases))
         buf = io.StringIO()
         with redirect_stdout(buf):
             ProfilingSummary(report).render_warmup(ConsoleRenderer())
@@ -262,3 +352,60 @@ class TestRenderWarmup:
 
     def test_empty_renders_nothing(self):
         assert self._render([]) == ''
+
+
+class TestWhatTheConsolesPrintIsOnTheModel:
+    """
+    The slowest scenario beside the mean, the clipping rate and the warmup's whole and slowest
+    phase are derived on the report (#557) — the executive and the profiling section print them.
+    """
+
+    def _unit(self, name, total_ms, clipping=None):
+        return ProfilingUnitRow(name=name, symbol='EURUSD', total_ticks=100, total_ms=total_ms,
+                                avg_per_tick_ms=total_ms / 100, clipping=clipping)
+
+    def test_the_slowest_scenario_and_how_far_above_the_mean_it_lies(self):
+        agg = aggregate_profiling([self._unit('a', 100.0), self._unit('b', 200.0),
+                                   self._unit('c', 300.0)], budget_active=False)
+        assert agg.profiled_unit_mean_ms == 200.0
+        assert (agg.slowest_profiled_unit, agg.slowest_profiled_unit_ms) == ('c', 300.0)
+        assert agg.slowest_profiled_unit_deviation_pct == 50.0
+
+    def test_the_first_among_equals_is_the_slowest(self):
+        agg = aggregate_profiling([self._unit('a', 300.0), self._unit('b', 300.0)],
+                                  budget_active=False)
+        assert agg.slowest_profiled_unit == 'a' and agg.slowest_profiled_unit_deviation_pct == 0.0
+
+    def test_no_deviation_over_a_mean_of_zero(self):
+        agg = aggregate_profiling([self._unit('a', 0.0), self._unit('b', 0.0)],
+                                  budget_active=False)
+        assert agg.slowest_profiled_unit_deviation_pct is None
+
+    def test_the_clipping_rate_and_the_budgets(self):
+        clipped = ClippingRow(ticks_total=1000, ticks_kept=750, ticks_clipped=250,
+                              clipping_rate_pct=25.0, budget_ms=1.0)
+        agg = aggregate_profiling([self._unit('a', 100.0, clipped),
+                                   self._unit('b', 100.0, clipped)], budget_active=True)
+        assert agg.clipping_rate_pct == 25.0 and agg.clipping_budget_count == 1
+        assert aggregate_profiling([self._unit('a', 1.0)], budget_active=False).clipping_rate_pct == 0.0
+
+    def test_the_warmup_whole_its_slowest_phase_and_each_share(self):
+        report = with_warmup_shares(ProfilingReport(run_id=_RUN_ID, units=[], warmup_phases=[
+            WarmupPhaseRow(name='Config', duration_s=1.0),
+            WarmupPhaseRow(name='Data Loading', duration_s=3.0)]))
+        assert report.warmup_total_s == 4.0
+        assert (report.warmup_slowest_phase, report.warmup_slowest_s) == ('Data Loading', 3.0)
+        assert report.warmup_slowest_pct == 75.0
+        assert [phase.pct for phase in report.warmup_phases] == [25.0, 75.0]
+
+    def test_no_warmup_has_no_slowest_phase(self):
+        report = ProfilingReport(run_id=_RUN_ID, units=[])
+        assert (report.warmup_total_s, report.warmup_slowest_phase, report.warmup_slowest_s,
+                report.warmup_slowest_pct) == (0.0, None, None, None)
+
+    def test_a_record_written_before_the_shares_reads_them_as_unrecorded(self):
+        # The whole and the slowest phase are computed from the phases; a phase's share is not
+        report = ProfilingReport.model_validate(
+            {'run_id': _RUN_ID, 'units': [], 'warmup_phases': [{'name': 'Config', 'duration_s': 2.0}]})
+        assert report.warmup_total_s == 2.0 and report.warmup_slowest_pct == 100.0
+        assert report.warmup_phases[0].pct is None

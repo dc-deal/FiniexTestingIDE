@@ -22,6 +22,7 @@ from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, Mock
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
+from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
 from python.framework.types.live_types.live_execution_types import (
     BrokerOrderStatus,
     BrokerResponse,
@@ -108,8 +109,6 @@ class TestHeartbeat:
 
     def test_heartbeat_sim_is_noop(self):
         """TradeSimulator inherits the default no-op heartbeat — no errors, no state change."""
-        from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
-
         adapter = MockBrokerAdapter(mode=MockExecutionMode.INSTANT_FILL)
         broker_config = BrokerConfig(BrokerType.KRAKEN_SPOT, adapter)
         sim = TradeSimulator(
@@ -365,7 +364,7 @@ class TestInFlightGuard:
             order_id=order_id,
             broker_response=BrokerResponse(
                 broker_ref='OLD-REF', status=BrokerOrderStatus.CANCELLED,
-                timestamp=datetime.now(timezone.utc),
+                ts_init=datetime.now(timezone.utc),
             ),
         )
         executor._handle_query_response(stale)
@@ -408,7 +407,7 @@ class TestStaleResponseGuard:
             broker_response=BrokerResponse(
                 broker_ref=old_ref, status=BrokerOrderStatus.FILLED,
                 fill_price=49000.0, filled_lots=0.001,
-                timestamp=datetime.now(timezone.utc),
+                ts_init=datetime.now(timezone.utc),
             ),
         )
         executor._handle_query_response(stale)
@@ -448,7 +447,7 @@ class TestPartialFillPreservedBehavior:
             broker_response=BrokerResponse(
                 broker_ref=pending.broker_ref, status=BrokerOrderStatus.PARTIALLY_FILLED,
                 fill_price=49000.0, filled_lots=0.0005,
-                timestamp=datetime.now(timezone.utc),
+                ts_init=datetime.now(timezone.utc),
             ),
         )
         executor._handle_query_response(partial)
@@ -485,7 +484,7 @@ class TestTheVenueNamingNoSuchOrder:
             broker_response=BrokerResponse(
                 broker_ref=pending.broker_ref,
                 status=BrokerOrderStatus.UNKNOWN,
-                timestamp=datetime.now(timezone.utc),
+                ts_init=datetime.now(timezone.utc),
             ),
         ))
 
@@ -505,7 +504,7 @@ class TestTheVenueNamingNoSuchOrder:
             broker_response=BrokerResponse(
                 broker_ref=pending.broker_ref,
                 status=BrokerOrderStatus.UNKNOWN,
-                timestamp=datetime.now(timezone.utc),
+                ts_init=datetime.now(timezone.utc),
             ),
         ))
 
@@ -526,7 +525,7 @@ class TestTheVenueNamingNoSuchOrder:
             broker_response=BrokerResponse(
                 broker_ref=pending.broker_ref,
                 status=BrokerOrderStatus.UNKNOWN,
-                timestamp=datetime.now(timezone.utc),
+                ts_init=datetime.now(timezone.utc),
             ),
         )
 
@@ -550,7 +549,7 @@ class TestTheVenueNamingNoSuchOrder:
             broker_response=BrokerResponse(
                 broker_ref=pending.broker_ref,
                 status=BrokerOrderStatus.UNKNOWN,
-                timestamp=datetime.now(timezone.utc),
+                ts_init=datetime.now(timezone.utc),
             ),
         ))
 

@@ -9,6 +9,8 @@ Covers:
   measures what arming the gate would cost before it is armed
 - the gap checks (#599) — a start inside a gap and the gaps inside a tick stretch, asked of the
   report by time window rather than by scanning every gap, with unchanged conclusions
+- a gap in a venue's published history (#647) — admitted whatever its category, judged by the
+  seam the bar file records; a gap in collected data is judged as before
 """
 
 from datetime import datetime, timedelta, timezone
@@ -16,7 +18,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
+from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.coverage_report_types import Gap, GapCategory
+from python.framework.types.data_origin_types import SymbolDataOrigin
 from python.framework.validators.scenario_data_validator import ScenarioDataValidator
 
 
@@ -256,10 +260,24 @@ def _gap_validator(*also_allowed: str) -> ScenarioDataValidator:
         data_coverage_reports={}, app_config=app_config, logger=MagicMock())
 
 
-def _gap_report(*gaps: Gap) -> DataCoverageReport:
-    """A real coverage report holding the given gaps — its window queries are the real ones."""
+def _gap_report(*gaps: Gap, collected_since=None) -> DataCoverageReport:
+    """
+    A real coverage report holding the given gaps — its window queries are the real ones.
+
+    Args:
+        gaps: Its gaps
+        collected_since: Where our collection takes over from the venue's history; None leaves
+            the bars' origin unread, so every gap is judged by its category as before
+
+    Returns:
+        The report
+    """
     report = DataCoverageReport(symbol='BTCUSD', broker_type='kraken_spot')
     report.gaps = list(gaps)
+    if collected_since is not None:
+        report.set_data_origin(SymbolDataOrigin(
+            origin_classes=[OriginClass.PRODUCTION, OriginClass.EXTERNAL],
+            collected_since=collected_since))
     return report
 
 
@@ -361,3 +379,55 @@ class TestAStartInsideAnAdmittedGap:
             scenario, _gap_report(_gap_at(GAP_T, 48 * 60, GapCategory.WEEKEND)))
 
         assert warnings == [] and 'is inside weekend gap' in errors[0]
+
+
+class TestAGapInTheVenueSHistory:
+    """
+    A venue's published record lists every trade it made, so a gap in it is an hour nobody
+    traded there — not data that is missing (#647). It is admitted whatever its category; a gap
+    after the seam, in collected data, is judged by the allowed categories as before.
+    """
+
+    SEAM = GAP_T + timedelta(days=30)
+
+    def _stretch_errors(self, *gaps: Gap, origin_read: bool = True):
+        scenario = SimpleNamespace(name='scenario_1')
+        package = SimpleNamespace(ticks={'scenario_1': object()})
+        first, last = GAP_T - timedelta(days=1), GAP_T + timedelta(days=60)
+        report = _gap_report(*gaps, collected_since=self.SEAM if origin_read else None)
+        with patch('python.framework.validators.scenario_data_validator.'
+                   'time_range_from_transport_ticks', return_value=(first, last)):
+            return _gap_validator()._validate_tick_stretch(scenario, report, package)
+
+    def test_a_large_gap_before_the_seam_is_admitted(self):
+        assert self._stretch_errors(_gap_at(GAP_T, 300, GapCategory.LARGE)) == []
+
+    def test_a_moderate_gap_after_the_seam_is_still_refused(self):
+        collected = _gap_at(self.SEAM + timedelta(days=2), 45, GapCategory.MODERATE)
+        errors = self._stretch_errors(_gap_at(GAP_T, 45, GapCategory.MODERATE), collected)
+
+        assert len(errors) == 1
+        assert collected.gap_start.strftime('%Y-%m-%d %H:%M:%S') in errors[0]
+
+    def test_a_start_inside_it_moves_to_its_end(self):
+        gap = _gap_at(GAP_T, 300, GapCategory.LARGE)
+        scenario = SimpleNamespace(start_date=GAP_T + timedelta(hours=1))
+
+        errors, warnings = _gap_validator()._validate_start_date_not_in_gap(
+            scenario, _gap_report(gap, collected_since=self.SEAM))
+
+        assert errors == [] and scenario.start_date == gap.gap_end
+        assert "inside large gap of the venue's published history, no trades there" in warnings[0]
+
+    def test_a_start_inside_a_market_closure_there_stays_an_error(self):
+        scenario = SimpleNamespace(start_date=GAP_T + timedelta(hours=3))
+
+        errors, warnings = _gap_validator()._validate_start_date_not_in_gap(
+            scenario, _gap_report(_gap_at(GAP_T, 48 * 60, GapCategory.WEEKEND),
+                                  collected_since=self.SEAM))
+
+        assert warnings == [] and 'is inside weekend gap' in errors[0]
+
+    def test_without_the_bars_origin_it_is_judged_as_before(self):
+        gap = _gap_at(GAP_T, 300, GapCategory.LARGE)
+        assert len(self._stretch_errors(gap, origin_read=False)) == 1

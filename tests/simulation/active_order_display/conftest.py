@@ -14,14 +14,14 @@ Scenario design:
 import pytest
 
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessResult, ProcessEventLoopResult
 from python.framework.types.trading_env_types.active_orders_snapshot_types import (
     ActiveOrdersSnapshot,
 )
 from tests.shared.fixture_helpers import (
     extract_active_orders,
     extract_process_result,
-    extract_tick_loop_results,
+    extract_event_loop_results,
     run_scenario,
 )
 
@@ -52,15 +52,15 @@ def process_result_limit(batch_execution_summary: BatchExecutionSummary) -> Proc
 
 
 @pytest.fixture(scope='session')
-def tick_loop_results_limit(process_result_limit: ProcessResult) -> ProcessTickLoopResult:
-    """Extract tick loop results for the limit scenario."""
-    return extract_tick_loop_results(process_result_limit)
+def event_loop_results_limit(process_result_limit: ProcessResult) -> ProcessEventLoopResult:
+    """Extract event loop results for the limit scenario."""
+    return extract_event_loop_results(process_result_limit)
 
 
 @pytest.fixture(scope='session')
-def active_orders_limit(tick_loop_results_limit: ProcessTickLoopResult) -> ActiveOrdersSnapshot:
+def active_orders_limit(event_loop_results_limit: ProcessEventLoopResult) -> ActiveOrdersSnapshot:
     """Extract the active-orders snapshot for the limit scenario."""
-    return extract_active_orders(tick_loop_results_limit)
+    return extract_active_orders(event_loop_results_limit)
 
 
 # =============================================================================
@@ -74,12 +74,12 @@ def process_result_stop(batch_execution_summary: BatchExecutionSummary) -> Proce
 
 
 @pytest.fixture(scope='session')
-def tick_loop_results_stop(process_result_stop: ProcessResult) -> ProcessTickLoopResult:
-    """Extract tick loop results for the stop scenario."""
-    return extract_tick_loop_results(process_result_stop)
+def event_loop_results_stop(process_result_stop: ProcessResult) -> ProcessEventLoopResult:
+    """Extract event loop results for the stop scenario."""
+    return extract_event_loop_results(process_result_stop)
 
 
 @pytest.fixture(scope='session')
-def active_orders_stop(tick_loop_results_stop: ProcessTickLoopResult) -> ActiveOrdersSnapshot:
+def active_orders_stop(event_loop_results_stop: ProcessEventLoopResult) -> ActiveOrdersSnapshot:
     """Extract the active-orders snapshot for the stop scenario."""
-    return extract_active_orders(tick_loop_results_stop)
+    return extract_active_orders(event_loop_results_stop)

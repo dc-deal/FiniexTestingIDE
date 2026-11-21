@@ -77,7 +77,7 @@ def order_event_row(event: OrderEvent, scenario_name: str) -> OrderEventRow:
         The row
     """
     values = asdict(event)
-    for stamp in ('event_time', 'ts_init'):
+    for stamp in ('event_time', 'ts_init', 'ts_event'):
         moment: Optional[datetime] = values[stamp]
         values[stamp] = moment.isoformat() if moment is not None else None
     return OrderEventRow(scenario_name=scenario_name, **values)
@@ -211,7 +211,7 @@ def order_event_from_row(row: OrderEventRow) -> OrderEvent:
         The event, its unit name dropped and its stamps parsed back into UTC datetimes
     """
     values = row.model_dump(exclude={'scenario_name'})
-    for stamp in ('event_time', 'ts_init'):
+    for stamp in ('event_time', 'ts_init', 'ts_event'):
         moment: Optional[str] = values[stamp]
         values[stamp] = parse_datetime(moment) if moment is not None else None
     return OrderEvent(**values)

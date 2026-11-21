@@ -24,7 +24,8 @@ DATA_SENTIMENT_TYPE = 'test_sentiment'
 def imported_signals(tmp_path_factory):
     """Import the fixture JSONL → parquet + index in a temp tree."""
     root = tmp_path_factory.mktemp('signal_import')
-    raw_dir = root / 'raw' / DATA_SENTIMENT_TYPE
+    # The inbox is flat: the pipeline is read from the envelopes, not from a folder
+    raw_dir = root / 'raw'
     raw_dir.mkdir(parents=True)
     shutil.copy(FIXTURE_JSONL, raw_dir / FIXTURE_JSONL.name)
 

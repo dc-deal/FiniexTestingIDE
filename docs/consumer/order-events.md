@@ -124,6 +124,7 @@ zero.
 | `in_flight_ms` | on the acceptance or refusal that answers a submission: how long the answer took — modelled in a backtest, measured live | every other event |
 | `event_time` | when it happened, on the run's own clock | only before the run's clock was set — an order taken over at a session's start |
 | `ts_init` | when this process saw it, on the wall clock | a backtest, which has to stay reproducible |
+| `ts_event` | when the venue says it happened, on the venue's own clock — today a live fill in full, at the time the venue closed the order | a backtest, a mock session and a dry run; every event the venue gave no time for; or a session recorded before the field existed |
 | `initiator` | who ended the order: `strategy`, `framework` or `venue` | the event ends nothing, or the order was refused |
 | `end_reason` | why it ended | as above |
 | `rejection_reason` | why it was refused | the event is no refusal |
@@ -208,11 +209,15 @@ Integers count positions: `ghost_positions`, `orphan_positions`, `stale_position
   market data — an `adopted` order taken over at the start, and the `session_start` line.
 - `ts_init` is when the session saw the step, on the machine's clock — live only, and null in a
   backtest, which has to come out the same every time it is run.
+- `ts_event` is when the venue says the step happened, on the venue's own clock, where its answer
+  gives a time. Today that is a live fill in full: Kraken names when it closed the order. A partial
+  fill carries none, because the venue's close time of its order is not the time the part executed.
 - `in_flight_ms` is on the `accepted` or `rejected` that answers a submission: how long the answer
   took. A backtest's is the delay it modelled; a live one is measured when the session reads the
-  answer, which can be up to one heartbeat after it arrived. An acceptance learned later by asking
-  carries none — that span would be the asking, not the venue — and so does a backtest's exit at a
-  protective level, which executes on the tick that reaches the level.
+  answer, right after it arrives — later only by a pass still running then, and while a stopping
+  session waits for its last orders, up to one heartbeat after it. An acceptance learned later by
+  asking carries none — that span would be the asking, not the venue — and so does a
+  backtest's exit at a protective level, which executes on the tick that reaches the level.
 
 ## Where this differs from order history
 

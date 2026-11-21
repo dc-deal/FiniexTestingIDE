@@ -55,12 +55,13 @@ Each order life in a live session against the mock venue.
 |------|-------------|
 | `TestAMarketOrder` | `submitted → accepted → filled` in both account models; the acceptance is measured and every step carries both times; a fill inside the answer is still accepted first; a refusal answers the submission with the venue's own reason; a denial was never submitted |
 | `TestARestingOrder` | a cancel asked for then carried out; a cancel before the reference is `cancel_deferred` and sent on the answer; a modification; a local refusal of a modification writes nothing; a venue ending after a partial fill is `partially_filled` then the ending without a row; the session end cancels and says so |
+| `TestTheVenuesOwnStamp` | #461: a fill in full carries the venue's own time (`ts_event`) beside the session's clock and our receipt, and no other step does; a partial fill of an order the venue ended does not take the time it ended the rest |
 | `TestALostAnswer` | `unresolved` then `resolved` and a late acceptance without latency when the venue names it; `undelivered` when it never had it; the truth pull naming it is a resolution too |
 | `TestAnAdoptedOrder` | adopted, and its fill follows without a second acceptance — counted adopted, not submitted |
 | `TestACloseWhosePositionIsGone` | a close whose position something else took before the answer came still names the position's side and size on its steps, in both account models — both travel on the close from its registration |
 | `TestTheStreamItself` | `seq` strictly increasing across orders; an answer for an order that is gone names how it ended |
 | `TestTheSessionsPendingCounters` | the pending-order counters derived from a session's events — one accepted, one rejected, one never confirmed — add up, and only the answers carry a duration |
-| `TestEachFillIsFoundAndMeasured` | #631: a booked row names its own fill event and a market fill is measured against the mid when the order was sent, in both account models; a stop-loss exit is measured against its level and reads how far below it the mock venue sold — where the simulation reads 0 |
+| `TestEachFillIsFoundAndMeasured` | #631: a booked row names its own fill event and a market fill is measured against the mid when the order was sent, in both account models; a stop-loss exit is measured against its level and reads how far below it the mock venue sold — in the simulation too, which sells at the bid of the tick that breached it (#629) |
 
 ### `test_live_crossed_answers.py`
 
@@ -75,13 +76,26 @@ What the stream records where answers cross, time out or come back late.
 | `TestTheFillTimeoutsOwnCancel` | the timeout's cancel after a partial fill ends the order as the framework's; a lost cancel answer is the cancel's question, not the read's; the give-up keeps the venue's refusal of its cancel |
 | `TestTheSessionEnd` | a session-end cancel whose answer was lost is `unresolved` before the order is `unaccounted` |
 
+### `test_order_event_count_pin.py`
+
+The divergence report checks a sealed day of a live session by counting the day's order events the
+way the executor counts its orders, and comparing every count with the day's ledger row (#512).
+This holds that counting to the live executor's own counts on every way an order lives, in both
+account models.
+
+| Test | Description |
+|------|-------------|
+| `test_the_record_counts_what_the_executor_counted` | a fill and a close, a refusal, a denial, a strategy cancel, a partial fill the venue then ended, an adoption and its fill, the session end's cancel, a lost answer the venue never received — each counted from its events exactly as the executor counted it |
+| `test_the_step_after_a_partial_fill_is_recorded_and_not_counted` | the venue's ending of the rest is written after `partially_filled` and counted nowhere |
+| `test_a_close_for_a_position_no_longer_held_is_the_one_known_difference` | the venue's fill of a close whose position something else took is recorded and booked nowhere, so the count is one execution higher than the executor's — the one known difference, which the divergence report keeps compared and names |
+
 ### `test_order_event_stream_io.py`
 
 | Test | Description |
 |------|-------------|
 | `TestTheFile` | the header names the schema once; an event is on disk before the next is recorded; empty fields are left out; a failed write is said once and ends the stream without ending the fill; a backtest writes its units one after the other, and none at all when no order was placed |
 | `TestASessionWhoseStreamCannotOpen` | a stream that cannot be opened is not swallowed — the session's start ends — and no listener is registered with the executor |
-| `TestReadingItBack` | a cut-off last line is left out and reported; a broken line in the middle, an unknown schema, the previous schema, a line that is not a JSON object and a byte that is not UTF-8 are unreadable — one stream file read through the parser every run reader uses (`tests/shared/order_event_test_stream.py`); a session's stream across its sealed days is pinned in the reporting suite |
+| `TestReadingItBack` | a live fill's three times — the session's clock, our receipt and the venue's own — survive the file and read back as the executor's record (#461); a cut-off last line is left out and reported; a broken line in the middle, an unknown schema, the previous schema, a line that is not a JSON object and a byte that is not UTF-8 are unreadable — one stream file read through the parser every run reader uses (`tests/shared/order_event_test_stream.py`); a session's stream across its sealed days is pinned in the reporting suite |
 | `TestBrokerTruthLines` | the venue's lines and the order events read back as two lists on one counter; a venue order is projected, its raw payload left with the adapter; the three states of a part survive the file; a divergent reconcile line names its members |
 | `TestTheSharedWriter` | one compact line per record, nothing after close, and the field study's lines unchanged by the move onto the shared writer |
 | `TestTheRunIndexListsItAsAStream` | the stream is named while the run is going and never counted among the artifacts |
@@ -97,7 +111,7 @@ What a live session writes when it asks the venue (#362), against the mock venue
 | `TestTheSessionRead` | the venue's orders and balances are written; positions on a margin account only; a part the venue does not give is unread, never empty; a ladder that aborts ends neither the read nor the session |
 | `TestItsPlaceInTheStream` | one counter with the order events, no gap; before the first tick only the receipt time; a backtest asks no venue |
 | `TestARunWithNoVenueAccount` | a dry-run Kraken adapter answers its account reads itself and says so; the mock venue is read; without a venue account no line is written — start, reconcile or end — and no number is spent |
-| `TestAReconcileRecord` | the cycle's own orders, never a second read; balances on a crossing between clean and divergent only; a failed balance read inside the tick loop does not wait |
+| `TestAReconcileRecord` | the cycle's own orders, never a second read; balances on a crossing between clean and divergent only; a failed balance read inside the event loop does not wait |
 
 The route itself — every step in stream order with its keys, the venue's lines beside them and
 gone when narrowed to one order, the two filters, a cut-off line, a damaged file, a run without a

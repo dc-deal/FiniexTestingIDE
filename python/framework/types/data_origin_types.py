@@ -7,6 +7,7 @@ from a claim we recorded are the same word and a different fact.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import List, Optional
 
 from python.framework.types.config_types.data_origin_config_types import (
@@ -22,6 +23,26 @@ from python.framework.utils.version_utils import parse_version
 # file that must speak for itself. A development file at 1.6.0 exists and is deliberately
 # caught by neither: the boundary fails closed rather than widening quietly.
 ORIGIN_BLOCK_REQUIRED_FROM = '1.7.0'
+
+
+
+@dataclass
+class SymbolDataOrigin:
+    """
+    Whose data a symbol's bars were rendered from, over every timeframe (#647).
+
+    Derived once from the bar index and read by the coverage route and the index status alike.
+    """
+    origin_classes: List[OriginClass]      # in declared order; empty where no bar file is stamped
+    collected_since: Optional[datetime]    # the seam; None where no external history precedes ours
+
+
+@dataclass
+class OriginFileCount:
+    """How many of a symbol's tick files, and ticks, carry one origin class (#647)."""
+    origin_class: str
+    files: int
+    ticks: int
 
 
 @dataclass

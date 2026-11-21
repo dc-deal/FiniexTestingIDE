@@ -28,7 +28,7 @@ from python.framework.types.portfolio_types.portfolio_aggregation_types import P
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     TradeRecord,
 )
-from python.framework.types.process_data_types import ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessEventLoopResult
 from python.framework.types.trading_env_types.order_types import CloseType, OrderDirection
 from tests.shared.shared_batch_health import TestBatchHealth
 
@@ -409,10 +409,10 @@ class TestPortfolioAggregation:
         )
 
     def test_no_rejected_orders(
-        self, tick_loop_results: ProcessTickLoopResult
+        self, event_loop_results: ProcessEventLoopResult
     ):
         """All orders (open + close + partial close) should execute."""
-        exec_stats = tick_loop_results.execution_stats
+        exec_stats = event_loop_results.execution_stats
         assert exec_stats.orders_rejected == 0, (
             f'Rejected orders: {exec_stats.orders_rejected}'
         )

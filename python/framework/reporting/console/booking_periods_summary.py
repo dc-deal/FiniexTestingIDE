@@ -84,13 +84,14 @@ def render_booking_periods(
 
     units = _by_unit(report)
     if compact:
-        _render_compact(report, units, indent)
+        _render_compact(report, indent)
         return
-    if len(units) > detail_threshold:
-        _render_collapsed(report, units, indent)
+    several = report.period_unit_count > 1
+    if report.period_unit_count > detail_threshold:
+        _render_collapsed(report, indent)
         return
 
-    print(f'\n{indent}{_heading(report, units)}')
+    print(f'\n{indent}{_heading(report)}')
     print(f'{indent}' + '─' * 104)
     print(f'{indent}{"#":>3}  {"opened":<17} {"closed":<17} {"trades":>6} {"net P&L":>11} '
           f'{"fees":>8} {"win":>6} {"equity":>12} {"period DD":>11}')
@@ -101,10 +102,10 @@ def render_booking_periods(
     # line, and the table is already as wide as a terminal allows.
     totals = {total.unit_name: total for total in report.unit_totals}
     for unit_name, rows in units.items():
-        if len(units) > 1:
+        if several:
             print(f'{indent}  ▸ {unit_name}')
         _render_period_rows(rows, indent)
-        if len(units) > 1 and unit_name in totals:
+        if several and unit_name in totals:
             _render_unit_total(totals[unit_name], indent)
 
     # Over several units the equity column is a TOTAL of separate accounts, like the P&L beside it.
@@ -203,10 +204,9 @@ def _render_reconciliation(report: BookingPeriodsReport, indent: str) -> None:
               f'{report.run_total_trades} trade(s)) — the periods account for everything')
         return
 
-    difference = report.total_net_pnl - report.run_net_pnl
     print(f'{indent}    ⚠️  DOES NOT RECONCILE — the periods sum to '
           f'{report.total_net_pnl:.2f} while the run reports {report.run_net_pnl:.2f} '
-          f'({difference:+.2f} {report.currency})')
+          f'({report.reconciliation_difference:+.2f} {report.currency})')
     print(f'{indent}       Both figures carry the SAME per-trade value — one through the '
           f'record deque and the')
     print(f'{indent}       period windows, one through an unbounded counter — so a difference '
@@ -252,23 +252,23 @@ def _by_unit(report: BookingPeriodsReport) -> dict:
     return grouped
 
 
-def _heading(report: BookingPeriodsReport, units: dict) -> str:
+def _heading(report: BookingPeriodsReport) -> str:
     """
     The section's title line, naming the unit count only when there is more than one.
 
     Args:
         report: The derived report
-        units: Unit name -> its periods
 
     Returns:
         The heading text
     """
-    over = f' over {len(units)} unit(s)' if len(units) > 1 else ''
-    return (f'📕 BOOKING PERIODS — {len(report.periods)} period(s){over} · '
+    count = report.period_unit_count
+    over = f' over {count} unit(s)' if count > 1 else ''
+    return (f'📕 BOOKING PERIODS — {report.period_count} period(s){over} · '
             f'{report.currency}')
 
 
-def _render_compact(report: BookingPeriodsReport, units: dict, indent: str) -> None:
+def _render_compact(report: BookingPeriodsReport, indent: str) -> None:
     """
     The heading and the reconciliation, nothing else — the console form when detail is off.
 
@@ -279,14 +279,13 @@ def _render_compact(report: BookingPeriodsReport, units: dict, indent: str) -> N
 
     Args:
         report: The derived report
-        units: Unit name -> its periods
         indent: Left padding
     """
-    print(f'\n{indent}{_heading(report, units)}')
+    print(f'\n{indent}{_heading(report)}')
     _render_reconciliation(report, indent)
 
 
-def _render_collapsed(report: BookingPeriodsReport, units: dict, indent: str) -> None:
+def _render_collapsed(report: BookingPeriodsReport, indent: str) -> None:
     """
     One line per unit instead of one per period, for a run with many units.
 
@@ -296,10 +295,9 @@ def _render_collapsed(report: BookingPeriodsReport, units: dict, indent: str) ->
 
     Args:
         report: The derived report
-        units: Unit name → its periods
         indent: Left padding
     """
-    print(f'\n{indent}{_heading(report, units)}')
+    print(f'\n{indent}{_heading(report)}')
     print(f'{indent}' + '─' * 104)
     print(f'{indent}{"unit":<40} {"periods":>8} {"trades":>7} {"net P&L":>13} '
           f'{"deepest period DD":>19}')
@@ -310,7 +308,7 @@ def _render_collapsed(report: BookingPeriodsReport, units: dict, indent: str) ->
               f'{total.trade_count:>7} {total.net_pnl:>13.2f} '
               f'{_decline(total.deepest_period_drawdown):>19}')
     print(f'{indent}' + '─' * 104)
-    print(f'{indent}{"Σ":<40} {len(report.periods):>8} {report.total_trades:>7} '
+    print(f'{indent}{"Σ":<40} {report.period_count:>8} {report.total_trades:>7} '
           f'{report.total_net_pnl:>13.2f} '
           f'{_decline(report.deepest_period_drawdown):>19}')
     _render_reconciliation(report, indent)

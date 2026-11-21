@@ -15,7 +15,7 @@ MAIN PROCESS                          SUBPROCESSES                    REPORTS
 ─────────────────────────────────────────────────────────────────────────────
 
 Channel A: Process Input (pickle →)
-  ProcessDataPackage ──────────────→  tick loop consumes
+  ProcessDataPackage ──────────────→  event loop consumes
   (ticks, bars, broker_configs)       data, produces results
                                            │
 Channel B: Process Output (← pickle)       │
@@ -135,7 +135,7 @@ on what can be read.
 
 ## Channel B: Process Output (`ProcessResult`)
 
-Results returned from subprocesses after tick loop execution:
+Results returned from subprocesses after event loop execution:
 
 - Execution statistics, cost breakdown
 - Trade history, order history
@@ -143,7 +143,7 @@ Results returned from subprocesses after tick loop execution:
 - Pending order statistics
 - Scenario logger buffer
 
-**Important**: Only data *produced during the tick loop* crosses back. Input data (broker configs, scenario metadata) is NOT returned — the main process already has it.
+**Important**: Only data *produced during the event loop* crosses back. Input data (broker configs, scenario metadata) is NOT returned — the main process already has it.
 
 ## Channel C: Main-Process Only (`SingleScenario`, `BrokerConfig`)
 
@@ -175,7 +175,7 @@ overhead.
 ## Report Sections: Spot-Aware Reporting
 
 `PortfolioStats` carries spot-mode fields (`spot_mode`, `balances`, `initial_balances`,
-`last_price`, `symbol`) populated in the tick loop via
+`last_price`, `symbol`) populated in the event loop via
 `PortfolioManager.get_portfolio_statistics()`. These follow pattern 2 (produced during tick
 execution, returned in `ProcessResult`).
 

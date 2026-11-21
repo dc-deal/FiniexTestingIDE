@@ -12,12 +12,20 @@ a planned window and the experienced outage differ whenever the run ends inside 
 window or the tick stream never enters it.
 """
 
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import List, Tuple
 
+from python.framework.reporting.aggregation.aggregation_fold import (
+    fold_group,
+    fold_keyed,
+    fold_rows,
+)
+from python.framework.reporting.aggregation.tables.feed_stability_figure_table import (
+    FEED_COUNTER_TABLE,
+    FEED_SOURCE_TABLE,
+    FEED_TOTALS_TABLE,
+)
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import (
-    FeedStabilityEpisodeRow,
     FeedStabilityReport,
     FeedStabilitySourceRow,
 )
@@ -25,8 +33,11 @@ from python.framework.types.disturbance_episode_types import (
     DisturbanceDomain,
     DisturbanceEpisode,
     DisturbanceOrigin,
+    FeedCountersOfSource,
+    FeedEpisodeInSource,
 )
 from python.framework.types.trading_env_types.stress_test_types import StaleDataEvent
+from python.framework.utils.time_utils import format_iso_or_empty
 
 # Fallback identity for a signal episode whose unit binds no named source
 UNKNOWN_SIGNAL_SOURCE = '(signal)'
@@ -44,48 +55,32 @@ def build_feed_stability_report(run_id: str, units: List[RunUnit]) -> FeedStabil
         FeedStabilityReport with one row per disturbed source (empty when the run had
         no episode at all — a clean run renders no section)
     """
-    rows: Dict[Tuple[str, str], FeedStabilitySourceRow] = {}
-
+    # One fold row per episode, with the source and origin resolved against its unit
+    episodes: List[FeedEpisodeInSource] = []
     for unit in units:
         for episode in unit.disturbance_episodes:
             source = _resolve_source(episode, unit)
             origin, label = _resolve_origin(episode, source, unit.planned_outages)
-            row = rows.get((source, episode.domain.value))
-            if row is None:
-                row = FeedStabilitySourceRow(
-                    source=source, domain=episode.domain.value)
-                rows[(source, episode.domain.value)] = row
-
-            row.episodes.append(FeedStabilityEpisodeRow(
-                unit=episode.unit_name,
-                symbol=episode.symbol,
-                stale_from=_iso(episode.stale_from),
-                stale_to=_iso(episode.stale_to),
-                duration_seconds=episode.duration_seconds,
-                origin=origin.value,
-                label=label,
-            ))
-            row.stale_seconds += episode.duration_seconds
-            row.episode_count += 1
-            if origin.value not in row.origins:
-                row.origins.append(origin.value)
+            episodes.append(FeedEpisodeInSource(
+                source=source, domain=episode.domain.value, unit=episode.unit_name,
+                symbol=episode.symbol, stale_from=format_iso_or_empty(episode.stale_from),
+                stale_to=format_iso_or_empty(episode.stale_to),
+                duration_seconds=episode.duration_seconds, origin=origin.value, label=label))
 
     # Early exit: a run without a single disturbance renders no section.
-    if not rows:
+    if not episodes:
         return FeedStabilityReport(run_id=run_id, units=[])
 
-    _attach_counters(rows, units)
-
-    ordered = [rows[key] for key in sorted(rows.keys())]
+    # The units' counters, joined onto the rows the episodes created — a unit's counters on a
+    # source with no episode have no row to join
+    counters = dict(fold_keyed(_counter_rows(units), FEED_COUNTER_TABLE))
+    ordered = [FeedStabilitySourceRow(**figures,
+                                      **counters.get((figures['source'], figures['domain']), {}))
+               for figures in fold_rows(episodes, FEED_SOURCE_TABLE)]
     return FeedStabilityReport(
         run_id=run_id,
         units=ordered,
-        episode_count=sum(row.episode_count for row in ordered),
-        stale_seconds=sum(row.stale_seconds for row in ordered),
-        stress_injected_count=sum(
-            1 for row in ordered for episode in row.episodes
-            if episode.origin == DisturbanceOrigin.STRESS_INJECTED.value),
-        source_count=len(ordered),
+        **fold_group(ordered, FEED_TOTALS_TABLE),
     )
 
 
@@ -149,40 +144,31 @@ def _resolve_origin(
     return DisturbanceOrigin.LIVE_REAL, episode.label
 
 
-def _attach_counters(
-    rows: Dict[Tuple[str, str], FeedStabilitySourceRow],
-    units: List[RunUnit],
-) -> None:
+def _counter_rows(units: List[RunUnit]) -> List[FeedCountersOfSource]:
     """
-    Add the per-tick counters of each domain to its source row.
+    Each unit's per-tick counters, one row per source and domain they were taken on.
 
-    Tick domain: the market-data twin (#451 Part 4). Signal domain: the #433 Part C
-    counters, summed over the unit's SIGNAL workers on that source. Counters are summed
-    across units, so a batch reports one figure per source.
+    Tick domain: the market-data twin (#451 Part 4). Signal domain: the #433 Part C counters, one
+    row per SIGNAL worker on the unit's source. Summed across units by their table, so a batch
+    reports one figure per source.
 
     Args:
-        rows: The source rows built from the episodes (mutated in place)
         units: The run's units
+
+    Returns:
+        The counter rows
     """
+    rows: List[FeedCountersOfSource] = []
     for unit in units:
         stats = unit.market_data_tick_stats
         if stats is not None:
-            tick_row = rows.get((stats.source, DisturbanceDomain.TICK.value))
-            if tick_row is not None:
-                tick_row.fresh_ticks += stats.fresh_ticks
-                tick_row.stale_ticks += stats.stale_ticks
-
-        signal_row = rows.get(
-            (unit.data_sentiment_type or UNKNOWN_SIGNAL_SOURCE,
-             DisturbanceDomain.SIGNAL.value))
-        if signal_row is None:
-            continue
+            rows.append(FeedCountersOfSource(
+                source=stats.source, domain=DisturbanceDomain.TICK.value,
+                fresh_ticks=stats.fresh_ticks, stale_ticks=stats.stale_ticks, blind_ticks=0))
+        signal_source = unit.data_sentiment_type or UNKNOWN_SIGNAL_SOURCE
         for signal_stats in unit.signal_statistics:
-            signal_row.fresh_ticks += signal_stats.fresh_ticks
-            signal_row.stale_ticks += signal_stats.stale_ticks
-            signal_row.blind_ticks += signal_stats.blind_ticks
-
-
-def _iso(moment: Optional[datetime]) -> str:
-    """ISO-8601 string of a UTC moment, '' when absent."""
-    return moment.isoformat() if moment is not None else ''
+            rows.append(FeedCountersOfSource(
+                source=signal_source, domain=DisturbanceDomain.SIGNAL.value,
+                fresh_ticks=signal_stats.fresh_ticks, stale_ticks=signal_stats.stale_ticks,
+                blind_ticks=signal_stats.blind_ticks))
+    return rows

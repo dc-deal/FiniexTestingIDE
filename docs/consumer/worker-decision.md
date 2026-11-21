@@ -12,7 +12,7 @@ GET /api/v1/reports/runs/{run_id}/worker-decision
 ```
 
 **What is not here:** how a single tick splits into worker, decision and coordination shares. That
-breakdown is derived from the tick loop's own operation timings and stays with
+breakdown is derived from the event loop's own operation timings and stays with
 [profiling](/api/v1/docs/profiling). The list of the run's units is
 [scenario details](/api/v1/docs/scenario-details); what became of the orders a decision asked for
 is [execution stats](/api/v1/docs/execution-stats).
@@ -69,6 +69,8 @@ request, not an execution.
 | Field | Meaning |
 |---|---|
 | `ticks_processed` | the ticks that reached the algorithm — counted whether or not tracking was on |
+| `algo_passes` | how often the algorithm computed — once for the ticks a backtest received in one millisecond; null in a unit recorded before contract 57, which did not count it |
+| `ghost_passes` | how often a heartbeat logic's decision ran between two ticks; null before contract 57 |
 | `parallel_workers` | whether this unit's workers ran in parallel |
 | `parallel_time_saved_ms` | the time that parallelism saved over the unit |
 | `parallel_avg_saved_per_tick_ms` | that saving divided by `ticks_processed` |
@@ -90,7 +92,7 @@ cadence computes far less often than ticks arrive, so a `call_count` well below 
 
 | Field | Meaning | Null when |
 |---|---|---|
-| `compute_ratio_pct` | `call_count` as a percentage of the unit's `ticks_processed` | no tick was processed |
+| `compute_ratio_pct` | `call_count` as a percentage of the unit's `algo_passes` — its `ticks_processed` in a unit recorded before contract 57 | no tick was processed |
 | `ticks_idle` | ticks since the worker's last real compute | the worker never computed |
 
 `last_compute_tick` is the tick index of that last real compute, and reads `-1` where the worker
@@ -108,4 +110,43 @@ across the units, not of the sums.
 `compute_ratio_pct` and `ticks_idle` are **null** on every totals row, because the row spans
 several units' tick counts and there is no single denominator to divide by. `compute_basis` and
 `last_compute_tick` describe one worker inside one unit and are not rolled up either — read those
-from the unit rows.
+from the unit rows. `unit_mean_time_ms` is on the totals rows only: the mean of the units' own
+mean call times, every unit weighing the same.
+
+## A unit's own sums
+
+A unit row carries `timed_worker_count` — the workers it timed, 0 where it did not track them; the
+configured count is `worker_count` on [scenario details](/api/v1/docs/scenario-details) — and its
+workers together: `worker_call_count` and `worker_time_ms`. Where the unit tracked its decisions it
+carries the algo path's own time too — `algo_time_ms`, the workers' time and the decision time,
+`algo_avg_per_tick_ms` that per tick, `algo_avg_per_pass_ms` that per pass — and
+`non_flat_signals`, the decisions that asked to buy or sell. They are null where nothing was
+tracked. All of them are read from the row itself, so an older run answers them too — except
+`algo_avg_per_pass_ms`, which is also null on a run recorded before contract 57.
+
+A pass is one computation of the algo: one on each slice of ticks that arrived in the same
+millisecond, `algo_passes`, and one on each heartbeat, `ghost_passes`. `algo_avg_per_pass_ms`
+divides by both. Where ticks arrive in bursts it is larger than the time per tick, and it is the
+one to hold against the time the market leaves between ticks.
+
+## Over the tracked units: the decision totals and the slowest performers
+
+`decision_totals` and `bottlenecks` cover the units that tracked their decisions only; an
+untracked one has nothing to compare. Both are **null where no unit tracked its decisions** — the
+default in a backtest — and on a run recorded before contract 52.
+
+| `decision_totals` | Meaning |
+|---|---|
+| `total_ticks` · `total_decisions` · `total_non_flat_signals` | summed over the tracked units |
+| `decision_total_time_ms` | the decision time summed |
+| `decision_avg_time_ms` | that time over the decisions — never a mean of means; 0.0 without a decision |
+| `decision_unit_mean_time_ms` | the mean of the units' own mean decision times |
+
+`bottlenecks` names the slowest unit — `slowest_algo_unit`, by its `algo_avg_per_tick_ms`
+(`slowest_algo_unit_avg_per_tick_ms`), with its algo time (`slowest_algo_unit_time_ms`) — the
+slowest worker and the slowest decision logic, each by the mean of their units' mean call times,
+and the slowest worker's worst unit beside it. Each counts only above zero, and of equals the first
+in unit order wins; where nothing qualifies the fields are null. `worst_parallel_unit` is the unit
+whose parallel workers saved the least time, possibly below zero, with
+`worst_parallel_time_saved_ms`. These are measurements: whether one warrants a warning is decided
+in [warnings and errors](/api/v1/docs/warnings-errors).

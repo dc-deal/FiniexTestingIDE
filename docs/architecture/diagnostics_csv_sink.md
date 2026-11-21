@@ -51,7 +51,7 @@ produce many files:
   boundary the day's rows move into `days/<day>/diagnostics/<name>.parquet` and the stream starts
   afresh ([Day Records](run_stream_day_records.md)); the table at the end still holds every row.
 - **Simulation** (`process/process_main.py`): flushed in the scenario subprocess after the
-  tick loop → `diagnostics/<name>_<scenario>.csv`. The scenario suffix matches
+  event loop → `diagnostics/<name>_<scenario>.csv`. The scenario suffix matches
   `events_<scenario>.csv`, the join-partner — join on scenario + `order_id`.
 
 A no-op when file logging is disabled (`run_dir` None) or no rows were appended (the

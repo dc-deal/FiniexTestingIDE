@@ -69,9 +69,11 @@ def _tree(tmp_path: Path) -> ReportStore:
                   _provenance(_FIGURES, run_outcome=RunOutcome.SUCCESS, error_count=0,
                               warning_count=2, log_warning_count=118))
     ledger.append(_summary(_TWO_CURRENCIES, _currency('USD', 10.0, 3), _currency('EUR', -4.0, 2)),
-                  _provenance(_TWO_CURRENCIES, run_outcome=RunOutcome.FINISHED_WITH_ERRORS, error_count=5))
+                  _provenance(_TWO_CURRENCIES, run_outcome=RunOutcome.FINISHED_WITH_ERRORS, error_count=5,
+                              total_units=3, failed_count=1))
     ledger.append(_summary(_NOTHING_PRODUCED),
-                  _provenance(_NOTHING_PRODUCED, run_outcome=RunOutcome.FAILED, error_count=1))
+                  _provenance(_NOTHING_PRODUCED, run_outcome=RunOutcome.FAILED, error_count=1,
+                              total_units=2, failed_count=2))
     return ReportStore(tmp_path / 'index.parquet', tmp_path / 'ledger')
 
 
@@ -104,6 +106,27 @@ class TestTheListSaysWhatARunDid:
     def test_a_count_nobody_recorded_is_none_not_zero(self, tmp_path):
         runs = {run.run_id: run for run in _tree(tmp_path).list_runs_with_results()}
         assert runs[_TWO_CURRENCIES].warning_count is None
+
+
+class TestTheListCountsARunsUnits:
+    """
+    A row says how many of the run's units succeeded (#666) — from the ledger it already reads,
+    the counts the run's warnings-errors outcome made.
+    """
+
+    def test_two_of_three(self, tmp_path):
+        # Two currency rows carry the same counts; the run's row serves them once
+        run = {run.run_id: run for run in _tree(tmp_path).list_runs_with_results()}[_TWO_CURRENCIES]
+        assert (run.total_units, run.failed_count, run.succeeded_count) == (3, 1, 2)
+
+    def test_a_run_whose_units_all_failed_says_so_on_its_one_row(self, tmp_path):
+        run = {run.run_id: run for run in _tree(tmp_path).list_runs_with_results()}[_NOTHING_PRODUCED]
+        assert (run.total_units, run.failed_count, run.succeeded_count) == (2, 2, 0)
+
+    def test_counts_nobody_recorded_are_none_not_zero(self, tmp_path):
+        runs = {run.run_id: run for run in _tree(tmp_path).list_runs_with_results()}
+        for run_id in (_FIGURES, _NOT_IN_LEDGER):
+            assert (runs[run_id].total_units, runs[run_id].succeeded_count) == (None, None)
 
 
 class TestTheLedgerIsReadOncePerChange:

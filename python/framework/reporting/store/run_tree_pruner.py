@@ -258,6 +258,10 @@ class RunTreePruner:
             if declared == RunPurpose.CERTIFICATE.value:
                 report.kept_certificate.append(candidate)
                 continue
+            # Named by the operator: a run a consumer still reads outside the catalog
+            if run.run_id in selectors.keep_run_ids:
+                report.kept_named.append(candidate)
+                continue
             # What a consumer pins now (#576): no flag releases it. Released together with the
             # superseded ones, a run newer than it in its family would push it past `--keep-last`
             # and delete the very ids the consumer had just moved to.
@@ -265,9 +269,14 @@ class RunTreePruner:
                 report.kept_current_fixture.append(candidate)
                 continue
             # A superseded production — a consumer may still pin it until it has moved, which only
-            # the operator knows.
-            if run.run_id in superseded_fixtures and not selectors.release_fixtures:
-                report.kept_superseded_fixture.append(candidate)
+            # the operator knows. Released, it goes by that flag alone: no other selector decides
+            # about it, and nothing else in its family goes with it.
+            if run.run_id in superseded_fixtures:
+                if selectors.release_fixtures:
+                    report.to_delete_superseded_fixture.append(candidate)
+                    deletable.append(run_dir)
+                else:
+                    report.kept_superseded_fixture.append(candidate)
                 continue
             # Always-on: commissioned to produce nothing, and it produced nothing.
             if run.reporting == RunReporting.NONE and not run.artifacts:

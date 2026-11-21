@@ -4,8 +4,8 @@ Interface for all tick data sources (mock, WebSocket, REST).
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Callable, Optional
 
 from python.framework.types.autotrader_types.autotrader_display_types import QuoteFeedStats
 
@@ -15,12 +15,33 @@ class AbstractTickSource(ABC):
     Abstract interface for tick data sources.
 
     Tick sources run in a separate thread and push ticks
-    via queue.Queue to the main algo thread (Threading model 8.a).
+    via queue.Queue to the main algo thread (Threading model 8.a). One item is one arrival — a
+    tuple of the ticks that came in together, such as one venue message — and None ends the
+    stream (#461).
 
     Implementations:
     - MockTickSource: Parquet replay
     - KrakenTickSource: WebSocket v2 (future, #232)
     """
+
+    # Told after ticks were put on the queue, so the loop drains on arrival (#461); None until the
+    # loop sets one
+    _on_arrival: Optional[Callable[[], None]] = None
+
+    def set_arrival_listener(self, listener: Callable[[], None]) -> None:
+        """
+        Name what to tell after an arrival was put on the queue — once per arrival, after it was
+        put, and once more after the stream's end; the arrival itself, one tuple, keeps it whole.
+
+        Args:
+            listener: Called on the source's thread; it must only signal, never touch loop state
+        """
+        self._on_arrival = listener
+
+    def _notify_arrival(self) -> None:
+        """Tell the listener, if there is one, that ticks were put on the queue."""
+        if self._on_arrival is not None:
+            self._on_arrival()
 
     @abstractmethod
     def start(self) -> None:
@@ -57,6 +78,19 @@ class AbstractTickSource(ABC):
         Returns:
             True if all ticks have been emitted (mock: end of parquet data)
         """
+
+    def get_idle_pass_time(self) -> datetime:
+        """
+        The canonical clock for a pass that carries no tick (#616).
+
+        A live feed has no time of its own between two ticks, so its idle pass reads the wall
+        clock: phase and order timeouts then track the time that really passes. A replay
+        overrides this with its own time.
+
+        Returns:
+            Timezone-aware UTC datetime
+        """
+        return datetime.now(timezone.utc)
 
     # === Display Stats (GIL-safe reads for display thread) ===
 

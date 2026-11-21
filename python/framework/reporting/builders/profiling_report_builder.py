@@ -1,18 +1,21 @@
 """
-Profiling report builder (#399) — the per-unit tick-loop profiling postprocessor.
+Profiling report builder (#399) — the per-unit event-loop profiling postprocessor.
 
 Maps each scenario's raw profiling payload to a `ProfilingUnitRow` (operation timing + inter-tick
 distribution + clipping), rolls them into the run-level `ProfilingAggregate`, and carries the
-run-level warmup phases. **Sim-only** (the live tick loop has no operation profiling) — so, like
+run-level warmup phases. **Sim-only** (the live event loop has no operation profiling) — so, like
 `scenario_details`, it reads the batch directly, NOT via `RunUnit`.
 
-The raw `tick_loop_results.profiling_data` carries `profile_times` / `profile_counts` /
+The raw `event_loop_results.profiling_data` carries `profile_times` / `profile_counts` /
 `inter_tick_intervals_ms`; the computed `ProfilingData` (operations + interval stats) is built from
 them via the now non-mutating `ProfilingData.from_dicts` (#398) — same path the console renderer uses.
 """
 
 from typing import Dict, Optional
 
+from python.framework.reporting.aggregation.tables.profiling_figure_table import (
+    warmup_phase_share,
+)
 from python.framework.reporting.builders.report_aggregators import aggregate_profiling
 from python.framework.types.api.report_types import (
     ClippingRow,
@@ -42,31 +45,46 @@ def build_profiling_report_from_batch(run_id: str, batch: BatchExecutionSummary)
     clipping_map = batch.clipping_stats_map or {}
     rows = []
     for result in batch.process_result_list:
-        tick_loop = getattr(result, 'tick_loop_results', None)
-        if tick_loop is None:
+        event_loop = getattr(result, 'event_loop_results', None)
+        if event_loop is None:
             continue
-        raw = tick_loop.profiling_data
-        # Layer B (tick-loop profiling) off → no operation timing; skip this scenario.
+        raw = event_loop.profiling_data
+        # Layer B (event-loop profiling) off → no operation timing; skip this scenario.
         if raw is None or not raw.profile_times:
             continue
         scenario = batch.get_scenario_by_process_result(result)
-        rows.append(_to_unit_row(result, raw, tick_loop, scenario, clipping_map))
+        rows.append(_to_unit_row(result, raw, event_loop, scenario, clipping_map))
 
     warmup = [
         WarmupPhaseRow(name=phase.name, duration_s=phase.duration_s)
         for phase in (batch.warmup_phases or [])
     ]
-    return ProfilingReport(
+    return with_warmup_shares(ProfilingReport(
         run_id=run_id,
         units=rows,
         aggregate=aggregate_profiling(rows, budget_active=bool(clipping_map)),
-        warmup_phases=warmup)
+        warmup_phases=warmup))
+
+
+def with_warmup_shares(report: ProfilingReport) -> ProfilingReport:
+    """
+    Stamp each warmup phase with its share of the whole warmup, which the report computes.
+
+    Args:
+        report: The profiling report, its warmup phases in the order they ran
+
+    Returns:
+        The same report, every phase carrying its `pct`
+    """
+    for phase in report.warmup_phases:
+        phase.pct = warmup_phase_share(phase, report.warmup_total_s)
+    return report
 
 
 def _to_unit_row(
     result: ProcessResult,
     raw,
-    tick_loop,
+    event_loop,
     scenario: SingleScenario,
     clipping_map: Dict[int, ClippingStats],
 ) -> ProfilingUnitRow:
@@ -77,7 +95,7 @@ def _to_unit_row(
         inter_tick_intervals_ms=raw.inter_tick_intervals_ms,
         gap_threshold_s=raw.gap_threshold_s, ticks_total=raw.ticks_total)
 
-    ticks = tick_loop.coordination_statistics.ticks_processed
+    ticks = event_loop.coordination_statistics.ticks_processed
     total_ms = profiling.total_per_tick_ms
 
     operations = [
@@ -104,7 +122,10 @@ def _to_unit_row(
     return ProfilingUnitRow(
         name=result.scenario_name, symbol=scenario.symbol,
         total_ticks=ticks, avg_per_tick_ms=(total_ms / ticks) if ticks > 0 else 0.0,
-        total_ms=total_ms, bottleneck_operation=bottleneck_operation, bottleneck_pct=bottleneck_pct,
+        total_ms=total_ms,
+        algo_passes=profiling.algo_passes, algo_pass_ms=profiling.total_per_algo_pass_ms,
+        avg_per_algo_pass_ms=profiling.avg_per_algo_pass_ms(),
+        bottleneck_operation=bottleneck_operation, bottleneck_pct=bottleneck_pct,
         operations=operations, inter_tick=inter_tick, clipping=clipping)
 
 

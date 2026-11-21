@@ -121,7 +121,7 @@ class KrakenAdapter(AbstractAdapter):
     # Sentinel key marking a raw response as a dry-run handoff. The
     # do_request_* layer tags the raw dict; parse_*_response detects
     # the tag and delegates to DryRunOrderSimulator for the synthetic
-    # BrokerResponse so the response timestamp matches the parse stage.
+    # BrokerResponse so the response's receipt stamp matches the parse stage.
     _DRY_RUN_SENTINEL = '__dry_run_op__'
     # The venue's own answer to the validate call, carried through the same handoff. It is
     # the ONLY thing that says what Kraken UNDERSTOOD of the order — its `descr` names the
@@ -632,7 +632,7 @@ class KrakenAdapter(AbstractAdapter):
     # DryRunOrderSimulator owned by this adapter: do_request_* runs the
     # real broker call when validation is still desired (validate=true
     # for submit) and tags the raw with the operation kind; the parse
-    # layer hands off to the simulator with the parse-stage timestamp.
+    # layer hands off to the simulator with the parse-stage receipt stamp.
     # ============================================
 
     # --- Build payloads (pure) ---
@@ -900,7 +900,7 @@ class KrakenAdapter(AbstractAdapter):
         an invalid order still raises and surfaces as REJECTED. On
         successful validation the call hands off to DryRunOrderSimulator
         via a sentinel-tagged dict so parse_submit_response can produce
-        the synthetic BrokerResponse with the parse-stage timestamp.
+        the synthetic BrokerResponse with the parse-stage receipt stamp.
 
         Args:
             payload: Pre-built AddOrder payload
@@ -1074,7 +1074,7 @@ class KrakenAdapter(AbstractAdapter):
     def parse_submit_response(
         self,
         raw: Dict[str, Any],
-        timestamp: datetime,
+        ts_init: datetime,
         direction: Optional[OrderDirection] = None,
         order_type: Optional[OrderType] = None,
     ) -> BrokerResponse:
@@ -1088,7 +1088,7 @@ class KrakenAdapter(AbstractAdapter):
 
         Args:
             raw: Raw Kraken result dict
-            timestamp: Response receipt timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
             direction: DRY-RUN only — which side of the quote a fill takes (#505)
             order_type: DRY-RUN only — which fill rule the simulated venue applies
 
@@ -1107,7 +1107,7 @@ class KrakenAdapter(AbstractAdapter):
             limit_price, trigger_price = self._dry_run_prices(order_type, raw)
             response = self._dry_run_simulator.submit(
                 lots=raw['lots'],
-                timestamp=timestamp,
+                ts_init=ts_init,
                 direction=direction,
                 order_type=order_type,
                 limit_price=limit_price,
@@ -1123,7 +1123,7 @@ class KrakenAdapter(AbstractAdapter):
         return BrokerResponse(
             broker_ref=broker_ref,
             status=BrokerOrderStatus.PENDING,
-            timestamp=timestamp,
+            ts_init=ts_init,
             raw_response=raw,
         )
 
@@ -1131,7 +1131,7 @@ class KrakenAdapter(AbstractAdapter):
         self,
         raw: Dict[str, Any],
         broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
         market: Optional[TickData] = None,
     ) -> BrokerResponse:
         """
@@ -1146,7 +1146,7 @@ class KrakenAdapter(AbstractAdapter):
         Args:
             raw: Raw Kraken result dict
             broker_ref: The txid that was queried
-            timestamp: Response receipt timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
             market: DRY-RUN only — the quote when this poll was decided; a real Kraken
                 response carries its own state and ignores it
 
@@ -1154,7 +1154,7 @@ class KrakenAdapter(AbstractAdapter):
             BrokerResponse with current status
         """
         if raw.get(self._DRY_RUN_SENTINEL) == 'query':
-            return self._dry_run_simulator.query(broker_ref, timestamp, market=market)
+            return self._dry_run_simulator.query(broker_ref, ts_init, market=market)
 
         # An answer that does not mention the txid is not a state, and it used to become
         # one: `raw.get(broker_ref, {})` then `.get('status', 'pending')` turned "Kraken has
@@ -1167,7 +1167,7 @@ class KrakenAdapter(AbstractAdapter):
             return BrokerResponse(
                 broker_ref=broker_ref,
                 status=BrokerOrderStatus.UNKNOWN,
-                timestamp=timestamp,
+                ts_init=ts_init,
                 raw_response=raw,
             )
 
@@ -1191,6 +1191,12 @@ class KrakenAdapter(AbstractAdapter):
         # like the price beside it; an answer with volume and no fee field reports none.
         raw_fee = order_info.get('fee') if filled_lots is not None else None
         fill_fee = float(raw_fee) if raw_fee not in (None, '') else None
+        # When the venue closed the order — Kraken's `closetm`, epoch seconds, documented on
+        # QueryOrders for an order it reports closed, cancelled or expired; an open order
+        # carries none (#461). The venue's time of the state, beside our receipt
+        close_seconds = float(order_info.get('closetm') or 0.0)
+        ts_event = (datetime.fromtimestamp(close_seconds, tz=timezone.utc)
+                    if close_seconds > 0.0 else None)
 
         return BrokerResponse(
             broker_ref=broker_ref,
@@ -1198,7 +1204,8 @@ class KrakenAdapter(AbstractAdapter):
             fill_price=fill_price,
             filled_lots=filled_lots,
             fill_fee=fill_fee,
-            timestamp=timestamp,
+            ts_init=ts_init,
+            ts_event=ts_event,
             raw_response=raw,
         )
 
@@ -1206,7 +1213,7 @@ class KrakenAdapter(AbstractAdapter):
         self,
         raw: Dict[str, Any],
         broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
     ) -> BrokerResponse:
         """
         Parse Kraken CancelOrder response into BrokerResponse.
@@ -1231,13 +1238,13 @@ class KrakenAdapter(AbstractAdapter):
         Args:
             raw: Raw Kraken result dict
             broker_ref: The txid that was cancelled
-            timestamp: Response receipt timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
 
         Returns:
             BrokerResponse(status=CANCELLED), or UNKNOWN when nothing was cancelled
         """
         if raw.get(self._DRY_RUN_SENTINEL) == 'cancel':
-            return self._dry_run_simulator.cancel(broker_ref, timestamp)
+            return self._dry_run_simulator.cancel(broker_ref, ts_init)
 
         # A missing `count` is NOT read as zero: an answer that does not carry the field
         # says nothing either way, and defaulting it to 0 would invent a refusal.
@@ -1247,7 +1254,7 @@ class KrakenAdapter(AbstractAdapter):
         return BrokerResponse(
             broker_ref=broker_ref,
             status=BrokerOrderStatus.CANCELLED if cancelled else BrokerOrderStatus.UNKNOWN,
-            timestamp=timestamp,
+            ts_init=ts_init,
             raw_response=raw,
         )
 
@@ -1255,7 +1262,7 @@ class KrakenAdapter(AbstractAdapter):
         self,
         raw: Dict[str, Any],
         original_broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
     ) -> BrokerResponse:
         """
         Parse Kraken AmendOrder response into BrokerResponse.
@@ -1269,7 +1276,7 @@ class KrakenAdapter(AbstractAdapter):
         Args:
             raw: Raw Kraken result dict
             original_broker_ref: The order's txid (unchanged by the amend)
-            timestamp: Response receipt timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
 
         Returns:
             BrokerResponse with the unchanged broker_ref
@@ -1277,7 +1284,7 @@ class KrakenAdapter(AbstractAdapter):
         if raw.get(self._DRY_RUN_SENTINEL) == 'modify':
             return self._dry_run_simulator.modify(
                 broker_ref=raw['broker_ref'],
-                timestamp=timestamp,
+                ts_init=ts_init,
                 new_limit_price=raw['new_limit_price'],
                 new_trigger_price=raw['new_trigger_price'],
             )
@@ -1285,7 +1292,7 @@ class KrakenAdapter(AbstractAdapter):
         return BrokerResponse(
             broker_ref=original_broker_ref,
             status=BrokerOrderStatus.PENDING,
-            timestamp=timestamp,
+            ts_init=ts_init,
             raw_response=raw,
         )
 
@@ -1731,7 +1738,7 @@ class KrakenAdapter(AbstractAdapter):
 
         Delegates to _do_fetch_private via the broker-agnostic _timed_call wrapper
         so the API monitor (#351) records per-endpoint latency/errors. The timing
-        includes the rate-limit throttle (the real tick-loop-blocking cost).
+        includes the rate-limit throttle (the real event-loop-blocking cost).
 
         Args:
             endpoint: API path (e.g., '/0/private/AddOrder')

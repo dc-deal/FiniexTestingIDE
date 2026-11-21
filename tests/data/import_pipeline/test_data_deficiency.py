@@ -57,6 +57,17 @@ class TestTheVocabularyIsDeclared:
             assert declaration.check in catalog
 
 
+class TestWhichDeficienciesLeaveTheArrivalUntrusted:
+
+    def test_exactly_the_three_about_the_arrival_time(self):
+        """A backtest orders these files by event time (#460); the others keep their arrival."""
+        untrusted = {deficiency for deficiency in DataDeficiency
+                     if deficiency.leaves_arrival_untrusted()}
+        assert untrusted == {DataDeficiency.NO_ARRIVAL_TIME,
+                             DataDeficiency.ARRIVAL_TIME_RECONSTRUCTED,
+                             DataDeficiency.ARRIVAL_TIME_OFFSET}
+
+
 class TestWhatAFileLacksIsMeasured:
 
     def test_a_recorded_quoted_file_lacks_nothing(self):
@@ -85,6 +96,19 @@ class TestWhatAFileLacksIsMeasured:
             for index, second in enumerate(seconds)]
         assert DataDeficiency.ARRIVAL_TIME_RECONSTRUCTED in measure_tick_deficiencies(
             frame).deficiencies
+
+    def test_an_arrival_seconds_behind_the_event_is_an_offset_clock(self):
+        # MT5, March to August 2026: a drifting device clock, median lags of 3 to 10 s
+        assert measure_tick_deficiencies(_frame(lag_ms=3_000)).deficiencies == [
+            DataDeficiency.ARRIVAL_TIME_OFFSET]
+
+    def test_an_arrival_before_the_event_is_an_offset_clock(self):
+        assert measure_tick_deficiencies(_frame(lag_ms=-40)).deficiencies == [
+            DataDeficiency.ARRIVAL_TIME_OFFSET]
+
+    def test_a_delivery_lag_of_milliseconds_is_none(self):
+        assert measure_tick_deficiencies(_frame(lag_ms=15)).deficiencies == []
+        assert measure_tick_deficiencies(_frame(lag_ms=950)).deficiencies == []
 
     def test_an_arrival_copied_from_the_event_time_is_a_reconstruction(self):
         # The Kraken reconstruction copied the event time for ticker ticks: no lag at all

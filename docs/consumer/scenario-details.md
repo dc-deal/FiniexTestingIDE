@@ -109,8 +109,9 @@ being enough.
 
 `data_brokers` groups the rows by broker, sorted by broker type. Each entry carries that broker's
 `market_type`, its `scenario_count` — failed scenarios included, because it is a roll-up of the
-same rows — the distinct `symbols` it served, sorted, and the `price_bases` de-duplicated across
-all of that broker's scenarios rather than concatenated.
+same rows — the distinct `symbols` it served, sorted, and the `price_bases` and `origin_classes`
+de-duplicated across all of that broker's scenarios rather than concatenated. `origin_classes` there
+says whose data was read over that broker; `external` marks a venue's published history.
 
 The grouping is derived once and served to every surface rather than rebuilt by whoever wants it,
 so two consumers grouping the same rows cannot arrive at two answers.
@@ -120,6 +121,8 @@ so two consumers grouping the same rows cannot arrive at two answers.
 | Field | Meaning |
 |---|---|
 | `ticks_processed` | how many ticks reached the strategy |
+| `algo_passes` | how often the strategy computed — a backtest computes once for the ticks that arrived in one millisecond, so this can be below `ticks_processed`; null in a scenario recorded before contract 57, which did not count it |
+| `ghost_passes` | how often a heartbeat strategy's decision ran between two ticks; null before contract 57 |
 | `first_tick_time` · `last_tick_time` | ISO-8601 UTC; empty where there was no tick |
 | `tick_timespan_seconds` | the market time those ticks span |
 | `execution_time_ms` | wall time the scenario took, preparation to result, on a monotonic clock |
@@ -139,6 +142,15 @@ name. See [the contract log](/api/v1/docs/contract-log).
 decided. They are **null when nothing counted them**: the decision tracker is off by default in a
 backtest, because counting sits on the hot path. A `0` is a count; null is the absence of one. See
 [nulls](/api/v1/docs/nulls).
+
+`non_flat_signals` is the decisions that asked to buy or sell — the buy and the sell signals
+together — and `non_flat_signal_pct` and `trades_requested_pct` give it and `trades_requested` per
+pass, in percent: per algo pass and heartbeat pass together, because the strategy decides at most
+once in each; `0.0` over no pass, null where the decisions were not counted. A scenario recorded
+before contract 57 divides by its ticks, each of which was one pass. On the
+report, `scenario_count`, `failed_scenario_count` (a status other than `success`) and
+`completed_scenario_count` count the rows — every scenario that ran, a failed one included, unlike
+the run summary's `unit_count`, which counts the units that produced figures.
 
 Which state a unit was in is stated outright, as `worker_decision_tracked` on
 [workers and decisions](/api/v1/docs/worker-decision). That is the field to branch on.

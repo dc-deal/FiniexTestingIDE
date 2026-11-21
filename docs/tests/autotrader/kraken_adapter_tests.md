@@ -12,6 +12,7 @@ rarely to be the only guard on how our payloads reach the venue.
 | `test_client_order_id.py` | the key WE choose, on the wire and read back (#473) |
 | `test_conditional_order_payloads.py` | stop / stop-limit price semantics, both directions (#500) |
 | `test_venue_fee_report.py` | the fee in the status answer, the fee currency on every order, the declared capability (#508) |
+| `test_venue_close_time.py` | the venue's own time of a closed order in the status answer, beside our receipt (#461) |
 | `test_cancel_response_parsing.py` · `test_closed_orders_read.py` | what a cancel answer and a closed-orders read actually say (#487) |
 | `test_kraken_error_codes.py` | the venue's documented "not now" inside an answer is transient, every other code its answer (#598) |
 
@@ -150,6 +151,16 @@ and the executor knows a dry run's answers come from our own simulator, which re
 | `TestTheFeeIsReadFromTheStatusAnswer` | a closed order carries its total fee (the measured answer's shape); an open order with executed volume carries that volume's fee; nothing executed → no fee; volume without a fee field → `None`, never zero |
 | `TestEveryOrderAsksForTheFeeInTheQuote` | `oflags=fciq` on market, limit, stop and stop-limit, buy and sell |
 | `TestTheCapabilityIsDeclared` | `status_answer` with dry run off, and in a dry run too — the capability describes the venue |
+
+## The venue's time of a closed order — `test_venue_close_time.py`
+
+QueryOrders names when the venue closed an order — `closetm`, epoch seconds, on an order it reports
+closed, cancelled or expired. The adapter carries it as the answer's `ts_event`, beside `ts_init`,
+our receipt of the answer; the executor hands it to a fill in full (#461).
+
+| Test class | Asserts |
+|---|---|
+| `TestTheVenuesCloseTime` | a closed order carries its close time and keeps our receipt beside it; a cancelled and an expired order carry it too; an open order (`closetm` 0) and an answer without the field carry none |
 
 ## The venue's "not now" — `test_kraken_error_codes.py`
 

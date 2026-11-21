@@ -65,7 +65,7 @@ DriftAuditor._on_trades_response:
 
 Critical: **two inbox drain cycles**. The trades-query response cannot arrive in the same drain that
 triggered it — it requires a separate HTTP roundtrip on the worker thread. This is async-correct by
-design (no tick-loop blocking). V1.3 Pilot Run baseline for fill-to-trades-query latency: ~2000 ms.
+design (no event-loop blocking). V1.3 Pilot Run baseline for fill-to-trades-query latency: ~2000 ms.
 
 ## ID Correlation Across the Async Roundtrip
 

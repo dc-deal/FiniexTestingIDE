@@ -2,11 +2,16 @@
 Splitter Layer Tests
 ====================
 Unit tests for the splitter abstraction: factory resolution, the walk-forward extension
-point, and the profile-driven splitters (volatility_split / continuous) with mocked caches.
+point, and the profile-driven splitters (volatility_split / continuous) with mocked caches —
+including that their windows do not depend on the reference the volatility profile measured its
+periods against (#647).
 """
 
+from dataclasses import replace
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 from python.framework.types.market_types.market_volatility_profile_types import (
@@ -164,3 +169,46 @@ class TestVolatilitySplit:
         assert ws.block_count >= 2
         # No window exceeds the max block size
         assert all(w.block_duration_hours <= 3.0 + 1e-9 for w in ws.windows)
+
+
+class TestTheWindowsIgnoreTheProfilesReference:
+    """
+    The volatility profile measures each period against the trailing year since #647, where it
+    measured against the whole history before. A generated profile re-bases the periods of its
+    range on their absolute ATR, so its windows — where they split, the ATR and regime they carry —
+    come out the same whatever ratio the profile stored. Held over both splitters.
+    """
+
+    def _windows(self, splitter_cls, ratios, mock_cov_cls, mock_vol_cls, mock_disc_cls):
+        start = utc(2025, 10, 1)
+        end = start + timedelta(hours=len(ratios))
+        absolute = np.random.default_rng(647).lognormal(0, 0.6, len(ratios))
+        mock_cov_cls.return_value.get_report.return_value = mock_coverage_report(start, end)
+        vol_profile = MagicMock()
+        vol_profile.periods = [replace(period, atr=float(ratio), atr_absolute=float(value))
+                               for period, ratio, value in zip(
+                                   make_continuous_periods(start, len(ratios)), ratios, absolute)]
+        mock_vol_cls.return_value.get_profile.return_value = vol_profile
+        mock_disc_cls.return_value.get_fingerprints.return_value = {}
+        config = ProfileStrategyConfig(
+            min_block_hours=2, max_block_hours=8, atr_percentile_threshold=30,
+            split_algorithm='atr_minima')
+        window_set = splitter_cls(config).split('kraken_spot', 'ETHUSD', start, end)
+        return [(w.start_time, w.end_time, w.split_reason, round(w.atr, 6), w.regime)
+                for w in window_set.windows]
+
+    @pytest.mark.parametrize('splitter_cls', [VolatilitySplit, ContinuousSplit])
+    @patch(f'{_PROFILE_CACHE_PATH}.DiscoveryCacheManager')
+    @patch(f'{_PROFILE_CACHE_PATH}.VolatilityProfileAnalyzerCache')
+    @patch(f'{_PROFILE_CACHE_PATH}.DataCoverageReportCache')
+    def test_the_same_windows_whatever_ratio_the_profile_stored(
+            self, mock_cov_cls, mock_vol_cls, mock_disc_cls, splitter_cls):
+        hours = 48
+        rng = np.random.default_rng(2026)
+        against_the_history = self._windows(
+            splitter_cls, rng.uniform(0.01, 0.2, hours), mock_cov_cls, mock_vol_cls, mock_disc_cls)
+        against_each_year = self._windows(
+            splitter_cls, rng.uniform(0.3, 3.0, hours), mock_cov_cls, mock_vol_cls, mock_disc_cls)
+
+        assert against_the_history, 'the fixture must produce windows, or this proves nothing'
+        assert against_the_history == against_each_year

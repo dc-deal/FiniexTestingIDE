@@ -11,6 +11,7 @@ import io
 from contextlib import redirect_stdout
 from typing import Optional
 
+from python.framework.reporting.builders.report_aggregators import aggregate_failed_orders
 from python.framework.reporting.console.trade_history_summary import TradeHistorySummary
 from python.framework.types.api.report_types import (
     ExecutionRow,
@@ -82,11 +83,12 @@ def _execution(failed: int = 0, slippage=()) -> ExecutionStatsReport:
 
 
 def _rejected_orders(count: int) -> OrderHistoryReport:
-    """The order history holding `count` refused orders of the scenario."""
+    """The order history holding `count` refused orders of the scenario, counted as built."""
     rows = [OrderHistoryRow(order_id=f'pos_eurusd_{n}', symbol='EURUSD',
                             status=OrderStatus.REJECTED, commission=0.0,
                             scenario_name='AUDUSD_cont_00') for n in range(count)]
-    return OrderHistoryReport(run_id=_RUN_ID, orders=rows, count=count, symbols=['EURUSD'])
+    return OrderHistoryReport(run_id=_RUN_ID, orders=rows, count=count, symbols=['EURUSD'],
+                              **aggregate_failed_orders(rows))
 
 
 def _render(method_name: str, orders: Optional[OrderHistoryReport] = None,
@@ -105,6 +107,29 @@ def test_per_scenario_table_from_model():
     assert 'MAE' in out and 'MFE' in out     # #389 columns
     assert '└─ in' in out and '└─ out' in out  # #330 execution sub-lines
     assert 'e1' in out                       # execution trade_id
+
+
+def test_a_restored_position_prints_no_tick_and_comes_first():
+    # A position restored at boot has no entry tick in this session's numbering, and a record
+    # from before that still carries an exit before its entry: neither has a duration in ticks,
+    # and the table prints a dash where a number would crash the session's console
+    restored = _row().model_copy(update={
+        'position_id': 'p0', 'entry_price': 1.2345, 'entry_tick_index': None,
+        'exit_tick_index': 5})
+    earlier_numbering = _row().model_copy(update={
+        'position_id': 'p2', 'entry_tick_index': 500, 'exit_tick_index': 7})
+    report = _report().model_copy(update={'trades': [_row(), earlier_numbering, restored],
+                                           'count': 3})
+    summary = TradeHistorySummary(report, _empty_orders(), _execution())
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        summary.render_per_scenario(ConsoleRenderer())
+    out = buf.getvalue()
+
+    assert restored.duration_ticks is None and earlier_numbering.duration_ticks is None
+    assert out.index('1.23450') < out.index('1.10000')
+    assert f"{'—':>10} | {5:>10} | {'—':>8}" in out
+    assert f"{500:>10} | {7:>10} | {'—':>8}" in out
 
 
 def test_an_expectancy_nobody_measured_prints_no_number(monkeypatch):

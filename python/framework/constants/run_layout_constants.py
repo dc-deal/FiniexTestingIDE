@@ -140,8 +140,17 @@ STREAM_HEADER_KIND = 'header'
 STREAM_TRADING_DAY_FIELD = 'trading_day'
 # What the session held and decided, moment by moment (#579 part A, served since #611).
 STATE_FRAMES_FILE = 'state_frames.jsonl'
+# A backtest scenario's own state-frame stream (#579 part B item 3), beside events_{scenario}.csv
+SCENARIO_STATE_FRAMES_FILE_PATTERN = 'state_frames_{scenario}.jsonl'
 STATE_FRAMES_STREAM = 'state_frames'
 STATE_FRAMES_SCHEMA_VERSION = 1
+# Each drawing worker's indicator series, one value per closed bar (#379): a session's per worker,
+# and a backtest scenario's per worker in a folder of the scenario's own — so the session's pattern
+# cannot match a scenario's file, and a scenario and a worker name holding '_' still part cleanly
+INDICATOR_SERIES_FILE_PATTERN = 'indicator_series_{worker}.jsonl'
+SCENARIO_INDICATOR_SERIES_FILE_PATTERN = 'indicator_series_{scenario}/{worker}.jsonl'
+INDICATOR_SERIES_STREAM = 'indicator_series'
+INDICATOR_SERIES_SCHEMA_VERSION = 1
 # Every trade the session closed, as it closed (#476) — the trade history's rows, written while the
 # session runs, because the history the report reads keeps only the newest trades.
 TRADES_FILE = 'trades.jsonl'
@@ -153,6 +162,9 @@ TRADES_SCHEMA_VERSION = 1
 # run index must not count them as report artifacts.
 # The warmup history the session started from (#588).
 WARMUP_HISTORY_FILE = 'warmup_history.json'
+# The warmup history a backtest scenario injected from a session's record — the bars the divergence
+# report checks against that record before it compares decisions (#512).
+SCENARIO_WARMUP_HISTORY_FILE_PATTERN = 'warmup_history_{scenario}.json'
 # The algo state the session found at its start, taken or refused (#476).
 ALGO_STATE_RESTORED_FILE = 'algo_state_restored.json'
 # The tick stream's own outages and refused trades (#609).

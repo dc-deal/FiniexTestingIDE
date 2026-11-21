@@ -12,10 +12,11 @@ import string
 from dataclasses import dataclass
 from enum import StrEnum
 from functools import lru_cache
-from typing import Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 from python.framework.constants.run_layout_constants import (
     DIAGNOSTICS_ROWS_STREAM,
+    INDICATOR_SERIES_STREAM,
     ORDER_EVENTS_STREAM,
     STATE_FRAMES_STREAM,
     TICK_STREAM_EVENTS_STREAM,
@@ -35,6 +36,7 @@ _EXAMPLE_VALUES = {
     'scenario': 'window_01',
     'day': '20261022',
     'sink': 'entry_signals',
+    'worker': 'rsi_fast',
     'name': 'last_setup.json',
 }
 
@@ -126,15 +128,20 @@ class RunEntryMemberId(StrEnum):
     TRADE_HISTORY_CSV = 'trade_history_csv'
     ORDER_EVENTS = ORDER_EVENTS_STREAM
     STATE_FRAMES = STATE_FRAMES_STREAM
+    SCENARIO_STATE_FRAMES = 'scenario_state_frames'
+    INDICATOR_SERIES = INDICATOR_SERIES_STREAM
+    SCENARIO_INDICATOR_SERIES = 'scenario_indicator_series'
     TICK_STREAM_EVENTS = TICK_STREAM_EVENTS_STREAM
     TRADES = TRADES_STREAM
     DIAGNOSTICS_ROWS = DIAGNOSTICS_ROWS_STREAM
     ORDER_EVENTS_DAY = 'order_events_day'
     STATE_FRAMES_DAY = 'state_frames_day'
+    INDICATOR_SERIES_DAY = 'indicator_series_day'
     TICK_STREAM_EVENTS_DAY = 'tick_stream_events_day'
     TRADES_DAY = 'trades_day'
     DIAGNOSTICS_ROWS_DAY = 'diagnostics_rows_day'
     WARMUP_HISTORY = 'warmup_history'
+    SCENARIO_WARMUP_HISTORY = 'scenario_warmup_history'
     ALGO_STATE_RESTORED = 'algo_state_restored'
     FOOTPRINT = 'footprint'
 
@@ -143,6 +150,18 @@ class SweepEntryMemberId(StrEnum):
     """Every file a sweep directory holds beside its combinations' run directories."""
     MOUNT_BUILD_LOG = 'mount_build_log'
     RANKING = 'ranking'
+
+
+class DivergenceEntryMemberId(StrEnum):
+    """Every file a divergence comparison's or an A/A's directory holds (#512)."""
+    SCENARIO_SET = 'scenario_set'
+    WARMUP_RECORD = 'warmup_record'
+    LIVE_INDEX = 'live_index'
+    REPORT = 'report'
+    REPORT_TEXT = 'report_text'
+    AA_SCENARIO_SET = 'aa_scenario_set'
+    AA_REPORT = 'aa_report'
+    AA_REPORT_TEXT = 'aa_report_text'
 
 
 @dataclass(frozen=True)
@@ -186,7 +205,7 @@ class EntryMember:
         recorded_stream_kind: The kind of stream a unit's timeline and window serve it as (#580),
             or None when they do not serve it
     """
-    member_id: Union[RunEntryMemberId, SweepEntryMemberId]
+    member_id: Union[RunEntryMemberId, SweepEntryMemberId, DivergenceEntryMemberId]
     path_pattern: str
     shape: EntryMemberShape
     purpose: str
@@ -221,6 +240,20 @@ class EntryMember:
             True when the whole path fits the pattern
         """
         return _pattern_regex(self.path_pattern).fullmatch(relative_path) is not None
+
+    def names_of(self, relative_path: str) -> Optional[Dict[str, str]]:
+        """
+        The values of the pattern's variable parts in a file of this member — the worker of an
+        indicator series stream, the scenario of a backtest's file.
+
+        Args:
+            relative_path: The file's path inside the entry, with forward slashes
+
+        Returns:
+            Each placeholder's value, or None when the file is not this member
+        """
+        match = _pattern_regex(self.path_pattern).fullmatch(relative_path)
+        return match.groupdict() if match is not None else None
 
     def is_written_by(self, run_type: str) -> bool:
         """
@@ -294,5 +327,5 @@ def _pattern_regex(path_pattern: str) -> re.Pattern:
     for literal, field, _, _ in string.Formatter().parse(path_pattern):
         parts.append(re.escape(literal))
         if field is not None:
-            parts.append(_PLACEHOLDER_REGEX)
+            parts.append(f'(?P<{field}>{_PLACEHOLDER_REGEX})')
     return re.compile(''.join(parts))

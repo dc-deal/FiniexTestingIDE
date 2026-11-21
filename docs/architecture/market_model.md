@@ -113,7 +113,7 @@ noticing — comparing a high against a low is satisfied by `0 >= 0`.
 ## Where the declaration is checked
 
 A declaration that nothing verifies is a comment. `price_formation` is read where it can be
-checked or recorded, and never in the tick loop:
+checked or recorded, and never in the event loop:
 
 - **At import.** A venue declared order-driven must deliver a traded price on every tick; a
   file that does not is refused by name rather than falling back quietly to the midpoint,

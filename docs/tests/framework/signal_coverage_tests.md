@@ -106,10 +106,10 @@ seam so only the signal checks can produce findings.
 ## Related: the finished archive
 
 `tests/data/signal_import/` carries `TestFinishedArchive`, which pins the import-side
-counterpart: an imported JSONL moves to `data/finished/signals/` with its structure
-intact, a re-run without `--override` finds nothing and reports no error, and
-`--override` reads the archive back. Relevant here because a coverage report is only
-as complete as the parquet tree the import produced.
+counterpart: an imported JSONL moves flat from the one import inbox to the finished
+directory, a re-run without `--override` finds nothing and reports no error, and nothing
+reads the finished directory back. Relevant here because a coverage report is only as
+complete as the parquet tree the import produced.
 
 ## Related: the preceding-bucket guarantee
 

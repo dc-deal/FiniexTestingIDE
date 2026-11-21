@@ -334,6 +334,35 @@ class SignalResolutionStats:
     max_clamp_correction_ms: float = 0.0
 
 
+@dataclass(frozen=True)
+class SignalStatsOfUnit:
+    """
+    One SIGNAL worker's counters, with the run unit and the symbol it resolved for — the row the
+    signal report folds its counters from (#557). The unit and the symbol are the key, and the
+    worker's own counters carry no unit.
+
+    Args:
+        unit_name: The run unit the worker ran in
+        symbol: The symbol it resolved for — its own, else the unit's
+        worker_name: The worker
+        signal_kind: The payload kind it consumed
+        fresh_ticks: Ticks decided on a fresh snapshot
+        stale_ticks: Ticks decided on a stale one
+        blind_ticks: Ticks with no snapshot to decide on
+        availability_clamps: How often the gate held a snapshot back
+        max_clamp_correction_ms: The largest step it absorbed
+    """
+    unit_name: str
+    symbol: str
+    worker_name: str
+    signal_kind: str
+    fresh_ticks: int
+    stale_ticks: int
+    blind_ticks: int
+    availability_clamps: int
+    max_clamp_correction_ms: float
+
+
 class SignalSeriesKind(str, Enum):
     """
     Where a signal series came from — which decides what can be said about it.

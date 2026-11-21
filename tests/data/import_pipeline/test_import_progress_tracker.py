@@ -134,6 +134,25 @@ class TestTotalAndComparison:
         assert total.label == 'Total (1 of 2 steps)'
         assert total.estimate_s == 2.0
 
+    def test_the_fetch_done_before_the_plan_keeps_its_estimate(self):
+        """The package fetch runs before the scan, so it is done when the plan completes; the
+        summary still holds its estimate against what it took. The scan, done too but never
+        estimated, stays out."""
+        tracker = _tracker({ImportStepId.PACKAGES_FETCH: ImportStepRate(ImportRateUnit.MB, 0.5)})
+        tracker.add_step(ImportStepId.PACKAGES_FETCH, ImportSection.INBOXES, 'Fetch packages')
+        tracker.add_step(ImportStepId.SCAN, ImportSection.INBOXES, 'Scan the import inbox')
+        tracker.start_step(ImportStepId.PACKAGES_FETCH)
+        tracker.set_quantity(ImportStepId.PACKAGES_FETCH, ImportRateUnit.MB, 100.0)
+        tracker.finish_step(ImportStepId.PACKAGES_FETCH)
+        tracker.start_step(ImportStepId.SCAN)
+        tracker.finish_step(ImportStepId.SCAN)
+        tracker.mark_plan_complete()
+
+        timings, total = tracker.estimate_comparison()
+        assert [timing.label for timing in timings] == ['Fetch packages']
+        assert timings[0].estimate_s == 50.0 and timings[0].actual_s is not None
+        assert total.label == 'Total'
+
     def test_skipped_steps_stay_out_of_the_total(self, monkeypatch):
         clock = _Clock(monkeypatch)
         tracker = _tracker({
@@ -235,7 +254,7 @@ class TestPublish:
     def test_full_queue_keeps_the_newest_frame(self):
         frames: queue.Queue = queue.Queue(maxsize=2)
         tracker = _tracker(frame_queue=frames)
-        tracker.add_step(ImportStepId.SCAN, ImportSection.INBOXES, 'Scan import inboxes',
+        tracker.add_step(ImportStepId.SCAN, ImportSection.INBOXES, 'Scan the import inbox',
                          counter_unit='files')
         for done in range(5):
             tracker.advance(ImportStepId.SCAN, done, 4)
@@ -246,7 +265,7 @@ class TestPublish:
 
     def test_a_frame_shares_nothing_with_the_tracker(self):
         tracker = _tracker()
-        tracker.add_step(ImportStepId.SCAN, ImportSection.INBOXES, 'Scan import inboxes',
+        tracker.add_step(ImportStepId.SCAN, ImportSection.INBOXES, 'Scan the import inbox',
                          counter_unit='files')
         frame = tracker.snapshot()
         tracker.advance(ImportStepId.SCAN, 3, 3)

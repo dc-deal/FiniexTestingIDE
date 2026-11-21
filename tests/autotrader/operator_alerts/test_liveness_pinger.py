@@ -1,5 +1,5 @@
 """
-Liveness Pinger — the ping vouches for the tick loop, not for the process (#235).
+Liveness Pinger — the ping vouches for the event loop, not for the process (#235).
 
 A monitor reads silence as death. These tests hold the pinger to that reading: it pings while
 the loop passes, goes silent and says so when the loop stalls (the hung process a supervisor
@@ -9,6 +9,7 @@ session with only the Telegram alerts on hears about a stall too; and nothing on
 ends it.
 """
 
+import re
 import threading
 import time
 from typing import Tuple
@@ -79,8 +80,23 @@ class TestThePingFollowsTheLoop:
         pinger.beat()
 
         assert monitor.requests == [FAIL_URL]    # the fail URL once, no ordinary ping
-        assert alerts == [(OperatorAlertKind.TICK_LOOP_STALLED, OperatorAlertLevel.CRITICAL)]
+        assert alerts == [(OperatorAlertKind.EVENT_LOOP_STALLED, OperatorAlertLevel.CRITICAL)]
         assert logger.levels().count('error') == 1
+
+    def test_the_stall_and_the_recovery_say_when_they_were_noticed(self):
+        # The session log stamps a line with the run's clock, which stands still while the whole
+        # process is frozen; the text therefore carries the wall-clock instant of noticing
+        monitor, clock = Monitor(), Clock()
+        pinger, progress, logger, _ = _pinger(monitor, clock)
+        progress.stamp()
+        clock.now += 200.0
+        pinger.beat()
+        progress.stamp()
+        pinger.beat()
+
+        noticed = re.compile(r'noticed \d{2}:\d{2}:\d{2} UTC')
+        assert noticed.search(logger.text_at('error'))
+        assert noticed.search(logger.text_at('info'))
 
     def test_the_ping_resumes_with_the_loop(self):
         monitor, clock = Monitor(), Clock()
@@ -92,7 +108,7 @@ class TestThePingFollowsTheLoop:
         pinger.beat()
 
         assert monitor.requests == [FAIL_URL, PING_URL]
-        assert alerts[-1] == (OperatorAlertKind.TICK_LOOP_RESUMED, OperatorAlertLevel.INFO)
+        assert alerts[-1] == (OperatorAlertKind.EVENT_LOOP_RESUMED, OperatorAlertLevel.INFO)
 
     def test_without_a_ping_url_it_only_watches_the_loop(self, tmp_path):
         """Telegram on, the ping off: a stall still reaches the operator; nothing is pinged."""
@@ -111,7 +127,7 @@ class TestThePingFollowsTheLoop:
         assert monitor.requests == []
         assert not stamp.exists(), 'the stamp file belongs to the ping'
         assert [kind for kind, _ in alerts] == [
-            OperatorAlertKind.TICK_LOOP_STALLED, OperatorAlertKind.TICK_LOOP_RESUMED]
+            OperatorAlertKind.EVENT_LOOP_STALLED, OperatorAlertKind.EVENT_LOOP_RESUMED]
         assert 'pings' not in logger.text()
         assert not pinger.is_pinging()
 

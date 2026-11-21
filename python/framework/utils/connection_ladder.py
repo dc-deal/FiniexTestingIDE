@@ -10,7 +10,7 @@ consequence decided nothing at all.
 
 What is centralized is the CLASSIFICATION and the arithmetic, not the waiting. The callers wait
 with different primitives — a stop event, an asyncio sleep, a blocking sleep on a thread of
-their own, and in the tick loop no wait at all because a cadenced caller skips its cycle
+their own, and in the event loop no wait at all because a cadenced caller skips its cycle
 instead. A ladder that owned the wait would need a plugin point to serve them; one that owns
 only the decision needs none.
 

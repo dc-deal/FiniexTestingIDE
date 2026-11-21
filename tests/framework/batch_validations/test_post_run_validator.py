@@ -4,9 +4,9 @@ Post-Run Validator Tests (#395).
 PostRunValidator lifts the batch-global advisory warnings out of the report renderer: it appends
 run-scoped ValidationResults to BatchExecutionSummary.batch_validation_result. Tested with REAL
 BatchExecutionSummary / SingleScenario / ClippingStats fixtures. The profiling-dependent budget
-checks (P5 / too-high) need a full tick-loop result and are covered via the sim integration run.
+checks (P5 / too-high) need a full event-loop result and are covered via the sim integration run.
 The coordination-overhead + infra-bottleneck advisories (lifted out of the report renderers, #395)
-are tested here with real tick-loop / profiling fixtures.
+are tested here with real event-loop / profiling fixtures.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -18,15 +18,17 @@ from python.framework.types.performance_types.performance_stats_types import (
     WorkerCoordinatorPerformanceStats,
     WorkerPerformanceStats,
 )
+from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.process_data_types import (
     ClippingStats,
     ProcessProfileData,
     ProcessResult,
-    ProcessTickLoopResult,
+    ProcessEventLoopResult,
 )
 from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.spread_estimate_types import ModelledSpreadSummary
+from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_event_types import OrderEvent, OrderEventType
 from python.framework.types.trading_env_types.order_types import OrderFeature
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
@@ -61,17 +63,17 @@ def _ws(total_ms) -> WorkerPerformanceStats:
 
 
 def _result_prof(name, idx, profile_times, worker_ms=0.0, decision_ms=0.0) -> ProcessResult:
-    tlr = ProcessTickLoopResult(
+    tlr = ProcessEventLoopResult(
         worker_statistics=[_ws(worker_ms)] if worker_ms else [],
         decision_statistics=DecisionLogicStats(decision_total_time_ms=decision_ms),
         profiling_data=ProcessProfileData(profile_times=profile_times, profile_counts={}))
-    return ProcessResult(success=True, scenario_name=name, scenario_index=idx, tick_loop_results=tlr)
+    return ProcessResult(success=True, scenario_name=name, scenario_index=idx, event_loop_results=tlr)
 
 
 def _perf_result(name, idx, worker_name='rsi', worker_avg=0.1, logic_name='',
                  logic_avg=0.0, parallel=False, saved_ms=0.0) -> ProcessResult:
     """A result carrying only what the performance verdicts read."""
-    tlr = ProcessTickLoopResult(
+    tlr = ProcessEventLoopResult(
         worker_statistics=[WorkerPerformanceStats(
             worker_type='CORE/x', worker_name=worker_name, worker_call_count=1,
             worker_total_time_ms=worker_avg, worker_avg_time_ms=worker_avg,
@@ -82,7 +84,7 @@ def _perf_result(name, idx, worker_name='rsi', worker_avg=0.1, logic_name='',
             parallel_workers=parallel, ticks_processed=100,
             parallel_time_saved_ms=saved_ms))
     return ProcessResult(success=True, scenario_name=name, scenario_index=idx,
-                         tick_loop_results=tlr)
+                         event_loop_results=tlr)
 
 
 def _batch_results(results) -> BatchExecutionSummary:
@@ -342,6 +344,53 @@ def test_expected_bottleneck_no_warning():
     r = _result_prof('s1', 0, {'worker_decision': 80.0, 'live_update': 20.0, 'total_per_tick': 100.0})
     assert 'bottleneck' not in _warnings(_batch_results([r]))
 
+
+def test_the_total_of_the_algo_passes_is_no_bottleneck():
+    # It times whole instants like the total per tick (#460): read as an operation, it would top
+    # every scenario and name itself an infrastructure bottleneck
+    r = _result_prof('s1', 0, {'worker_decision': 80.0, 'live_update': 20.0,
+                               'total_per_tick': 100.0, 'total_per_algo_pass': 95.0})
+    assert 'bottleneck' not in _warnings(_batch_results([r]))
+
+
+class TestTheBudgetIsHeldToAnAlgoPass:
+    """
+    The ticks that arrived in one millisecond are one slice, and the algo computes once on it —
+    so what a processing budget is held to is one algo pass, not one tick (#460). Here 300 ticks
+    run in 100 passes of 3.0 ms: 1.0 ms a tick, against a P5 interval of 2.0 ms.
+    """
+
+    def _result(self) -> ProcessResult:
+        tlr = ProcessEventLoopResult(
+            profiling_data=ProcessProfileData(
+                profile_times={'worker_decision': 300.0, 'total_per_tick': 300.0,
+                               'total_per_algo_pass': 300.0},
+                profile_counts={'worker_decision': 100, 'total_per_algo_pass': 100},
+                inter_tick_intervals_ms=[2.0] * 100, gap_threshold_s=300.0),
+            coordination_statistics=WorkerCoordinatorPerformanceStats(ticks_processed=300))
+        return ProcessResult(success=True, scenario_name='s1', scenario_index=0,
+                             event_loop_results=tlr)
+
+    def _with_budget(self, budget_ms) -> BatchExecutionSummary:
+        return BatchExecutionSummary(
+            batch_execution_time=0.0, batch_warmup_time=0.0, batch_tickrun_time=0.0,
+            process_result_list=[self._result()],
+            clipping_stats_map={0: ClippingStats(
+                ticks_total=300, ticks_kept=300, ticks_clipped=0, budget_ms=budget_ms)})
+
+    def test_a_pass_slower_than_the_p5_interval_is_warned_about(self):
+        out = _warnings(_batch_results([self._result()]))
+        assert 'budget' in out
+        assert 'an algo pass takes longer than the P5 tick interval' in out['budget']
+
+    def test_a_budget_within_twice_the_pass_time_is_not_called_too_high(self):
+        # 5.0 ms is more than twice the time per tick, and less than twice the time per pass
+        assert 'budget_too_high' not in _warnings(self._with_budget(5.0))
+
+    def test_a_budget_above_twice_the_pass_time_is(self):
+        out = _warnings(self._with_budget(7.0))
+        assert 'budget_too_high' in out and '(3.000ms)' in out['budget_too_high']
+
 class TestThePerformanceVerdictsLiveHere:
     """
     The performance report used to print the parallel-penalty judgement as an inline
@@ -436,10 +485,10 @@ def _stream_result(name, idx, recorded, counted) -> ProcessResult:
     """
     events = [OrderEvent(seq=n + 1, event_type=OrderEventType.SUBMITTED, order_id=f'pos_{n}',
                          submitted_seq=n + 1) for n in range(recorded)]
-    tlr = ProcessTickLoopResult(
+    tlr = ProcessEventLoopResult(
         order_events=events, execution_stats=ExecutionStats(orders_submitted=counted))
     return ProcessResult(success=True, scenario_name=name, scenario_index=idx,
-                         tick_loop_results=tlr)
+                         event_loop_results=tlr)
 
 
 class TestTheStreamHoldsEverySubmission:
@@ -460,3 +509,49 @@ class TestTheStreamHoldsEverySubmission:
     def test_a_complete_stream_says_nothing(self):
         out = _warnings(_batch_results([_stream_result('s1', 0, recorded=3, counted=3)]))
         assert 'order_event_stream_incomplete' not in out
+
+
+def _funds_result(name, idx, balances, committed) -> ProcessResult:
+    """
+    A spot scenario that ended holding `balances` while its unfilled orders claim `committed`.
+
+    Args:
+        name: Scenario name
+        idx: Scenario index
+        balances: Currency → what the account holds
+        committed: Currency → what its own unfilled orders claim
+
+    Returns:
+        The ProcessResult
+    """
+    stats = PortfolioStats(
+        broker_type=BrokerType.KRAKEN_SPOT, total_trades=0, total_long_trades=0,
+        total_short_trades=0, winning_trades=0, losing_trades=0, total_profit=0.0,
+        total_loss=0.0, account_max_drawdown=0.0, max_equity=0.0, account_max_drawdown_pct=0.0,
+        win_rate=0.0, profit_factor=None, total_spread_cost=0.0, total_modelled_spread_cost=0.0,
+        total_commission=0.0, total_swap=0.0, maker_fee=0.0, taker_fee=0.0, total_fees=0.0,
+        fees_charged=0.0, currency='USD', broker_name='kraken', current_conversion_rate=1.0,
+        current_balance=balances.get('USD', 0.0), initial_balance=1000.0, spot_mode=True,
+        balances=balances, committed_funds=committed, base_currency='BTC', quote_currency='USD')
+    return ProcessResult(success=True, scenario_name=name, scenario_index=idx,
+                         event_loop_results=ProcessEventLoopResult(portfolio_stats=stats))
+
+
+class TestFundsBelowZeroAfterOwnOrdersAreAValidatorsVerdict:
+    """
+    A negative usable figure used to be a ⚠ the portfolio console decided on (#557, 679.b); it is
+    the validators' advisory now, and the console only shows the figure.
+    """
+
+    def test_a_claim_beyond_the_balance_is_reported(self):
+        out = _warnings(_batch_results([
+            _funds_result('s1', 0, {'USD': 100.0, 'BTC': 0.0}, {'USD': 150.0}),
+            _funds_result('s2', 1, {'USD': 500.0, 'BTC': 0.0}, {'USD': 150.0})]))
+        assert 'usable_funds_negative' in out
+        assert 's1 · USD -50.0000 usable' in out['usable_funds_negative']
+        assert 's2' not in out['usable_funds_negative']
+
+    def test_a_covered_claim_says_nothing(self):
+        out = _warnings(_batch_results([
+            _funds_result('s1', 0, {'USD': 500.0, 'BTC': 0.0}, {'USD': 150.0})]))
+        assert 'usable_funds_negative' not in out

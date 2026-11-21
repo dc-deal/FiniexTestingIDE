@@ -38,7 +38,7 @@ GB = 1024 ** 3
 
 def _frame(outcome=None) -> ImportProgressFrame:
     steps = [
-        ImportStepFrame(ImportStepId.SCAN, ImportSection.INBOXES, 'Scan import inboxes',
+        ImportStepFrame(ImportStepId.SCAN, ImportSection.INBOXES, 'Scan the import inbox',
                         ImportStepStatus.DONE, 614, 614, 'files',
                         detail='kraken_spot 312 · mt5 256 · signals 46', elapsed_s=2.0),
         ImportStepFrame(ImportStepId.TICKS_IMPORT, ImportSection.TICKS, 'Import tick files',
@@ -82,7 +82,7 @@ def _line_with(text: str, needle: str) -> str:
 @pytest.mark.parametrize('width', [80, 160])
 def test_screen_renders_at_narrow_and_wide_terminals(width):
     text = _render(_frame(), width)
-    for label in ('Scan import inboxes', 'Render bars', 'Rebuild discovery caches'):
+    for label in ('Scan the import inbox', 'Render bars', 'Rebuild discovery caches'):
         assert label in text
     assert '#1 mt5/GBPUSD' in text and '#2 mt5/EURUSD' in text
     assert 'RAM' in text and '18.4 / 30.3 GB' in text
@@ -128,14 +128,14 @@ def test_a_narrow_terminal_keeps_every_status_icon():
     frame.steps[1].status = ImportStepStatus.FAILED
     frame.steps[2].status = ImportStepStatus.INTERRUPTED
     text = _render(frame, 64)
-    assert '✅' in _line_with(text, 'Scan import inboxes')
+    assert '✅' in _line_with(text, 'Scan the import inbox')
     assert '❌' in _line_with(text, 'Import tick files')
     assert '✋' in _line_with(text, 'Render bars')
 
 
 def test_a_cut_note_ends_in_an_ellipsis_never_in_a_smaller_number():
     # At 80 columns the scan note does not fit; cut without a mark, '312' read as '31'
-    scan = _line_with(_render(_frame(), 80), 'Scan import inboxes')
+    scan = _line_with(_render(_frame(), 80), 'Scan the import inbox')
     assert '…' in scan
     assert 'kraken_spot 31 ' not in scan
 
@@ -176,5 +176,5 @@ def test_a_frame_that_cannot_be_drawn_is_reported_and_the_screen_goes_on(monkeyp
     assert len(reports) == 1
     assert reports[0].startswith('❌ [DISPLAY] The import screen failed — AttributeError')
     # The next frame was drawn: the thread outlived the failure
-    assert 'Scan import inboxes' in terminal.export_text()
+    assert 'Scan the import inbox' in terminal.export_text()
 

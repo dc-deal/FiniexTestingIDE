@@ -28,6 +28,7 @@ from pydantic import ValidationError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.persistence.carry_over_identity import accepts_carry_over, carry_over_key
 from python.framework.persistence.cold_start_state_index import ColdStartStateIndex
+from python.framework.store.abstract_store_index import SESSION_INDEX_LOCK_WAIT_S
 from python.framework.types.persistence_types import (
     AccountDrawdownCarryOver,
     CarryOverEnvelope,
@@ -309,7 +310,7 @@ class ColdStartStateStore:
             refresh_index: Whether to rebuild the store index afterwards. False for the
                 writes that happen DURING a session: the rebuild reads every bot's document
                 and costs 26-40 ms on this project's tree (§42), which has no business inside
-                a tick loop — and the index answers a cross-BOT question ("which bot carries
+                an event loop — and the index answers a cross-BOT question ("which bot carries
                 what") that nobody asks mid-session. It is derived and disposable (§44), so a
                 session that ends without one leaves a store that reports itself stale and
                 rebuilds on the next boot or via `store_cli.py rebuild cold_start_state`
@@ -401,7 +402,11 @@ class ColdStartStateStore:
         read path must never cost the carry-over the write it just made.
         """
         try:
-            ColdStartStateIndex(self._root).rebuild()
+            index = ColdStartStateIndex(self._root)
+            # A session's own write: it waits briefly for the index and gives it up with the
+            # warning below, never ends over it (#650)
+            index.set_lock_wait_s(SESSION_INDEX_LOCK_WAIT_S)
+            index.rebuild()
         except Exception as e:
             self._logger.warning(
                 f'⚠️ Cold-start index rebuild failed ({e}) — the carry-over itself is written; '

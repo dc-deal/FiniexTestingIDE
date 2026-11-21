@@ -3,7 +3,7 @@ FiniexTestingIDE - API Performance Monitor (#351)
 
 Read-only broker REST transport telemetry: times every private API call per
 endpoint and records latency + failures. Thread-safe — record() is called from
-the tick-loop thread (sync reconcile / warmup) AND from worker threads
+the event-loop thread (sync reconcile / warmup) AND from worker threads
 (#319/#320/#327 async dispatch). Logs only the abnormal: failed calls and calls
 slower than the configured threshold. Surfaced live via the API PERFORMANCE
 panel and a final per-endpoint summary.

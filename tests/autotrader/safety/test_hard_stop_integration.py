@@ -1,5 +1,5 @@
 """
-Hard Stop Integration — the hard stop's wiring through the real tick loop (#356).
+Hard Stop Integration — the hard stop's wiring through the real event loop (#356).
 
 The unit suites drive the hard stop's methods against a stub. This drives the whole path a
 session takes: the loop values the account on a tick, the safety layer sees the drawdown pass
@@ -20,7 +20,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.event_loop.autotrader_event_loop import AutotraderEventLoop
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.bars.bar_rendering_controller import BarRenderingController
@@ -40,7 +40,7 @@ from python.framework.types.autotrader_types.safety_session_types import (
 from python.framework.types.config_types.autotrader_defaults_config_types import SafetyConfig
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.decision_event_types import SessionEndSeverity
-from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.market_types.market_data_types import TickData, arrival_slices
 from python.framework.types.persistence_types import BaselineKind
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.utils.run_id_utils import mint_run_id
@@ -83,9 +83,9 @@ def _ticks_with_a_drop() -> List[TickData]:
 
 
 def _run(spot_mode: bool, liquidate: bool = False) -> Tuple[
-        AutotraderTickLoop, LiveTradeExecutor, int]:
+        AutotraderEventLoop, LiveTradeExecutor, int]:
     """
-    Run the AutoTrader tick loop over the drop with the hard stop armed.
+    Run the AutoTrader event loop over the drop with the hard stop armed.
 
     Args:
         spot_mode: The account model
@@ -99,8 +99,9 @@ def _run(spot_mode: bool, liquidate: bool = False) -> Tuple[
         run_timestamp=datetime.now(tz=timezone.utc),
         run_id=mint_run_id(datetime.now(timezone.utc)))
     tick_queue: queue.Queue = queue.Queue()
-    for tick in _ticks_with_a_drop():
-        tick_queue.put(tick)
+    ticks = _ticks_with_a_drop()
+    for arrival in arrival_slices(ticks):
+        tick_queue.put(arrival)
     tick_queue.put(None)
 
     balances: Optional[Dict[str, float]] = {'USD': 10000.0, 'BTC': 0.0} if spot_mode else None
@@ -117,12 +118,14 @@ def _run(spot_mode: bool, liquidate: bool = False) -> Tuple[
         order_guard_config=None))
     orchestrator = MagicMock()
     orchestrator.process_tick.side_effect = (
-        lambda tick, current_bars, bar_history, bar_render_state=None:
+        lambda tick, current_bars, bar_history, bar_render_state=None, tick_weight=1:
         logic.compute_tick(tick, {}))
     tick_source = MagicMock()
     tick_source.is_exhausted.return_value = True
+    # A replay's own time, the front of its queue: the session stamps the venue's answers on it
+    tick_source.get_idle_pass_time.return_value = ticks[-1].timestamp
 
-    loop = AutotraderTickLoop(
+    loop = AutotraderEventLoop(
         config=AutoTraderConfig(
             profile_name='hard_stop', symbol=SYMBOL, broker_type='kraken_spot',
             adapter_type='mock',

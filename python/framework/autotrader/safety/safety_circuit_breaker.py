@@ -3,7 +3,7 @@ FiniexTestingIDE - Safety Circuit Breaker (#356, #314)
 
 The safety layer of an AutoTrader session: the soft breaker that blocks new entries, the hard stop
 that closes everything and ends the session, the daily loss limit with its own day baseline, and
-the record of what the breaker saw for the end-of-session report. The tick loop hands it one
+the record of what the breaker saw for the end-of-session report. The event loop hands it one
 account value per tick and asks whether entries are blocked; everything the breaker decides on
 lives here, so the layer #358 certifies with real money is one unit.
 """
@@ -38,14 +38,16 @@ from python.framework.types.persistence_types import (
     BaselineQuantities,
 )
 
-# How many ticks the hard stop keeps draining before it ends the session with positions
+# How many tick passes the hard stop keeps draining before it ends the session with positions
 # still open (#356). A close is asynchronous: it is sent on one tick and its fill arrives on
 # a later one, so ending immediately would report a flat book that is not flat. The window
 # is generous because the alternative — exiting early — is the failure it exists to prevent,
 # and it is BOUNDED because a venue that never answers must not hold the session open for
 # the rest of the month. What happens at the end of it is not a silent exit: every position
-# still open is named into the error pot (§35).
-_FLATTEN_DRAIN_TICKS = 200
+# still open is named into the error pot. Passes, not ticks: each tick pass resolves the
+# venue's answers once, and a live session coalesces a backlog into one pass (#461), so a tick
+# count would let one burst use up the window in a single instant.
+_FLATTEN_DRAIN_PASSES = 200
 
 
 class SafetyCircuitBreaker:
@@ -104,7 +106,7 @@ class SafetyCircuitBreaker:
         # closes and ending in the same breath would leave positions open at the venue while
         # the books called them closed. So: send once, keep draining, end when the book is
         # flat or the window runs out — and say which positions were never confirmed.
-        self._flatten_sent_at_tick: Optional[int] = None
+        self._flatten_sent_at_pass: Optional[int] = None
         self._flatten_reason: str = ''
 
         # Safety / circuit breaker state
@@ -318,7 +320,7 @@ class SafetyCircuitBreaker:
         """
         Evaluate circuit breaker conditions and update safety state.
 
-        Soft stop: sets _safety_blocked flag, and while it holds the tick loop forces each
+        Soft stop: sets _safety_blocked flag, and while it holds the event loop forces each
         decision's action to FLAT — no new entry, and no close the strategy expresses as an
         action. The breaker closes nothing itself.
 
@@ -403,7 +405,7 @@ class SafetyCircuitBreaker:
         self,
         current_value: float,
         baseline: float,
-        ticks_processed: int,
+        tick_passes: int,
     ) -> None:
         """
         Trip the HARD stop, once, when the drawdown passes a hard threshold (#356).
@@ -419,12 +421,12 @@ class SafetyCircuitBreaker:
         Args:
             current_value: The account value being checked
             baseline: The denominator the drawdown is measured against
-            ticks_processed: The loop's tick counter, recorded as the drain window's start
+            tick_passes: The loop's count of tick passes, recorded as the drain window's start
         """
         safety = self._config.safety
         if not (safety.enabled and safety.emergency_flatten_enabled):
             return
-        if self._flatten_sent_at_tick is not None or baseline <= 0:
+        if self._flatten_sent_at_pass is not None or baseline <= 0:
             return
 
         drawdown_abs = baseline - current_value
@@ -444,9 +446,9 @@ class SafetyCircuitBreaker:
         # passes the seam until that issue is built
         if self._on_hard_stop is not None:
             self._on_hard_stop(reason)
-        self._send_emergency_closes(reason, ticks_processed)
+        self._send_emergency_closes(reason, tick_passes)
 
-    def drive_emergency_flatten(self, ticks_processed: int) -> None:
+    def drive_emergency_flatten(self, tick_passes: int) -> None:
         """
         End the session once the closes have actually landed — or say they did not.
 
@@ -463,9 +465,9 @@ class SafetyCircuitBreaker:
         silent.
 
         Args:
-            ticks_processed: The loop's own tick counter
+            tick_passes: The loop's own count of tick passes
         """
-        if self._flatten_sent_at_tick is None:
+        if self._flatten_sent_at_pass is None:
             return
         open_positions = self._executor.portfolio.get_open_positions()
         if not open_positions:
@@ -473,10 +475,10 @@ class SafetyCircuitBreaker:
             self._executor.request_session_end(
                 f'emergency flatten complete ({self._flatten_reason})',
                 SessionEndSeverity.EMERGENCY)
-            self._flatten_sent_at_tick = None
+            self._flatten_sent_at_pass = None
             return
 
-        if self._flatten_sent_at_tick < 0:
+        if self._flatten_sent_at_pass < 0:
             # Spot holdings kept on purpose (safety.spot_liquidate_to_quote is off): no close was
             # sent, and the first error line already said the holdings are not sold. The session
             # ends — without a second alarm that would invite selling by hand, which realises
@@ -487,11 +489,11 @@ class SafetyCircuitBreaker:
             self._executor.request_session_end(
                 f'emergency stop, spot holdings kept ({self._flatten_reason})',
                 SessionEndSeverity.EMERGENCY)
-            self._flatten_sent_at_tick = None
+            self._flatten_sent_at_pass = None
             return
 
-        waited = ticks_processed - self._flatten_sent_at_tick
-        if waited >= _FLATTEN_DRAIN_TICKS:
+        waited = tick_passes - self._flatten_sent_at_pass
+        if waited >= _FLATTEN_DRAIN_PASSES:
             self._flatten_outcome = FlattenOutcome.UNCONFIRMED
             self._flatten_unconfirmed = [p.position_id for p in open_positions]
             still_open = ', '.join(p.position_id for p in open_positions)
@@ -506,7 +508,7 @@ class SafetyCircuitBreaker:
             self._executor.request_session_end(
                 f'emergency flatten incomplete ({self._flatten_reason})',
                 SessionEndSeverity.EMERGENCY)
-            self._flatten_sent_at_tick = None
+            self._flatten_sent_at_pass = None
 
     def entries_blocked(self) -> bool:
         """
@@ -594,7 +596,7 @@ class SafetyCircuitBreaker:
         self._day_worst_loss_at = ''
         self._day_limit_hit = False
 
-    def _send_emergency_closes(self, reason: str, ticks_processed: int) -> None:
+    def _send_emergency_closes(self, reason: str, tick_passes: int) -> None:
         """
         Ask the venue to close everything this bot holds.
 
@@ -607,7 +609,7 @@ class SafetyCircuitBreaker:
 
         Args:
             reason: What tripped, for the log and the session end
-            ticks_processed: The loop's tick counter, recorded as the drain window's start
+            tick_passes: The loop's count of tick passes, recorded as the drain window's start
         """
         positions = list(self._executor.portfolio.get_open_positions())
         spot = self._trading_model == TradingModel.SPOT
@@ -622,7 +624,7 @@ class SafetyCircuitBreaker:
                 'EMERGENCY STOP — the session ends',
                 f'{reason}. {len(positions)} spot holding(s) are NOT sold '
                 f'(safety.spot_liquidate_to_quote is off).')
-            self._flatten_sent_at_tick = -1
+            self._flatten_sent_at_pass = -1
             return
 
         self._logger.error(
@@ -641,7 +643,7 @@ class SafetyCircuitBreaker:
                 self._logger.error(
                     f'❌ EMERGENCY STOP could not send the close for '
                     f'{position.position_id}: {e}. It is still open at the venue.')
-        self._flatten_sent_at_tick = ticks_processed
+        self._flatten_sent_at_pass = tick_passes
 
     def _block(self, reason: str) -> None:
         """

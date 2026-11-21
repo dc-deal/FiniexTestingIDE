@@ -37,8 +37,8 @@ class ScenarioStatus(Enum):
         WARMUP_TRADER: Loading broker config (BatchOrchestrator, Phase 1)
         INIT_PROCESS: Process started, initializing objects (Subprocess)
         BARRIER: Wait for other processes to pickle / deserialize
-        RUNNING: Tick loop running (Subprocess)
-        COMPLETED: Tick loop finished successfully (Subprocess)
+        RUNNING: Event loop running (Subprocess)
+        COMPLETED: Event loop finished successfully (Subprocess)
         FINISHED_WITH_ERROR: Error during init or run (Subprocess)
     """
     # BatchOrchestrator States (Main Process)

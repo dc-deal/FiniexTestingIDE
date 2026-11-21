@@ -1,0 +1,70 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "indicator_series_test",
+  "run_purpose": "fixture",
+  "created": "2026-11-12T00:00:00.000000",
+  "description": "Indicator series (#379) - simple_consensus with RSI, Bollinger and OBV, beside them a tide-and-wave worker drawing on M5 and M30, the series recorded: one value per closed bar of each drawing worker. Its thresholds are loosened so it trades, which lets a test hold its orders the same with the recording on and off",
+  "global": {
+    "strategy_config": {
+      "decision_logic_type": "CORE/simple_consensus",
+      "worker_instances": {
+        "rsi_fast": "CORE/rsi",
+        "bollinger_main": "CORE/bollinger",
+        "obv_volume": "CORE/obv",
+        "tide_wave": "CORE/tide_and_wave"
+      },
+      "workers": {
+        "rsi_fast": {
+          "periods": {
+            "M5": 14
+          }
+        },
+        "bollinger_main": {
+          "periods": {
+            "M30": 20
+          },
+          "deviation": 2
+        },
+        "obv_volume": {
+          "periods": {
+            "M5": 20
+          }
+        },
+        "tide_wave": {
+          "periods": {
+            "M5": 14,
+            "M30": 26
+          }
+        }
+      },
+      "decision_logic_config": {
+        "rsi_oversold": 45,
+        "rsi_overbought": 55,
+        "bollinger_lower_threshold": 0.45,
+        "bollinger_upper_threshold": 0.55,
+        "min_confidence": 0.1,
+        "lot_size": 0.1,
+        "min_entry_capital": 1000
+      }
+    },
+    "execution_config": {
+      "indicator_series": {
+        "enabled": true
+      }
+    },
+    "trade_simulator_config": {
+      "balances": {
+        "USD": 10000
+      }
+    }
+  },
+  "scenarios": [
+    {
+      "scenario_name": "ethusd_series",
+      "symbol": "ETHUSD",
+      "data_broker_type": "kraken_spot",
+      "start_date": "2026-02-10T10:00:00+00:00",
+      "end_date": "2026-02-10T20:00:00+00:00"
+    }
+  ]
+}

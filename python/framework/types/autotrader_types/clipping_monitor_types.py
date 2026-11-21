@@ -16,14 +16,19 @@ class ClippingReport:
 
     Args:
         interval_ticks: Ticks processed in this interval
-        interval_clipped: Ticks that were stale (processing > inter-tick delta)
-        interval_max_stale_ms: Maximum staleness in this interval
-        interval_avg_stale_ms: Average staleness in this interval
-        interval_max_processing_ms: Maximum processing time in this interval
-        interval_avg_processing_ms: Average processing time in this interval
-        interval_max_queue_depth: Maximum queue depth in this interval
+        interval_passes: Passes in this interval, each over one slice of ticks
+        interval_clipped: Ticks of the arrivals before a slice's newest: they waited behind a busy
+            loop, and the algo did not compute on them
+        interval_max_stale_ms: Longest wait of a clipped slice's oldest arrival in this interval
+        interval_avg_stale_ms: Average wait of a clipped slice's oldest arrival in this interval
+        interval_max_processing_ms: Maximum processing time of a pass in this interval
+        interval_avg_processing_ms: Average processing time of a pass in this interval
+        interval_max_queue_depth: Maximum tick queue depth in this interval, in items, not
+            ticks: one per arrival (a venue message live, an arrival millisecond in a replay)
+            and one per venue answer whose wake was not yet taken
     """
     interval_ticks: int = 0
+    interval_passes: int = 0
     interval_clipped: int = 0
     interval_max_stale_ms: float = 0.0
     interval_avg_stale_ms: float = 0.0
@@ -43,10 +48,10 @@ class ClippingDisplaySnapshot:
 
     Args:
         total_ticks: Total ticks processed so far
-        ticks_clipped: Total clipped ticks
-        clipping_ratio: Fraction clipped (0.0 to 1.0)
-        avg_processing_ms: Average tick processing time
-        max_processing_ms: Maximum tick processing time
+        ticks_clipped: Total clipped ticks — ticks the algo did not compute on
+        clipping_ratio: Fraction of the ticks clipped (0.0 to 1.0)
+        avg_processing_ms: Average processing time of a pass
+        max_processing_ms: Maximum processing time of a pass
         processing_times_ms: The most recent processing times, at most PERCENTILE_WINDOW_TICKS
             of them — the display reads its percentiles from this window, not the session
     """
@@ -67,15 +72,20 @@ class ClippingSessionSummary:
 
     Args:
         total_ticks: Total ticks processed
-        ticks_clipped: Total ticks that arrived while previous tick was still processing
+        total_passes: Total passes, each over one slice of ticks (#461)
+        ticks_clipped: Total ticks of the arrivals before a slice's newest: they waited behind a
+            busy loop, and the algo did not compute on them
         clipping_ratio: Fraction of ticks that were clipped (0.0 to 1.0)
-        max_stale_ms: Maximum staleness observed across session
-        avg_stale_ms: Average staleness of clipped ticks
-        max_processing_ms: Maximum per-tick processing time
-        avg_processing_ms: Average per-tick processing time
-        max_queue_depth: Maximum queue depth observed
+        max_stale_ms: Longest a clipped slice's oldest arrival waited before the loop took it
+        avg_stale_ms: Average of that wait over the slices that clipped
+        max_processing_ms: Maximum processing time of a pass
+        avg_processing_ms: Average processing time of a pass
+        max_queue_depth: Maximum tick queue depth observed, in items, not ticks: one per
+            arrival (a venue message live, an arrival millisecond in a replay) and one per venue
+            answer whose wake was not yet taken
     """
     total_ticks: int = 0
+    total_passes: int = 0
     ticks_clipped: int = 0
     clipping_ratio: float = 0.0
     max_stale_ms: float = 0.0

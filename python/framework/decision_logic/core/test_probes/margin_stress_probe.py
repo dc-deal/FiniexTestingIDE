@@ -96,8 +96,10 @@ from typing import Any, Dict, List, Optional, Set
 
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
+from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.decision_logic_types import Decision, DecisionLogicAction
-from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.performance_types.performance_stats_types import DecisionLogicStats
@@ -106,7 +108,6 @@ from python.framework.types.trading_env_types.market_data_status_types import Ma
 from python.framework.types.trading_env_types.order_types import (
     OrderDirection,
     OrderFeature,
-    OrderResult,
     OrderSide,
     OrderType,
 )
@@ -207,6 +208,14 @@ class MarginStressProbe(AbstractDecisionLogic):
     # ============================================
     # Class Methods (Factory Interface)
     # ============================================
+
+    @classmethod
+    def get_metadata(cls) -> ComponentMetadata:
+        """CORE test probe metadata."""
+        return ComponentMetadata(
+            version='1.0.0',
+            doc_link='docs/tests/simulation/margin_validation_tests.md',
+        )
 
     @classmethod
     def get_parameter_schema(cls) -> Dict[str, InputParamDef]:
@@ -340,7 +349,7 @@ class MarginStressProbe(AbstractDecisionLogic):
 
     def compute_tick(
         self,
-        tick: TickData,
+        tick: AlgoTick,
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         self.tick_count += 1
@@ -477,8 +486,8 @@ class MarginStressProbe(AbstractDecisionLogic):
     def _execute_decision_impl(
         self,
         decision: Decision,
-        tick: TickData
-    ) -> Optional[OrderResult]:
+        tick: AlgoTick
+    ) -> Optional[AlgoOrderResult]:
         if not self.trading_api:
             self.logger.warning(
                 'No trading_api available - skipping execution')

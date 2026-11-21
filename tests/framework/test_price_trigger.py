@@ -170,7 +170,7 @@ class TestTheMidpointOfAQuote:
     search for `.mid` could not find any of them — four of those sat on the money path
     (equity, drawdown, the entry and exit fee's conversion factor). `TickData.mid` answers
     the same question where a tick IS in scope and stays inline there: delegating was
-    measured at +30 % on the property access, and it sits in the tick loop.
+    measured at +30 % on the property access, and it sits in the event loop.
     """
 
     def test_it_is_the_middle_of_the_two_sides(self):

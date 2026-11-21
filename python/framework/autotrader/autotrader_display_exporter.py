@@ -2,7 +2,7 @@
 FiniexTestingIDE - AutoTrader Display Exporter
 Builds AutoTraderDisplayStats snapshots from live pipeline state (#400).
 
-Extracted from AutotraderTickLoop so the loop stays orchestration-only.
+Extracted from AutotraderEventLoop so the loop stays orchestration-only.
 Holds the stable collaborators; the volatile per-frame state (safety,
 rejections, spot-equity baseline) is passed per call.
 """
@@ -170,7 +170,7 @@ class AutotraderDisplayExporter:
             decision: Current tick's decision
             ticks_processed: Tick counter
             tick: Current tick (for last_price)
-            safety: Circuit-breaker state from the tick loop
+            safety: Circuit-breaker state from the event loop
             recent_rejections: Rolling rejection buffer (newest last)
             total_rejections: Running rejection count
             initial_spot_equity: Spot equity baseline captured on first tick

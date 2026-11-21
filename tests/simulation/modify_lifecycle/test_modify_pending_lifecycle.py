@@ -8,6 +8,11 @@ Symmetric to test_async_modify.py in live_executor — same algo-facing
 contract, sim-specific resolution mechanism (msc-clock vs. worker-thread).
 """
 
+import dataclasses
+
+import pytest
+
+from python.framework.trading_env.algo_masks.algo_order import AlgoOrder
 from python.framework.types.trading_env_types.latency_simulator_types import PendingOperation
 from python.framework.types.trading_env_types.order_types import (
     ModificationRejectionReason,
@@ -194,9 +199,7 @@ class TestModifyPositionCapabilityGate:
         # Override capability to simulate MT5 profile
         original = sim_executor.broker.adapter.get_order_capabilities
         def mt5_caps():
-            caps = original()
-            caps.native_position_sl_tp = True
-            return caps
+            return dataclasses.replace(original(), native_position_sl_tp=True)
         sim_executor.broker.adapter.get_order_capabilities = mt5_caps
 
         mod_result = sim_executor.modify_position(
@@ -215,3 +218,38 @@ class TestModifyPositionCapabilityGate:
         position = sim_executor.portfolio.get_position(position_id)
         assert position.stop_loss == 48000.0
         assert position.take_profit == 52000.0
+
+
+class TestTheAlgoSeesItsOrder:
+    """A resting order reaches the algo as a mask (#654): the same mask on every read while the
+    order rests, current at every read, and read-only."""
+
+    def test_a_kept_mask_shows_the_modify_in_flight_then_applied(self, sim_executor):
+        order_id = _submit_limit_to_active(sim_executor)
+        mask, = sim_executor.get_algo_orders()
+        assert isinstance(mask, AlgoOrder) and mask.pending_order_id == order_id
+
+        sim_executor.modify_limit_order(order_id=order_id, new_price=48000.0,
+                                        new_stop_loss=47000.0)
+        assert mask.in_flight_operation == PendingOperation.PENDING_MODIFY
+        assert mask.entry_price == 49000.0
+
+        feed_sim_tick(sim_executor, msc=1002)
+        assert mask.in_flight_operation == PendingOperation.NONE
+        assert (mask.entry_price, mask.stop_loss) == (48000.0, 47000.0)
+        assert sim_executor.get_algo_orders() == [mask]
+
+    def test_assigning_to_the_mask_changes_nothing(self, sim_executor):
+        _submit_limit_to_active(sim_executor)
+        mask, = sim_executor.get_algo_orders()
+        with pytest.raises(AttributeError, match='read-only'):
+            mask.entry_price = 1.0
+        assert mask.entry_price == 49000.0
+
+    def test_a_cancelled_order_leaves_the_reads(self, sim_executor):
+        order_id = _submit_limit_to_active(sim_executor)
+        sim_executor.get_algo_orders()
+        sim_executor.cancel_limit_order(order_id)
+        feed_sim_tick(sim_executor, msc=1002)
+        assert sim_executor.get_algo_orders() == []
+

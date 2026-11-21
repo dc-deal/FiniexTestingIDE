@@ -55,6 +55,8 @@ documentation hits or whose missing command ends the search with a traceback.
 |---|---|
 | `TestTheWholeTreeIsSearchable` | a nested document is found and named by its path below the root · the served set still reads one level · a nested document reads back by that name |
 | `TestTheExtraSearches` | each command gets the term as its last argument, after the documentation hits · a command that cannot start is reported, not raised · a fresh clone sets up no extra search |
+| `TestOneFolderAlone` | `--root` reads its folder one level deep · a folder searched alone runs no extra search, so a configured search of itself cannot recurse · the command line searches a given root alone · an extra search by root is announced by its folder's name |
+| `TestASnapshotSaysHowOldItIs` | a folder declared a snapshot (`docs_search.snapshot_stamps`) prints its age on its count line · one older than a day is flagged as no longer kept current · a folder that is no snapshot prints no age · an unreadable stamp is said, never guessed |
 
 ## Why a hit's key carries its line
 

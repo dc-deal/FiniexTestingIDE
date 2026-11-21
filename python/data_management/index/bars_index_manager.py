@@ -12,7 +12,7 @@ import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Set
 
 import pandas as pd
 import pyarrow as pa
@@ -22,6 +22,8 @@ from python.configuration.app_config_manager import AppConfigManager
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.store.abstract_store_index import store_index_filename
+from python.framework.types.config_types.data_origin_config_types import OriginClass
+from python.framework.types.data_origin_types import SymbolDataOrigin
 from python.framework.types.store_types import StoreId
 
 vLog = get_global_logger()
@@ -34,6 +36,11 @@ vLog = get_global_logger()
 # The proper mechanism is `AbstractStoreIndex.LOGIC_VERSION`, which this legacy manager does not
 # have — adopting it is #583's, and this is the stopgap until then.
 INDEX_SCHEMA_VERSION = b'2.1'
+
+# The index files this process has already said are missing. A server with no bar archive — the bot's
+# run host serves its runs and renders no bars — reads the index on every broker and bar request, and
+# an absent file is its normal state there, said once rather than warned on each request (#647)
+_MISSING_INDEX_NOTED: Set[Path] = set()
 
 # What a bar file answers when it was written before the price basis was stamped, or when it
 # is not in the index at all. Never a declared basis: 'unknown' is a statement, a borrowed
@@ -433,6 +440,29 @@ class BarsIndexManager:
             return None
         return pd.Timestamp(entry['collected_from']).tz_convert('UTC').to_pydatetime()
 
+    def get_symbol_origin(self, broker_type: str, symbol: str) -> SymbolDataOrigin:
+        """
+        Whose data a symbol's bars were rendered from, over every timeframe (#647).
+
+        Each bar file carries the seam its ticks state, so the timeframes agree on it; should they
+        not, the earliest is taken.
+
+        Args:
+            broker_type: Broker the bars belong to
+            symbol: Trading symbol
+
+        Returns:
+            The origin classes in their declared order, and the seam
+        """
+        timeframes = self.get_available_timeframes(broker_type, symbol)
+        classes = {origin for timeframe in timeframes
+                   for origin in self.get_origin_classes(broker_type, symbol, timeframe)}
+        seams = [seam for seam in (self.get_collected_from(broker_type, symbol, timeframe)
+                                   for timeframe in timeframes) if seam is not None]
+        return SymbolDataOrigin(
+            origin_classes=[origin for origin in OriginClass if origin.value in classes],
+            collected_since=min(seams) if seams else None)
+
     def get_available_timeframes(self, broker_type: str, symbol: str) -> List[str]:
         """Get list of available timeframes for a symbol."""
         if broker_type not in self.index:
@@ -527,6 +557,14 @@ class BarsIndexManager:
 
     def _load_index(self) -> None:
         """Load index from Parquet file and convert to nested dict."""
+        if not self.index_file.exists():
+            # No bar archive here: an empty index, said once per process. A file that exists and
+            # cannot be read is a fault, and keeps its warning below
+            if self.index_file not in _MISSING_INDEX_NOTED:
+                _MISSING_INDEX_NOTED.add(self.index_file)
+                self.logger.info(f'No bar index at {self.index_file} — no bars are served from here')
+            self.index = {}
+            return
         try:
             df = pd.read_parquet(self.index_file)
             self.index = self._dataframe_to_nested_dict(df)

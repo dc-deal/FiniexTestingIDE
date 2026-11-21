@@ -89,7 +89,7 @@ LiveTradeExecutor.open_order(request: OpenOrderRequest)
 ### 2. Next Tick → Broker Polling
 
 ```
-live_executor.on_tick(tick)
+live_executor.resolve_due(stamp)          # after the instant's ticks (#461)
     └── _process_pending_orders()
         │
         ├── for pending in order_tracker.get_pending_orders():
@@ -173,7 +173,7 @@ The shared `PendingOrder` dataclass has optional fields for each mode. Live sets
 
 - `submitted_at: datetime` — UTC timestamp when order was sent to broker
 - `broker_ref: str` — Broker's order reference (MT5 ticket, Kraken order ID)
-- `order_timeout_deadline_monotonic: float` — When to consider the order timed out: a `time.monotonic()` reading plus `order_timeout_seconds`. A timeout is a duration, so it reads neither the wall clock nor the canonical clock, which a mock session splits between replay time and the present
+- `order_timeout_deadline_monotonic: float` — When to consider the order timed out: a `time.monotonic()` reading plus `order_timeout_seconds`. A timeout is a duration, so it reads neither the wall clock nor the canonical clock, which a mock session runs in replay time
 
 Simulation fields (`placed_at_msc`, `broker_fill_msc`) remain None on the live execution stack.
 
@@ -303,13 +303,13 @@ broker does not show either. It is never dropped (the venue may still hold it) b
 the targeted status query in #487.
 
 **The Reconciler still writes nothing.** An attribution is applied by the executor
-(`apply_order_attributions`), called by the tick loop with what the cycle matched, and it only ever
+(`apply_order_attributions`), called by the event loop with what the cycle matched, and it only ever
 fills a `broker_ref` that is `None` — overwriting a settled one would be correction, which is #349.
 
 **A changed picture is written to the order-event stream (#362).** A cycle marks itself
 `broker_truth_due` when its picture — clean, or the divergence by identity — differs from the one
 last written and `broker_truth_min_interval_seconds` have passed since; a change inside that
-distance waits for the next cycle after it. The tick loop hands a due cycle to the executor, which
+distance waits for the next cycle after it. The event loop hands a due cycle to the executor, which
 numbers the line on the stream's counter. A clean cycle forgets the last divergence, so one that
 returns is warned and written again rather than called unchanged. See
 [Order-Event Stream](order_event_stream.md#what-the-venue-said--broker-truth).
@@ -328,7 +328,7 @@ adopting an unknown position with a synthetic entry price corrupts P&L permanent
 
 On boot the executor's shadow is empty while the venue still holds what an earlier session
 left there. A bot that starts anyway trades beside its own open orders without seeing them.
-The boot step (`cold_start_setup.py` → `ColdStartAdopter`) runs once, before the tick loop:
+The boot step (`cold_start_setup.py` → `ColdStartAdopter`) runs once, before the event loop:
 
 > **This pairs with the session-end policy (#492), and the pair is checked at startup.**
 > Adoption only has something to adopt if the previous session LEFT it — so
@@ -355,7 +355,7 @@ BOOT
  │    ├─ restore the book, adopt the orders, lift the id counter
  │    └─ file the situation in the run record    (`io/cold_start.json`)
  ├─ FIELD STUDY                   excluded — it asserts a flat book itself (#332)
- └─ TICK LOOP
+ └─ EVENT LOOP
 ```
 
 ### Ownership, not existence, decides
@@ -435,27 +435,44 @@ unattended case it guards. Unattended running is a conscious `"auto"`.
 
 ---
 
-## Canonical Clock & Idle Cadence (#360)
+## Canonical Clock & the Session's Timeline (#360, #461)
 
-`get_current_time()` is **loop-injected**, not derived from the last tick. `on_tick` sets the clock
-from the tick timestamp; on an idle heartbeat the loop injects the wall-clock via
-`set_current_time()`. The clock therefore advances continuously — it never freezes to the last tick
-and then jumps by the full gap — so phase/op timeouts track real elapsed time. This is the single
-place wall-clock is read in an AutoTrader session; decision logic and workers only ever call
-`get_current_time()`, the one canonical clock. In simulation the injected time is the simulated tick
-time, keeping backtests reproducible.
+`get_current_time()` is **loop-injected**: every instant the session's timeline hands over sets
+the clock to the instant's stamp, once, forward only. The stamp lies on the **receipt axis** —
+when something reached the session — the axis a backtest orders by since #460:
 
-The idle heartbeat (fired when no tick arrives within `heartbeat_interval_ms`, default 500 ms
-for the AutoTrader; 1000 ms is the simulation ghost-pass default)
-runs the cadence work on the **single main-loop consumer** — no second mutating thread:
-`heartbeat()` drains the inbox, checks timeouts, and **re-polls resting orders and the MARKET
-orders and closes the venue has acknowledged** (the fill/cancel-confirm query fires during idle,
-not only on a tick); the Reconciler pulls broker
-truth if due; and a decision **ghost-pass** runs (`tick=None`, cached worker results) for logics
-that opt in via `wants_heartbeat()`. No synthetic market tick is fed into the pipeline and no
-tick state is mutated (the #320 contract). The per-order `poll_interval_ms` and the reconcile
-`min_interval_seconds` still gate the actual broker I/O, so a faster heartbeat does not multiply
-API calls.
+- **Live**, a tick's receipt is the wall clock, read once per trade while its WebSocket message is
+  parsed. The venue's own stamp stays on the tick as `ts_event`, as data, and the bars still form
+  on it. A venue's answer is stamped when it lands in the executor's inbox, on the same axis.
+- **A replay** carries the receipt its collector recorded (`collected_msc`, else the venue's
+  stamp). Between two ticks its time is the last tick it put on the queue plus the real time since
+  (#616), so a pause in a replay — the outage drill, a throttled replay — moves the clock by the
+  pause and the records stay on the replay's day. A venue's answer in a replay is stamped on that
+  time too, never on the wall clock, which lies months ahead of it.
+
+This is the one place the wall clock is read for an AutoTrader session's time; decision logic and
+workers only ever call `get_current_time()`. Before #461 a tick set the clock to the venue's stamp
+and an idle pass to the wall clock, two axes a feed's latency apart — the booking-period
+mis-booking of 2026-09-22 came from exactly that. In simulation the injected time is the recorded
+arrival, keeping backtests reproducible.
+
+**The timeline** (`loop/intake/live_event_intake.py`) waits until the next of its timers falls due
+and is woken when a tick or a venue's answer arrives, so an answer is resolved on arrival, never
+at the next tick or heartbeat — except while a stopping session waits for its last orders, which
+reads them a heartbeat apart. The heartbeat falls due one `heartbeat_interval_ms` after the last
+instant with ticks or the last heartbeat — a venue's answer does not hold it off — (default 500 ms
+for the AutoTrader; 1000 ms is the simulation ghost-pass default):
+`heartbeat()` drains the inbox, checks timeouts and **re-polls resting orders and the MARKET
+orders and closes the venue has acknowledged**, the staleness check runs, and a decision
+**ghost-pass** runs (`tick=None`, cached worker results) for logics that opt in via
+`wants_heartbeat()`. The reconciliation, the state persistence and the state frames' cadence are
+timers of their own. Its lanes, its timers and how a backlog becomes one slice are in
+[The Loop Core](loop_core_architecture.md#the-autotraders-timeline-461).
+
+The **single main-loop consumer** is untouched: a producer thread only puts and notes, and every
+state change happens on the loop's thread. No synthetic market tick is fed into the pipeline and no
+tick state is mutated on a heartbeat (the #320 contract). The per-order `poll_interval_ms` still
+gates the actual broker I/O, so a faster heartbeat does not multiply API calls.
 
 ---
 

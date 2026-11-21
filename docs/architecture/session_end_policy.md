@@ -10,7 +10,7 @@ decisions rather than one.** Layer b (architecture / flow) per #323.
 | Policy resolution | [session_end_validator.py](../../python/framework/validators/session_end_validator.py) |
 | Live cleanup | [live_trade_executor.py:4020](../../python/framework/trading_env/live/live_trade_executor.py#L4020) |
 | Sim cleanup | [trade_simulator.py:1440](../../python/framework/trading_env/simulation/trade_simulator.py#L1440) |
-| A stop's wait for orders on their way | [autotrader_tick_loop.py:760](../../python/framework/autotrader/autotrader_tick_loop.py#L760) |
+| A stop's wait for orders on their way | [autotrader_stop_wait.py:96](../../python/framework/autotrader/event_loop/autotrader_stop_wait.py#L96) |
 | Its settings | `autotrader.shutdown` in [app_config.json](../../configs/app_config.json) |
 | Accounting rule | [reporting_pipeline.md](reporting_pipeline.md) — *Realised vs valued* |
 | Tests | [session_end_tests.md](../tests/autotrader/session_end_tests.md) |
@@ -245,9 +245,10 @@ wait for it would only run out, and the cleanup books it unaccounted with an ERR
 **And once more after the session-end event.** A strategy may close on its way out, from
 `on_session_end`. Such a close is waited for the same way, so its fill is booked before the cleanup,
 and both waits keep to one bound: the second goes on from the time the first spent, and does not
-run at all once the first ran out, because the worker stopped with it. The logic does not hear what
-this second wait settles: the session-end event stays the last thing it is told. An open and its
-close carry the same id, so the stop tells its orders apart by id and action.
+run at all once the first ran out, because the worker stopped with it. The logic hears what this
+second wait settled, and how the bound ended what it did not, in `on_session_end_order_outcome`, once
+the wait is over (#642); a backtest settles such an order at its last quote the same way. An open and
+its close carry the same id, so the stop tells its orders apart by id and action.
 
 ### One wait pass
 
@@ -302,6 +303,13 @@ rather than counted as open at the venue.
 again after it, because a fill the cleanup found, on a read after a refused cancel, moved the book.
 **At margin the carry-over holds no book:** such a fill reaches the report and not the next session,
 which reads its positions from the venue (#209).
+
+A third write closes the session, once the results are collected. Three of the carried figures are
+not final before that: the last booking period is sealed only there, the run-end equity sample can
+deepen the drawdown, and the positions are marked once more, which can deepen their excursion
+extrema. The closing write carries the period floor, the drawdown curve and, under the same gate as
+the first write, the open book again (#537, #497, #542). A figure that a later step of the end can
+still move is written after that step, never only before it.
 
 Under a declared kill every venue call of the cleanup, and each part of the end read, asks the
 budget first. The read at the START is untouched: a session that has not begun has no kill to fit
@@ -359,7 +367,7 @@ populated.
 | The open-position report row | [report_types.py:545](../../python/framework/types/api/report_types.py#L545) |
 | The equity curve, one scale for both writers | [portfolio_manager.py:1380](../../python/framework/trading_env/portfolio_manager.py#L1380) |
 | The adoption prompt that states this policy | [cold_start_adopter.py:1005](../../python/framework/autotrader/cold_start/cold_start_adopter.py#L1005) |
-| A stop's wait and one pass of it | [autotrader_tick_loop.py:760](../../python/framework/autotrader/autotrader_tick_loop.py#L760) · [autotrader_tick_loop.py:824](../../python/framework/autotrader/autotrader_tick_loop.py#L824) |
+| A stop's wait and one pass of it | [autotrader_stop_wait.py:96](../../python/framework/autotrader/event_loop/autotrader_stop_wait.py#L96) · [autotrader_stop_wait.py:199](../../python/framework/autotrader/event_loop/autotrader_stop_wait.py#L199) · [loop_event_dispatcher.py:367](../../python/framework/loop/loop_event_dispatcher.py#L367) |
 | What it waits for | [live_trade_executor.py:3810](../../python/framework/trading_env/live/live_trade_executor.py#L3810) |
 | A bound that runs out | [live_trade_executor.py:3894](../../python/framework/trading_env/live/live_trade_executor.py#L3894) |
 | The budget, and the check at the start | [stop_budget.py:16](../../python/framework/autotrader/stop_budget.py#L16) · [stop_budget_validator.py:31](../../python/framework/validators/stop_budget_validator.py#L31) |

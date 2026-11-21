@@ -1,6 +1,6 @@
 # Bar Parity Tests
 
-Cross-pipeline parity tests verify that the simulation pipeline (`execute_tick_loop`) and the AutoTrader pipeline (`AutotraderTickLoop.run()`) produce identical output when fed the same deterministic tick stream.
+Cross-pipeline parity tests verify that the simulation pipeline (`execute_event_loop`) and the AutoTrader pipeline (`AutotraderEventLoop.run()`) produce identical output when fed the same deterministic tick stream.
 
 ## What Is Tested
 
@@ -43,7 +43,7 @@ VS Code launch entry: `🧩 Pytest: Parity (All)`.
 ## Regression Validation (#293 Guard)
 
 To confirm the test is load-bearing, temporarily move `bar_rendering_controller.process_tick(tick)`
-below the `if tick.is_clipped: continue` guard in `python/framework/process/process_tick_loop.py`.
+below the `if tick.is_clipped: continue` guard in `python/framework/process/process_event_loop.py`.
 With 100 ticks flagged as clipped, the simulation pipeline skips them for bar rendering while the
 AutoTrader pipeline renders all ticks. Bars diverge — the test must fail. Revert the change to
 restore passing state.
@@ -60,11 +60,14 @@ restore passing state.
 One trade parity test per pair, in the same file as the bar parity test.
 
 **Fixture:** flat-price ticks (`make_flat_btcusd_ticks` / `make_flat_ethusd_ticks`) — constant
-bid/ask. Eliminates the 1-tick fill-timing asymmetry between pipelines: simulation fills at tick
-N+1, AutoTrader at tick N. Constant price → same fill price regardless of timing.
+bid/ask, so the comparison does not depend on when each pipeline fills. The simulation fills an
+order at its due time, 1 ms after the tick it was sent on (#460); the AutoTrader's mock fills when
+its order query answers, which real compute time decides (#461) — on the BTCUSD fixture about 53 s
+later (measured 2026-11-14). Constant price → same fill price regardless of timing; the tests
+compare prices, P&L and portfolio figures, not fill times.
 
 **Executors:**
-- Simulation: `TradeSimulator` with `MockBrokerAdapter`, zero latency (`min=max=0 ms`)
+- Simulation: `TradeSimulator` with `MockBrokerAdapter`, the least latency a run accepts (`min=max=1 ms`)
 - AutoTrader: `LiveTradeExecutor` with `MockBrokerAdapter(INSTANT_FILL)`
 
 `MockBrokerAdapter` provides built-in `SymbolSpecification` for BTCUSD and ETHUSD.

@@ -112,10 +112,11 @@ unlisted until contract 22, which made them unreadable by the one consumer that 
 
 ## Authentication
 
-Every route but the deliberately open ones — `/api/v1/health`, `/api/v1/contract`,
-`/api/v1/timeframes` and `/api/v1/validation-checks`, each a decision the server's own document
-(`docs/consumer/server.md`) explains — requires a bearer token, and
-holding a token is not the same as being entitled to what it asks for.
+Every route but the deliberately open ones — the routes that only state the server's own
+declarations, such as `/api/v1/health` and `/api/v1/timeframes`, each a decision the server's own
+document (`docs/consumer/server.md`) explains and `TestTheAppLevelRoutesAreADecision`
+(`tests/framework/api/test_api_auth.py`) pins — requires a bearer token, and holding a token is not
+the same as being entitled to what it asks for.
 
 `/api/v1/health` also says which installation answers: `host_id` from the identity file, read without
 minting, so the open route writes nothing and a broken file costs a null rather than the answer, and

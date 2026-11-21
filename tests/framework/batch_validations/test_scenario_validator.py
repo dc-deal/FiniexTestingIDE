@@ -9,6 +9,8 @@ Covers:
 - set_scenario_account_currency() — derivation + spot quote-normalization
 """
 
+import shutil
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from python.framework.data_preparation.broker_scenario_info import BrokerScenarioInfo
@@ -399,6 +401,30 @@ class TestValidateScenarioParameters:
         ScenarioValidator.validate_scenario_parameters([scenario], logger)
 
         assert scenario.validation_result == []
+
+    def test_a_user_worker_named_from_the_project_root_is_checked(self, tmp_path, monkeypatch):
+        """
+        #633: a set names its workers from the project root, as the run creates them. The check
+        used to resolve such a worker against the logic's folder, failed, and skipped it
+        without a word, so a misspelt parameter passed until the factory built the worker.
+        """
+        framework = Path(__file__).resolve().parents[3] / 'python' / 'framework'
+        bot = tmp_path / 'my_bot'
+        bot.mkdir()
+        shutil.copy(framework / 'decision_logic' / 'core' / 'cautious_macd.py', bot / 'my_logic.py')
+        shutil.copy(framework / 'workers' / 'core' / 'rsi_worker.py', bot / 'my_rsi.py')
+        monkeypatch.chdir(tmp_path)
+        cfg = _clean_strategy_config()
+        cfg['decision_logic_type'] = 'my_bot/my_logic.py'
+        cfg['worker_instances']['rsi_filter'] = 'my_bot/my_rsi.py'
+        cfg['workers']['rsi_filter']['period_typo'] = 3
+        scenario = _param_scenario('project_root_worker', cfg)
+
+        ScenarioValidator.validate_scenario_parameters([scenario], MagicMock())
+
+        assert len(scenario.validation_result) == 1
+        assert scenario.validation_result[0].is_valid is False
+        assert 'period_typo' in scenario.validation_result[0].errors[0]
 
     def test_no_decision_logic_type_skips(self):
         scenario = _param_scenario('empty', {})

@@ -268,14 +268,14 @@ need a plugin point to serve them all.
 | Own thread with a queue | operator alerts (Telegram) | `run_with_ladder` on the dispatcher's thread — the delay, or Telegram's `retry_after` when it asked for longer |
 | Own thread on an interval | liveness ping | not at all — a failed ping is not repeated, the next one is due within the interval |
 | asyncio | broker tick socket | `asyncio.wait_for` on the source's stop event with the delay as its timeout — stop() wakes it at once |
-| Broker worker thread | order submit / cancel / query jobs | blocking; **does not block the tick loop** |
+| Broker worker thread | order submit / cancel / query jobs | blocking; **does not block the event loop** |
 | A session's stop (#630) | the wait for orders on their way, the cancels, the venue's last read | on the main thread, after the loop's last pass, which nothing is late for. The wait sleeps the idle pass's cadence under `order_wait_s` and repeats no write. Under a declared kill each call first asks the [stop budget](../autotrader/unattended_operation.md#a-stop--what-it-waits-for-and-the-kill-it-has-to-fit-under) with the ladder's worst case: too long gets one attempt, too long for that is not made and named |
-| **Inside the tick loop** | reconcile pull, order re-poll | **it does not wait at all** |
+| **Inside the event loop** | reconcile pull, order re-poll | **it does not wait at all** |
 
 The stop's bounds live in `autotrader.shutdown`, not in a ladder: a venue call keeps its timeouts in
 `broker_transport`, and the stop only decides whether to start one.
 
-The last row is the important one. Everything the tick loop does against the broker is
+The last row is the important one. Everything the event loop does against the broker is
 already **cadenced** — `Reconciler.is_due` (ticks OR wall seconds), the per-order
 `poll_interval_ms` throttle. So a transient failure there **skips the cycle** and the
 cadence IS the ladder: no sleep, no shifted heartbeat, no retry storm.
@@ -344,6 +344,9 @@ Refusal, as the operator reads it:
 | 7 | Broker config + balance (boot) | broker policy, budget 3 | falls back to a cached copy, warning louder as it ages; no cache → refuse |
 | 8 | Operator alerts — Telegram (#235) | 2 s → 60 s, jitter, budget 5 per message — never unlimited, or the boot check would wait out a whole outage; `retry_after` honoured | an exhausted budget drops that one message; a refused token or chat closes the channel for the session. At boot a refusal refuses the start, an unreachable Telegram does not |
 | 9 | Liveness ping (#235) | its interval (60 s) is the ladder | a 4xx on the ping URL — wrong URL, deleted check — or a URL the HTTP stack cannot request stops the pings, and the monitor then raises its alarm; the same on the fail URL stops only the fail pings. A URL nothing could request is refused at boot |
+| 10 | Venue public trade list — the divergence report confirming the trades our archive lacks (#512, #127) | the broker's policy per page, the pages a second apart | any give-up **raises**: a stretch read in part would read as one without trades, so the report names the stretch as unread |
+| 11 | Venue ledger of an account — the divergence report reading its movements (#512) | the broker's policy per request, the requests three seconds apart, with a key that may only read | any give-up **raises**, and the report says the ledger was not read — the state frames then judge a restart |
+| 12 | Data collector's tick packages (the import, #120) | 2 s → 30 s, jitter, budget 3, per read | budget or a refused token → the fetch stops and counts an error; the import goes on with what lies in the inbox. The receipt is a write: sent once, a lost answer settled by reading the package back |
 
 Row 7 is a fourth pattern worth naming: it does not retry into the void, it **degrades to an
 older copy and gets louder the staler that copy is**. That is a TRANSIENT whose answer in
@@ -365,8 +368,9 @@ and jitter and the give-up action keep the policy's defaults.
 |---|---|
 | `configs/sentiment_config.json` → `stream.connection` / `stream.boot_connection` | 1, 2 |
 | AutoTrader profile → `tick_source` | 4 |
-| `configs/market_config.json` → `broker_transport.connection` | 5, 6, 7 |
+| `configs/market_config.json` → `broker_transport.connection` | 5, 6, 7, 10, 11 |
 | `configs/app_config.json` → `autotrader.operator_alerts.telegram.connection` | 8 |
+| `configs/data_collector_config.json` → `packages.connection` | 12 |
 
 **A live session refuses a broker ladder that never gives up.** Budget 0 means retry for ever —
 right for a tick socket (row 4), wrong for broker REST: the broker-truth reads at a session's start

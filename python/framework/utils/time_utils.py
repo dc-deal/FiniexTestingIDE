@@ -87,7 +87,7 @@ def format_log_event_time(event_time: Optional[datetime]) -> str:
     Format the log line's event-time column — the run's own time, never wall-clock.
 
     Fixed width for the same reason as format_log_elapsed: it is a column, so it must not shift
-    when the run enters its tick loop. A missing time is a STATE, not a gap to paper over — it
+    when the run enters its event loop. A missing time is a STATE, not a gap to paper over — it
     renders as a same-width filler, never as a substituted wall-clock (§9).
 
     The layout is deliberately the prefix of the events.csv stamp
@@ -215,6 +215,19 @@ def parse_iso_datetime(text: str) -> datetime:
         UTC-aware datetime
     """
     return ensure_utc_aware(datetime.fromisoformat(text))
+
+
+def format_iso_or_empty(moment: Optional[datetime]) -> str:
+    """
+    ISO-8601 string of a UTC moment, the shape a report serves an instant in.
+
+    Args:
+        moment: The instant, or None
+
+    Returns:
+        Its `isoformat()`, '' when absent
+    """
+    return moment.isoformat() if moment is not None else ''
 
 
 def parse_age_duration(text: str) -> timedelta:

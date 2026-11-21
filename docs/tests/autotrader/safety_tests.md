@@ -4,7 +4,7 @@
 
 The safety circuit breaker test suite validates the account-level protection mechanism of an
 AutoTrader session — `SafetyCircuitBreaker` in `python/framework/autotrader/safety/`, which the
-tick loop feeds on every tick. It covers the equity-based evaluation for spot mode, balance-based evaluation
+event loop feeds on every tick. It covers the equity-based evaluation for spot mode, balance-based evaluation
 for margin mode, the config split (`min_balance` / `min_equity`), and the live display state
 tracking.
 
@@ -24,13 +24,13 @@ Two-level coverage:
 
 ```
 tests/autotrader/safety/
-├── test_safety_unit.py                  ← Level 1: check_safety isolated (stub, no tick loop)
+├── test_safety_unit.py                  ← Level 1: check_safety isolated (stub, no event loop)
 ├── test_risk_baseline.py                ← Level 1: the denominator, and its survival of a restart
 ├── test_emergency_flatten.py            ← Level 1: the HARD stop — close, drain, then end
 ├── test_safety_report.py                ← Level 1: what the session RECORDED, capture + derive
 ├── test_safety_integration.py           ← Level 2: Spot mock sessions (kraken_spot/BTCUSD)
 ├── test_margin_safety_integration.py    ← Level 2: Margin mock sessions (mt5/EURUSD)
-└── test_hard_stop_integration.py        ← Level 2: the hard stop through the real tick loop
+└── test_hard_stop_integration.py        ← Level 2: the hard stop through the real event loop
 ```
 
 The quantity all of them measure against lives one suite away:
@@ -80,10 +80,11 @@ and waits for a human, this CLOSES. Driven against the real `check_emergency_fla
 | `TestTheSessionEndsOnlyAfterTheFillsArrive` | it does not end while positions are open (EMERGENCY means immediate exit, and the fills arrive later); it ends once the book is flat (`complete`); it ends anyway at the drain ceiling and NAMES what is still open (`unconfirmed`); it ends once, not on every later tick |
 | `TestSpotIsGatedAndTheAsymmetryIsDeliberate` | a spot holding is not sold by default and the operator hears why; the session still ends — without a second "check the account by hand" alarm, since nothing was sent, and the record says `holdings_kept`; with the switch on it is sold |
 | `TestACloseThatCannotBeSent` | every position is attempted and each failure is named — a close that failed silently is still open at the venue |
+| `TestTheDrainWindowCountsPasses` | #461: the drain window counts tick passes, not ticks — a coalesced backlog is one pass, so one burst cannot use up the window in a single instant. Driven through a real AutoTrader loop (`booking_day_harness.autotrader_loop`), not the stub |
 
 ### Level 1 — The Session Record (`test_safety_report.py`, #356 Phase C / #314)
 
-Split the way the pipeline is (#391): the CAPTURE half runs against the real tick-loop methods
+Split the way the pipeline is (#391): the CAPTURE half runs against the real event-loop methods
 bound to a stub, the DERIVE half against the real builder. Nothing here renders.
 
 | Class | What it validates |
@@ -133,7 +134,7 @@ immediately, validating that the margin path correctly checks `min_balance`.
 
 The unit tests drive the hard stop's methods against a stub; this drives the path a session
 takes. A real `LiveTradeExecutor` on the INSTANT_FILL mock adapter, the deterministic probe
-opening one position before a price drop, and the real tick loop: the loop values the account,
+opening one position before a price drop, and the real event loop: the loop values the account,
 the breaker sees the drawdown pass `max_drawdown_abs_hard`, sends the closes, the fills arrive
 through the executor's ordinary drain, and the session ends as an EMERGENCY before its input
 runs out. No mock-session profile, so it runs in seconds.

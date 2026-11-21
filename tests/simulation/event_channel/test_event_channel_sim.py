@@ -13,7 +13,7 @@ import pytest
 from tests.shared.fixture_helpers import (
     extract_probe_metadata,
     extract_process_result,
-    extract_tick_loop_results,
+    extract_event_loop_results,
     run_scenario,
 )
 
@@ -28,8 +28,8 @@ def received_events():
     """Run the event-probe scenario once and return the recorded event log."""
     summary = run_scenario(EVENT_CHANNEL_CONFIG)
     process_result = extract_process_result(summary)
-    tick_loop_results = extract_tick_loop_results(process_result)
-    metadata = extract_probe_metadata(tick_loop_results)
+    event_loop_results = extract_event_loop_results(process_result)
+    metadata = extract_probe_metadata(event_loop_results)
     return metadata.received_events
 
 

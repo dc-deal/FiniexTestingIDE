@@ -11,7 +11,7 @@ Import these classes into suite-specific test_<suite>_trade_execution.py files.
 
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.probe_metadata_types import ProbeMetadata
-from python.framework.types.process_data_types import ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessEventLoopResult
 
 
 class TestTradeExecution:
@@ -39,9 +39,9 @@ class TestTradeExecution:
             f'got {portfolio_stats.total_trades}'
         )
 
-    def test_no_rejected_orders(self, tick_loop_results: ProcessTickLoopResult):
+    def test_no_rejected_orders(self, event_loop_results: ProcessEventLoopResult):
         """All orders should be executed without a refusal — by the venue or by us."""
-        exec_stats = tick_loop_results.execution_stats
+        exec_stats = event_loop_results.execution_stats
         assert exec_stats.orders_rejected == 0, (
             f'Orders rejected: {exec_stats.orders_rejected}'
         )
@@ -49,9 +49,9 @@ class TestTradeExecution:
             f'Orders denied: {exec_stats.orders_denied}'
         )
 
-    def test_orders_submitted_equals_executed(self, tick_loop_results: ProcessTickLoopResult):
+    def test_orders_submitted_equals_executed(self, event_loop_results: ProcessEventLoopResult):
         """All submitted orders should be executed — opens and closes alike."""
-        exec_stats = tick_loop_results.execution_stats
+        exec_stats = event_loop_results.execution_stats
         assert exec_stats.orders_submitted == exec_stats.orders_executed, (
             f'Sent: {exec_stats.orders_submitted}, Executed: {exec_stats.orders_executed}'
         )

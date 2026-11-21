@@ -37,6 +37,7 @@ from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.data_preparation.shared_data_preparator import SharedDataPreparator
 from python.framework.discoveries.discovery_cache_index import DISCOVERY_INDEX_FILE
 from python.framework.exceptions.data_quality_errors import BarFileVerificationException
+from python.framework.types.config_types.data_origin_config_types import OriginClass
 from tests.data.import_pipeline.conftest import (
     build_minimal_tick_json,
     write_json_fixture,
@@ -387,6 +388,21 @@ class TestTheOriginOfABarFileSurvivesIntoTheIndex:
         assert index.get_origin_classes('kraken_spot', 'ETHUSD', 'D1') == []
         assert index.get_collected_from('kraken_spot', 'ETHUSD', 'D1') is None
 
+    def test_a_symbols_origin_is_read_once_over_its_timeframes(self, tmp_path):
+        """#647: the classes in their declared order, and the seam — what coverage and status print."""
+        self._write(tmp_path, 'external,production', '2026-01-15T08:30:00+00:00')
+        origin = self._index(tmp_path).get_symbol_origin('kraken_spot', 'ETHUSD')
+
+        assert origin.origin_classes == [OriginClass.PRODUCTION, OriginClass.EXTERNAL]
+        assert origin.collected_since == datetime(2026, 1, 15, 8, 30, tzinfo=timezone.utc)
+
+    def test_an_unstamped_symbol_has_no_origin_and_no_seam(self, tmp_path):
+        self._write(tmp_path, None, None)
+        origin = self._index(tmp_path).get_symbol_origin('kraken_spot', 'ETHUSD')
+
+        assert origin.origin_classes == []
+        assert origin.collected_since is None
+
     def test_the_seam_is_where_the_first_collected_file_starts(self):
         entries = [
             {'origin_class': 'external', 'start_time': '2015-08-07T14:03:25+00:00'},
@@ -423,3 +439,32 @@ class TestTheOriginOfABarFileSurvivesIntoTheIndex:
         preparator = SimpleNamespace(bar_index_manager=self._index(tmp_path))
         assert not SharedDataPreparator._warmup_reaches_external(
             preparator, 'kraken_spot', 'ETHUSD', 'D1', self._bars(10, 11))
+
+
+class TestAServerWithoutABarArchive:
+    """
+    A server that renders no bars — the bot's run host serves its runs and nothing else — reads the
+    bar index on every broker and bar request. An absent index is its normal state: said once per
+    process, never warned on each request. A file that exists and cannot be read keeps its warning.
+    """
+
+    def test_a_missing_index_is_said_once_and_never_warned(self, tmp_path):
+        logger = RecordingLogger()
+        manager = BarsIndexManager(logger=logger, data_dir=str(tmp_path / 'no_archive'))
+
+        manager.load_index()
+        manager.load_index()
+        BarsIndexManager(logger=logger, data_dir=str(tmp_path / 'no_archive')).load_index()
+
+        assert manager.index == {}
+        assert logger.levels() == ['info']
+
+    def test_an_unreadable_index_is_still_a_warning(self, tmp_path):
+        logger = RecordingLogger()
+        manager = BarsIndexManager(logger=logger, data_dir=str(tmp_path))
+        manager.index_file.write_bytes(b'not a parquet file')
+
+        manager.load_index()
+
+        assert manager.index == {}
+        assert 'warning' in logger.levels()

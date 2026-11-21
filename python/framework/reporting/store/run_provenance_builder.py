@@ -37,10 +37,8 @@ from python.framework.store.entry_members.run_dir_reader import RunDirReader
 from python.framework.types.api.report_types import WarningsErrorsReport
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.data_origin_types import (
-    is_admissible_for_measurement,
-    joined_distinct,
-)
+from python.framework.types.config_types.data_origin_config_types import OriginEvidence
+from python.framework.types.data_origin_types import joined_distinct
 from python.framework.types.git_info_types import GitInfo
 from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_origin_types import (
@@ -328,6 +326,11 @@ def consumption_record(scenarios: List[SingleScenario]) -> Dict[str, Any]:
     strings cannot because they collapse multiplicity. Both are needed: "this run read
     production data" and "this run read 3 development files out of 41" are different answers.
 
+    `unstamped_input_files` counts the files whose origin no stamp attests — evidence grade
+    other than `stamped` — whatever their class (decision 5 of #561, built with #647). Ledger
+    rows of logic version 21 and older counted files that were not production-and-stamped,
+    so every stamped external file counted there; the row's `logic_version` says which.
+
     Args:
         scenarios: The run's scenarios, after the mount filled their input lists
 
@@ -335,22 +338,27 @@ def consumption_record(scenarios: List[SingleScenario]) -> Dict[str, Any]:
         The consumption fields of `RunProvenance`, ready to splat into its constructor
     """
     versions: List[str] = []
+    clock_rules: List[str] = []
     classes: List[str] = []
     grades: List[str] = []
     bases: List[str] = []
+    warmup_timeframes: List[str] = []
     for scenario in scenarios:
         versions.extend(scenario.data_format_versions)
+        # A file whose header states no rule adds nothing: an empty joined value then means
+        # "no file read stated a rule", never a rule of its own
+        clock_rules.extend(rule for rule in scenario.server_clock_rules if rule)
         classes.extend(scenario.origin_classes)
         grades.extend(scenario.origin_evidence_grades)
         bases.extend(scenario.price_bases)
+        warmup_timeframes.extend(scenario.external_warmup_timeframes)
 
-    unstamped = sum(
-        1 for origin_class, evidence in zip(classes, grades)
-        if not is_admissible_for_measurement(origin_class, evidence))
+    unstamped = sum(1 for evidence in grades if evidence != OriginEvidence.STAMPED.value)
 
     return {
         'input_plane': 'archive',
         'data_format_versions': joined_distinct(versions),
+        'server_clock_rules': joined_distinct(clock_rules),
         'origin_classes': joined_distinct(classes),
         'origin_evidence_grades': joined_distinct(grades),
         'input_files': len(classes),
@@ -362,6 +370,9 @@ def consumption_record(scenarios: List[SingleScenario]) -> Dict[str, Any]:
         'features_beyond_venue': joined_distinct(
             [feature.value for scenario in scenarios
              for feature in scenario.features_beyond_venue]),
+        # Counted over the bar files like the price basis, not over the input files: a warmup
+        # reaches back through bars, and the ticks a run trades on are what admission guards
+        'external_warmup_timeframes': joined_distinct(warmup_timeframes),
     }
 
 
@@ -380,12 +391,15 @@ def _run_counts(report: Optional[WarningsErrorsReport]) -> Dict[str, Any]:
     """
     if report is None:
         return {'run_outcome': None, 'error_count': None,
-                'warning_count': None, 'log_warning_count': None}
+                'warning_count': None, 'log_warning_count': None,
+                'total_units': None, 'failed_count': None}
     outcome = report.outcome
     return {'run_outcome': outcome.run_outcome,
             'error_count': outcome.error_count,
             'warning_count': outcome.warning_count,
-            'log_warning_count': outcome.log_warning_count}
+            'log_warning_count': outcome.log_warning_count,
+            'total_units': outcome.total_units,
+            'failed_count': outcome.failed_count}
 
 
 def _run_status(report: Optional[WarningsErrorsReport]) -> Tuple[str, Optional[str]]:

@@ -133,11 +133,14 @@ data/raw/*.json
 data/raw/*.jsonl
 # A member the re-import tool was still streaming when it stopped
 data/raw/*.json.part
-# Signal source raw JSONL (nested per pipeline_id) — #429
-data/raw/signals/*
-!data/raw/signals/.gitkeep
+# A tick package and its download in progress — #120
+data/raw/*.zip
+data/raw/*.zip.part
 data/finished/*
 !data/finished/.gitkeep
+# A zip's members while they are imported, and what an import refused with its reason — #120
+data/unpacking/
+data/refused/
 # A venue's published history (#561) — downloaded, never versioned, never published
 data/external/
 data/cache/
@@ -172,6 +175,7 @@ logs/
 runs/
 # Derived certificate index (#486) — rebuilt from the committed certificates themselves
 tests/certificates_index.parquet
+tests/certificates_index.lock
 
 # OS generated files
 .DS_Store
@@ -212,7 +216,9 @@ user_algos/
 *.pkl
 *.h5
 
-# Docker Compose user overrides (external volumes, ports, etc.)
+# Docker Compose user overrides (external volumes, ports, etc.). Only `docker compose` picks
+# this up on its own; the devcontainer names one compose file explicitly, so a container started
+# from the IDE ignores it without a word.
 docker-compose.override.yml
 
 # Local tool server registration (machine-specific paths)
@@ -225,8 +231,8 @@ CLAUDE.md
 # Read-only snapshot of the GitHub issues, refreshed by the script below.
 _github_issues/
 export_github_issues.sh
-# Reference corpus with its conversion and search tools.
-_books/
+# The delta audits: what a technique means in this codebase.
+_audits/
 # Internal documents kept for the record.
 _internal_archive/
 # Foreign trading strategies kept for study — not project code.

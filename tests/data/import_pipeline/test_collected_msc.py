@@ -94,7 +94,7 @@ class TestCollectedMscBackwardCompat:
 
         df = pd.read_parquet(find_tick_parquets(target)[0])
         assert 'collected_msc' not in df.columns
-        # The reader restores the tick loop's own "not recorded" convention, once
+        # The reader restores the event loop's own "not recorded" convention, once
         assert (read_tick_parquet(find_tick_parquets(target)[0])['collected_msc'] == 0).all()
 
 

@@ -7,21 +7,30 @@ One JSONL line = one AnalysisEnvelope + collected_msc. Each envelope explodes in
 per (collected_msc, symbol) for present result symbols, plus one envelope-level sentinel row
 (symbol = SIGNAL_ENVELOPE_SYMBOL) so every collected_msc stays resolvable for every covered
 symbol — preserving the v0 provider's partial/error → defensive-HOLD behavior. Output:
-<target_dir>/<pipeline_id>/<stem>.parquet, keyed by pipeline_id (= data_sentiment_type).
+<target_dir>/<pipeline_id>/<day>.parquet, keyed by pipeline_id (= data_sentiment_type).
 
-An imported JSONL is archived into finished_dir with its directory structure intact, so the
-raw directory holds only what still needs importing. The archive is not a by-product: the
-parquet is a lean projection, and the envelope's sources / metadata / errors survive nowhere
-else — it stays the audit source and must remain readable.
+A producer's export names a file after its UTC day (`2026-11-10.jsonl`); a producer's package
+names it after its pipeline and day (`crypto_sentiment_2026-11-10.jsonl`), so that two
+pipelines' days never share a name outside their zip. Both write the same parquet, named by the
+day, and the pipeline in a name must be the one its envelopes carry.
+
+A loose JSONL lies flat in the one import inbox beside the tick exports, and leaves it the way
+they do: to the finished directory once the archive holds it, to the refused directory with its
+reason when not. The pipeline is read from the envelopes, never from a folder, so the inbox needs
+none. The raw file is not a by-product: the parquet is a lean projection, and the envelope's
+sources / metadata / errors survive nowhere else — the finished file, or the zip the file came
+in, stays the audit source and must remain readable.
 """
 
+import re
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional
 
 import pandas as pd
 
 from python.configuration.data_origin_registry import DataOriginRegistry
+from python.data_management.importers.import_inbox_conveyor import ImportInboxConveyor
 from python.data_management.index.signal_index_manager import SignalIndexManager
 from python.framework.exceptions.signal_data_errors import (
     SignalAlreadyImportedError,
@@ -29,6 +38,11 @@ from python.framework.exceptions.signal_data_errors import (
 )
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.signal_data.signal_jsonl_loader import load_signal_series
+from python.framework.types.import_types.import_inbox_types import (
+    InboxDisposition,
+    InboxImportOutcome,
+    InboxImportResult,
+)
 from python.framework.types.signal_data_types import (
     SIGNAL_ENVELOPE_SYMBOL,
     SentimentResult,
@@ -38,6 +52,10 @@ from python.framework.types.signal_data_types import (
 from python.framework.utils.file_utils import create_directory
 
 vLog = get_global_logger()
+
+# A package member's name: the pipeline id (itself holding underscores), an underscore, the
+# UTC day — read from the right, as a package id is
+_PIPELINE_DAY_STEM = re.compile(r'^(?P<pipeline_id>.+)_(?P<day>\d{4}-\d{2}-\d{2})$')
 
 
 def _epoch_ms(moment: Optional[datetime]) -> Optional[int]:
@@ -56,41 +74,45 @@ def _epoch_ms(moment: Optional[datetime]) -> Optional[int]:
 
 class SignalDataImporter:
     """
-    Converts archived signal JSONL into columnar parquet (#429).
+    Converts signal JSONL into columnar parquet (#429).
 
     Args:
-        source_dir: Raw signal JSONL directory (e.g. data/raw/signals)
+        source_dir: The import inbox the loose JSONL lie in, flat
         target_dir: Parquet output root (e.g. data/processed/signals)
         override: Replace an existing parquet instead of skipping it. Same meaning as the
             tick importer's flag of that name, deliberately — one word, one contract
-        include_finished: Also read the finished archive, not only the inbox. Its own flag
-            because it is a different and far more expensive act than replacing one file
-        finished_dir: Archive for imported JSONL; None disables the move
+        move_processed_files: Move each loose JSONL out of the inbox after its import
+        finished_dir: Where a loose JSONL goes once the archive holds it
+        refused_dir: Where a loose JSONL goes that the import refused or failed on, with its
+            reason beside it; None keeps it in the inbox
     """
 
-    VERSION = '1.0'
+    VERSION = '1.1'
 
     def __init__(self, source_dir: str, target_dir: str, override: bool = False,
-                 finished_dir: Optional[str] = None, include_finished: bool = False):
+                 move_processed_files: bool = True, finished_dir: Optional[str] = None,
+                 refused_dir: Optional[str] = None):
         self.source_dir = Path(source_dir)
         self.target_dir = Path(target_dir)
         create_directory(self.target_dir, holds='the imported signal files')
 
         self.override = override
-        self.include_finished = include_finished
-        self.finished_dir = Path(finished_dir) if finished_dir else None
+        self._conveyor = ImportInboxConveyor(
+            finished_dir=Path(finished_dir) if move_processed_files and finished_dir else None,
+            refused_dir=Path(refused_dir) if move_processed_files and refused_dir else None)
 
         # Import statistics
         self.processed_files = 0
         self.total_rows = 0
         self.moved_files = 0
-        self.pruned_dirs = 0
+        # The loose files this import moved to the refused directory
+        self._refused_files: List[str] = []
         self.errors: List[str] = []
         self.warnings: List[str] = []
 
     def process_all_signals(self) -> None:
         """
-        Convert every *.jsonl of the inbox, then rebuild the index.
+        Convert every loose *.jsonl of the inbox, then rebuild the index.
         Errors do not stop processing of remaining files.
 
         The import's own steps, run one after the other — the same methods the import
@@ -101,18 +123,25 @@ class SignalDataImporter:
         if not jsonl_files:
             vLog.warning(
                 f'No signal JSONL found in {self.source_dir}. Rebuilding index only.')
-            self.prune_empty_source_dirs()
             self.rebuild_index()
             return
 
         self.log_header(len(jsonl_files))
 
-        for root, jsonl_file in jsonl_files:
-            self.import_file(root, jsonl_file)
+        for jsonl_file in jsonl_files:
+            self.import_file(jsonl_file)
 
-        self.prune_empty_source_dirs()
         self.rebuild_index()
         self._print_summary()
+
+    def collect_files(self) -> List[Path]:
+        """
+        The loose signal files of the inbox. They lie flat in it, as the tick exports do.
+
+        Returns:
+            The *.jsonl files, sorted by name
+        """
+        return sorted(self.source_dir.glob('*.jsonl'))
 
     def log_header(self, file_count: int) -> None:
         """
@@ -131,117 +160,120 @@ class SignalDataImporter:
         vLog.info(f"Override Mode: {'ENABLED' if self.override else 'DISABLED'}")
         vLog.info('=' * 80 + '\n')
 
-    def import_file(self, root: Path, jsonl_file: Path) -> bool:
+    def import_file(self, jsonl_file: Path) -> bool:
         """
-        Import one signal JSONL and archive it. An already-imported or failing file is
-        counted and logged, never raised — the batch goes on with the next file.
+        Import one loose signal JSONL. An already-imported, refused or failing file is counted
+        and logged, never raised — the batch goes on with the next file.
 
         Args:
-            root: The directory the file was found under
             jsonl_file: The JSONL to import
 
         Returns:
-            True when the file was processed, False when it was skipped or failed
+            True when the file was written, False when it was skipped, refused or failed
         """
-        vLog.info(f'\n📄 Processing: {jsonl_file.name}')
+        return self.import_file_result(jsonl_file).outcome is InboxImportOutcome.IMPORTED
+
+    def import_file_result(self, jsonl_file: Path,
+                           archived_in: Optional[Path] = None) -> InboxImportResult:
+        """
+        Import one signal JSONL and say how it ended. A loose file then leaves the inbox: to
+        the finished directory when the archive holds it, to the refused directory when not.
+        A file unpacked from a zip is left where it is; the zip's handling decides about it.
+
+        Args:
+            jsonl_file: The JSONL to import
+            archived_in: The zip the file was unpacked from, None for a loose file
+
+        Returns:
+            How the import of the file ended, and why when it was not taken
+        """
+        origin = f' (from {archived_in.name})' if archived_in is not None else ''
+        vLog.info(f'\n📄 Processing: {jsonl_file.name}{origin}')
+        result = self._convert_and_judge(jsonl_file, origin)
+        if archived_in is None:
+            self._leave_inbox(jsonl_file, result)
+        return result
+
+    def get_refused_files(self) -> List[str]:
+        """
+        The loose files this import moved to the refused directory.
+
+        Returns:
+            Their names, in the order they were refused
+        """
+        return list(self._refused_files)
+
+    def _convert_and_judge(self, jsonl_file: Path, origin: str) -> InboxImportResult:
+        """
+        Convert one JSONL, counting and logging whatever stops it.
+
+        Args:
+            jsonl_file: The JSONL
+            origin: Where it came from, for the log lines — empty for a loose file
+
+        Returns:
+            How its import ended
+        """
         try:
             written = self.convert_jsonl_to_parquet(jsonl_file)
-            self.processed_files += 1
-            if written is not None:
-                self._move_to_finished(root, jsonl_file)
-            return True
         except SignalAlreadyImportedError as e:
             # A warning, never an error: re-running an import whose days are already
             # archived is the normal case, and the tick importer grades it the same.
-            warning_msg = f'ALREADY IMPORTED: {jsonl_file.name}'
+            warning_msg = f'ALREADY IMPORTED: {jsonl_file.name}{origin}'
             vLog.warning(warning_msg)
             vLog.warning(str(e))
             self.warnings.append(warning_msg)
             vLog.info('→ Skipping import (parquet already exists)')
-        except Exception as e:
-            error_msg = f'ERROR in {jsonl_file.name}: {str(e)}'
+            return InboxImportResult(outcome=InboxImportOutcome.ALREADY_ARCHIVED)
+        except SignalSchemaError as e:
+            error_msg = f'REFUSED {jsonl_file.name}{origin}: {e}'
             vLog.error(error_msg)
             self.errors.append(error_msg)
-        return False
+            return InboxImportResult(outcome=InboxImportOutcome.REFUSED, reason=str(e))
+        except Exception as e:
+            error_msg = f'ERROR in {jsonl_file.name}{origin}: {str(e)}'
+            vLog.error(error_msg)
+            self.errors.append(error_msg)
+            return InboxImportResult(outcome=InboxImportOutcome.FAILED,
+                                    reason=f'{type(e).__name__}: {e}')
+        if written is None:
+            reason = 'it holds no envelope'
+            self.errors.append(f'REFUSED {jsonl_file.name}{origin}: {reason}')
+            return InboxImportResult(outcome=InboxImportOutcome.REFUSED, reason=reason)
+        self.processed_files += 1
+        return InboxImportResult(outcome=InboxImportOutcome.IMPORTED)
 
-    def collect_files(self) -> List[Tuple[Path, Path]]:
+    def _leave_inbox(self, jsonl_file: Path, result: InboxImportResult) -> None:
         """
-        The files to import, each paired with the root it was found under.
-
-        The inbox is source_dir. With include_finished the archive is read as well, which
-        is how an already-imported day is re-projected after a read-time policy change.
-        A relative path present in both roots is taken from source_dir — a re-exported day
-        supersedes its archived copy, and the subsequent move overwrites it.
-
-        Deliberately NOT tied to `override`: the two were one flag until 2026-08-28, so
-        `--override` quietly re-projected the whole archive while the tick importer's flag
-        of the same name only ever touched the inbox. One word must not carry two
-        contracts across two CLIs the operator uses interchangeably.
-
-        Returns:
-            (root, file) pairs, sorted by relative path
-        """
-        roots = [self.source_dir]
-        if self.include_finished and self.finished_dir and self.finished_dir.exists():
-            roots.append(self.finished_dir)
-
-        found: Dict[Path, Tuple[Path, Path]] = {}
-        for root in roots:
-            for path in root.rglob('*.jsonl'):
-                found.setdefault(path.relative_to(root), (root, path))
-
-        return [found[key] for key in sorted(found)]
-
-    def _move_to_finished(self, root: Path, jsonl_file: Path) -> None:
-        """
-        Archive an imported JSONL, preserving its directory structure.
-
-        The path is kept relative to the root it came from, NOT rebuilt from the
-        resolved pipeline_id: a file sitting in a folder that does not match its own
-        pipeline_id is an anomaly, and normalizing it here would silently repair it
-        instead of leaving it visible.
+        Move a loose JSONL out of the inbox once its import ended, and count a move that could
+        not happen as an error.
 
         Args:
-            root: The directory the file was found under
-            jsonl_file: The imported JSONL
+            jsonl_file: The JSONL
+            result: How its import ended
+
+        Returns:
+            None
         """
-        if self.finished_dir is None:
-            return
-
-        target = self.finished_dir / jsonl_file.relative_to(root)
-        if target == jsonl_file:
-            return
-
-        create_directory(target.parent, holds='the signal source files after their import')
-        jsonl_file.replace(target)
-        self.moved_files += 1
-        vLog.info(f'   → archived to {target}')
-
-    def prune_empty_source_dirs(self) -> None:
-        """
-        Remove inbox folders left empty after their files were archived.
-
-        The inbox mirrors the pipeline structure (source_dir/<pipeline_id>/), and a
-        folder whose files have all moved to the archive is leftover scaffolding —
-        it makes an emptied inbox look occupied. Removal is by rmdir, which refuses
-        a non-empty directory, so a folder still holding anything survives by
-        construction. The inbox root itself is kept.
-        """
-        if not self.source_dir.exists():
-            return
-
-        # Reverse-sorted paths put children before their parents, so a nested
-        # empty tree collapses in one pass.
-        for path in sorted(self.source_dir.rglob('*'), reverse=True):
-            if not path.is_dir():
-                continue
-            try:
-                path.rmdir()
-            except OSError:
-                continue
-            self.pruned_dirs += 1
-            vLog.info(
-                f'   🧹 Removed empty inbox folder: {path.relative_to(self.source_dir)}')
+        if result.outcome.is_taken():
+            move = self._conveyor.to_finished(jsonl_file)
+        else:
+            move = self._conveyor.to_refused(jsonl_file, result.reason or result.outcome.value)
+        name = jsonl_file.name
+        if move.disposition is InboxDisposition.MOVED_TO_FINISHED:
+            self.moved_files += 1
+            vLog.info(f'→ Moved {name} to {move.destination}')
+        elif move.disposition is InboxDisposition.MOVED_TO_REFUSED:
+            self._refused_files.append(name)
+            vLog.info(f'→ Moved {name} to {move.destination}, the reason beside it')
+        elif move.disposition is InboxDisposition.ALREADY_THERE:
+            self.moved_files += 1
+            vLog.info(f'→ An identical {name} lies in {move.destination}; the inbox copy '
+                      'was removed')
+        elif move.destination is not None:
+            error_msg = f'KEPT IN THE INBOX {name}: {move.detail}'
+            vLog.error(error_msg)
+            self.errors.append(error_msg)
 
     def convert_jsonl_to_parquet(self, jsonl_file: Path) -> Optional[Path]:
         """
@@ -260,11 +292,12 @@ class SignalDataImporter:
             return None
 
         pipeline_id = self._resolve_pipeline_id(snapshots, jsonl_file)
+        parquet_stem = self._parquet_stem(jsonl_file, pipeline_id)
         self._validate_stream_identity(snapshots, jsonl_file)
         rows = self._explode(snapshots)
         df = pd.DataFrame(rows, columns=[c.value for c in SignalParquetColumn])
 
-        target_path = self.target_dir / pipeline_id / f'{jsonl_file.stem}.parquet'
+        target_path = self.target_dir / pipeline_id / f'{parquet_stem}.parquet'
         create_directory(target_path.parent, holds='a signal parquet file')
         if target_path.exists() and not self.override:
             raise SignalAlreadyImportedError(
@@ -279,6 +312,27 @@ class SignalDataImporter:
             f"✅ {jsonl_file.name} → {target_path.relative_to(self.target_dir)} "
             f"({len(df)} rows; symbols: {', '.join(symbols)})")
         return target_path
+
+    def _parquet_stem(self, jsonl_file: Path, pipeline_id: str) -> str:
+        """
+        Name a JSONL's parquet by its day, whether the file is named by the day alone or by its
+        pipeline and day, so one day never becomes two parquets.
+
+        Args:
+            jsonl_file: The JSONL
+            pipeline_id: The pipeline its envelopes carry
+
+        Returns:
+            The day of a pipeline-and-day name, otherwise the file's stem as it stands
+        """
+        named = _PIPELINE_DAY_STEM.match(jsonl_file.stem)
+        if named is None:
+            return jsonl_file.stem
+        if named.group('pipeline_id') != pipeline_id:
+            raise SignalSchemaError(
+                f"{jsonl_file.name}: its name gives the pipeline '{named.group('pipeline_id')}', "
+                f"its envelopes '{pipeline_id}'.")
+        return named.group('day')
 
     def _resolve_pipeline_id(self, snapshots: List[SignalSnapshot], jsonl_file: Path) -> str:
         """Derive the output folder key (= data_sentiment_type) from the envelope pipeline_id."""
@@ -472,9 +526,7 @@ class SignalDataImporter:
         vLog.info(
             f'Signal Import Summary: {self.processed_files} file(s), {self.total_rows} rows')
         if self.moved_files:
-            vLog.info(f'Archived to {self.finished_dir}: {self.moved_files} file(s)')
-        if self.pruned_dirs:
-            vLog.info(f'Emptied inbox folders removed: {self.pruned_dirs}')
+            vLog.info(f'Moved to the finished directory: {self.moved_files} file(s)')
         if self.warnings:
             vLog.info(f'Warnings: {len(self.warnings)}')
         if self.errors:

@@ -5,7 +5,8 @@ Every run that validates a scenario loads the symbol's coverage report from the 
 cache. It hydrated the gaps row by row, which cost 3.4 s for a symbol with years of a venue's
 history (117,757 gaps, measured 2026-10-15) against 20 ms for one with a year of our own
 collection. It now reads them column by column — and must hand back exactly what the row-wise
-read did.
+read did. A restored report reads its bars' origin from the bar index, as a fresh one does, so
+the validation judges its gaps by the same seam (#647).
 """
 
 from datetime import datetime, timedelta, timezone
@@ -16,7 +17,9 @@ from python.framework.discoveries.data_coverage.data_coverage_report import Data
 from python.framework.discoveries.data_coverage.data_coverage_report_cache import (
     DataCoverageReportCache,
 )
-from python.framework.types.coverage_report_types import Gap, GapCategory
+from python.framework.types.config_types.data_origin_config_types import OriginClass
+from python.framework.types.coverage_report_types import Gap, GapCategory, SeamSide
+from python.framework.types.data_origin_types import SymbolDataOrigin
 from python.framework.types.trading_env_types.broker_types import BrokerType
 
 SYMBOL = 'NOSUCHSYM'
@@ -88,3 +91,30 @@ class TestTheColumnWiseRead:
 
         assert loaded is not None
         assert loaded.gaps == []
+
+
+class _BarIndex:
+    """A bar index whose one symbol holds the venue's history up to a seam."""
+
+    SEAM = datetime(2026, 1, 20, tzinfo=timezone.utc)
+
+    def get_bar_file(self, broker_type: str, symbol: str, timeframe: str) -> None:
+        return None
+
+    def get_symbol_origin(self, broker_type: str, symbol: str) -> SymbolDataOrigin:
+        return SymbolDataOrigin(origin_classes=[OriginClass.PRODUCTION, OriginClass.EXTERNAL],
+                                collected_since=self.SEAM)
+
+
+class TestARestoredReportKnowsItsSeam:
+
+    def test_its_gaps_are_judged_by_the_bar_index_s_seam(self, cache):
+        cache._bar_index = _BarIndex()
+        before = datetime(2026, 1, 5, 10, 0, tzinfo=timezone.utc)
+        after = datetime(2026, 1, 25, 10, 0, tzinfo=timezone.utc)
+        loaded = _round_trip(cache, _report(*(
+            Gap(gap_seconds=3600.0, category=GapCategory.MODERATE, reason='test',
+                gap_start=start, gap_end=start + timedelta(hours=1)) for start in (before, after))))
+
+        assert [loaded.seam_side(gap) for gap in loaded.gaps] == [
+            SeamSide.EXTERNAL_HISTORY, SeamSide.COLLECTED]

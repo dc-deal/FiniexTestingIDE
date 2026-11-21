@@ -111,7 +111,8 @@ stay null.
 ## `stream_files` — the run's streams
 
 `stream_files` names the run's streams: today the [order events](/api/v1/docs/order-events) and,
-for an AutoTrader session, its [state frames](/api/v1/docs/state-frames). A live session writes them
+for an AutoTrader session, its [state frames](/api/v1/docs/state-frames) and one
+[indicator series](/api/v1/docs/indicator-series) file per drawing worker. A live session writes them
 as it runs, a backtest its order events with its report. They are kept out of `artifacts` on
 purpose. A live session writes its order events from its first order and its state frames from its
 first pass, so a session that ended without its report still has them — counted as artifacts, it
@@ -160,6 +161,14 @@ Three counts stand beside it: `error_count`, `warning_count` — findings a vali
 and `log_warning_count`, warnings the run itself logged. The two warning channels are
 deliberately separate; [warnings and errors](/api/v1/docs/warnings-errors) explains them. All
 four are null where they were not recorded, and **not recorded is not the same as clean**.
+
+`total_units`, `failed_count` and `succeeded_count` say how many units the run had — its
+scenarios in a backtest, the session in live — and how many of them failed or did not, so a row
+can read "2 of 3" without opening the run. They are the run's
+[warnings-errors](/api/v1/docs/warnings-errors) outcome counts, the same three names with the same
+meaning. A scenario refused before it ran counts as a failed unit. All three are null where they
+are not known: on a run recorded before contract 56, while a session still runs — its sealed days
+carry no count until its close — and on a run that died before its close.
 
 `tick_timespan_seconds` is the **market** time the run's units processed, covered together so a
 stretch two scenarios share counts once. It is neither wall-clock time nor a sum over the units,

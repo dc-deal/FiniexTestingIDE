@@ -53,7 +53,7 @@ def prove_printable(renderable: RenderableType, width: int, height: int) -> None
 
     A live display re-renders the frame it holds whenever ANY thread prints while it runs, so
     a frame that cannot be printed, once handed over, makes that other thread's print raise —
-    a logging call in a tick loop included. Proven first, it never reaches the display.
+    a logging call in an event loop included. Proven first, it never reaches the display.
 
     Args:
         renderable: The frame

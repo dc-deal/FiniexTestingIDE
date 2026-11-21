@@ -80,3 +80,52 @@ class MarketDataTickStats:
     source: str = ''
     fresh_ticks: int = 0
     stale_ticks: int = 0
+
+
+@dataclass(frozen=True)
+class FeedEpisodeInSource:
+    """
+    One disturbance episode as the report serves it, with the source and the domain it belongs to —
+    the row a feed-stability source row folds from (#557). The served episode row carries neither:
+    they belong to its source row.
+
+    Args:
+        source: The disturbed source
+        domain: Its staleness domain, by value
+        unit: The run unit the episode occurred in
+        symbol: The symbol
+        stale_from: Where the staleness began, ISO-8601
+        stale_to: Where it ended, ISO-8601, '' while open
+        duration_seconds: How long it lasted
+        origin: Where it came from, by value
+        label: Its stress label, '' for an observed one
+    """
+    source: str
+    domain: str
+    unit: str
+    symbol: str
+    stale_from: str
+    stale_to: str
+    duration_seconds: float
+    origin: str
+    label: str
+
+
+@dataclass(frozen=True)
+class FeedCountersOfSource:
+    """
+    One unit's per-tick counters on one source and domain — the row a feed-stability source row's
+    counters fold from (#557).
+
+    Args:
+        source: The source the counters were taken on
+        domain: Its staleness domain, by value
+        fresh_ticks: Ticks decided on fresh data
+        stale_ticks: Ticks decided on stale data
+        blind_ticks: Ticks with no data to decide on — 0 in the tick domain
+    """
+    source: str
+    domain: str
+    fresh_ticks: int
+    stale_ticks: int
+    blind_ticks: int

@@ -1,29 +1,29 @@
 """
 Bar Parity Test — Kraken Spot ETHUSD
 
-Verifies that the simulation pipeline (execute_tick_loop) and the AutoTrader
-pipeline (AutotraderTickLoop.run()) produce identical M1 bars and trades when
+Verifies that the simulation pipeline (execute_event_loop) and the AutoTrader
+pipeline (AutotraderEventLoop.run()) produce identical M1 bars and trades when
 fed the same deterministic tick stream.
 
 Phase 2 — Bar parity: 1000 synthetic ticks at 1 tick/second yield 16 complete
 M1 bars. Every 10th tick is pre-flagged as is_clipped=True (#293 regression guard).
 
-Phase 3 — Trade parity: flat-price ticks eliminate the 1-tick fill-timing
-asymmetry between pipelines.
+Phase 3 — Trade parity: flat-price ticks keep the trades comparable however far
+apart the two pipelines fill.
 """
 
 import queue
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.event_loop.autotrader_event_loop import AutotraderEventLoop
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.decision_logic.core.test_probes.deterministic_probe import (
     DeterministicProbe,
 )
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.process.process_tick_loop import execute_tick_loop
+from python.framework.process.process_event_loop import execute_event_loop
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
@@ -32,6 +32,7 @@ from python.framework.trading_env.simulation.trade_simulator import TradeSimulat
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
+from python.framework.types.market_types.market_data_types import arrival_slices
 from python.framework.types.process_data_types import ProcessScenarioConfig
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.utils.run_id_utils import mint_run_id
@@ -73,7 +74,7 @@ _TRADE_LOGIC_CONFIG = {
 
 
 def _run_simulation(ticks):
-    """Run execute_tick_loop in-process and return the bar controller."""
+    """Run execute_event_loop in-process and return the bar controller."""
     logger = ScenarioLogger(
         scenario_set_name='parity',
         scenario_name='bar_parity_kraken_spot_ethusd_sim',
@@ -104,13 +105,17 @@ def _run_simulation(ticks):
     # with the first tick's time, which is what a real executor holds before the first on_tick.
     trade_simulator.get_current_time.return_value = ticks[0].timestamp
     trade_simulator.portfolio.sample_equity.return_value = None
+    # The backtest's timeline asks for the next due time after every instant (#460); nothing
+    # is in flight here
+    trade_simulator.peek_next_due_msc.return_value = None
+    trade_simulator.is_session_end_requested.return_value = False
 
     worker_coordinator = MagicMock()
     worker_coordinator.process_tick.return_value = MagicMock()
 
     decision_logic = MagicMock()
 
-    execute_tick_loop(
+    execute_event_loop(
         config=config,
         worker_coordinator=worker_coordinator,
         trade_simulator=trade_simulator,
@@ -124,10 +129,10 @@ def _run_simulation(ticks):
 
 
 def _run_autotrader(ticks):
-    """Run AutotraderTickLoop in-process and return the bar controller."""
+    """Run AutotraderEventLoop in-process and return the bar controller."""
     tick_queue: queue.Queue = queue.Queue()
-    for t in ticks:
-        tick_queue.put(t)
+    for arrival in arrival_slices(ticks):
+        tick_queue.put(arrival)
     tick_queue.put(None)
 
     logger = ScenarioLogger(
@@ -144,7 +149,7 @@ def _run_autotrader(ticks):
         symbol=SYMBOL,
         # The VENUE, not the tick source: `adapter_type='mock'` is what makes this a mock
         # session, while broker_type names the market whose rules apply — and since #476 the
-        # tick loop resolves this market's trading-day anchor at construction, so a broker
+        # event loop resolves this market's trading-day anchor at construction, so a broker
         # market_config.json does not know is refused rather than silently defaulted.
         broker_type='kraken_spot',
         adapter_type='mock',
@@ -182,8 +187,10 @@ def _run_autotrader(ticks):
 
     tick_source = MagicMock()
     tick_source.is_exhausted.return_value = True
+    # A replay's own time, the front of its queue: the session stamps the venue's answers on it
+    tick_source.get_idle_pass_time.return_value = ticks[-1].timestamp
 
-    loop = AutotraderTickLoop(
+    loop = AutotraderEventLoop(
         config=config,
         tick_queue=tick_queue,
         tick_source=tick_source,
@@ -231,7 +238,7 @@ def _wire_decision_logic(executor, logger) -> DeterministicProbe:
 
 
 def _run_simulation_trades(ticks):
-    """Run execute_tick_loop with real TradeSimulator and DeterministicProbe."""
+    """Run execute_event_loop with real TradeSimulator and DeterministicProbe."""
     logger = ScenarioLogger(
         scenario_set_name='parity',
         scenario_name='trade_parity_kraken_spot_ethusd_sim',
@@ -255,8 +262,8 @@ def _run_simulation_trades(ticks):
         account_currency='USD',
         logger=logger,
         seeds={'inbound_latency_seed': 42},
-        inbound_latency_min_ms=0,
-        inbound_latency_max_ms=0,
+        inbound_latency_min_ms=1,
+        inbound_latency_max_ms=1,
         spot_mode=True,
         initial_balances={'USD': 10000.0, 'ETH': 0.0},
     )
@@ -265,10 +272,11 @@ def _run_simulation_trades(ticks):
 
     worker_coordinator = MagicMock()
     worker_coordinator.process_tick.side_effect = (
-        lambda tick, current_bars, bar_history, bar_render_state=None: decision_logic.compute_tick(tick, {})
+        lambda tick, current_bars, bar_history, bar_render_state=None, tick_weight=1:
+        decision_logic.compute_tick(tick, {})
     )
 
-    execute_tick_loop(
+    execute_event_loop(
         config=config,
         worker_coordinator=worker_coordinator,
         trade_simulator=sim_executor,
@@ -282,10 +290,10 @@ def _run_simulation_trades(ticks):
 
 
 def _run_autotrader_trades(ticks):
-    """Run AutotraderTickLoop with real LiveTradeExecutor and DeterministicProbe."""
+    """Run AutotraderEventLoop with real LiveTradeExecutor and DeterministicProbe."""
     tick_queue: queue.Queue = queue.Queue()
-    for t in ticks:
-        tick_queue.put(t)
+    for arrival in arrival_slices(ticks):
+        tick_queue.put(arrival)
     tick_queue.put(None)
 
     logger = ScenarioLogger(
@@ -302,7 +310,7 @@ def _run_autotrader_trades(ticks):
         symbol=SYMBOL,
         # The VENUE, not the tick source: `adapter_type='mock'` is what makes this a mock
         # session, while broker_type names the market whose rules apply — and since #476 the
-        # tick loop resolves this market's trading-day anchor at construction, so a broker
+        # event loop resolves this market's trading-day anchor at construction, so a broker
         # market_config.json does not know is refused rather than silently defaulted.
         broker_type='kraken_spot',
         adapter_type='mock',
@@ -321,13 +329,16 @@ def _run_autotrader_trades(ticks):
 
     worker_orchestrator = MagicMock()
     worker_orchestrator.process_tick.side_effect = (
-        lambda tick, current_bars, bar_history, bar_render_state=None: decision_logic.compute_tick(tick, {})
+        lambda tick, current_bars, bar_history, bar_render_state=None, tick_weight=1:
+        decision_logic.compute_tick(tick, {})
     )
 
     tick_source = MagicMock()
     tick_source.is_exhausted.return_value = True
+    # A replay's own time, the front of its queue: the session stamps the venue's answers on it
+    tick_source.get_idle_pass_time.return_value = ticks[-1].timestamp
 
-    loop = AutotraderTickLoop(
+    loop = AutotraderEventLoop(
         config=config,
         tick_queue=tick_queue,
         tick_source=tick_source,
@@ -368,8 +379,9 @@ def test_bar_parity_kraken_spot_ethusd():
 def test_trade_parity_kraken_spot_ethusd():
     """Both pipelines produce identical trades and portfolio stats for ETHUSD.
 
-    Uses 1000 flat-price ticks (bid=3500, ask=3503.5) to eliminate the 1-tick
-    fill-timing asymmetry between pipelines.
+    Uses 1000 flat-price ticks (bid=3500, ask=3503.5) so the comparison does not
+    depend on when each pipeline fills: the simulation at the order's due time
+    (#460), the AutoTrader's mock when its order query answers (#461).
 
     DeterministicProbe opens LONG at tick 200, closes at tick 700 (hold 500).
     """

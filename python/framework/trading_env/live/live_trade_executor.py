@@ -10,11 +10,14 @@ with broker adapter communication and LiveRequestProcessor for pending
 order management.
 
 Architecture:
-    FiniexAutoTrader (live runner, replaces process_tick_loop)
+    FiniexAutoTrader (live runner, replaces process_event_loop)
         |
         +-- Live Data Feed (WebSocket / REST poll) -> delivers ticks
         |
         +-- LiveTradeExecutor
+            +-- begin_instant / apply_tick / resolve_due
+                                             -> the session's instant (#461): clock, prices,
+                                                then _process_pending_orders() or heartbeat()
             +-- on_tick(tick)                -> inherited: prices + _process_pending_orders()
             +-- _process_pending_orders()    -> polls broker for fills, handles timeouts
             +-- open_order()                 -> sends to broker via adapter
@@ -69,6 +72,7 @@ from python.framework.types.live_types.reconciliation_types import (
     ReconcileState,
     ReconciliationResult,
 )
+from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
     EntryType,
@@ -169,6 +173,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         resolution_config: Optional[UnresolvedResolutionDefaults] = None,
         venue_read_settle_seconds: float = 5.0,
         shutdown_config: Optional[ShutdownDefaults] = None,
+        portfolio_cache: bool = True,
     ):
         """
         Initialize live trade executor.
@@ -193,6 +198,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 that never reach a venue do not need one.
             shutdown_config: The waits of the session's stop (#630), of which the executor
                 spends the request worker's join.
+            portfolio_cache: Whether the portfolio marks open positions lazily; False keeps every
+                one current at every event, the reference a verification run compares (#653)
         """
         super().__init__(
             broker_config=broker_config,
@@ -203,6 +210,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             trade_history_max=trade_history_max,
             spot_mode=spot_mode,
             initial_balances=initial_balances,
+            portfolio_cache=portfolio_cache,
         )
 
         # Validate adapter supports live execution
@@ -315,6 +323,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         # Start the processor's worker thread.
         self._request_processor.start_worker()
+        # Whether the timeline's running instant applied a tick — which form its resolution takes
+        self._instant_had_tick = False
 
     def get_rest_ladder(self) -> ConnectionLadder:
         """
@@ -393,7 +403,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         Everything the venue holds for this account, each part under the shared REST ladder (§43).
 
-        For the reads OUTSIDE the tick loop — the session's start and its end — where waiting
+        For the reads OUTSIDE the event loop — the session's start and its end — where waiting
         between attempts is allowed. Positions only on a margin account: on spot a holding is a
         balance, and the venue has no position object to report.
 
@@ -500,7 +510,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
         The venue's orders and positions come from the cycle itself — read once, never twice.
         Its balances are read only when the record crosses between clean and divergent, and
-        with ONE attempt: this runs inside the tick loop, where the cadence is the ladder and
+        with ONE attempt: this runs inside the event loop, where the cadence is the ladder and
         nothing waits (§43).
 
         Args:
@@ -525,7 +535,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
 
     def _read_venue_balances_once(self) -> Optional[Dict[str, float]]:
         """
-        The venue's balance sheet, asked once and never waited for — for the tick loop.
+        The venue's balance sheet, asked once and never waited for — for the event loop.
 
         A transient failure gives None and a warning; the next record that reads balances asks
         again. Anything else propagates, as in the reconcile cycle: a refused credential is not
@@ -767,7 +777,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Drains async worker responses (fills, edits, cancels, query results,
         trades), processes timeouts, and re-polls resting orders and the MARKET
         orders and closes the venue has acknowledged. Called by
-        the AutoTrader tick loop on queue.Empty so the live pipeline stays
+        the AutoTrader event loop on queue.Empty so the live pipeline stays
         responsive even when the market is quiet — the fill/cancel-confirm query
         now fires during idle, not only on a real tick (#360). Does NOT touch
         tick state — see the abstract contract in AbstractTradeExecutor.heartbeat.
@@ -787,6 +797,60 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # The MARKET orders and closes as well: the venue fills them whether or not a tick
         # follows, and a status that is read only on a tick is never read in a quiet feed.
         self._process_pipeline_orders()
+
+    # ============================================
+    # The timeline's instant (#461)
+    # ============================================
+
+    def begin_instant(self, instant_msc: int) -> None:
+        """
+        Start an instant of the session's timeline: the canonical clock moves to its stamp, on the
+        receipt axis, forward only.
+
+        Args:
+            instant_msc: The instant's stamp, in UTC epoch milliseconds
+        """
+        self._instant_had_tick = False
+        self.set_current_time(datetime.fromtimestamp(instant_msc / 1000.0, tz=timezone.utc))
+
+    def apply_tick(self, tick: TickData) -> None:
+        """
+        One tick of the instant's slice moves the market — the prices, the valuation mark, the
+        adapter. The clock stays at the instant: the tick's venue stamp is data (§9).
+
+        Args:
+            tick: The tick, in arrival order
+        """
+        self._instant_had_tick = True
+        self._apply_market_tick(tick)
+
+    def resolve_due(self, up_to_msc: int) -> None:
+        """
+        Resolve what the venue answered by the instant, after all of its ticks.
+
+        Two forms, because a tick has always asked the venue more than a quiet pass: with a tick,
+        the tick's own processing — the inbox, the unresolved writes, the synchronous status read
+        of a MARKET order or close in transit, booked in this instant, the timeouts and the
+        resting orders; without one, the heartbeat's — the same, with the status reads asked
+        asynchronously and booked when they arrive.
+
+        Args:
+            up_to_msc: The instant's stamp
+        """
+        if self._instant_had_tick:
+            self._process_pending_orders()
+        else:
+            self.heartbeat()
+
+    def set_arrival_listener(self, listener: Callable[[], None]) -> None:
+        """
+        Name what to tell when the venue's answer lands in the inbox, so the session's loop drains
+        it on arrival (#461).
+
+        Args:
+            listener: Called on the worker thread once the answer is in the inbox
+        """
+        self._request_processor.set_arrival_listener(listener)
 
     def _process_pending_orders(self) -> None:
         """
@@ -909,6 +973,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 filled,
                 fill_price=response.fill_price,
                 fill_fee=response.fill_fee,
+                venue_time=response.ts_event,
             )
 
         elif response.status == BrokerOrderStatus.REJECTED:
@@ -1599,6 +1664,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 pending,
                 fill_price=response.fill_price,
                 fill_fee=response.fill_fee,
+                venue_time=response.ts_event,
             )
         elif pending.execution_state.cancel_requested:
             # Deferred cancel (#361): a cancel was requested while this submit was
@@ -2214,7 +2280,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         decision, which by definition already ran on a tick — so the situation could not occur
         until boot ADOPTION became the first path that puts a fillable order into the shadow
         before any tick exists. Polling one then would answer FILLED into a dereference of
-        None, i.e. an uncaught exception in the tick loop of a live-adapter session, with a real
+        None, i.e. an uncaught exception in the event loop of a live-adapter session, with a real
         execution at the venue and no local record of it. Waiting for the first tick costs
         nothing: the algo is not running before it either.
         """
@@ -2850,6 +2916,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 entry_type=entry_type,
                 fill_type=fill_type,
                 fill_fee=broker_response.fill_fee,
+                venue_time=broker_response.ts_event,
             )
             self.logger.info(
                 f'🎯 Active {entry_type.value} order {order_id} filled at '
@@ -2969,6 +3036,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         fill_type: FillType = FillType.MARKET,
         fill_event: OrderEventType = OrderEventType.FILLED,
         fill_fee: Optional[float] = None,
+        venue_time: Optional[datetime] = None,
     ) -> None:
         """
         Send a confirmed fill to the OPEN or the CLOSE half, by the order's own action.
@@ -2982,6 +3050,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 ended the rest of the order
             fill_fee: The fee the venue's answer reports for that volume, None where it
                 reports none (#508) — booked as the fill's fee instead of the estimate
+            venue_time: The venue's own stamp of the fill (#461) — passed for a fill in full,
+                whose order the venue closed with it; None for a partial fill, whose order the
+                venue closed later or not at all, so its close time is not the fill's
         """
         if fill_event is OrderEventType.FILLED:
             # The order is filled: a cancel or amend still on its way is refused by the venue
@@ -2990,7 +3061,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             self._record_overtaken_operation(pending)
         if pending.order_action == PendingOrderAction.CLOSE:
             self._fill_close_order(pending, fill_price=fill_price, fill_event=fill_event,
-                                   reported_fee=fill_fee)
+                                   reported_fee=fill_fee, venue_time=venue_time)
             return
         self._fill_open_order(
             pending,
@@ -2999,6 +3070,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             fill_type=fill_type,
             fill_event=fill_event,
             reported_fee=fill_fee,
+            venue_time=venue_time,
         )
 
     def open_order(self, request: OpenOrderRequest) -> OrderResult:
@@ -3242,6 +3314,11 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         in_flight = self._request_processor.get_order(position_id)
         if in_flight is not None and in_flight.order_action == PendingOrderAction.CLOSE:
             return self._joined_close_result(position, in_flight, lots, close_reason)
+
+        # #639 — at spot a close sells or buys like any order, and is funded like one
+        refusal = self.refuse_unfunded_close(position, lots)
+        if refusal is not None:
+            return self._book_order_result(refusal)
 
         # Send close to broker — close = reverse direction order
         close_direction = (
@@ -3939,6 +4016,15 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         self._request_processor.drain_inbox()
         self.withdraw_unsent_orders()
 
+    def hold_new_orders(self) -> None:
+        """
+        Keep every order sent from now on from the venue: the session is over (#642).
+
+        What the strategy sends from on_session_end_order_outcome is held by the request processor
+        and withdrawn by withdraw_unsent_orders, never sent.
+        """
+        self._request_processor.hold_new_submits()
+
     def withdraw_unsent_orders(self) -> List[str]:
         """
         Book each order whose submit a stopped worker never sent as cancelled at the session end.
@@ -3946,7 +4032,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Such an order never left this process, so the venue cannot hold it, and unaccounted would
         say it may. It ends cancelled, by the framework, at the session end, and the strategy
         hears it as a cancel. A hook may still send an order once the worker has stopped; it is
-        withdrawn the same way. Nothing happens while the worker runs.
+        withdrawn the same way, and so is one sent once the session was over, which the processor
+        held back (#642). Otherwise nothing happens while the worker runs.
 
         Returns:
             The ids of the orders withdrawn
@@ -3969,8 +4056,8 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             self._emit_order_cancelled(pending, cancelled)
             self.logger.warning(
                 f'⚠️ Session end: {what} ({pending.pending_order_id}) never left this process — '
-                f'the request worker had stopped before sending it. It is recorded as cancelled; '
-                f'the venue never received it.')
+                f'the session was over or the request worker had stopped before sending it. It is '
+                f'recorded as cancelled; the venue never received it.')
             withdrawn.append(pending.pending_order_id)
         return withdrawn
 

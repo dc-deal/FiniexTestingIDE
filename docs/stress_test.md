@@ -135,11 +135,11 @@ different times:
 TICK domain — labelled at CAPTURE            SIGNAL domain — labelled at DERIVE
 ──────────────────────────────────           ─────────────────────────────────────
 StaleDataStressDriver runs ALONGSIDE         StaleDataSlicer carved the snapshots
-the tick loop and knows, at that very        out at DATA PREPARATION. At runtime a
+the event loop and knows, at that very        out at DATA PREPARATION. At runtime a
 moment, that it is injecting:                worker only sees "nothing newer" — it
   get_active_label()                         cannot tell intent from a real outage.
        │ per tick                                        │
-  process_tick_loop  ──►  tracker stamps      RunUnit.planned_outages (parsed once
+  process_event_loop  ──►  tracker stamps      RunUnit.planned_outages (parsed once
   the label when it OPENS the episode         from the scenario's stress_test_config)
        │                                                 │
        └──────────────►  feed_stability_report_builder._resolve_origin()  ◄─────────┘
@@ -178,7 +178,7 @@ can never fire).
 
 **Injection points:** `StaleDataSlicer` (series carve at data preparation,
 `SharedDataPreparator`) · `StaleDataStressDriver` (per-tick state machine, driven by
-`process_tick_loop` in the simulation and by `autotrader_tick_loop` in the AutoTrader).
+`process_event_loop` in the simulation and by `autotrader_event_loop` in the AutoTrader).
 Demo scenario: `EURGBP_stale_market_13` in the EURGBP stress set; AutoTrader profile:
 `tick_outage_stress_test.json`; probe logic: `CORE/test_probes/outage_probe`.
 

@@ -27,13 +27,15 @@ from typing import List, Optional, Set
 import pytest
 
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.event_loop.autotrader_cadence_work import AutotraderCadenceWork
 from python.framework.autotrader.cold_start.cold_start_setup import (
     ColdStartSetup,
     read_carry_over,
     setup_cold_start,
 )
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
+from python.framework.testing.mock_broker_adapter import MockExecutionMode
+from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.persistence.cold_start_state_store import ColdStartStateStore
 from python.framework.persistence.position_book_watcher import PositionBookWatcher
 from python.framework.types.config_types.autotrader_defaults_config_types import SafetyConfig
@@ -160,7 +162,7 @@ def _main(executor, store, persist: bool, keys_in_use=None,
     # None, because the write happens at BOOT too — before the loop exists. The carry-over
     # reads the booking-period high-water mark from it (#537), and the store treats the value
     # as a floor, so a zero here leaves a deployment's period count alone.
-    main._tick_loop = None
+    main._event_loop = None
     main._cold_start = ColdStartSetup(
         proceed=True,
         store=store,
@@ -302,7 +304,7 @@ class TestTheReportedDrawdownReachesTheStore:
     The curve is written on the same points as everything else here (#497).
 
     It has no cadence of its own on purpose: one write plus its index rebuild costs tens of
-    milliseconds on this tree (§42) and has no business in a tick loop. So the boot write,
+    milliseconds on this tree (§42) and has no business in an event loop. So the boot write,
     the shutdown write and every structural change of the open book carry it — and if the
     wiring drops it, a thirty-day run reports the drawdown of its last segment while every
     unit test stays green.
@@ -346,7 +348,7 @@ class TestTheReportedDrawdownReachesTheStore:
         different periods, which is the confusion #497 exists to end. It does so at the READ,
         once for both. The writes always carry the curve, as they carry the denominator and as
         the final figures always did — a write that obeyed the switch on its own made what was
-        stored depend on whether the tick loop had run.
+        stored depend on whether the event loop had run.
         """
         store = SpyStore()
         executor.portfolio.sample_equity()
@@ -361,6 +363,87 @@ class TestTheReportedDrawdownReachesTheStore:
         assert main._load_carry_over_records(OrdersTo.VENUE) == ColdStartPayload(), (
             'the successor of a session with the switch off continued its curve anyway')
 
+
+
+class TestTheClosingWriteCarriesTheBookAsReported:
+    """
+    The open book is written before the cleanup, and its extrema are not final there (#542).
+
+    The third of one shape: the period floor (#537) and the drawdown curve (#497) were written
+    before the figures that move them were final, and the closing write carries them again. Each
+    position in the book carries its excursion extrema, and `get_portfolio_statistics()` in the
+    collection marks the positions once more — so a successor reading the book of the earlier
+    write inherits an excursion one mark older than the one this session reported.
+    """
+
+    @staticmethod
+    def _closing(executor, store, persist_venue_claims: bool = True) -> AutotraderMain:
+        """
+        A session at its close: the loop has run, so the period floor can be read.
+
+        Args:
+            executor: The session's executor
+            store: The spy store
+            persist_venue_claims: False for a dry run
+
+        Returns:
+            The session object the two shutdown writes run on
+        """
+        main = _main(executor, store, persist=True, persist_venue_claims=persist_venue_claims)
+        main._event_loop = SimpleNamespace(get_highest_period_no=lambda: 1)
+        return main
+
+    def test_the_extrema_the_session_reported_reach_the_closing_write(self):
+        mock = MockOrderExecution(mode=MockExecutionMode.TIMEOUT, spot_mode=True,
+                                  initial_balances={'USD': 1000.0, 'BTC': 0.01})
+        executor = mock.create_executor()
+        executor.portfolio.restore_position_book([_note()])
+        # The last tick of the session, 1,200 below the entry: it reaches the position only
+        # when somebody marks it
+        mock.feed_tick(executor, symbol='BTCUSD', bid=60000.0, ask=60001.0)
+        store = SpyStore()
+        main = self._closing(executor, store)
+
+        main._persist_cold_start_carry_over()           # the write before the cleanup
+        executor.portfolio.get_portfolio_statistics()   # what the collection does
+        main._carry_over_final_figures()                # the write that bounds the session
+
+        reported = executor.portfolio.get_open_positions()[0]
+        # The shape this class exists for, provable from the mock chain like the period floor:
+        # the earlier write still holds the extrema from before the last mark
+        assert store.saves[0]['open_positions'][0].mae_pnl > reported.mae_pnl
+        closing = store.saves[1]['open_positions']
+        assert closing is not None, (
+            'the closing write left the book of the earlier write, so the successor inherits '
+            'the extrema as they stood before the last mark')
+        assert closing[0].mae_pnl == pytest.approx(reported.mae_pnl)
+        assert closing[0].mae_price == pytest.approx(reported.mae_price)
+        assert closing[0].mfe_pnl == pytest.approx(reported.mfe_pnl)
+
+    def test_a_flat_spot_session_says_so_at_the_close(self, spot_executor):
+        """The empty list, as the write after the cleanup gives it: nothing is carried on."""
+        store = SpyStore()
+
+        self._closing(spot_executor, store)._carry_over_final_figures()
+
+        assert store.saves[0]['open_positions'] == []
+
+    def test_a_dry_run_claims_no_book_at_the_close_either(self, spot_executor):
+        store = SpyStore()
+        spot_executor.portfolio.restore_position_book([_note()])
+
+        self._closing(spot_executor, store,
+                      persist_venue_claims=False)._carry_over_final_figures()
+
+        assert store.saves[0]['open_positions'] is None, (
+            'the successor would inherit a book the venue does not hold')
+
+    def test_margin_leaves_the_book_alone_at_the_close(self, executor):
+        store = SpyStore()
+
+        self._closing(executor, store)._carry_over_final_figures()
+
+        assert store.saves[0]['open_positions'] is None
 
 
 class TestTheConfigurationRidesWithTheVenueClaims:
@@ -497,19 +580,19 @@ class TestBothReadsHonourADeclaredContinuation:
             CarryOverLoadOutcome.ACCEPTED, 'cert_soft')
 
 
-class TestTheTickLoopSeam:
+class TestTheEventLoopSeam:
     """
     The seam that decides whether a pass writes the carry-over (#355 / #356).
 
     Exercised through `__new__` for the same reason the rest of this file is: the method needs
-    four attributes, and building a real tick loop would drag in a broker, a tick source and a
-    decision logic without testing any of them.
+    four attributes of the event loop's cadence work, and building a real one would drag in a
+    store, a reconciler and a decision logic without testing any of them.
     """
 
     @staticmethod
     def _loop(executor, writes, drift_ticks=500, risk_baseline=None):
-        """A tick loop carrying only what the carry-over seam reads."""
-        loop = AutotraderTickLoop.__new__(AutotraderTickLoop)
+        """The event loop's cadence work carrying only what the carry-over seam reads."""
+        loop = AutotraderCadenceWork.__new__(AutotraderCadenceWork)
         loop._executor = executor
         loop._persist_carry_over = lambda: writes.append(True) or True
         loop._book_watcher = PositionBookWatcher(executor.portfolio.get_open_positions())
@@ -529,8 +612,8 @@ class TestTheTickLoopSeam:
         # appearing afterwards is the change this pass sees.
         spot_executor.portfolio.restore_position_book([_note()])
 
-        loop._persist_carry_over_if_needed()
-        loop._persist_carry_over_if_needed()
+        loop.persist_carry_over_if_needed()
+        loop.persist_carry_over_if_needed()
 
         assert len(writes) == 1
 
@@ -543,9 +626,9 @@ class TestTheTickLoopSeam:
         loop._persist_carry_over = lambda: attempts.append(False) or False
         spot_executor.portfolio.restore_position_book([_note()])
 
-        loop._persist_carry_over_if_needed()
-        loop._persist_carry_over_if_needed()
-        loop._persist_carry_over_if_needed()
+        loop.persist_carry_over_if_needed()
+        loop.persist_carry_over_if_needed()
+        loop.persist_carry_over_if_needed()
 
         assert len(attempts) == 3
 
@@ -555,25 +638,25 @@ class TestTheTickLoopSeam:
         writes = []
         loop = self._loop(spot_executor, writes, drift_ticks=500)
         spot_executor.portfolio.restore_position_book([_note()])
-        loop._persist_carry_over_if_needed(ticks_processed=1)
+        loop.persist_carry_over_if_needed(ticks_processed=1)
         assert len(writes) == 1
 
         spot_executor.get_open_positions()[0].stop_loss = 60000.0
 
-        loop._persist_carry_over_if_needed(ticks_processed=2)
+        loop.persist_carry_over_if_needed(ticks_processed=2)
         assert len(writes) == 1
 
-        loop._persist_carry_over_if_needed(ticks_processed=600)
+        loop.persist_carry_over_if_needed(ticks_processed=600)
         assert len(writes) == 2
 
     def test_the_cadence_needs_no_clock(self, spot_executor):
         # The first passes happen before the canonical clock is injected — a cadence that
-        # asked for the time would raise ClockNotInjectedError inside the tick loop.
+        # asked for the time would raise ClockNotInjectedError inside the event loop.
         writes = []
         loop = self._loop(spot_executor, writes)
         spot_executor.portfolio.restore_position_book([_note()])
 
-        loop._persist_carry_over_if_needed(ticks_processed=0)
+        loop.persist_carry_over_if_needed(ticks_processed=0)
 
         assert len(writes) == 1
 
@@ -581,7 +664,7 @@ class TestTheTickLoopSeam:
         loop = self._loop(spot_executor, [])
         loop._persist_carry_over = None
 
-        loop._persist_carry_over_if_needed()
+        loop.persist_carry_over_if_needed()
 
 
 class TestTheBaselineReachesTheDiskBeforeAHardKill:
@@ -611,8 +694,8 @@ class TestTheBaselineReachesTheDiskBeforeAHardKill:
 
     @staticmethod
     def _loop(executor, writes, tracker, drift_ticks=500, seeded=None):
-        """A tick loop whose book is quiet, so only the baseline can trigger a write."""
-        loop = AutotraderTickLoop.__new__(AutotraderTickLoop)
+        """The cadence work of a loop whose book is quiet, so only the baseline can trigger a write."""
+        loop = AutotraderCadenceWork.__new__(AutotraderCadenceWork)
         loop._executor = executor
         loop._persist_carry_over = lambda: writes.append(True) or True
         loop._book_watcher = PositionBookWatcher(executor.portfolio.get_open_positions())
@@ -627,7 +710,7 @@ class TestTheBaselineReachesTheDiskBeforeAHardKill:
         writes = []
         loop = self._loop(spot_executor, writes, self._tracker(10_000.0))
 
-        loop._persist_carry_over_if_needed(ticks_processed=1)
+        loop.persist_carry_over_if_needed(ticks_processed=1)
 
         assert len(writes) == 1, (
             'the baseline reaches the disk for the first time at shutdown — a hard kill '
@@ -638,9 +721,9 @@ class TestTheBaselineReachesTheDiskBeforeAHardKill:
         writes = []
         loop = self._loop(spot_executor, writes, self._tracker(10_000.0))
 
-        loop._persist_carry_over_if_needed(ticks_processed=1)
-        loop._persist_carry_over_if_needed(ticks_processed=2)
-        loop._persist_carry_over_if_needed(ticks_processed=600)
+        loop.persist_carry_over_if_needed(ticks_processed=1)
+        loop.persist_carry_over_if_needed(ticks_processed=2)
+        loop.persist_carry_over_if_needed(ticks_processed=600)
 
         assert len(writes) == 1
 
@@ -657,7 +740,7 @@ class TestTheBaselineReachesTheDiskBeforeAHardKill:
         loop = self._loop(spot_executor, writes, tracker,
                           seeded=tracker.get_baseline())
 
-        loop._persist_carry_over_if_needed(ticks_processed=1)
+        loop.persist_carry_over_if_needed(ticks_processed=1)
 
         assert writes == []
 
@@ -674,10 +757,10 @@ class TestTheBaselineReachesTheDiskBeforeAHardKill:
                           seeded=tracker.get_baseline())
 
         tracker.observe(10_500.0)
-        loop._persist_carry_over_if_needed(ticks_processed=2)
+        loop.persist_carry_over_if_needed(ticks_processed=2)
         assert writes == [], 'a write per new peak, on every tick of a trend'
 
-        loop._persist_carry_over_if_needed(ticks_processed=600)
+        loop.persist_carry_over_if_needed(ticks_processed=600)
         assert len(writes) == 1
 
     def test_a_session_without_a_tracker_is_unaffected(self, spot_executor):
@@ -685,7 +768,7 @@ class TestTheBaselineReachesTheDiskBeforeAHardKill:
         writes = []
         loop = self._loop(spot_executor, writes, None)
 
-        loop._persist_carry_over_if_needed(ticks_processed=1)
+        loop.persist_carry_over_if_needed(ticks_processed=1)
 
         assert writes == []
 
@@ -824,7 +907,7 @@ class TestTheReadingsFollowTheRunKind:
         store = SpyStore()
         executor.portfolio.sample_equity()
         main = _main(executor, store, persist=True, persist_venue_claims=False)
-        main._tick_loop = SimpleNamespace(get_highest_period_no=lambda: 3)
+        main._event_loop = SimpleNamespace(get_highest_period_no=lambda: 3)
         main._carried = _readings(10_000.0, OrdersTo.VENUE)
         main._load_carry_over_records(OrdersTo.SIMULATED)
 
@@ -838,7 +921,7 @@ class TestTheReadingsFollowTheRunKind:
         store = SpyStore()
         main = _main(executor, store, persist=True,
                      risk_baseline=_fixed_baseline(10_000.0))
-        main._tick_loop = SimpleNamespace(get_highest_period_no=lambda: 1)
+        main._event_loop = SimpleNamespace(get_highest_period_no=lambda: 1)
         main._carried = _readings(10_400.0, OrdersTo.SIMULATED)
         main._load_carry_over_records(OrdersTo.VENUE)
 

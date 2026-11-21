@@ -15,6 +15,10 @@ budget while a session has only what it observed.
 Observed feed outages are deliberately NOT a check: they are facts and belong to the
 feed-stability section, which states experience where this states intent.
 
+What a replayed session READ is reported as the sim reports it (#647): external data and data a
+producer did not stamp, and what the files lack. Only a mock session replays archive files; a
+live-adapter session reads a socket and takes its warmup from the venue, so it has nothing to say.
+
 Real orders from uncommitted code (#551) are decided at STARTUP, by the guard that lets them
 through under `--allow-dirty`. This validator receives that verdict rather than deriving it a
 second time — the same shape as the stress-test check, which also reports a start-time fact so a
@@ -24,9 +28,11 @@ run carrying it can never be read as a clean one.
 from typing import Optional
 
 from python.framework.reporting.builders.pending_orders_report_builder import submission_count
+from python.framework.reporting.builders.portfolio_report_builder import usable_funds
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.run_origin_types import CodeIdentity
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import (
     Severity,
     ValidationDomain,
@@ -34,9 +40,12 @@ from python.framework.types.validation_types import (
     ValidationResult,
 )
 from python.framework.validators.shared_advisory_checks import (
+    check_data_deficiencies,
+    check_data_origin,
     check_order_event_stream,
     check_stress_test,
     check_unversioned_code,
+    check_usable_funds,
 )
 from python.framework.validators.uncommitted_code_validator import build_uncommitted_code_finding
 
@@ -60,6 +69,7 @@ class SessionPostRunValidator:
         uncommitted_code_allowed: bool = False,
         code_identity: Optional[CodeIdentity] = None,
         readings_note: str = '',
+        replayed_scenario: Optional[SingleScenario] = None,
     ):
         """
         Initialize the session post-run validator.
@@ -74,12 +84,15 @@ class SessionPostRunValidator:
                 baseline its carry-over held, as its start logged it; '' when it continued them
                 or had a reason nobody needs told — a first run, `persist_baseline` off, a new
                 deployment (#626)
+            replayed_scenario: The scenario a mock session replayed from the archive, with what its
+                mount read; None for a live-adapter session, which reads a socket
         """
         self._result = result
         self._config = config
         self._uncommitted_code_allowed = uncommitted_code_allowed
         self._code_identity = code_identity
         self._readings_note = readings_note
+        self._replayed_scenario = replayed_scenario
 
     def validate(self) -> None:
         """Run all post-run advisory checks; append a run-scoped ValidationResult per finding."""
@@ -88,7 +101,10 @@ class SessionPostRunValidator:
         self._check_uncommitted_code()
         self._check_unversioned_code()
         self._check_order_event_stream()
+        self._check_usable_funds()
         self._check_carried_readings()
+        self._check_data_origin()
+        self._check_data_deficiencies()
 
     def _add_finding(self, finding: ValidationFinding) -> None:
         """
@@ -110,6 +126,20 @@ class SessionPostRunValidator:
         if finding is not None:
             self._add_finding(finding)
 
+    def _check_data_origin(self) -> None:
+        """Report external and not producer-stamped files the replay read (shared with the sim)."""
+        if self._replayed_scenario is None:
+            return
+        for finding in check_data_origin([self._replayed_scenario]):
+            self._add_finding(finding)
+
+    def _check_data_deficiencies(self) -> None:
+        """Say what the files the replay read LACK (shared with the sim)."""
+        if self._replayed_scenario is None:
+            return
+        for finding in check_data_deficiencies([self._replayed_scenario]):
+            self._add_finding(finding)
+
     def _check_order_event_stream(self) -> None:
         """Warn when the session's order-event stream lacks submissions it counted (#362)."""
         stats = self._result.execution_stats
@@ -122,9 +152,20 @@ class SessionPostRunValidator:
         if finding is not None:
             self._add_finding(finding)
 
+    def _check_usable_funds(self) -> None:
+        """Warn when the session's funds fall below zero once its own unfilled orders count."""
+        stats = self._result.portfolio_stats
+        if stats is None:
+            return
+        finding = check_usable_funds(
+            [(self._config.get_unit_name(), usable_funds(stats))], _SESSION_UNIT_LABEL)
+        if finding is not None:
+            self._add_finding(finding)
+
     def _check_clipping(self) -> None:
         """
-        Warn when too many ticks arrived while the previous one was still being processed.
+        Warn when the algo did not compute on too many ticks: they arrived while a pass was still
+        running and waited for a newer venue message's slice (#461).
 
         Live-only, and the one performance verdict a session can honestly make: the clipping
         ratio is measured against REAL tick arrival, so it says how often the algo failed to
@@ -144,11 +185,13 @@ class SessionPostRunValidator:
             domain=ValidationDomain.PROFILING, scope=_RUN_SCOPE,
             message=(
                 f'Clipping ratio {clipping.clipping_ratio:.1%} exceeds {limit:.1%} — '
-                f'{clipping.ticks_clipped}/{clipping.total_ticks} ticks arrived while the '
-                f'previous one was still being processed, so those decisions ran on data up '
-                f'to {clipping.max_stale_ms:.1f}ms old (avg processing '
-                f'{clipping.avg_processing_ms:.2f}ms). The algo is not keeping up with this '
-                f'tick rate.')))
+                f'{clipping.ticks_clipped}/{clipping.total_ticks} ticks waited behind a newer '
+                f'venue message — mostly because a pass was still running — so the algo never '
+                f'computed on them and decided on the newer tick, up to '
+                f'{clipping.max_stale_ms:.1f}ms after the oldest arrived (avg processing '
+                f'{clipping.avg_processing_ms:.2f}ms a pass, '
+                f'{clipping.total_passes} passes). The algo is not keeping up with this tick '
+                f'rate.')))
 
     def _check_uncommitted_code(self) -> None:
         """

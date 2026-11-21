@@ -14,7 +14,8 @@ supply the defaults through the same helper their `create_*` uses, and
 `assert_rendered_parameters_match` holds the two together once the components exist.
 
 A record, never a schema: a later version of an algo may rename or drop a parameter, and an old
-document stays exactly as true as it was. Nothing reads it back into a factory.
+document stays exactly as true as it was. One reader feeds it back: a backtest of the session's own
+window (#512), where it is the strategy the session ran.
 """
 
 from dataclasses import fields
@@ -38,7 +39,7 @@ from python.framework.workers.abstract_worker import AbstractWorker
 # SOURCE's provenance, kept in the store index under `config_id`; the strategy is rendered on its
 # own, with its defaults filled in. What the session is FOR (#576) is not what it ran with: the
 # header carries it. Neither is whose carry-over it continues (#358) — where its state came from.
-_NOT_A_BLOCK = frozenset({'config_path', 'strategy_config', 'run_purpose', 'carry_over_from'})
+NOT_A_BLOCK = frozenset({'config_path', 'strategy_config', 'run_purpose', 'carry_over_from'})
 
 
 def render_autotrader_profile(config: AutoTraderConfig) -> Dict[str, Any]:
@@ -55,7 +56,7 @@ def render_autotrader_profile(config: AutoTraderConfig) -> Dict[str, Any]:
     blocks = {
         field.name: to_plain(getattr(config, field.name))
         for field in fields(config)
-        if field.name not in _NOT_A_BLOCK
+        if field.name not in NOT_A_BLOCK
     }
     return {
         'kind': RunConfigKind.AUTOTRADER_RENDERED.value,

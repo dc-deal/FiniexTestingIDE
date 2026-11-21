@@ -19,7 +19,9 @@ Also available as VS Code launch config: **Pytest: Run All Core Tests**
 {
   "excluded": ["simulation/benchmark"],
   "ignored": ["shared"],
-  "fail_fast": true
+  "fail_fast": true,
+  "lanes": 4,
+  "suite_timeout_seconds": 900
 }
 ```
 
@@ -27,7 +29,14 @@ Also available as VS Code launch config: **Pytest: Run All Core Tests**
 |-----|------|-------------|
 | `excluded` | `List[str]` | Suite directories skipped entirely (accepts both plain names `shared` and group/suite form `simulation/benchmark`) |
 | `ignored` | `List[str]` | Directories that are not test suites (silently skipped) |
-| `fail_fast` | `bool` | `true`: abort on first suite failure. `false`: run all suites |
+| `fail_fast` | `bool` | `true`: stop starting further suites once one fails. `false`: run all suites |
+| `lanes` | `int` | Ceiling on suites running side by side. The machine sets the other ceiling — the runner starts the smaller of the two, so a second suite running beside this one lowers the number by itself |
+| `suite_timeout_seconds` | `int` | How long one suite may run before the runner gives up on it. Running one suite at a time made a hang obvious; several at once hide it |
+
+The model behind these keys is `SuiteRunnerConfig`
+(`python/framework/types/config_types/suite_runner_config_types.py`), which owns every default
+and refuses a key it does not know — a misspelled setting is a hard error rather than one that
+silently does nothing.
 
 User overrides are deep-merged into the base config. Lists are replaced, not appended.
 
@@ -63,25 +72,38 @@ Each integration test suite has its own dedicated config file named after the te
    directory contains test files directly, it is treated as a flat suite.
 3. Filters out `excluded`, `ignored`, and `__pycache__` directories. `excluded` matches
    both plain names (e.g. `shared`) and `group/suite` form (e.g. `simulation/benchmark`).
-4. Runs each suite via `pytest tests/<group>/<suite>/ -v --tb=short` as subprocess
-5. Parses pytest summary output for pass/fail/error/skipped counts
-6. Prints compact per-suite result line with the `group/suite` path
-7. If `fail_fast` is enabled and a suite fails, execution stops immediately
+4. Decides how many lanes to run: the smaller of the configured ceiling and what the machine
+   reports free, never below one
+5. Runs the suites through a pool of that many lanes, each as `pytest tests/<group>/<suite>/ -v
+   --tb=short -p no:cacheprovider --basetemp <own dir>` in a subprocess of its own. Each suite is
+   handed a temporary directory of its own, so several starting in the same second do not compete
+   over the counter pytest would otherwise use, and the cache provider is off because it writes
+   one file in the working directory that every suite would be writing at once
+6. Classifies how each run ended by the code it exited with — tests failed, interrupted, internal
+   error, usage error, killed by a signal — or as timed out where the runner gave up on it
+7. Prints a compact result line as each suite lands, so the order read is the order they finished
+8. If `fail_fast` is enabled and a suite fails, no further suite is STARTED; the ones already
+   running are left to finish, because killing work seconds from done buys nothing and leaves
+   half-written directories behind
 
 ## Output
 
 Successful run:
 ```
 Running 26 test suites...
+Started:  2026-06-17 14:30:05 UTC
 ──────────────────────────────────────────────────
-  autotrader/integration             39 passed  (15s)
+Lanes:    4
+──────────────────────────────────────────────────
   autotrader/live_executor           58 passed  (4s)
   data/import_pipeline               57 passed  (7s)
   parity                             no tests   (0s)
   simulation/baseline                45 passed  (9s)
+  autotrader/integration             39 passed  (15s)
   ...
 ──────────────────────────────────────────────────
-TOTAL: 858 passed  (2m 23s)
+Suites: 26 with a verdict
+TOTAL: 858 passed  (41s on the clock, 2m 23s across suites)
 
   autotrader        150 passed
   data              124 passed
@@ -90,19 +112,52 @@ TOTAL: 858 passed  (2m 23s)
   simulation        286 passed
 ```
 
-The per-category breakdown groups suites by their top-level directory. Suites with no collected tests show `no tests` (e.g. placeholder directories like `parity/` before Phase 2 lands).
+Result lines appear as each suite finishes, so they read in completion order rather than
+alphabetically; the per-category breakdown underneath is back in discovery order, because a
+summary someone scans for a name must not depend on which lane was quickest.
+
+**Two durations, and they answer different questions.** The clock is how long the run took. The
+figure across suites is how much work it did. Running one suite at a time made them the same
+number, so only one was printed — side by side they diverge, and reporting the sum alone after a
+six-minute run would read as the run having taken twenty-four.
+
+The per-category breakdown groups suites by their top-level directory. Suites with no collected
+tests show `no tests` (e.g. placeholder directories like `parity/` before Phase 2 lands).
 
 Aborted run (fail_fast):
 ```
 Running 26 test suites...
+Started:  2026-06-17 14:30:05 UTC
+──────────────────────────────────────────────────
+Lanes:    4
 ──────────────────────────────────────────────────
   autotrader/integration             39 passed  (18s)
-  data/import_pipeline               ❌ exit code 2  (4s)
+  data/import_pipeline               ❌ 2 failed, 55 passed  (4s)
+  framework/reporting                ❌ timed out (exit -1)  (15m 00s)
 ──────────────────────────────────────────────────
-ABORTED (fail_fast) after data/import_pipeline
-Suites run: 2
-TOTAL: 39 passed  (22s)
+  data/import_pipeline:
+    FAILED tests/data/import_pipeline/test_duplicates.py::test_a_repeated_tick_is_dropped
+  framework/reporting: timed out (exit -1) — its counts describe a fragment, not the suite
+ABORTED (fail_fast) — no further suites were started
+Suites: 2 with a verdict, 1 without, 23 never started
+TOTAL: 94 passed, 2 failed  (15m 04s on the clock, 15m 22s across suites)
 ```
+
+**Where the suites' temporary files go.** Each suite works in a directory of its own under one
+root per run. pytest empties a directory it is handed and does not rotate it, so the runner clears
+the root itself — after a run where everything passed. A run that found something keeps it and
+prints where, because that is where the evidence sits:
+
+```
+Temp:     /tmp/finiex_suite_8f3a21c0 (kept — a suite did not pass)
+```
+
+**Three states, never two.** A suite that reached a verdict, one that ran without reaching one,
+and one the run never got to are different facts. The counts only describe the first group: a
+suite that was killed or timed out carries the numbers it managed before it stopped, which say
+how far it got and nothing about the suite. No suite is named as the cause of the abort — with
+several lanes in flight the one that failed first is not necessarily the one the order suggests,
+and naming the wrong one sends a reader to the wrong place.
 
 ## AutoTrader Mock Profiles & Display
 
@@ -122,7 +177,7 @@ python python/cli/autotrader_cli.py run \
 
 The two pipelines have different process architectures:
 
-- **AutoTrader:** Single process — tick loop + Rich dashboard share the same process
+- **AutoTrader:** Single process — event loop + Rich dashboard share the same process
   (separate threads). `display.enabled: false` eliminates rendering overhead (~100ms
   refresh cycles).
 - **Simulation:** Multi-process — each scenario runs as a subprocess. Subprocesses export
@@ -232,3 +287,5 @@ location and cleans it up:
 | `configs/test_config.json` | Base configuration |
 | `python/configuration/test_config_loader.py` | Config loader with user override support |
 | `python/cli/test_runner_cli.py` | CLI entry point and runner logic |
+| `python/framework/types/config_types/suite_runner_config_types.py` | The model that owns the defaults |
+| `python/framework/types/test_runner_types.py` | How a suite's run ended, and what one suite produced |

@@ -1,0 +1,23 @@
+{
+ "run_list_figures": {
+  "20261110_143806_f2168086": {
+   "results": [
+    {
+     "currency": "JPY",
+     "net_pnl": -137.99999999991996,
+     "total_trades": 4
+    }
+   ],
+   "run_outcome": "success",
+   "error_count": 0,
+   "warning_count": 0,
+   "log_warning_count": 0,
+   "tick_timespan_seconds": 7372.549
+  }
+ },
+ "deployments": [],
+ "deployment_details": {},
+ "deployment_booking_periods": {},
+ "sweeps": [],
+ "sweep_details": {}
+}

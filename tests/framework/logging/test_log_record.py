@@ -108,7 +108,7 @@ class TestTheColumnIsARole:
             _record(event_time=None), run_start=_START, event_column=True)
         assert '2026-03-04 09:15:30.412' in with_clock
         assert format_log_event_time(None) in without
-        # Fixed width, or the column shifts when the run enters its tick loop.
+        # Fixed width, or the column shifts when the run enters its event loop.
         assert len(_ANSI.sub('', with_clock)) == len(_ANSI.sub('', without))
 
     def test_the_filler_is_never_a_wall_clock_substitute(self):

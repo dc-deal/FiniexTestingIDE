@@ -6,11 +6,14 @@ replayed data ticks, so an opt-in algo (wants_heartbeat) reacts between ticks at
 same relative point as live. Three deterministic layers, no broker, no network:
 
 1. LatencySimulator.process_up_to_msc — resolve fills by an explicit simulated msc
-   (the mechanism that lets a fill landing in a gap be resolved on a ghost-pass).
-2. _run_sim_heartbeats — the driver: interval cadence within a gap, the #208
-   weekend-gap correctness gate, and session-end short-circuit.
-3. execute_tick_loop — end-to-end: ghost-passes fire through the real loop for an
-   opt-in decision (hard-gated; a non-opt-in decision fires none).
+   (the mechanism that lets a fill landing in a gap be resolved at its own instant).
+2. The timeline intake's timers (#460) — interval cadence within a gap, the #208
+   weekend-gap correctness gate, and none without a heartbeat. Until #460 a gap walk
+   (`_run_sim_heartbeats`) made these passes; the intake makes them as timer events, on the
+   same arrival axis and at the same instants.
+3. execute_event_loop — end-to-end: ghost-passes fire through the real loop for an
+   opt-in decision (hard-gated; a non-opt-in decision fires none), and a session end asked
+   for in one ends the run after it.
 """
 
 from datetime import datetime, timezone
@@ -19,12 +22,15 @@ from unittest.mock import MagicMock
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.logging.global_logger import GlobalLogger
 from python.framework.logging.scenario_logger import ScenarioLogger
-from python.framework.process.process_tick_loop import _run_sim_heartbeats, execute_tick_loop
+from python.framework.loop.event_sequencer import EventSequencer
+from python.framework.loop.intake.sim_event_intake import SimEventIntake
+from python.framework.process.process_event_loop import execute_event_loop
 from python.framework.testing.mock_broker_adapter import MockBrokerAdapter, MockExecutionMode
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.simulation.order_latency_simulator import OrderLatencySimulator
 from python.framework.trading_env.simulation.trade_simulator import TradeSimulator
 from python.framework.types.live_types.live_stats_config_types import LiveStatsExportConfig
+from python.framework.types.loop_types.loop_event_types import DataSliceEvent, TimeEvent
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.process_data_types import ProcessScenarioConfig
 from python.framework.types.trading_env_types.broker_types import BrokerType
@@ -68,6 +74,8 @@ class TestLatencyResolutionByMsc:
                 symbol=SYMBOL, order_type=OrderType.MARKET,
                 direction=OrderDirection.LONG, lots=0.01),
             tick=_tick(_BASE_MSC),
+            placed_msc=_BASE_MSC,
+            placed_at=datetime.fromtimestamp(_BASE_MSC / 1000, tz=timezone.utc),
         )
         # broker_fill_msc = _BASE_MSC + 5000 — not yet reached
         assert sim.process_up_to_msc(_BASE_MSC + 4000) == []
@@ -81,74 +89,58 @@ class TestLatencyResolutionByMsc:
 # 2. The ghost-pass driver (cadence + gates)
 # =============================================================================
 
-def _driver_mocks():
-    trade_simulator = MagicMock()
-    trade_simulator.is_session_end_requested.return_value = False
-    worker_coordinator = MagicMock()
-    worker_coordinator.process_heartbeat.return_value = MagicMock()  # a Decision
-    decision_logic = MagicMock()
-    return trade_simulator, worker_coordinator, decision_logic
+class _NothingDue:
+    """A simulator with nothing in flight, as the intake asks it."""
+
+    def peek_next_due_msc(self):
+        return None
 
 
-def _config(interval_ms: int = 1000, threshold_s: float = 300.0) -> ProcessScenarioConfig:
-    return ProcessScenarioConfig(
-        name='hb', symbol=SYMBOL, scenario_index=0,
-        start_time=datetime.fromtimestamp(_BASE_MSC / 1000.0, tz=timezone.utc),
-        heartbeat_interval_ms=interval_ms,
-        inter_tick_gap_threshold_s=threshold_s,
-        live_stats_config=LiveStatsExportConfig(enabled=False),
-    )
+def _instants(ticks, interval_ms: int = 1000, threshold_s: float = 300.0):
+    """Every instant the intake hands over for the ticks, as tuples of event classes."""
+    intake = SimEventIntake(ticks, _NothingDue(), EventSequencer(), interval_ms,
+                            threshold_s * 1000.0, MagicMock())
+    return [tuple(type(event) for event in instant) for instant in intake]
 
 
-class TestSimHeartbeatDriver:
+class TestTheIntakeTimers:
     """
-    _run_sim_heartbeats fires at the interval within a sub-threshold gap only.
+    The intake makes a heartbeat logic's timers at the interval within a sub-threshold gap only.
 
-    It also carries the booking recorder since #539: the ghost passes are the only thing that
-    advances the canonical clock across a quiet stretch, so the trading-day boundary is checked
-    at each ghost instant rather than once before them. What that call does is pinned in
-    `tests/simulation/core/test_ghost_pass_booking_boundary.py`; here it is a mock, because
-    these cases are about the cadence.
+    The trading-day boundary each of them checks is pinned in
+    `tests/simulation/core/test_ghost_pass_booking_boundary.py`; these cases are about the cadence.
     """
 
-    def test_fires_interval_passes_within_gap(self):
-        ts, wc, dl = _driver_mocks()
-        # 10 s gap, 1 s interval → ghost-passes at 1..9 s (9 passes)
-        ended = _run_sim_heartbeats(
-            _BASE_MSC, _BASE_MSC + 10_000, _config(), ts, wc, dl, None,
-            MagicMock(), lambda: ([], MagicMock()))
-        assert ended is False
-        assert wc.process_heartbeat.call_count == 9
-        # the decision was executed each pass with tick=None
-        assert dl.execute_decision.call_count == 9
-        for call in dl.execute_decision.call_args_list:
-            assert call.kwargs.get('tick', call.args[1] if len(call.args) > 1 else 'x') is None
+    def test_a_timer_every_interval_within_a_gap(self):
+        # 10 s gap, 1 s interval → timers at 1..9 s, between the two slices
+        instants = _instants([_tick(_BASE_MSC), _tick(_BASE_MSC + 10_000)])
+        assert instants == [(DataSliceEvent,)] + [(TimeEvent,)] * 9 + [(DataSliceEvent,)]
 
-    def test_no_pass_across_weekend_gap(self):
-        ts, wc, dl = _driver_mocks()
-        # 400 s gap > 300 s threshold → correctness gate suppresses all passes (#208)
-        ended = _run_sim_heartbeats(
-            _BASE_MSC, _BASE_MSC + 400_000, _config(), ts, wc, dl, None,
-            MagicMock(), lambda: ([], MagicMock()))
-        assert ended is False
-        assert wc.process_heartbeat.call_count == 0
+    def test_none_across_a_weekend_gap(self):
+        # 400 s gap > 300 s threshold → the correctness gate makes none (#208)
+        instants = _instants([_tick(_BASE_MSC), _tick(_BASE_MSC + 400_000)])
+        assert instants == [(DataSliceEvent,), (DataSliceEvent,)]
 
-    def test_session_end_short_circuits(self):
-        ts, wc, dl = _driver_mocks()
-        ts.is_session_end_requested.return_value = True
-        ended = _run_sim_heartbeats(
-            _BASE_MSC, _BASE_MSC + 10_000, _config(), ts, wc, dl, None,
-            MagicMock(), lambda: ([], MagicMock()))
-        assert ended is True
-        assert wc.process_heartbeat.call_count == 1  # stopped after the first pass
+    def test_none_without_a_heartbeat(self):
+        instants = _instants([_tick(_BASE_MSC), _tick(_BASE_MSC + 10_000)], interval_ms=0)
+        assert instants == [(DataSliceEvent,), (DataSliceEvent,)]
 
 
 # =============================================================================
 # 3. End-to-end through the real loop (hard gate)
 # =============================================================================
 
-def _run_loop(ticks, wants_heartbeat: bool) -> MagicMock:
-    """Run execute_tick_loop with a real TradeSimulator + mock orchestrator/decision."""
+def _run_loop(ticks, wants_heartbeat: bool, end_in_first_ghost: bool = False,
+              end_in_first_tick: bool = False) -> MagicMock:
+    """
+    Run execute_event_loop with a real TradeSimulator + mock orchestrator/decision.
+
+    Args:
+        ticks: The ticks
+        wants_heartbeat: Whether the decision opts in to heartbeats
+        end_in_first_ghost: Whether the first ghost pass asks for the session end
+        end_in_first_tick: Whether the first tick pass asks for the session end
+    """
     logger = ScenarioLogger(
         scenario_set_name='parity', scenario_name='heartbeat_ghost',
         run_timestamp=datetime.now(tz=timezone.utc),
@@ -159,12 +151,22 @@ def _run_loop(ticks, wants_heartbeat: bool) -> MagicMock:
     sim = TradeSimulator(
         broker_config=_broker_config(), initial_balance=10000.0,
         account_currency='USD', logger=logger, seeds={'inbound_latency_seed': 42},
-        inbound_latency_min_ms=0, inbound_latency_max_ms=0,
+        inbound_latency_min_ms=1, inbound_latency_max_ms=1,
         spot_mode=True, initial_balances={'USD': 10000.0, 'BTC': 0.0},
     )
     worker_coordinator = MagicMock()
     worker_coordinator.process_tick.return_value = MagicMock()
     worker_coordinator.process_heartbeat.return_value = MagicMock()
+    if end_in_first_ghost:
+        def _ask_for_the_end():
+            sim.request_session_end('the logic is done')
+            return MagicMock()
+        worker_coordinator.process_heartbeat.side_effect = _ask_for_the_end
+    if end_in_first_tick:
+        def _ask_for_the_end_on_a_tick(*args, **kwargs):
+            sim.request_session_end('the logic is done')
+            return MagicMock()
+        worker_coordinator.process_tick.side_effect = _ask_for_the_end_on_a_tick
     decision_logic = MagicMock()
     decision_logic.wants_heartbeat.return_value = wants_heartbeat
 
@@ -173,7 +175,7 @@ def _run_loop(ticks, wants_heartbeat: bool) -> MagicMock:
         start_time=ticks[0].timestamp,
         live_stats_config=LiveStatsExportConfig(enabled=False),
     )
-    execute_tick_loop(
+    execute_event_loop(
         config=config,
         worker_coordinator=worker_coordinator,
         trade_simulator=sim,
@@ -202,3 +204,19 @@ class TestSimGhostPassLoop:
         # 400 s gap > 300 s threshold → no ghost-passes even when opted in
         wc = _run_loop([_tick(_BASE_MSC), _tick(_BASE_MSC + 400_000)], wants_heartbeat=True)
         assert wc.process_heartbeat.call_count == 0
+
+    def test_a_session_end_in_a_ghost_pass_ends_the_run_after_it(self):
+        wc = _run_loop([_tick(_BASE_MSC), _tick(_BASE_MSC + 10_000)], wants_heartbeat=True,
+                       end_in_first_ghost=True)
+        assert wc.process_heartbeat.call_count == 1
+        # the second tick never reached the algo
+        assert wc.process_tick.call_count == 1
+
+    def test_a_session_end_in_a_tick_pass_ends_the_run_after_it(self):
+        """
+        With no decision event channel too: the loop checks for a session end after every
+        instant (#460) — the tick pass's check used to sit behind the event delivery.
+        """
+        wc = _run_loop([_tick(_BASE_MSC), _tick(_BASE_MSC + 1_000), _tick(_BASE_MSC + 2_000)],
+                       wants_heartbeat=False, end_in_first_tick=True)
+        assert wc.process_tick.call_count == 1

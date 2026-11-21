@@ -93,7 +93,7 @@ Both pipelines now answer with the same `RunOutcome`, and the process exit code 
 
 ### What the AutoTrader validator checks, and what it deliberately does not
 
-Exactly one of the sim's post-run checks can be answered by a single session, and it is
+Some of the sim's post-run checks can be answered by a single session, and those are
 **shared, not copied**: `validators/shared_advisory_checks.py` holds the formula, each validator
 supplies its own inputs and routes the finding into its own channel. The AutoTrader-only checks run
 the other way round — the sim answers the same question differently, or never has to ask it:
@@ -107,6 +107,7 @@ the other way round — the sim answers the same question differently, or never 
 | `composite_change_accepted` · `carried_configuration_not_compared` | ✅ AutoTrader only | the cold start took over what the venue still held under a changed configuration because `--accept-composite-change` let it, or without being able to compare the two (#626). Held from startup like the market-fit advisory. A backtest takes nothing over |
 | `shutdown_waits_beyond_kill` · `shutdown_kill_undeclared` · `shutdown_order_wait_below_poll` | ✅ AutoTrader only | the settings of the session's stop cannot keep what they promise (#630): its waits do not fit the kill it declares, it runs unattended and declares none, or its wait for the orders on their way is below the broker's poll interval plus a second. Decided once at the start and held until the result exists to carry it. A backtest has no stop to budget |
 | `order_event_stream_incomplete` | ✅ | the order-event stream read back holds fewer submissions than the executor counted (#362). Both pipelines, one shared check (`check_order_event_stream`) |
+| `data_origin_external` · `data_origin_unstamped` · the deficiency checks (`data_no_quote`, …) | ✅ | what a run READ: external data, data a producer did not stamp, and what the files lack (#647). Both pipelines, two shared checks (`check_data_origin`, `check_data_deficiencies`); on the AutoTrader side only a mock session replays archive files — a live-adapter session reads a socket and warms up from the venue, so it has nothing to report |
 | `unversioned_code` | ✅ | the code a run executed lies in no repository — typically a strategy in `user_algos/` before `git init` — or git could not say (#551). Both pipelines, one shared check (`check_unversioned_code`); on the AutoTrader side only where the `--allow-dirty` finding above did not already name it, so it is the dry-run and mock case |
 | overhead · bottleneck · parallel-penalty | — | need `profiling_data`, which a session does not collect. **`coordination_statistics` is no longer the missing half** — since 2026-09-24 a session collects it (it was being counted all along and simply never read), so a check needing only the tick count could be answered in a session |
 | the three tick-budget checks | — | they judge a CONFIGURED `tick_processing_budget_ms`; an AutoTrader session has none, which is why it gets the observed-ratio check above instead |

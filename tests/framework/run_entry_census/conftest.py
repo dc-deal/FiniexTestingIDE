@@ -65,8 +65,8 @@ def census_session() -> Path:
     """A real mock session; its run directory."""
     trader = AutotraderMain(load_autotrader_config(CENSUS_PROFILE))
     trader.run()
-    yield trader._run_dir
-    remove_run_dir(trader._run_dir)
+    yield trader.get_run_dir()
+    remove_run_dir(trader.get_run_dir())
 
 
 @pytest.fixture(scope='module')
@@ -80,8 +80,8 @@ def census_session_without_log_files() -> Path:
                       lambda self: switched_off)
         trader = AutotraderMain(load_autotrader_config(CENSUS_PROFILE))
         trader.run()
-    yield trader._run_dir
-    remove_run_dir(trader._run_dir)
+    yield trader.get_run_dir()
+    remove_run_dir(trader.get_run_dir())
 
 
 @pytest.fixture(scope='module')
@@ -111,8 +111,8 @@ def census_session_refused_at_its_cold_start() -> Path:
         patch.setattr(autotrader_main_module, 'setup_cold_start', refuse)
         trader = AutotraderMain(load_autotrader_config(CENSUS_PROFILE))
         trader.run()
-    yield trader._run_dir
-    remove_run_dir(trader._run_dir)
+    yield trader.get_run_dir()
+    remove_run_dir(trader.get_run_dir())
 
 
 @pytest.fixture(scope='module')
@@ -126,5 +126,5 @@ def census_session_aborted_before_its_order_record() -> Path:
         patch.setattr(AutotraderMain, '_validate_startup', fail)
         trader = AutotraderMain(load_autotrader_config(CENSUS_PROFILE))
         trader.run()
-    yield trader._run_dir
-    remove_run_dir(trader._run_dir)
+    yield trader.get_run_dir()
+    remove_run_dir(trader.get_run_dir())

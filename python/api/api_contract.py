@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 48
+API_CONTRACT_VERSION = 61
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,8 +36,9 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'health: host_id, the identity of the installation answering, the same value as origin_host on the '
-    'rows; null where the server cannot read it',
-    "health: host_name, a name for people to read from the installation's configuration; null where none "
-    'is set',
+    "every route that reads a store index — runs, deployments, sweeps, the configuration directory "
+    "and others: 503 store_index_busy with Retry-After (new) when another process writes the index for "
+    "longer than the server waits for it, a few seconds; such a request used to end in a bare 500 or "
+    "wait without bound",
 ]
+

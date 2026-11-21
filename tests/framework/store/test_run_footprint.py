@@ -177,7 +177,7 @@ class TestWhatAClosedRunSaysAboutEachMember:
 
     @pytest.mark.parametrize('held, reached, expected, reason', [
         (True, True, True, 'the profile records state frames'),
-        (True, False, False, 'the session stopped before its tick loop'),
+        (True, False, False, 'the session stopped before its event loop'),
         (False, False, False, 'the profile records no state frames'),
     ])
     def test_a_member_of_a_later_step_reads_the_step_the_run_stopped_before(
@@ -185,7 +185,7 @@ class TestWhatAClosedRunSaysAboutEachMember:
         found = expectation_after(RunEntryMemberId.STATE_FRAMES, held, reached,
                                   'the profile records state frames',
                                   'the profile records no state frames',
-                                  'the session stopped before its tick loop')
+                                  'the session stopped before its event loop')
         assert (found.expected, found.reason) == (expected, reason)
 
     def test_without_an_expectation_it_is_unknown_never_skipped(self, tmp_path):

@@ -1,10 +1,10 @@
 """
 FiniexTestingIDE - Order Guard
-Spam protection layer in the intermediate layer between DecisionLogic and executor.
+Pre-trade guard in the intermediate layer between DecisionLogic and executor.
 
-The OrderGuard has a single responsibility: catch repeated broker failures and
-prevent rejection storms. It does NOT enforce business rules, does NOT know
-about market types, does NOT know about balances.
+The OrderGuard denies an order before it reaches the executor when one of its
+rules holds. It does NOT enforce business rules, does NOT know about market
+types, does NOT know about balances.
 
 Structural validation (market type, balance, order type compatibility) belongs
 in the executor, not in the guard.
@@ -19,6 +19,11 @@ Current rules:
   risk-reducing asymmetry is deliberate. The framework floor under the
   mandatory on_market_data_stale hook; disable via
   order_guard.block_stale_market_data.
+- Unresolved-write block (#487) — blocks NEW entries while an order sent earlier
+  was never named open or closed by the venue after its resolution ran out. A
+  latch, not a cooldown: it ends when the order is accounted for.
+- Undeclared level (#625) — refuses an order carrying a level its decision logic
+  did not declare (refuse_undeclared_features()).
 
 The guard sits inside DecisionTradingApi.send_order() and returns a fully-formed
 OrderResult(DENIED) on block — the executor is never called for blocked orders.
@@ -60,7 +65,7 @@ from python.framework.validators.order_feature_validator import undeclared_featu
 
 class OrderGuard:
     """
-    Spam protection guard for DecisionTradingApi.
+    Pre-trade guard for DecisionTradingApi.
 
     Stateful — tracks consecutive rejections per direction and enforces
     cooldowns independently for LONG and SHORT.

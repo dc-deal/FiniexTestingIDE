@@ -31,7 +31,7 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 )
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.probe_metadata_types import ProbeMetadata
-from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessResult, ProcessEventLoopResult
 from python.framework.types.trading_env_types.active_orders_snapshot_types import (
     ActiveOrdersSnapshot,
 )
@@ -183,39 +183,39 @@ def extract_process_result(
     return summary.process_result_list[scenario_index]
 
 
-def extract_tick_loop_results(process_result: ProcessResult) -> ProcessTickLoopResult:
-    """Extract tick loop results from process result."""
-    assert process_result.tick_loop_results, 'No tick loop results'
-    return process_result.tick_loop_results
+def extract_event_loop_results(process_result: ProcessResult) -> ProcessEventLoopResult:
+    """Extract event loop results from process result."""
+    assert process_result.event_loop_results, 'No event loop results'
+    return process_result.event_loop_results
 
 
 def extract_probe_metadata(
-    tick_loop_results: ProcessTickLoopResult
+    event_loop_results: ProcessEventLoopResult
 ) -> ProbeMetadata:
     """Extract ProbeMetadata from decision statistics."""
-    stats = tick_loop_results.decision_statistics
+    stats = event_loop_results.decision_statistics
     assert stats.probe_metadata, 'No backtesting metadata'
     return stats.probe_metadata
 
 
 def extract_portfolio_stats(
-    tick_loop_results: ProcessTickLoopResult
+    event_loop_results: ProcessEventLoopResult
 ) -> PortfolioStats:
     """Extract portfolio statistics."""
-    assert tick_loop_results.portfolio_stats, 'No portfolio stats'
-    return tick_loop_results.portfolio_stats
+    assert event_loop_results.portfolio_stats, 'No portfolio stats'
+    return event_loop_results.portfolio_stats
 
 
 def extract_trade_history(
-    tick_loop_results: ProcessTickLoopResult
+    event_loop_results: ProcessEventLoopResult
 ) -> List[TradeRecord]:
     """Extract trade history for P&L verification."""
-    assert tick_loop_results.trade_history is not None, 'No trade history'
-    return tick_loop_results.trade_history
+    assert event_loop_results.trade_history is not None, 'No trade history'
+    return event_loop_results.trade_history
 
 
 def extract_open_positions(
-    tick_loop_results: ProcessTickLoopResult
+    event_loop_results: ProcessEventLoopResult
 ) -> List[Position]:
     """
     Extract the positions still OPEN when the scenario's data ran out (#492).
@@ -226,31 +226,31 @@ def extract_open_positions(
     the more direct observation: they were always stored there, and the trade record only
     ever copied them on the way out.
     """
-    return tick_loop_results.open_positions or []
+    return event_loop_results.open_positions or []
 
 
 def extract_active_orders(
-    tick_loop_results: ProcessTickLoopResult
+    event_loop_results: ProcessEventLoopResult
 ) -> ActiveOrdersSnapshot:
     """Extract the orders still resting or on their way at the scenario's end."""
-    assert tick_loop_results.active_orders is not None, 'No active-orders snapshot'
-    return tick_loop_results.active_orders
+    assert event_loop_results.active_orders is not None, 'No active-orders snapshot'
+    return event_loop_results.active_orders
 
 
 def extract_execution_stats(
-    tick_loop_results: ProcessTickLoopResult
+    event_loop_results: ProcessEventLoopResult
 ) -> ExecutionStats:
     """Extract execution statistics (order counts, SL/TP triggers)."""
-    assert tick_loop_results.execution_stats is not None, 'No execution stats'
-    return tick_loop_results.execution_stats
+    assert event_loop_results.execution_stats is not None, 'No execution stats'
+    return event_loop_results.execution_stats
 
 
 def extract_order_history(
-    tick_loop_results: ProcessTickLoopResult
+    event_loop_results: ProcessEventLoopResult
 ) -> List[OrderResult]:
     """Extract order history (executed + rejected orders)."""
-    assert tick_loop_results.order_history is not None, 'No order history'
-    return tick_loop_results.order_history
+    assert event_loop_results.order_history is not None, 'No order history'
+    return event_loop_results.order_history
 
 
 # =============================================================================

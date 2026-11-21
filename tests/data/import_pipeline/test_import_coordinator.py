@@ -1,7 +1,7 @@
 """
 Import Coordinator Tests (#175)
 
-One import over both inboxes: what it plans from the scan, what it writes, what its own log
+One import over the import inbox: what it plans from the scan, what it writes, what its own log
 file holds, how a stop in the middle of the bar render leaves the archive, and when the
 measured step durations are stored.
 """
@@ -44,12 +44,12 @@ SIGNAL_SOURCE = 'test_sentiment'
 def _paths(root: Path) -> ImportPaths:
     """An import tree under a temporary root."""
     return ImportPaths(
-        tick_source=root / 'raw',
+        inbox=root / 'raw',
         tick_target=root / 'processed',
-        tick_finished=root / 'finished',
-        signal_source=root / 'raw' / 'signals',
+        finished=root / 'finished',
+        unpacking=root / 'unpacking',
+        refused=root / 'refused',
         signal_target=root / 'processed' / 'signals',
-        signal_finished=root / 'finished' / 'signals',
         log_dir=root / 'logs' / 'imports',
         timings_file=root / 'runtime' / 'import_timings.json',
     )
@@ -59,12 +59,12 @@ def _add_ticks(paths: ImportPaths, symbol: str, start_time: str, tick_count: int
     """Drop one tick export for a symbol into the inbox."""
     data = build_minimal_tick_json(symbol=symbol, start_time=start_time, tick_count=tick_count)
     stamp = start_time.replace('.', '').replace(':', '').replace(' ', '_')
-    return write_json_fixture(paths.tick_source, f'{symbol}_{stamp}_ticks.json', data)
+    return write_json_fixture(paths.inbox, f'{symbol}_{stamp}_ticks.json', data)
 
 
 def _add_signals(paths: ImportPaths) -> Path:
-    """Drop the signal fixture JSONL into the signal inbox."""
-    target = paths.signal_source / SIGNAL_SOURCE / SIGNAL_FIXTURE.name
+    """Drop the signal fixture JSONL into the inbox, flat beside the tick exports."""
+    target = paths.inbox / SIGNAL_FIXTURE.name
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(SIGNAL_FIXTURE, target)
     return target
@@ -83,7 +83,7 @@ def _step(coordinator: ImportCoordinator, step_id: ImportStepId):
 
 
 class TestBothArchives:
-    """A plain import of both inboxes."""
+    """A plain import of the one inbox, ticks and signals side by side."""
 
     def test_imports_ticks_and_signals_and_names_its_log(self, tmp_path):
         paths = _paths(tmp_path)
@@ -94,8 +94,9 @@ class TestBothArchives:
         outcome = coordinator.run()
 
         assert outcome == ImportOutcome.COMPLETED
-        assert not tick_file.exists() and (paths.tick_finished / tick_file.name).exists()
-        assert not signal_file.exists()
+        assert not tick_file.exists() and (paths.finished / tick_file.name).exists()
+        # The signal file lay flat in the same inbox, and leaves it the way a tick export does
+        assert not signal_file.exists() and (paths.finished / signal_file.name).exists()
         assert (paths.signal_target / SIGNAL_SOURCE / f'{SIGNAL_FIXTURE.stem}.parquet').exists()
         assert list((paths.tick_target / 'kraken_spot' / 'bars' / 'AAAUSD').glob('*_BARS.parquet'))
 
@@ -105,6 +106,15 @@ class TestBothArchives:
         assert statuses.pop(ImportStepId.CACHES) == ImportStepStatus.SKIPPED
         caches = _step(coordinator, ImportStepId.CACHES)
         assert caches.detail == 'not the production archive'
+        # No zip in the inbox: the unpacking step is shown, and skipped
+        assert statuses.pop(ImportStepId.TICKS_UNPACK) == ImportStepStatus.SKIPPED
+        assert _step(coordinator, ImportStepId.TICKS_UNPACK).detail == 'no tick zip in the inbox'
+        assert statuses.pop(ImportStepId.SIGNALS_UNPACK) == ImportStepStatus.SKIPPED
+        assert _step(coordinator, ImportStepId.SIGNALS_UNPACK).detail == 'no signal zip in the inbox'
+        # No package source: the package exchange is shown, and skipped
+        for step_id in (ImportStepId.PACKAGES_FETCH, ImportStepId.PACKAGES_RECEIPT):
+            assert statuses.pop(step_id) == ImportStepStatus.SKIPPED
+            assert _step(coordinator, step_id).detail == 'no package source configured'
         assert all(status == ImportStepStatus.DONE for status in statuses.values()), statuses
 
         log_text = coordinator.get_log_path().read_text(encoding='utf-8')
@@ -122,7 +132,8 @@ class TestBothArchives:
         encoded = frame_to_json(coordinator._tracker.snapshot())
         json.dumps(encoded)
         assert encoded['outcome'] == ImportOutcome.COMPLETED.value
-        assert encoded['steps'][0]['step_id'] == ImportStepId.SCAN.value
+        # The package fetch runs ahead of the scan, so it is the first step
+        assert encoded['steps'][0]['step_id'] == ImportStepId.PACKAGES_FETCH.value
 
     def test_scan_names_the_broker_from_the_file_head(self, tmp_path):
         paths = _paths(tmp_path)
@@ -146,7 +157,7 @@ class TestPinnedIssue:
         assert ImportCoordinator(paths=paths, show_display=False).run() \
             == ImportOutcome.COMPLETED
         # The same file again: a duplicate without --override is skipped as a warning
-        shutil.copy(next(paths.tick_finished.glob('AAAUSD_*_ticks.json')), paths.tick_source)
+        shutil.copy(next(paths.finished.glob('AAAUSD_*_ticks.json')), paths.inbox)
 
         coordinator = ImportCoordinator(paths=paths, show_display=False)
         coordinator.run()
@@ -159,7 +170,7 @@ class TestPinnedIssue:
         paths = _paths(tmp_path)
         _add_ticks(paths, 'AAAUSD', '2026.01.15 10:00:00')
         ImportCoordinator(paths=paths, show_display=False).run()
-        shutil.copy(next(paths.tick_finished.glob('AAAUSD_*_ticks.json')), paths.tick_source)
+        shutil.copy(next(paths.finished.glob('AAAUSD_*_ticks.json')), paths.inbox)
 
         coordinator = ImportCoordinator(paths=paths, override=True, show_display=False)
         coordinator.run()
@@ -380,7 +391,7 @@ class TestFailedSteps:
         _add_signals(paths)
         monkeypatch.setattr(import_coordinator, 'is_production_archive', lambda path: True)
 
-        def failing_signal_import(self, root, path):
+        def failing_signal_import(self, path):
             self.errors.append(f'ERROR in {path.name}: unreadable')
 
         def failing_caches(self, on_cache_done=None):
@@ -450,7 +461,7 @@ class TestStops:
         _add_signals(paths)
         monkeypatch.setattr(import_coordinator, 'is_production_archive', lambda path: True)
 
-        def crash(self, root, path):
+        def crash(self, path):
             raise RuntimeError('a code defect')
 
         monkeypatch.setattr(import_coordinator.SignalDataImporter, 'import_file', crash)
@@ -575,7 +586,7 @@ class TestExitCodes:
 
     def test_errors_are_not_reported_as_success(self, tmp_path):
         paths = _paths(tmp_path)
-        broken = paths.tick_source / 'BROKEN_20260115_100000_ticks.json'
+        broken = paths.inbox / 'BROKEN_20260115_100000_ticks.json'
         broken.parent.mkdir(parents=True, exist_ok=True)
         broken.write_text('{"metadata": {}, "ticks": [{"bid": 1}]}', encoding='utf-8')
 

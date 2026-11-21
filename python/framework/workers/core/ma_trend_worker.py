@@ -3,13 +3,20 @@ FiniexTestingIDE - Moving-Average Trend Worker
 Bar-based trend direction + volatility-normalized slope
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 
+from python.framework.trading_env.algo_masks.algo_bar import AlgoBar
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
+from python.framework.types.chart_types.indicator_series_types import (
+    IndicatorPane,
+    IndicatorSeriesDeclaration,
+    Plot,
+)
 from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.indicator_types import MaType
-from python.framework.types.market_types.market_data_types import Bar, TickData
+from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.parameter_types import InputParamDef, OutputParamDef
 from python.framework.types.worker_types import ComputeBasis, WorkerResult, WorkerType
 from python.framework.utils.trading_math.indicators.moving_average import (
@@ -69,6 +76,17 @@ class MaTrendWorker(AbstractIndicatorWorker):
                 description='Slope magnitude (volatility units/bar) below which the trend is NEUTRAL'
             ),
         }
+
+    @classmethod
+    def get_indicator_series(cls) -> Tuple[IndicatorSeriesDeclaration, ...]:
+        """
+        The moving average on the candles.
+
+        Returns:
+            The series
+        """
+        return (IndicatorSeriesDeclaration(
+            pane=IndicatorPane.PRICE, title='MA', plots=(Plot(id='ma_value'),)),)
 
     @classmethod
     def get_output_schema(cls) -> Dict[str, OutputParamDef]:
@@ -171,15 +189,15 @@ class MaTrendWorker(AbstractIndicatorWorker):
         """LIVE — intra-bar, recompute per tick (#420). BAR_CLOSE is a per-instance opt-in."""
         return ComputeBasis.LIVE
 
-    def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
+    def should_recompute(self, tick: AlgoTick, bar_updated: bool) -> bool:
         """MA trend recomputes when bar updated"""
         return bar_updated
 
     def compute(
         self,
-        tick: TickData,
-        bar_history: Dict[str, List[Bar]],
-        current_bars: Dict[str, Bar],
+        tick: AlgoTick,
+        bar_history: Mapping[str, Tuple[Bar, ...]],
+        current_bars: Mapping[str, AlgoBar],
     ) -> WorkerResult:
         """
         MA trend computation using bar close prices.

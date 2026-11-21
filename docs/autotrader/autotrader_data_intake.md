@@ -23,7 +23,7 @@ tick — `docs/architecture/architecture_execution_layer.md`. Which venue answer
 
 ### KrakenTickSource (#232)
 
-Live tick stream from the Kraken WebSocket v2 trade channel, with the ticker channel beside it supplying the quote each trade executed against. Runs `asyncio.run()` in a daemon thread (Threading model 8.a), pushes `TickData` to `queue.Queue`.
+Live tick stream from the Kraken WebSocket v2 trade channel, with the ticker channel beside it supplying the quote each trade executed against. Runs `asyncio.run()` in a daemon thread (Threading model 8.a) and puts each frame's trades on the `queue.Queue` as one tuple of `TickData`.
 
 **Key features:**
 - Endless reconnect with exponential backoff (1s → 60s cap, spread by jitter). The backoff starts

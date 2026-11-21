@@ -111,7 +111,7 @@ All fixture logic (run_scenario, extract_process_result, etc.) lives in `fixture
 |---------|-------|-------------|
 | `batch_execution_summary` | session | Runs multi-position scenario once per test session |
 | `process_result` | session | First scenario's ProcessResult |
-| `tick_loop_results` | session | ProcessTickLoopResult with all execution data |
+| `event_loop_results` | session | ProcessEventLoopResult with all execution data |
 | `probe_metadata` | session | ProbeMetadata with expected_trades, warmup_errors |
 | `portfolio_stats` | session | PortfolioStats with P&L, trade counts, costs |
 | `trade_history` | session | List[TradeRecord] — full audit trail per trade |
@@ -268,7 +268,7 @@ for the scenario run with its full log).
 ```
 BatchExecutionSummary
   └→ process_result_list[0]: ProcessResult
-       └→ tick_loop_results: ProcessTickLoopResult
+       └→ event_loop_results: ProcessEventLoopResult
             ├→ portfolio_stats: PortfolioStats
             │    ├→ total_trades: 4
             │    ├→ total_profit / total_loss

@@ -7,7 +7,7 @@ FiniexTestingIDE - Abstract Trade Executor
 Base class for all trade execution engines (TradeSimulator, LiveTradeExecutor).
 
 This defines the contract that:
-- process_tick_loop uses for tick processing
+- process_event_loop uses for tick processing
 - DecisionTradingApi routes orders through
 - Framework code uses for statistics collection
 
@@ -21,7 +21,7 @@ Architecture:
 
 Design Principles:
 - DecisionLogic NEVER sees the executor directly (only DecisionTradingApi)
-- process_tick_loop calls on_tick() each tick (unified lifecycle)
+- process_event_loop calls on_tick() each tick (unified lifecycle)
 - Portfolio is shared infrastructure (same PortfolioManager for all executors)
 - Concrete methods: portfolio queries, broker info, fill processing
 - Abstract methods: order submission, pending order handling (mode-specific)
@@ -44,6 +44,9 @@ from python.framework.factory.trading_fee_factory import (
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
+from python.framework.trading_env.algo_masks.algo_order import AlgoOrder
+from python.framework.trading_env.algo_masks.algo_order_result import AlgoOrderResult
+from python.framework.trading_env.algo_masks.algo_position import AlgoPosition
 from python.framework.trading_env.broker_config import BrokerConfig
 from python.framework.trading_env.execution_counters import ExecutionCounters
 from python.framework.trading_env.market_clock import MarketClock
@@ -126,6 +129,7 @@ from python.framework.types.trading_env_types.trading_env_stats_types import (
     ExecutionStats,
     FreeAssetFunds,
 )
+from python.framework.utils.trading_math.order_math import covered_share_pct
 from python.framework.utils.trading_math.price_trigger import mid_price
 from python.framework.validators.order_feature_validator import undeclared_feature_sentence
 
@@ -163,6 +167,7 @@ class AbstractTradeExecutor(ABC):
         trade_history_max: int = 5000,
         spot_mode: bool = False,
         initial_balances: Optional[Dict[str, float]] = None,
+        portfolio_cache: bool = True,
     ):
         self.broker = broker_config
         self.logger = logger
@@ -189,6 +194,7 @@ class AbstractTradeExecutor(ABC):
             initial_balances=initial_balances,
             clock_fn=self.get_current_time,
             swap_rollover=self._market_clock.get_swap_rollover(),
+            portfolio_cache=portfolio_cache,
         )
 
         # Current market prices
@@ -196,7 +202,7 @@ class AbstractTradeExecutor(ABC):
         self._current_tick: Optional[TickData] = None
         self._tick_counter = 0
 
-        # Canonical clock — injected by the tick loop (real-tick timestamp or,
+        # Canonical clock — injected by the event loop (real-tick timestamp or,
         # on a ghost-pass/heartbeat, the timer time). Decoupled from _current_tick
         # so the clock advances during idle periods (#360).
         self._clock_time: Optional[datetime] = None
@@ -254,6 +260,10 @@ class AbstractTradeExecutor(ABC):
         # cancelled by hand once the position is gone.
         self._active_stop_orders: List[PendingOrder] = []
 
+        # One mask per resting order, made on the first read and dropped once the order no longer
+        # rests (#654) — an algo never holds the engine's own order
+        self._algo_orders: Dict[str, AlgoOrder] = {}
+
         # Executor mode — subclasses override (LiveTradeExecutor → LIVE)
         self._executor_mode = ExecutorMode.SIMULATION
 
@@ -271,11 +281,14 @@ class AbstractTradeExecutor(ABC):
         self._decision_event_sink: Optional[Callable[[DecisionEvent], None]] = None
 
         # Session-end request (#348) — set by DecisionTradingApi.request_session_end.
-        # The tick loop reads it at the loop boundary, emits SESSION_END, and ends
+        # The event loop reads it at the loop boundary, emits SESSION_END, and ends
         # the session. Shared mechanism for sim and live.
         self._session_end_requested: bool = False
         self._session_end_reason: str = ''
         self._session_end_severity: SessionEndSeverity = SessionEndSeverity.NORMAL
+        # The orders sent once the session-end event went out (#642): the strategy's from its
+        # session-end hooks, told apart from those already on their way. None until then
+        self._sent_after_session_end: Optional[Set[str]] = None
 
         # Monotonic counter for synthetic BrokerTrade IDs (#330). Ensures each
         # _synthesize_pending_trade() call produces a unique trade_id, so that
@@ -628,6 +641,8 @@ class AbstractTradeExecutor(ABC):
             submission_mid=pending.submission.tick_mid_price,
             submission_time_msc=pending.submission.tick_time_msc,
         )
+        if self._sent_after_session_end is not None:
+            self._sent_after_session_end.add(pending.pending_order_id)
 
     def _record_adoption(self, pending: PendingOrder) -> None:
         """
@@ -820,7 +835,7 @@ class AbstractTradeExecutor(ABC):
         self._emit_decision_event(OrderCancelledEvent(
             order_id=pending.pending_order_id,
             direction=result.direction,
-            result=result,
+            result=AlgoOrderResult(result),
             tick_time=self.get_current_time(),
         ))
 
@@ -830,9 +845,9 @@ class AbstractTradeExecutor(ABC):
         severity: SessionEndSeverity = SessionEndSeverity.NORMAL,
     ) -> None:
         """
-        Request the tick loop to end the session (#348).
+        Request the event loop to end the session (#348).
 
-        Set by DecisionTradingApi.request_session_end. The tick loop checks the
+        Set by DecisionTradingApi.request_session_end. The event loop checks the
         request at the loop boundary, emits a SESSION_END event, and ends the
         session — NORMAL runs the graceful shutdown, EMERGENCY exits immediately.
 
@@ -857,33 +872,46 @@ class AbstractTradeExecutor(ABC):
         return self._session_end_severity
 
     # ============================================
-    # Tick Lifecycle (called by process_tick_loop)
+    # Tick Lifecycle (called by process_event_loop)
     # ============================================
 
     def on_tick(self, tick: TickData) -> None:
         """
-        Unified tick lifecycle — the ONLY method process_tick_loop calls.
+        Unified tick lifecycle: the market moves, then the pending orders are processed.
 
         Handles price updates and mode-specific order processing in one call.
         Subclasses implement _process_pending_orders() for their specific logic.
         """
-        self._current_tick = tick
-        self._tick_counter += 1
         # Real-tick clock: the tick carries its own time. The loop injects the
         # between-tick (ghost/heartbeat) time separately via set_current_time (#360).
         # Forward only, and this is the side the backwards step comes from: live, the
         # heartbeat injects our WALL clock while the tick carries the VENUE's event time,
         # which is earlier by the feed latency (see set_current_time for what that cost the
-        # booking periods). In the simulation the stamps are monotonic anyway, so the clamp
-        # is invisible there.
+        # booking periods).
         self._clock_time = self._forward_only(tick.timestamp)
+        self._apply_market_tick(tick)
+        self._process_pending_orders()
+
+    def _apply_market_tick(self, tick: TickData) -> None:
+        """
+        What a tick moves before any order is looked at: the current tick, the prices, the
+        portfolio's valuation mark and the broker adapter.
+
+        The clock is the caller's: `on_tick` moves it to the tick's own time, while on the
+        backtest's timeline the instant has set it already (#460) — a tick the venue stamped
+        after its recorded arrival must not carry the clock past the instant.
+
+        Args:
+            tick: The tick that is arriving
+        """
+        self._current_tick = tick
+        self._tick_counter += 1
         self._current_prices[tick.symbol] = (tick.bid, tick.ask)
         self.portfolio.mark_dirty(tick)
         # Forward tick to broker adapter — mock/simulation adapters need
         # the current market to fill orders at realistic prices. Real
         # adapters default to a no-op.
         self.broker.adapter.on_tick(tick)
-        self._process_pending_orders()
 
     @abstractmethod
     def _process_pending_orders(self) -> None:
@@ -899,7 +927,7 @@ class AbstractTradeExecutor(ABC):
         """
         Side-effect-free drain routine for idle periods (#320).
 
-        Called from the AutoTrader tick loop's queue.Empty branch (no tick
+        Called from the AutoTrader event loop's queue.Empty branch (no tick
         available) so async worker responses don't sit in the inbox until
         the next real tick arrives.
 
@@ -914,6 +942,58 @@ class AbstractTradeExecutor(ABC):
         """
         return
 
+    # ============================================
+    # The timeline's instant (#460, #461)
+    # ============================================
+    # What a loop core's dispatcher calls on an executor for one instant, so it takes the
+    # executor and never a concrete one. The simulator implements all five (#460); an executor
+    # that does not drive a timeline answers with these defaults.
+
+    def begin_instant(self, instant_msc: int) -> None:
+        """
+        Start an instant of the timeline.
+
+        Args:
+            instant_msc: The instant's stamp, on the arrival axis
+        """
+        return
+
+    def apply_tick(self, tick: TickData) -> None:
+        """
+        One tick of the instant's slice moves the market.
+
+        Args:
+            tick: The tick, in arrival order
+        """
+        return
+
+    def resolve_scheduled(self, up_to_msc: int) -> None:
+        """
+        Apply what was scheduled to take effect by the instant, before any tick of it is checked.
+
+        Args:
+            up_to_msc: The instant's stamp
+        """
+        return
+
+    def resolve_due(self, up_to_msc: int) -> None:
+        """
+        Resolve what came due by the instant, after all of its ticks.
+
+        Args:
+            up_to_msc: The instant's stamp
+        """
+        return
+
+    def peek_next_due_msc(self) -> Optional[int]:
+        """
+        When the next resolution comes due, if anything is waiting.
+
+        Returns:
+            Its stamp on the arrival axis, or None when nothing is waiting
+        """
+        return None
+
     def apply_order_attributions(
         self,
         attributions: List[Tuple[PendingOrder, BrokerOrder]],
@@ -921,7 +1001,7 @@ class AbstractTradeExecutor(ABC):
         """
         Adopt the venue's reference for resting orders recognized as ours (#355).
 
-        Called by the live tick loop with what the Reconciler matched on the client order
+        Called by the live event loop with what the Reconciler matched on the client order
         id. The Reconciler detects and never writes; the executor owns the pending state,
         so the write lands here.
 
@@ -958,7 +1038,7 @@ class AbstractTradeExecutor(ABC):
         """
         Write a reconciliation cycle whose picture changed to the order-event stream (#362).
 
-        Called by the live tick loop when the Reconciler marks a record due. Default no-op for
+        Called by the live event loop when the Reconciler marks a record due. Default no-op for
         executors without broker truth, as above.
 
         Args:
@@ -1022,7 +1102,7 @@ class AbstractTradeExecutor(ABC):
             request: OpenOrderRequest with all order parameters
 
         Returns:
-            OrderResult — TradeSimulator: PENDING, LiveTradeExecutor: PENDING/EXECUTED
+            OrderResult — PENDING, or DENIED when a check before submission refused it
         """
         pass
 
@@ -1121,6 +1201,99 @@ class AbstractTradeExecutor(ABC):
             )
 
         return None
+
+    def refuse_unfunded_close(
+        self,
+        position: Position,
+        lots: Optional[float]
+    ) -> Optional[OrderResult]:
+        """
+        Refuse a spot close the account cannot fund, as the same sell or buy is refused (#639).
+
+        At spot a close is a trade like any other: closing a LONG sells the base, closing a
+        SHORT buys it back with the quote. A SELL of coins the account no longer holds is denied
+        at submission, and a close of the same coins used to go through and leave the base
+        balance negative — a sell no venue executes. Checked by the same calculation an open
+        uses (`_outflow_for`, `get_free_asset_funds`), so what unfilled orders claim counts here
+        too. Called by BOTH executors in `close_position`, after a close already in flight was
+        joined. Margin settles P&L and moves no coins, so it is not checked.
+
+        Args:
+            position: The position the close would reduce
+            lots: The requested size, or None for a full close
+
+        Returns:
+            A DENIED OrderResult naming what the close needs and what is free, or None when
+            the close may proceed
+        """
+        if not self._spot_mode:
+            return None
+        close_lots = position.lots if lots is None else min(lots, position.lots)
+        shortfall = self._close_shortfall(position, close_lots, price=None)
+        if shortfall is None:
+            return None
+        self.logger.warning(
+            f'Close of {position.position_id} refused at submission: {shortfall}')
+        return self._refusal_for_close(
+            order_id=f'close_{position.position_id}',
+            position=position,
+            lots=lots,
+            status=OrderStatus.DENIED,
+            reason=RejectionReason.INSUFFICIENT_FUNDS,
+            message=f'Close of {position.position_id} refused: {shortfall}',
+        )
+
+    def _close_shortfall(
+        self,
+        position: Position,
+        close_lots: float,
+        price: Optional[float],
+        exclude_order_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        What a spot close would spend beyond what is free, said in one sentence.
+
+        Args:
+            position: The position being closed
+            close_lots: The lots the close sells or buys back
+            price: The price a buy-back pays, or None to take the current ask
+            exclude_order_id: The order being filled, left out of the claims
+
+        Returns:
+            The sentence when the close cannot be funded, None when it can or cannot be
+            priced yet
+        """
+        closing = (OrderDirection.SHORT if position.direction == OrderDirection.LONG
+                   else OrderDirection.LONG)
+        currency, required = self._outflow_for(
+            symbol=position.symbol, direction=closing, lots=close_lots,
+            order_type=OrderType.MARKET, price=price)
+        if currency is None:
+            return None
+        funds = self.get_free_asset_funds(currency, exclude_order_id=exclude_order_id)
+        if required <= funds.available + _CLOSE_LOT_EPSILON:
+            return None
+        verb = 'sells' if closing == OrderDirection.SHORT else 'buys back with'
+        return (f'closing it {verb} {required:.8f} {currency}, '
+                f'available: {funds.available:.8f} {currency}'
+                f'{self._covered_share(funds.available, required)} '
+                f'(balance {funds.balance:.8f}, committed by unfilled orders '
+                f'{funds.committed:.8f})')
+
+    @staticmethod
+    def _covered_share(available: float, required: float) -> str:
+        """
+        How much of a refused order what is free would have covered, for the refusal's sentence.
+
+        Args:
+            available: What the account may spend
+            required: What the order needs
+
+        Returns:
+            ' — covers 98.0 % of it', or an empty string when the order needs nothing
+        """
+        share = covered_share_pct(available, required)
+        return '' if share is None else f' — covers {share:.1f} % of it'
 
     # ============================================
     # Ending records — what ended, how, and when
@@ -1593,13 +1766,15 @@ class AbstractTradeExecutor(ABC):
             reason=RejectionReason.INSUFFICIENT_FUNDS,
             message=(
                 f'{side} requires {required:.6f} {currency}, '
-                f'available: {available:.6f} {currency} '
+                f'available: {available:.6f} {currency}'
+                f'{self._covered_share(available, required)} '
                 f'(balance {balance:.6f}, committed by unfilled orders {committed:.6f})'
             )
         ))
         self.logger.warning(
             f'Order {order_id} rejected at submission: {side} requires '
-            f'{required:.6f} {currency}, available {available:.6f} '
+            f'{required:.6f} {currency}, available {available:.6f}'
+            f'{self._covered_share(available, required)} '
             f'(balance {balance:.6f}, committed {committed:.6f})'
         )
         return rejection
@@ -1642,6 +1817,7 @@ class AbstractTradeExecutor(ABC):
         fill_type: FillType = FillType.MARKET,
         fill_event: OrderEventType = OrderEventType.FILLED,
         reported_fee: Optional[float] = None,
+        venue_time: Optional[datetime] = None,
     ) -> None:
         """
         Process a confirmed OPEN order — update portfolio, fees, stats.
@@ -1664,6 +1840,9 @@ class AbstractTradeExecutor(ABC):
             reported_fee: The venue's own fee for this fill, from the answer that reported it,
                 in the symbol's quote currency (#508). None in a backtest, and wherever the
                 answer carried none — the fee model's estimate is booked then
+            venue_time: The venue's own stamp of the fill, where its answer gives one — the fill
+                event's `ts_event` (#461). None in a backtest, and wherever the answer carried
+                none
         """
         self.logger.info(
             f'📋 Fill open order: {pending_order.pending_order_id} '
@@ -1757,12 +1936,15 @@ class AbstractTradeExecutor(ABC):
                 rejection = self._book_order_result(self._rejection_for_pending(
                     pending_order,
                     reason=RejectionReason.INSUFFICIENT_MARGIN,
-                    message=f'Required margin {margin_required:.2f} exceeds free margin {free_margin:.2f}'
+                    message=(f'Required margin {margin_required:.2f} exceeds free margin '
+                             f'{free_margin:.2f}'
+                             f'{self._covered_share(free_margin, margin_required)}')
                 ), pending_order)
                 self._notify_outcome(pending_order.direction, rejection, pending_order)
                 self.logger.warning(
                     f'Order {pending_order.pending_order_id} rejected: '
                     f'margin {margin_required:.2f} > free {free_margin:.2f}'
+                    f'{self._covered_share(free_margin, margin_required)}'
                 )
                 return
         else:
@@ -1786,7 +1968,8 @@ class AbstractTradeExecutor(ABC):
                         reason=RejectionReason.INSUFFICIENT_FUNDS,
                         message=(
                             f'BUY requires {required:.6f} {symbol_spec.quote_currency}, '
-                            f'available: {available:.6f} {symbol_spec.quote_currency} '
+                            f'available: {available:.6f} {symbol_spec.quote_currency}'
+                            f'{self._covered_share(available, required)} '
                             f'(balance {balance:.6f}, committed by unfilled orders '
                             f'{committed:.6f})'
                         )
@@ -1795,7 +1978,8 @@ class AbstractTradeExecutor(ABC):
                     self.logger.warning(
                         f'Order {pending_order.pending_order_id} rejected: '
                         f'BUY requires {required:.6f} {symbol_spec.quote_currency}, '
-                        f'available: {available:.6f} {symbol_spec.quote_currency} '
+                        f'available: {available:.6f} {symbol_spec.quote_currency}'
+                        f'{self._covered_share(available, required)} '
                         f'(balance {balance:.6f}, committed {committed:.6f})'
                     )
                     return
@@ -1814,7 +1998,8 @@ class AbstractTradeExecutor(ABC):
                         reason=RejectionReason.INSUFFICIENT_FUNDS,
                         message=(
                             f'SELL requires {pending_order.lots:.6f} {symbol_spec.base_currency}, '
-                            f'available: {available:.6f} {symbol_spec.base_currency} '
+                            f'available: {available:.6f} {symbol_spec.base_currency}'
+                            f'{self._covered_share(available, pending_order.lots)} '
                             f'(balance {balance:.6f}, committed by unfilled orders '
                             f'{committed:.6f})'
                         )
@@ -1823,7 +2008,8 @@ class AbstractTradeExecutor(ABC):
                     self.logger.warning(
                         f'Order {pending_order.pending_order_id} rejected: '
                         f'SELL requires {pending_order.lots:.6f} {symbol_spec.base_currency}, '
-                        f'available: {available:.6f} {symbol_spec.base_currency} '
+                        f'available: {available:.6f} {symbol_spec.base_currency}'
+                        f'{self._covered_share(available, pending_order.lots)} '
                         f'(balance {balance:.6f}, committed {committed:.6f})'
                     )
                     return
@@ -1904,7 +2090,7 @@ class AbstractTradeExecutor(ABC):
         self.logger.verbose(
             f'OPEN_ORDER_RESULT: {json.dumps(result.to_dict(), indent=2)}')
 
-        self._book_order_result(result, pending_order, event_type=fill_event)
+        self._book_order_result(result, pending_order, event_type=fill_event, ts_event=venue_time)
         self._notify_outcome(pending_order.direction, result, pending_order)
 
     def _fill_close_order(
@@ -1914,6 +2100,7 @@ class AbstractTradeExecutor(ABC):
         close_reason: CloseReason = CloseReason.MANUAL,
         fill_event: OrderEventType = OrderEventType.FILLED,
         reported_fee: Optional[float] = None,
+        venue_time: Optional[datetime] = None,
     ) -> Optional[OrderResult]:
         """
         Process a confirmed CLOSE order — update portfolio, record PnL.
@@ -1921,7 +2108,8 @@ class AbstractTradeExecutor(ABC):
         Called by subclasses when their execution mechanism confirms a close:
         - TradeSimulator: after latency delay completes (fill_price=None → use tick)
         - LiveTradeExecutor: after broker confirms close (fill_price=broker's price)
-        - TradeSimulator._close_at_level: a synthetic close with fill_price=SL/TP level
+        - TradeSimulator._close_on_breach: a synthetic close in the breaching tick — a stop at
+          the tick (fill_price=None), a target at its level
 
         This is the SHARED fill logic — identical for simulation and live.
 
@@ -1935,6 +2123,9 @@ class AbstractTradeExecutor(ABC):
             reported_fee: The venue's own fee for the volume this call books, in the symbol's
                 quote currency (#508). None in a backtest, and wherever the answer carried
                 none — the fee model's estimate is booked then
+            venue_time: The venue's own stamp of the fill, where its answer gives one — the fill
+                event's `ts_event` (#461). None in a backtest, and wherever the answer carried
+                none
 
         Returns:
             The booked result — its lots, its price and the fee booked for it — or None where
@@ -1991,7 +2182,7 @@ class AbstractTradeExecutor(ABC):
                     fill_event, pending=pending_order, fill_price=fill_price,
                     message=f'the venue executed this close; position {position_id} is no '
                             f'longer held here, so nothing was booked',
-                    **self._unbooked_fee_fields(reported_fee))
+                    ts_event=venue_time, **self._unbooked_fee_fields(reported_fee))
             return None
 
         # The level a stop-loss or take-profit close fired at, read before the close changes the
@@ -2062,6 +2253,23 @@ class AbstractTradeExecutor(ABC):
 
         # Capture executed_lots before portfolio call (position may be deleted on full close)
         executed_lots = close_lots if is_partial else position.lots
+
+        # #639 — at spot the close spends what the account holds, checked as an open's fill is:
+        # the simulation plays the venue and refuses a close it cannot fund, a live session
+        # books the close the venue executed and reports that the book disagrees
+        if self._spot_mode:
+            shortfall = self._close_shortfall(
+                position, executed_lots, price=close_price,
+                exclude_order_id=pending_order.pending_order_id)
+            if shortfall is not None and self._shortfall_refuses_fill(pending_order, shortfall):
+                rejection = self._book_order_result(self._rejection_for_pending(
+                    pending_order,
+                    reason=RejectionReason.INSUFFICIENT_FUNDS,
+                    message=f'Close of {position_id} refused: {shortfall}',
+                ), pending_order)
+                self._notify_outcome(pending_order.direction, rejection, pending_order)
+                self.logger.warning(f'Close of {position_id} rejected at fill: {shortfall}')
+                return None
 
         # Pre-close total — captured before the portfolio reduces position.lots
         # in place, so the partial-close event (#348) reports remaining correctly.
@@ -2189,7 +2397,7 @@ class AbstractTradeExecutor(ABC):
         self.logger.verbose(
             f'CLOSE_FILL_ORDER: {json.dumps(result.to_dict(), indent=2)}')
 
-        self._book_order_result(result, pending_order, event_type=fill_event)
+        self._book_order_result(result, pending_order, event_type=fill_event, ts_event=venue_time)
         if fired_level is not None and result.order_event_seq is not None:
             self._protective_fill_levels[result.order_event_seq] = fired_level
         self._on_close_fill(pending_order, result)
@@ -2202,7 +2410,7 @@ class AbstractTradeExecutor(ABC):
                 closed_lots=executed_lots,
                 remaining_lots=pre_close_total_lots - executed_lots,
                 fill_price=close_price,
-                result=result,
+                result=AlgoOrderResult(result),
                 tick_time=self.get_current_time(),
             ))
         # A dust remainder that left the book ends the position as a full close does
@@ -2214,7 +2422,7 @@ class AbstractTradeExecutor(ABC):
                 fill_price=close_price,
                 lots=executed_lots,
                 realized_pnl=realized_pnl,
-                result=result,
+                result=AlgoOrderResult(result),
                 tick_time=self.get_current_time(),
             ))
         return result
@@ -2354,6 +2562,25 @@ class AbstractTradeExecutor(ABC):
             Combined list of active limit and stop PendingOrders
         """
         return self._active_limit_orders + self._active_stop_orders
+
+    def get_algo_orders(self) -> List[AlgoOrder]:
+        """
+        The resting orders as an algo receives them — read-only masks (#654). A mask is reused for
+        as long as its order rests; one whose order filled, was cancelled or expired is dropped
+        here, at the next read, rather than at each of the many places an order ends.
+
+        Returns:
+            A mask for each resting limit and stop order
+        """
+        resting = self._active_limit_orders + self._active_stop_orders
+        masks: Dict[str, AlgoOrder] = {}
+        for order in resting:
+            mask = self._algo_orders.get(order.pending_order_id)
+            if mask is None or not mask.is_mask_of(order):
+                mask = AlgoOrder(order)
+            masks[order.pending_order_id] = mask
+        self._algo_orders = masks
+        return list(masks.values())
 
     def get_committed_funds(
         self,
@@ -2587,6 +2814,30 @@ class AbstractTradeExecutor(ABC):
         """Get specific position by ID."""
         return self.portfolio.get_position(position_id)
 
+    def get_algo_positions(self, symbol: Optional[str] = None) -> List[AlgoPosition]:
+        """
+        The open positions as an algo receives them — read-only masks (#653).
+
+        Args:
+            symbol: Only this symbol's positions, None for all
+
+        Returns:
+            A mask for each open position
+        """
+        return self.portfolio.get_algo_positions(symbol)
+
+    def get_algo_position(self, position_id: str) -> Optional[AlgoPosition]:
+        """
+        One open position as an algo receives it — a read-only mask (#653).
+
+        Args:
+            position_id: The position's identifier
+
+        Returns:
+            Its mask, or None when no such position is open
+        """
+        return self.portfolio.get_algo_position(position_id)
+
     # ============================================
     # Pending Order Awareness (for Decision Logic via API)
     # ============================================
@@ -2628,6 +2879,45 @@ class AbstractTradeExecutor(ABC):
             The orders booked unaccounted
         """
         return []
+
+    def begin_session_end(self) -> None:
+        """
+        Mark the moment the session-end event goes out, so the orders the strategy sends from it
+        can be told from those already on their way (#642).
+
+        Called by the decision-event dispatcher before it delivers the event, in both pipelines.
+        """
+        self._sent_after_session_end = set()
+
+    def was_sent_after_session_end(self, order_id: str) -> bool:
+        """
+        Whether an order was sent once the session-end event had gone out (#642).
+
+        Args:
+            order_id: The order's id — for a close, the position's
+
+        Returns:
+            True for an order the strategy sent from its session-end hooks
+        """
+        return self._sent_after_session_end is not None and order_id in self._sent_after_session_end
+
+    def hold_new_orders(self) -> None:
+        """
+        Keep every order sent from now on from the venue: the session is over (#642).
+
+        Default: nothing. The simulation's withdrawal step finds such an order in its latency
+        queue; a live session holds it back in its request processor.
+        """
+        return None
+
+    def settle_session_end_orders(self) -> None:
+        """
+        Settle the orders the strategy sent from on_session_end, as a live stop's second wait
+        does (#642).
+
+        Default: nothing — the live pipeline's wait does it.
+        """
+        return None
 
     def withdraw_unsent_orders(self) -> List[str]:
         """
@@ -2804,6 +3094,8 @@ class AbstractTradeExecutor(ABC):
             now: Timezone-aware UTC datetime for the current pass
         """
         self._clock_time = self._forward_only(now)
+        # The reference mode keeps the positions current at a clock advance too (#653)
+        self.portfolio.on_clock_advanced()
 
     def _forward_only(self, now: datetime) -> datetime:
         """
@@ -2827,7 +3119,7 @@ class AbstractTradeExecutor(ABC):
         """
         Inject the session-level tick-stream health status (#436).
 
-        Called by the LIVE tick loop (heartbeat evaluation + tick-path recovery)
+        Called by the LIVE event loop (heartbeat evaluation + tick-path recovery)
         and, in simulation, by the stale-data stress driver. An unstressed sim run
         never calls it — default fresh is by design.
 
@@ -2869,7 +3161,7 @@ class AbstractTradeExecutor(ABC):
         """
         if self._clock_time is None:
             raise ClockNotInjectedError(
-                'get_current_time() called before the tick loop injected a time'
+                'get_current_time() called before the event loop injected a time'
             )
         return self._clock_time
 
@@ -3160,6 +3452,7 @@ class AbstractTradeExecutor(ABC):
         self._protective_fill_levels.clear()
         self._active_limit_orders.clear()
         self._active_stop_orders.clear()
+        self._algo_orders.clear()
 
     # ============================================
     # Shared Calculations (used by subclasses)

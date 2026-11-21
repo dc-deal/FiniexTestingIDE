@@ -24,6 +24,11 @@ run fit together; the linked documents explain the rest.
 
 ---
 
+**A/A** (`divergence_report_cli.py aa`) — One window backtested twice with the same inputs, on the
+release a deployment's sessions ran and on the current tree, and the two compared event by event
+(#512). Replay is deterministic, so they must be identical; a difference means the instrument
+changed, not the market. See [CLI Tools Guide](cli_tools_guide.md).
+
 **accept composite change** (`--accept-composite-change <key>`, served as
 `origin.accept_composite_change`) — A start told it may continue what the venue still holds — this
 bot's position, its resting orders — under a configuration that defines another *composite* than
@@ -70,6 +75,12 @@ or a profile (`primary_activity_metric`, a bar's tick count). See
 of the framework uses. Chosen by `adapter_type`: `mock` for the broker-neutral `MockBrokerAdapter`,
 `live` for a real venue's adapter. See [Adapter Development](user_guides/adapter/adapter_development_guide.md).
 
+**admissible for a parity measurement** (`is_admissible_for_measurement`) — An archived file a parity
+measurement may read: data origin `production` with the *evidence grade* `stamped`, the producer's
+own stamp. External, development, unknown and attested data never are, however complete. Not the
+connection ladder's `inadmissible`, the outcome of a call a run cannot start or continue without.
+See [Data Provenance](architecture/data_provenance.md).
+
 **adopted** (`adopted` order event, `orders_adopted`) — An order a previous session sent and this
 one took over at its start: a resting order found at the venue under this bot's key. Counted apart from `orders_submitted`, which is what this
 session sent; an execution rate divides by both. See *carry-over*.
@@ -86,13 +97,47 @@ disturbance episode, [Outage Handling](user_guides/outage_handling_guide.md).
 framework (CORE) or written by a user. A user's algos are kept in `user_algos/`. See
 [User Algo Workspace](user_guides/user_modules_and_hot_reload_mechanics.md).
 
+**algo mask** (`AlgoPosition`, …) — What an algo receives in place of an engine object: a
+read-only view that shows a declared set of fields and computes what moves with the market when it
+is read. The decision trading API hands out masks, never the engine's own objects, so a field the
+engine gains reaches no algo until a mask declares it (#653). Not a pandas boolean mask. See
+[Algo Masks](user_guides/algo_masks.md).
+
+**algo pass** (`algo_passes` in the scenario details and the worker-decision report) — One
+computation of the algo on a tick: in a backtest once per *data slice* with an unclipped tick, on
+its last tick (#460). Not a tick: a sweep through the book is one algo pass over several ticks, and
+`ticks_processed` still counts the ticks. A figure per pass divides by algo passes. See *ghost pass*
+and [The Loop Core](architecture/loop_core_architecture.md#the-backtests-timeline-460).
+
+**alive stamp** (`FiniexTickCollector.<symbol>`) — The value an MT5 `TickCollector` writes every
+second into a global variable of its terminal: the computer's UTC time. The terminal's keepalive
+reads it before each ping and pings only while every collected symbol's stamp is fresh, so a
+collector that was never started stops the pings too. Not the *heartbeat*, which is the event loop's
+idle pass, and not a *liveness ping*, which goes to the monitor. See
+[Tick Collector](data_pipeline/tick_collector_guide.md).
+
 **archive** (tick archive) — The imported tick data a backtest and a mock session replay. The one
 part of the application that stays backward compatible: data from every collector format ever
 accepted is still read. See [Data Import](data_pipeline/data_import_pipeline.md).
 
+**attestation** (`attestations` in `configs/data_origins.json`) — A dated claim we recorded about
+archive files written before their producer could stamp its own identity, keyed on the archive and
+the last format version written without one. A file it covers has the *evidence grade* `attested`,
+never `stamped`. See [Data Provenance](architecture/data_provenance.md).
+
 **AutoTrader session** — One start of an AutoTrader profile: one run, run type `autotrader`, one
 run unit. A mock session, a dry run or a real-money session. See
 [AutoTrader Architecture](autotrader/autotrader_architecture.md).
+
+**backlog coalescing** — What an AutoTrader session does with the ticks that arrived while a pass
+was still running: they become one *data slice* — split only at a timer's due time, between whole
+arrivals — so the broker path and the bars see every tick and the algo computes once, on the newest
+(#461). The tick queue holds one item per arrival — one venue
+message, whose trades came in together — and the ticks of every arrival before the newest are the
+session's *clipped* ticks. A replay never coalesces: its queue fills because it runs faster than
+real time, so each of its arrivals — one arrival millisecond, put whole — is a slice of its own, as
+in a backtest. See
+[The Loop Core](architecture/loop_core_architecture.md#the-autotraders-timeline-461).
 
 **backtest** — A run of the simulation pipeline over a scenario set, on archived ticks with
 simulated fills. See [Process Execution](process_execution_guide.md).
@@ -106,10 +151,21 @@ exposure. See [Capital and Safety](autotrader/autotrader_capital_and_safety.md).
 **basis** — Never used alone. The qualified terms: *compute basis*, *decision basis*, *price
 basis*, *signal basis*, *time basis*, *trade window basis* — each below.
 
+**batch status** (`batch_status` on the warnings-and-errors outcome) — Whether none, some or all of a
+run's units failed: `success`, `partial`, `failed`. A description of two counts, not a grading —
+how the run ended is its *run outcome*, which also weighs logged errors. See
+[Warnings & Errors](architecture/warnings_errors_tiers.md).
+
 **booking period** — One sealed period of one run unit, bounded by the market's trading day and
 numbered from 1; the ledger holds one row per booking period, in its account's currency. Every
 trading day of the market calendar has one, a day without a tick included (`tick_count` 0). In code
 `BookingPeriod` and `period_no`. See [Accounting Periods](architecture/accounting_periods.md).
+
+**booking state** (`booking_state`) — Whether a deployment's session has booked figures, and if
+not, why: `booked`; `failed`, the run failed before it measured anything, so its ledger row holds
+no figure; `not_booked_yet`, its first booking period has not closed. Not the state of a booking
+period. In code `SessionBookingState`. See the served document on deployments
+(`docs/consumer/deployments.md`).
 
 **broker** (`broker_type`) — Our configuration entry for one venue and product in
 `market_config.json` (`kraken_spot`, `mt5`). Not the same as the venue. The broker whose ticks a
@@ -149,11 +205,12 @@ archive. How often a worker computes — on every tick or once per closed bar �
 `compute_basis` (`live` · `bar_close`). See [State frames](consumer/state-frames.md).
 
 **canonical clock** — The one clock a decision logic, a worker and the execution layer read:
-`get_current_time()`. In a backtest it is the time of the replayed tick. In an AutoTrader session a
-tick sets it to the tick's own time and an idle heartbeat to the machine's UTC clock, so timeouts
-keep tracking real elapsed time: in a live-adapter session the two are one clock, in a mock session
-it moves between replay time and the present. See *wall clock*, and
-[Live Execution](architecture/live_execution_architecture.md#canonical-clock--idle-cadence-360).
+`get_current_time()`. It is the stamp of the *instant* being run, on the receipt axis, and never
+goes back: in a backtest the recorded arrival of the instant's ticks; in an AutoTrader session the
+wall clock at arrival live, and in a mock session's replay its recorded arrival — between two ticks
+the last one plus the real time since, so a mock session stays in replay time. A timer's instant
+takes its due time. See *ts_init* (on a loop event), *wall clock*, and
+[Live Execution](architecture/live_execution_architecture.md#canonical-clock--the-sessions-timeline-360-461).
 
 **carry-over** — What one session hands the next session of the same bot: the algo's memory, and
 the framework's record of keys, positions, the risk baseline and the drawdown curve. Keyed by the
@@ -180,12 +237,20 @@ venue's answers and its list of open orders can be matched back to us — and to
 run id it carries a piece of, beside a counter. Live only; a backtest sends none. Not the *order id*
 (`pos_btcusd_47`), which never goes on the wire, and not the *broker ref*, which is the venue's.
 
-**closed** (a run) — A run that wrote its *footprint*, its very last step: everything it was going
-to write is written. Not *completed*, which means its results reached the ledger — the step just
-before. See [Store Entry Members](architecture/store_entry_members.md#the-footprint-a-run-closes-with).
+**clipping** · **clipped tick** — A tick the algo did not compute on, while the broker path and the
+bars still saw it. In a backtest, a tick the tick-processing budget flagged (`is_clipped`), because
+the algo would still have been busy — simulated. In an AutoTrader session, a tick of an arrival — one
+venue message — that waited behind a newer arrival of its slice, mostly because a pass was running
+(#461) — observed, never simulated; the trades of one message are never clipped against each other,
+and a replay never clips. The session's `clipping_ratio` is its clipped ticks over all its ticks. See
+*backlog coalescing*, and [Observability](autotrader/autotrader_observability.md#clipping-monitor-197).
 
 **close type** (`close_type` on an order-history row and a trade) — Whether a close took the whole
 position (`full`) or part of it (`partial`). Set once the close fills; empty on every other row.
+
+**closed** (a run) — A run that wrote its *footprint*, its very last step: everything it was going
+to write is written. Not *completed*, which means its results reached the ledger — the step just
+before. See [Store Entry Members](architecture/store_entry_members.md#the-footprint-a-run-closes-with).
 
 **code stand** (`code_stand` on a session's ledger row, `code_stands` on a deployment) — Which code
 a session started on, per repository: the commit, any uncommitted changes on it, the commit's message
@@ -194,6 +259,12 @@ stand on the same code when every repository shows the same commit and the same 
 a commit nobody could read is a stand of its own. The deployment view compares each session's
 with the previous session's. See
 [Deployment Ledger](user_guides/deployment_ledger_guide.md#a-code-change-draws-one-row-per-repository-and-one-dated-warning).
+
+**collected since** (`collected_since` on a symbol's coverage) — The instant our own collection
+takes over from a venue's published history for that symbol: the *seam*, as the bar files record
+it. A bar opening before it was rendered from the venue's record, not ours; `null` where the
+symbol's bars hold no external history before collected data. See
+[Market data](consumer/market-data.md).
 
 **combination** — One point of a sweep's parameter grid, run as one ordinary backtest. See
 [Parameter Optimization](architecture/parameter_optimization_system.md).
@@ -268,8 +339,15 @@ the operating system's home directory (`~`), where the list of what runs on the 
 [Data Storage Layout](architecture/data_storage_layout.md).
 
 **data origin** — Which kind of source produced an archived file: `origin_class` (`production`,
-`development`, `unknown`, `external`) with its evidence grade, stamped at import and carried into
+`development`, `unknown`, `external`) with its *evidence grade*, stamped at import and carried into
 every run's consumption record. Not the *broker*. See [Data Provenance](architecture/data_provenance.md).
+
+**data slice** (`DataSliceEvent`) — The ticks of one *instant*, as one event of the loop core: in a
+backtest and in a mock session's replay, the ticks that arrived in one millisecond (#460); live,
+every arrival that waited on the queue when the loop took it, which can span several venue messages
+under one stamp (*backlog coalescing*, #461). The broker path and the bars see each tick, the algo
+computes once, on the newest. A sweep through the book prints several trades with one stamp, and
+as one slice the broker path still sees each of them while the algo computes once. See [Loop Event Tests](tests/framework/loop_events_tests.md).
 
 **data source** — One of the inputs a scenario reads, named by its key: its *data broker* for the
 ticks, its `data_sentiment_type` for the signals. A stale-data stress event names the one it makes
@@ -305,7 +383,8 @@ test's fixtures, and held at boot to the conditions that keep it from being mist
 See [AutoTrader Configuration](autotrader/autotrader_configuration.md).
 
 **deficiency** (`DataDeficiency`; `deficiencies` in the tick index) — What an archived file LACKS:
-`no_quote`, `no_arrival_time`, `arrival_time_reconstructed`, `missing_trades`, `synthetic`. Measured
+`no_quote`, `no_arrival_time`, `arrival_time_reconstructed`, `arrival_time_offset`, `missing_trades`,
+`synthetic`. Measured
 from the data, never inferred from a format version, and counted once per run. Not a gap in time,
 and not a property of the venue. See [Data Provenance](architecture/data_provenance.md).
 
@@ -322,6 +401,12 @@ spread estimate: regenerable at any time and cached against its source. Not a st
 every family lives in the `discovery_caches` store — and never something the IDE records about
 itself: a run, a certificate or a carry-over is not a discovery, because deleting it loses what
 happened. See [Discovery System](discovery_system.md).
+
+**divergence report** — A live deployment held against backtests of exactly its windows, each built
+from what its sessions recorded (#512): a gate that refuses an incomparable backtest, the measures —
+each day's decision, each order, the account values — and a verdict by bounds fixed before the run.
+Each measure ends *passed*, *failed* or *not checked*; "passed" reads "no divergence beyond the
+bounds over the compared days", never "parity proven". Kept under `runs/divergence/<report_id>/`.
 
 **dry run** — An AutoTrader session on a live adapter whose `dry_run` resolves true: real ticks,
 every order validated by the venue and never placed, fills simulated locally. A mock session is not
@@ -343,6 +428,12 @@ enum's are other things. See [Store Entry Members](architecture/store_entry_memb
 without logging an error shows in the *run outcome*, not here. See
 [Warnings & Errors](architecture/warnings_errors_tiers.md).
 
+**event loop** — The loop that drives a pipeline: it takes one *instant* at a time from its timeline
+and hands it to the *loop core*'s dispatcher — `execute_event_loop` for a backtest scenario,
+`AutotraderEventLoop` for an AutoTrader session (#460, #461). Before 1.6 it was the *tick loop*, the
+name older issues use. Not `asyncio`'s event loop, on which the Kraken tick source reads its WebSocket
+(`_asyncio_loop`). See [The Loop Core](architecture/loop_core_architecture.md).
+
 **event time** (`event_time` on an order-history row and an order event) — When that row's event
 happened, on the run's *canonical clock*: the submission on a `pending` row, the fill on an
 `executed` one, and on every other row the moment the order ended without a fill — refused,
@@ -351,10 +442,17 @@ only on a line written before the session's first market data — an order adopt
 the `session_start` *broker truth* line. A point in time — not the
 *execution time*, which is a duration.
 
+**evidence grade** (`origin_evidence`; `origin_evidence_grades` on a run) — How well an archived
+file's *data origin* is known: `stamped` (its producer wrote its identity into the file), `attested`
+(an *attestation* covers it) or `unknown` (nobody has said anything). Not how good the data is. Its
+`unknown` is not the origin class `unknown`, which means no producer could be named, and a grade
+is not the *evidence runs* of a certificate. A run counts its files without a stamp in
+`unstamped_input_files`. See [Data Provenance](architecture/data_provenance.md).
+
 **evidence runs** (`evidence_runs` on a study certificate) — The runs a release certificate rests on,
 each with its run id, the commit its code came from and its start. A declared release fails when
 it is generated on another commit than theirs, and its `valid_until` counts from the first one's
-start. Not the *evidence grade* of a run's data (see *data origin*). See
+start. Not the *evidence grade* of a run's data. See
 [Field Study](tests/live_field_study/field_study_guide.md#certificate).
 
 **execution time** — How long a run or one of its units took on the *wall clock*:
@@ -401,6 +499,21 @@ swap on every position, open ones included. They differ by the fees of what is s
 **field study** — The real-money acceptance test of the live execution stack, whose record becomes
 a release certificate. See [Field Study](tests/live_field_study/field_study_guide.md).
 
+**file identity** (tick index: `file_size_bytes`, `file_mtime_ns`) — A tick file's size and
+modification time as the tick index records them. An index update keeps the entry of a file whose
+size and time are unchanged and reads every other file again; an index that records none is
+rebuilt in full once. Not the *code identity* of a run, and not an `IDENTITY` column of the ledger.
+
+**filled area** (`filled_areas` on an *indicator series*) — The area between two plots, or between
+two *price lines*, of one series, such as the channel between the upper and lower Bollinger bands.
+Never between a plot and a price line. See [Indicator series](consumer/indicator-series.md).
+
+**figure** — A number a report serves about a run or a part of it: a P&L, a count, a drawdown, a
+rate. What a *fold table* declares per figure is how it combines when several rows are read as one.
+Not a *field*, which is any attribute a served model carries — an id and a label are fields, not
+figures — and not the robustness or ranking *metric*, the one figure a sweep or a robustness run
+is judged by. See [Reporting Pipeline](architecture/reporting_pipeline.md).
+
 **first start** (`--first-start`, served as `origin.first_start`) — A start declared the bot's
 first: the one way a session trading real money starts without a carry-over to continue. A
 declared first start that finds a usable carry-over is refused. See
@@ -414,6 +527,12 @@ A *current fixture* is the run a catalog entry's newest verified production made
 [Fixture Catalog](architecture/fixture_catalog.md); a *superseded* one (`fixture_superseded: true`)
 was made by an older or a failed production. See *run purpose*.
 
+**fold table** — How one kind of row combines into a served aggregate, declared: per figure its
+reduction, where it is read on a row, what it answers when no row carries a value and how its
+values are added, beside the derivations of its rates and what one served entry is grouped by.
+The aggregates of the run's report sections fold through one; `figure_tables.py` lists them. See
+[Reporting Pipeline](architecture/reporting_pipeline.md#aggregates-are-their-own-stage-and-they-serve-both-outputs).
+
 **footprint** (`footprint.json` in a run directory) — A run's own record of what it wrote, written
 as its very last step: every file it held, with its size, and for each file written only sometimes
 whether this run expected it and why. A run with one is *closed*. Not the folder's listing, which
@@ -426,7 +545,19 @@ run against it. See [Store Entry Members](architecture/store_entry_members.md#th
 content: the configuration it was given (`config_id`), the one an AutoTrader session ran with
 (`rendered_config_id`), the broker configuration (`broker_config_id`). A frozen copy is never
 rewritten, so an old run keeps saying what it used. Not the fee seed's `_fee_structure_frozen`,
-which records when a declared fee rate was set. See [Introduction](introduction_to_the_ide.md).
+which records when a declared fee rate was set, and not a *golden sample*'s freeze, which copies a
+fixture production into the code tree. See [Introduction](introduction_to_the_ide.md).
+
+**ghost pass** (`ghost_passes`) — A heartbeat logic's decision between two ticks, on the loop's
+heartbeat: it runs with no tick and the workers' last results. Only a logic that opts in
+(`wants_heartbeat()`) gets one, and a backtest makes none across a gap longer than the gap
+threshold. Not an *algo pass*. See [Simulation vs AutoTrader Flow](architecture/simulation_vs_autotrader_flow.md).
+
+**golden sample** — A fixture-catalog entry's production frozen into `tests/fixtures/golden_samples/`
+by `fixture_catalog_cli.py freeze`: its runs' report sections, ledger and run-index rows and the
+read-time views composed from them, with the code and the time they came from. A suite rebuilds
+the aggregates from it on every commit and compares field by field, so a change that moves a number
+shows which; what cannot be rebuilt from a sample says why. See [Fixture Catalog](architecture/fixture_catalog.md#golden-samples--a-productions-aggregates-frozen).
 
 **host id** (`host_id` on `/health`, `origin_host` on a row) — Which installation an answer or a row
 comes from: an identity minted once per installation and kept in its data home, so it stays across a
@@ -440,10 +571,12 @@ delay in a backtest, measured live, and empty where the answer was learned by as
 [Pending Orders](architecture/pending_order_architecture.md).
 
 **inbox** — Three different places, so the bare word is not used alone:
-- **import inbox** — the folder a producer's files wait in until an import takes them: `data/raw/`
-  for tick exports, `data/raw/signals/` for signal JSONL. An import writes the archive from it and
-  moves each file it imported to `data/finished/`; a file it refused, or skipped as a duplicate,
-  stays where it is. The import screen's first step scans both. See [Data Import
+- **import inbox** — the one folder a producer's files wait in until an import takes them:
+  `data/raw/`, flat, for tick exports and signal JSONL alike, loose or in zips; each file goes to
+  the import of its kind. An import writes the archive from it, and every import drains it: a file
+  the archive took — written, or skipped as a duplicate — moves to `data/finished/`, one it refused
+  or failed on to `data/refused/` with its reason beside it; a zip there is unpacked and moves on
+  the same way. The import screen's first step scans it. See [Data Import
   Pipeline](data_pipeline/data_import_pipeline.md#the-import-screen-its-log-and-its-estimate).
 - **signal inbox** (`SignalInbox`) — the buffer between a signal stream's transport thread and the
   loop: it holds the snapshots that arrived until the loop takes them. See [Signal Data
@@ -455,8 +588,26 @@ delay in a backtest, measured live, and empty where the answer was learned by as
 **index** — A derived single file, `<store>_index.parquet`, at the root of its store and rebuilt
 from the store's own entries. See [Data Storage Layout](architecture/data_storage_layout.md).
 
+**indicator series** (`indicator_series` in a unit's recorded streams) — One worker's outputs drawn
+on a run's chart the way a chart draws an indicator: one value per closed bar of the worker's
+timeframe, on the candles or in a *pane* of its own, with its scale, its *price lines* and a legend.
+The worker declares it; the run records it. Not the bars the bars route serves, and not a worker's
+output read by a decision. See [Indicator series](consumer/indicator-series.md).
+
 **initiator** (`initiator`) — Who ended an order that did not fill — `strategy`, `framework` or
 `venue` — and, on a cancel request in the order-event stream, who asked for it. See *end reason*.
+
+**instant** (of the loop's timeline) — Everything the loop's timeline holds at one stamp, handed
+over and run together: a *data slice*, a fill or a scheduled change coming due, a venue's answers, a
+timer — or several of them. The clock jumps from one instant to the next, in a backtest (#460) as in
+an AutoTrader session (#461). The plain word keeps its ordinary meaning elsewhere. See
+[The Loop Core](architecture/loop_core_architecture.md).
+
+**intake lane** — One of the two inputs of an AutoTrader session's timeline (#461), each with its own
+loss policy: the *market-data lane*, the tick queue, read whole and coalesced into one slice when the
+loop fell behind; and the *execution lane*, the venue's answers in the executor's inbox, never
+dropped or merged. Not the bare *lane*, which the configuration cascade guide uses for something
+else. See [The Loop Core](architecture/loop_core_architecture.md#the-autotraders-timeline-461).
 
 **journal · ledger · closing** — The three bookkeeping levels. The *journal* is every booking in
 order (the trade records); the *ledger* holds the period summaries (one row per booking period, in
@@ -487,14 +638,14 @@ session* or *real-money session*; for the other senses see *compute basis*, *liv
 was real and `synthetic` when it was generated — not the *data origin* entry, which names the
 class of instance that produced an archived file.
 
-**live-adapter session** — An AutoTrader session on a real venue's adapter: a dry run or a
-real-money session.
-
 **live telemetry** — The real-time view of a run while it runs, in both pipelines: the progress
 display of a backtest batch and the dashboard of an AutoTrader session, fed by the stats a run
 exports as it goes. Here *live* means "as it happens", which is why the code under this name
 (`live_progress_display`, `live_stats_*`, `process_live_export`) belongs to every kind of run. See
 [Live Telemetry](architecture/live_telemetry_architecture.md).
+
+**live-adapter session** — An AutoTrader session on a real venue's adapter: a dry run or a
+real-money session.
 
 **live trading** — A real-money session. Nothing else is called live trading.
 
@@ -502,13 +653,18 @@ exports as it goes. Here *live* means "as it happens", which is why the code und
 archive. See [Signal Data Source](data_pipeline/signal_data_source.md).
 
 **liveness ping** — The ping an AutoTrader session sends a monitoring service every interval while
-its tick loop is still passing; the monitor raises the alarm when pings stop. It vouches for the
+its event loop is still passing; the monitor raises the alarm when pings stop. It vouches for the
 LOOP, not the process, so a hung session goes silent too — and for one bot: each bot pings a check
 of its own. Not the *heartbeat*: that is the tick
 loop's idle pass when no tick arrives. See [Unattended Operation](autotrader/unattended_operation.md).
 
 **log warning count** (`log_warning_count`) — The WARNING records in a run's log pot, Tier 2 —
 ignorable by design. Not the *warning count*. See [Warnings & Errors](architecture/warnings_errors_tiers.md).
+
+**loop core** — The part of both pipelines that decides what happens in which order: the event
+model and its one timeline, and the dispatcher that owns the order of a pass. The two *event loops*
+are its drives: each takes the instants of its pipeline's timeline and hands every one to the
+dispatcher. Not the *event loop* itself, which is a pipeline's drive. See [The Loop Core](architecture/loop_core_architecture.md).
 
 **lost request** (`lost_request` on an order event) — Which request's answer an `unresolved` or
 `resolved` event is about: `submit`, `cancel`, `modify`, or `status_read` — the read with which an
@@ -627,7 +783,8 @@ its start, served on the run list and the activity list as `origin_channel`, `or
 `origin_principal` and `origin_host`. The word
 keeps this one meaning: the configuration directory row's `origin` (where a file lives), a
 feed-health episode's `origin` (real or stress-injected) and the `origin_classes` /
-`origin_evidence_grades` of a run's data (see *data origin*) are being renamed (#581, #582). See
+`origin_evidence_grades` of a run's data (see *data origin* and *evidence grade*) are being renamed
+(#581, #582). See
 [Run Origin & Code Identity](architecture/run_origin_and_code_identity.md).
 
 **own exit** · **own level** (`OwnExitLevels`, `close_position(..., exit=OwnExit(...))`) — A stop
@@ -638,6 +795,10 @@ keeps its `sl_triggered` / `tp_triggered` reason and names the level that fired 
 is measured against it), while `stop_loss` / `take_profit` on the position and the trade stay
 empty, and so do the R-multiple and, where no trade has one, `expectancy`. Counted in `sl_tp_triggered` like a close the framework's own
 level check made, once when the close goes out. See [Quickstart — Own Exits](user_guides/quickstart_guide.md).
+
+**pane** (`pane` on an *indicator series*) — One stacked area of a run's chart with its own scale:
+`price`, the candles' pane, or one under it named for the series drawn there. Not a *panel*, which is
+a block of a screen, such as a stop's panel in the console.
 
 **paper** — The planned name for a dry run, not yet a configuration value (#304).
 
@@ -668,23 +829,29 @@ a venue with a spread — the traded price for bars and decisions, the mid for e
 event): whose account a record is — `bot`, what this process did and was told, or `broker_truth`,
 what the venue reported when it was asked.
 
+**plot** (`plots` on an *indicator series*) — One output of a worker drawn as one line, histogram,
+area or baseline, named by the output's own name. The plots of one series switch together.
+
 **pressure level** (`pressure_level`) — How close the machine's memory is to the limit that binds
 it: `ok`, `warn` from one threshold, `critical` from the next. Memory alone is graded — a busy
 processor is the machine doing its work, while memory that runs out is the moment the operating
 system ends a process. Not a log level, and not the machine's *host* identity (see
 [Asking the server about itself](consumer/server.md)).
 
+**price basis** — Which price a bar was rendered from, stamped on the bar file: the traded price
+for an order-driven venue, the mid for a quote-driven one. See [Market Model](architecture/market_model.md).
+
 **price · mid · last** — `tick.price` is what the market trades at: the traded price where the
 venue prints one, else the mid. The *mid* is `(bid + ask) / 2`; *last* is the traded price, absent
 (never zero) where the venue prints none. Strategies read the price, valuation reads the mid. See
 [Market Model](architecture/market_model.md).
 
-**price basis** — Which price a bar was rendered from, stamped on the bar file: the traded price
-for an order-driven venue, the mid for a quote-driven one. See [Market Model](architecture/market_model.md).
-
 **price formation** — How a venue forms its prices: `order_driven` (a central order book, every
 trade prints) or `quote_driven` (a dealer quotes both sides, nothing prints). See
 [Market Model](architecture/market_model.md).
+
+**price line** (`price_lines` on an *indicator series*) — A horizontal reference line at a fixed value
+on a series' scale, such as RSI's 30 and 70. Not a price the market traded at.
 
 **principal** (`origin.principal`, served as `origin_principal`) — On whose behalf a run was
 started: `operator`, the console's own principal, or the account an API token acts for — which may
@@ -703,6 +870,11 @@ reports it, numbered by the venue with ids rising per pair — not every id beco
 (one close of our own position) and not the `trade_id` of one of OUR executions on an order event
 or an execution row. A live session records the public trade ids around each outage of its tick
 stream, never on a tick. See [AutoTrader Data Intake](autotrader/autotrader_data_intake.md).
+
+**reading** (`reading` of a divergence report) — The rules a comparison is read by: `run`, the
+thirty-day run, every binding measure judged over at least 25 compared days; `rehearsal`, the run
+before it, with no floor of days and measure 2 described rather than judged. Not the reading of a
+file.
 
 **real-money session** — A live-adapter session with `dry_run` false: its orders are placed at the
 venue and move the account.
@@ -820,7 +992,9 @@ streams' lines of that day into *day records*; the log lines say `Booking period
 published history and our first collected tick, for instance. A gap there takes the origin class of
 the file before it. The coverage report words it as "where the external data ends and the production
 data begins", and the gaps route serves two different classes in `origin_class` and
-`origin_class_after`; "seam" is the documents' word for it. Not the seam of the code — a point where
+`origin_class_after`; "seam" is the documents' word for it, and a symbol's coverage serves its
+instant as *collected since*. A gap ending at or before it lies in the venue's history and is
+admitted by the scenario validation and the generator whatever its category. Not the seam of the code — a point where
 a later change attaches, such as the hard stop's hook for its latch — which stays inside the code
 and its documents.
 
@@ -842,6 +1016,10 @@ order of the stream; never sort by time instead, because several steps often car
 order — and is how the steps of one order are grouped, since the *order id* repeats across a
 position's orders.
 
+**seq** (on a loop event) — The submission order of the loop's events, which breaks ties between
+events with an equal stamp; the stamp orders first. Unlike an order event's `seq`, it is not the
+order of a stream on its own. See [Loop Event Tests](tests/framework/loop_events_tests.md).
+
 **server clock** (`server_clock`) — The clock a venue stamps its own data with, declared per broker
 in `market_config.json` as an IANA zone and the whole hours the server runs ahead of it. The MT5
 server is `America/New_York` + 7 — UTC+2 in US winter, UTC+3 in summer — so its times are converted
@@ -853,6 +1031,11 @@ machine's own clock. See [Data Import Pipeline](data_pipeline/data_import_pipeli
 the activity list) is the terminal session an activity was started from, where an installation
 names an environment variable that carries one.
 
+**session-end order outcome** (`on_session_end_order_outcome`, `SessionEndOrderOutcomeEvent`) — How an
+order a strategy sent from `on_session_end` ended: `executed`, `rejected`, `undelivered`,
+`unaccounted`, `cancelled` (withdrawn) or `expired`, told once after the session-end event, in a
+backtest as in a session (#642). Not the *run outcome*, which grades how the whole run ended.
+
 **shared fill** (`shared_by`) — An execution that several trade rows of one unit carry: a partial
 close copies the position's entry fills onto every record it produces. `shared_by` counts them
 per unit, because two scenarios on one symbol mint the same synthetic ids.
@@ -861,6 +1044,10 @@ per unit, because two scenarios on one symbol mint the same synthetic ids.
 
 **signal** — A worker output that feeds a decision. The *SIGNAL worker* is the type that reads
 external, pre-collected data such as sentiment. See [Signal Data Source](data_pipeline/signal_data_source.md).
+In a decision logic's statistics the word means something else: `buy_signals`, `sell_signals` and
+`flat_signals` count what its decisions asked for, and a *non-flat signal* (`non_flat_signals`,
+`total_non_flat_signals`) is a decision that asked to buy or sell. One word for two things; the
+decision's meaning keeps its served names until one name per quantity is settled (#657).
 
 **signal basis** — A signal row's quality grade from the producer (`llm`, `no_data`, `degraded`).
 
@@ -872,7 +1059,8 @@ statistics' `fill_slippage`): `submission_mid`, the mid when a market order was 
 stop-limit; `protective_level`, the stop-loss or take-profit level that closed the position. A
 trade's `entry_slippage` and `exit_slippage` (and their `_pct`) measure its entry and exit price
 against the submission mid, except a protective exit, which is measured against its level — where a
-backtest reads 0, because it fills there. See [Order history](consumer/order-history.md).
+backtest's take-profit reads 0, because it fills there, and its stop-loss the gap it fell through. See
+[Order history](consumer/order-history.md).
 
 **snapshot** — Several meanings, each qualified. A *snapshot member* is an *entry member*'s shape:
 a file that says what is true now and is replaced whole, never appended to — a run's header, a
@@ -939,6 +1127,12 @@ they arrive as they happen.
 **sweep** — A parameter search that runs one backtest per combination, each naming the sweep as
 its parent. Not itself a run. See [Parameter Optimization](architecture/parameter_optimization_system.md).
 
+**tick package** — One weekly delivery of the data collector's finished tick files: a zip per
+collector with a manifest naming every file and its SHA-256, sealed at a UTC cutoff (#120). The
+import fetches it, imports it like any zip and acknowledges it with the zip's hash. Not a Python
+package, and not the *data package* a user downloads to run the IDE out of the box (#564). See [Data
+Import Pipeline](data_pipeline/data_import_pipeline.md#fetching-the-collectors-packages).
+
 **tick source** — The AutoTrader component that feeds ticks into the loop, chosen by
 `tick_source.type`: the replaying `mock` source or a venue feed.
 
@@ -955,7 +1149,8 @@ every run header. See [Introduction](introduction_to_the_ide.md#the-kinds-of-run
 
 **total final equity** (`total_final_equity`) — The closing equities of several *accounts* added
 up, beside `total_initial_balance`: a total no single account held. On a run with one account it
-equals that account's `final_equity`.
+equals that account's `final_equity`. The results ledger carries it per run and currency, so a
+sweep can rank by its combinations' end equity.
 
 **trade** — One close of a position, as the trade history records it: a full close books one, each
 partial close one more, so a trade is not its position. Its key is the unit, the position and the
@@ -964,9 +1159,28 @@ row and the trade are made in the same step; the row does not carry the trade's 
 
 **trade window basis** — Whether a trade is placed in a window by its entry or its exit.
 
+**ts_event** (on a loop event) — The source stamp of an event, in UTC epoch milliseconds: a tick's
+venue stamp, a timer's due instant. No pipeline orders the loop's timeline by it since #460 and
+#461; a backtest falls back to it only for a tick whose file recorded no arrival it can trust. Not the
+order history's *event time*, which is a row's instant on the *canonical clock*. See *ts_init*.
+
+**ts_event** (on an order event) — When the venue says a step happened, on the venue's own clock, as
+ISO-8601 — unlike the loop event's epoch milliseconds. Live only, and only where the venue's answer
+gives a time: today a fill in full, at the time the venue closed the order (#461). Null in a
+backtest, a mock session and a dry run. Kept beside the step's time on the *canonical clock* and
+our receipt (`ts_init`), never in place of either. See [Order events](consumer/order-events.md).
+
 **ts_init** (on an order event) — When this process saw the step, on the *wall clock*. Live only;
 empty in a backtest, which has to come out the same every time it runs. Kept beside the step's own
 time on the *canonical clock*, never in its place.
+
+**ts_init** (on a loop event) — The receipt stamp of an event, in UTC epoch milliseconds: when this
+process received or made it — live, the wall clock as a tick's message was parsed or an answer
+landed; a tick's collection stamp in a backtest and a replay, or its *ts_event* where none was
+recorded or data preparation cleared one it cannot trust. Set in a backtest too, from the recorded
+data, unlike the order event's, and an archived tick's is the recording collector's. Both pipelines
+order the loop's timeline by it — a backtest by the receipt it recorded (#460), a session by its
+own receipt (#461). See *ts_event*.
 
 **unaccounted** (an order status and an order event) — We stopped asking about an order and do not
 know how it ended: its answer was lost and the venue was asked until the resolution ran out, or the
@@ -998,11 +1212,21 @@ session's threshold, and how many failed. *Venue*, because the IDE serves an API
 this says nothing about. Only a session that watched its venue's API has it. See
 [Venue API performance](consumer/venue-api-performance.md).
 
+**venue ledger** — The account's ledger as its venue keeps it: every movement of a balance the
+venue booked — each leg of a trade, a deposit, a withdrawal, a conversion, a reward — with the
+order behind each trade. The divergence report reads it to find what moved the account that is
+no order of the bot. Not the results ledger our runs write, and not the session's own books.
+
+**venue trade** — One trade a venue published for a symbol on its public trade list: two parties
+met at a price, numbered by the venue. Not a *trade* of ours, which is one close of a position.
+Read to tell a trade our collector missed from a number the venue allocated and never
+published.
+
 **wall clock** — The machine's clock. It stamps when WE did or saw something (`ts_init`, a run's
 `start_time`) and measures durations — on its monotonic form, because the wall clock itself can
 step backwards. Never the time a decision reads — that is the *canonical clock*. Where the one
 enters the other is in
-[Live Execution](architecture/live_execution_architecture.md#canonical-clock--idle-cadence-360).
+[Live Execution](architecture/live_execution_architecture.md#canonical-clock--the-sessions-timeline-360-461).
 
 **warmup history** — The bars of each timeframe a run hands its workers before their first tick:
 the last N bars *complete at* that tick, N being what the most demanding worker reading the
@@ -1032,3 +1256,8 @@ instance name (`rsi_fast`) to its type string (`CORE/rsi`), and the instance's p
 its decisions. Off by default in a backtest, because the tracker sits on the hot path. Untracked,
 those counters are null in every report — the logic still decided on every tick, nobody counted
 it — while the logic's name and the processed ticks are known either way.
+
+**zone** (of a per-order measure in a divergence report) — Where measures 2b, 2c and 2d end:
+*green*, every compared order within its bound; *yellow*, one or two outside it, each named with
+its delays and passing once traced to its cause; *red*, more than two, failing. Measure 1 and 2a
+have no zone.

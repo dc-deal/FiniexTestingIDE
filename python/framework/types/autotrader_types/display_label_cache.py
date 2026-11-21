@@ -3,7 +3,7 @@ FiniexTestingIDE - Display Label Cache
 Immutable lookup tables for the live dashboard's ALGO STATE panel (#271).
 
 Built once during AutoTrader startup (warmup phase) from the decision
-logic and worker schemas. Passed read-only to the tick loop and the
+logic and worker schemas. Passed read-only to the event loop and the
 display thread — frozen dataclass guarantees thread-safety.
 
 Contents:

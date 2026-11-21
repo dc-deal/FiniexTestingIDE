@@ -69,6 +69,9 @@ class ProbeMetadata:
     # subscribing decision logic (e.g. the event-probe DL). Empty for logics
     # that do not subscribe. Cross-process channel for sim-side event tests.
     received_events: List[str] = field(default_factory=list)
+    # The observer probe's record (#653) — everything the decision could see, pass by pass, as
+    # plain values. Empty for every other probe.
+    observations: List[Dict[str, Any]] = field(default_factory=list)
     
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -88,7 +91,8 @@ class ProbeMetadata:
             'bar_snapshots': self.bar_snapshots,
             'expected_trades': self.expected_trades,
             'tick_count': self.tick_count,
-            'received_events': self.received_events
+            'received_events': self.received_events,
+            'observations': self.observations,
         }
     
     @classmethod
@@ -109,7 +113,8 @@ class ProbeMetadata:
             bar_snapshots=data.get('bar_snapshots', {}),
             expected_trades=data.get('expected_trades', []),
             tick_count=data.get('tick_count', 0),
-            received_events=data.get('received_events', [])
+            received_events=data.get('received_events', []),
+            observations=data.get('observations', []),
         )
     
     def has_warmup_errors(self) -> bool:

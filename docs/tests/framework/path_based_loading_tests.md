@@ -2,7 +2,7 @@
 
 **Location:** `tests/framework/path_based_loading/`
 **Run:** `pytest tests/framework/path_based_loading/ -v`
-**Dependencies:** None (mock-based, no data, no tick loop)
+**Dependencies:** None (mock-based, no data, no event loop)
 
 ## Purpose
 

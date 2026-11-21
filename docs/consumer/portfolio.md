@@ -130,7 +130,7 @@ month of restarts — and nothing in the amount itself says so. Three fields say
 |---|---|
 | `drawdown_carried_from` | where the inherited curve came from; **empty** means this unit began its own |
 | `drawdown_restarts` | how many restarts the curve has been carried across |
-| `drawdown_started_at` | when the curve began — not when it was last handed over. It is wall-clock time, taken when the unit began measuring: in a backtest when its scenario valued its first tick — after the run started, and different for each scenario — never an instant of the replayed data |
+| `drawdown_started_at` | when the curve began — not when it was last handed over. It is the instant on the run's own clock at which the unit first valued its account: in a backtest an instant of the replayed data, the same in every run of that scenario; in a session the market's time of that pass. **Empty** when a session ended before its first pass, which has no instant to name |
 
 An empty `drawdown_carried_from` is always the case in a backtest: a scenario starts its own
 curve.
@@ -153,7 +153,8 @@ open is reported as what it is.
 - `unrealized_pnl` — what those positions were worth at the last tick; `0.0` when nothing was open
 - `final_equity` — the realised balance plus what the open positions are worth
 - `final_equity_valued` — whether `final_equity` is a real mark-to-market
-- `open_position_count` — on the aggregate row, how many positions the currency's accounts held
+- `open_position_count` — how many positions were still open: on a unit row the length of its
+  `open_positions`, on the aggregate row the positions the currency's accounts held
 
 **`final_equity_valued: false` is the one to respect.** It means something was still open that no
 tick could price, so the figure is the balance alone with the holding counted at zero — the very

@@ -13,7 +13,7 @@ cross-process `ProbeMetadata.received_events` channel (the #348 event-probe patt
 ```
 tests/simulation/stale_stress/
 ├── test_stale_data_stress.py   ← 8 tests over one 5-scenario batch run (#436 contracts)
-└── test_signal_resolution.py   ← 19 tests over one 6-scenario batch run (#433 counters)
+└── test_signal_resolution.py   ← one 6-scenario batch run (#433 counters, #647 what a scenario read)
 ```
 
 Fixture set: `tests/fixtures/scenario_sets/stale_stress/stale_stress_probe.json` —
@@ -51,6 +51,10 @@ anomaly in a case is provably the carved one and never an archive artifact.
 
 Structural invariant asserted for every case: `fresh + stale + blind == ticks_processed` — one
 count per tick, no double count, no miss.
+
+The same run also pins what a scenario records it read (#647, `TestTheMountRecordsWhatItRead`):
+one server clock rule per tick file — the rule a tick file's times were converted with — and none
+for a signal file, while the origin classes cover the signal files too.
 
 ## Running the Tests
 

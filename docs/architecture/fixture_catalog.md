@@ -76,6 +76,69 @@ the sweep they belong to, so a sweep is not counted.
 `verify` checks the current production again without producing anything — after a contract change,
 it says whether the pinned runs still carry what their consumers assert.
 
+## Golden samples — a production's aggregates, frozen
+
+The aggregation refactor (#557) moves every aggregate the reports serve onto one component, and it
+must move no number. What proves that is a set of runs whose aggregates were frozen before
+anything moved — and the catalog already reproduces such runs on demand. `freeze` writes an entry's
+current production into `tests/fixtures/golden_samples/<entry>/`:
+
+- **Which runs:** not chosen by hand. Every catalog entry that names `#557 golden samples` among
+  its consumers is frozen, and `fixture_catalog_cli.py list` shows them: together they exercise
+  every report block, a mock session at spot and one at margin, a deployment of several sessions,
+  a parameter sweep, and the signal and feed-stability families. They run on the archive's real
+  ticks, from the committed reference configurations.
+- **What is compared:** every field of every aggregate, down to the last bit — a float that
+  differs in its last digit is a difference, and so is a field missing on either side. Beside
+  the aggregates, the read-time views a consumer meets: the run list, the deployments, the sweeps.
+- **The practice it follows:** a *golden master* or characterization test — the behaviour is
+  frozen before the code is reshaped, and the reshaped code must reproduce it. Backtest
+  frameworks keep the same idea for whole runs, a regression run checked against a handful of
+  expected statistics; here every field is checked, not a handful.
+
+```
+python python/cli/fixture_catalog_cli.py freeze report_coverage
+python python/cli/fixture_catalog_cli.py freeze --all
+```
+
+- **What is frozen:** each run's report sections, as the section writer writes them — the inputs
+  every aggregate is computed from and the aggregates the run recorded beside them; the ledger
+  rows and run index rows the read-time views are composed from; and those views, as the routes
+  compose them from the real stores. A sweep freezes its ledger rows only: its combinations are
+  ordinary backtests whose sections repeat what the report-coverage backtest covers, at several
+  megabytes, and what only a sweep has — its ranking — is composed from ledger rows.
+- **Where it comes from:** the sample's header names the production and when it ran, when the
+  sample was frozen, the contract, and for every run the code it ran on, read from its own header —
+  the commit, the branch, whether the tree was clean, and the hash of any uncommitted change.
+- **Nothing doubtful is written.** The sample is written to a scratch folder, read back, and every
+  aggregate is rebuilt from what was read and compared field by field with what the run recorded;
+  the views are composed from the frozen rows and compared with what the stores answer. One field
+  that is not reproduced refuses the freeze. So does a production made on an uncommitted tree,
+  unless `--allow-dirty` is given for a sample that is not committed.
+
+The suite `tests/framework/golden_samples/` runs the same checks on every committed sample. What is
+frozen and cannot be rebuilt names its reason in `FROZEN_NOT_REBUILT` (`golden_sample_checks.py`):
+its inputs exist only while a run runs, so producing the entry again is what checks it.
+The samples are a store of their own, a committed record beside the certificates
+(`store_cli.py catalog` lists it): unlike the run tree they were frozen from, they are versioned and
+survive every pruning.
+
+**A sample does not go stale by age, only by intent.** It stays the reference as long as the code
+it guards — the aggregation, from a run's sections to its totals and views — should compute the
+same numbers from the same inputs. When a change is meant to move such a number or the shape of a
+frozen section, the suite fails on it and names the field; the entry is then produced and frozen
+again, and the review reads the diff — the samples are what makes such a change visible field by
+field. A change that leaves the aggregation alone — in the simulation, a fill, a strategy — leaves
+the samples valid, even where a new production would record other figures: their inputs were
+frozen with them, and freezing again would rewrite every id, instant and measured timing for
+nothing the suite checks. A sample is removed only with the aggregates it guards.
+
+**The same runs serve the viewer.** The entries a golden sample freezes are fixtures a consumer
+pins too: FiniexViewer captures their answers from this API to test its own side against. A change
+that moves a served number on purpose therefore produces the entry again, so the viewer can capture
+the new answers; the sample is frozen from that production only where the suite asks for it, and
+otherwise keeps naming the production it was frozen from.
+
 ## The production record
 
 `runs/fixture_productions.jsonl` records every production, one line each: the entry, when it
@@ -97,9 +160,11 @@ happened, and the previous one stays current. Nothing is written into a run.
 A new production makes new runs beside the old ones. The new ids go to the consumer in one
 message; the old runs stay until the consumer has moved to them. Only the operator knows when that
 is, so the pruner keeps the runs of a superseded production that passed its check until it is told
-`--release-fixtures`. The current production is kept whatever it is told: releasing it together
-with the old ones would let a newer run of its family push it past `--keep-last` and delete the ids
-the consumer has just moved to. An entry renamed or removed from the catalog has no current
+`--release-fixtures`, which then removes exactly those runs and nothing else of their families. The
+current production is kept whatever it is told: releasing it together with the old ones would let a
+newer run of its family push it past `--keep-last` and delete the ids the consumer has just moved
+to. A run a consumer still reads outside the catalog is named with `--keep`, which no selector
+overrides. An entry renamed or removed from the catalog has no current
 production any more — nothing can produce it again — so its runs count as superseded. A production that failed its check protects nothing: nobody was ever
 told to pin it.
 
@@ -108,7 +173,7 @@ told to pin it.
 | What happens to a run | What decides it |
 |---|---|
 | produced again | a new production beside the old one; the run list serves `fixture_superseded: true` on the old runs, derived from the record each time — nothing in the old run changes |
-| pruned | the pruner keeps every run of the current production by every selector, and the runs of a superseded production that passed its check until `--release-fixtures` is given ([CLI Tools](../cli_tools_guide.md)) |
+| pruned | the pruner keeps every run of the current production by every selector, and the runs of a superseded production that passed its check until `--release-fixtures` removes them ([CLI Tools](../cli_tools_guide.md)) |
 | the archive rebuilt | `produce --all` is the fixture step of a rebuild: the entries come back as new productions, and their ids go to the consumer in one message |
 | a certificate run | never produced here — the catalog holds fixture entries only — and never pruned: the pruner keeps a run whose own header says `certificate`, read from the header on disk rather than the index |
 

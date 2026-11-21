@@ -10,16 +10,23 @@ files costs 3.29 s while the same rows as a single file cost 0.008 s — 420x, a
 it is the file OPEN rather than the work.
 """
 
+import errno
 import os
+import sys
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Iterator, List, Optional
 
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from python.framework.exceptions.file_lock_errors import FileLockHeldError
+from python.framework.exceptions.store_errors import StoreIndexReplacedError
 from python.framework.types.store_types import StoreId
+from python.framework.utils.file_lock import FileLock
 from python.framework.utils.file_utils import create_directory
 
 # Arrow schema-metadata key carrying the producing code's version. Same mechanism the discovery
@@ -37,6 +44,60 @@ MIXED_LOGIC_VERSION = 0
 # `.certificate_index.parquet`, and three legacy `.parquet_<x>_index.parquet`), so a file on disk
 # did not say which store it belonged to and two of them had the same name in different folders.
 INDEX_SUFFIX = '_index.parquet'
+
+# Beside every index, at the root of its store so it dies with the store: `runs_index.lock` beside
+# `runs_index.parquet`. Whoever writes the index holds it alone, whoever reads it shares it (#650):
+# where a replace is a delete followed by a rename, as on the development container's bridged drive,
+# a reader would otherwise land in the gap, and two writers share one temporary file everywhere.
+INDEX_LOCK_SUFFIX = '.lock'
+
+# How long a reader waits for a writer, and a writer for the readers and another writer. A writer holds
+# an index for its write (milliseconds) or, inside `read_valid()`, for one rebuild that reads no other
+# index — the ledger's took 3.5-6.4 s on the bridged drive. A rebuild of the run index takes about two
+# minutes there (measured 2026-11-20: 214 runs in 127 s), which is why no rebuild holds the lock while
+# it scans its sources.
+INDEX_LOCK_WAIT_S = 120.0
+
+# How long `read_valid()` tries to take a stale index alone before it derives the contents in memory:
+# waiting longer buys the reader nothing its own derivation does not.
+REBUILD_LOCK_WAIT_S = 5.0
+
+# How long the AutoTrader's own index writes wait before giving up with a warning: inside the time a stop
+# keeps free for its records (`autotrader.shutdown.reserve_for_records_s`). An index is derived, so a write
+# given up loses nothing a rebuild cannot restore, and a session never ends over one.
+SESSION_INDEX_LOCK_WAIT_S = 5.0
+
+# The bound every index instance of this process starts with: INDEX_LOCK_WAIT_S unless the process
+# declares its own. The API server does — its readers run in a pool of worker threads, and one that
+# waits two minutes on a hung holder takes a thread every route needs, so it waits briefly and answers
+# that the index is busy (#650).
+_process_lock_wait_s = INDEX_LOCK_WAIT_S
+
+# A data home this process may not write: its lock files can only be opened for reading, or not at all
+_READ_ONLY_ERRNOS = (errno.EROFS, errno.EACCES, errno.EPERM)
+
+
+def set_process_lock_wait_s(wait_s: float) -> None:
+    """
+    The bound every store index instance of this process starts with.
+
+    Args:
+        wait_s: The bound in seconds, for a process that must not wait INDEX_LOCK_WAIT_S
+    """
+    global _process_lock_wait_s
+    _process_lock_wait_s = wait_s
+
+
+def _holder_note() -> str:
+    """
+    What an exclusive holder of an index says about itself, for a process that waits on it.
+
+    Returns:
+        The process, its command and since when it holds the index, in UTC
+    """
+    command = ' '.join(sys.argv)[:200]
+    since = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+    return f'pid {os.getpid()} · {command} · since {since}'
 
 
 def store_index_filename(store_id: StoreId) -> str:
@@ -75,6 +136,11 @@ class AbstractStoreIndex(ABC):
 
     def __init__(self, path: Path):
         self._path = Path(path)
+        self._lock_wait_s = _process_lock_wait_s
+        # The lock this instance holds right now, and whether alone: inside a hold, `read()` and
+        # `write()` take no lock of their own
+        self._held: Optional[FileLock] = None
+        self._held_exclusive = False
 
     def get_path(self) -> Path:
         """
@@ -84,6 +150,112 @@ class AbstractStoreIndex(ABC):
             The index file path
         """
         return self._path
+
+    def get_lock_path(self) -> Path:
+        """
+        The lock file beside the index.
+
+        Returns:
+            `<index name>.lock` in the index's own directory
+        """
+        return self._path.with_suffix(INDEX_LOCK_SUFFIX)
+
+    def set_lock_wait_s(self, wait_s: float) -> None:
+        """
+        How long this instance waits for the index lock before giving up.
+
+        Args:
+            wait_s: The bound in seconds, where this caller must not wait as long as its process does
+        """
+        self._lock_wait_s = wait_s
+
+    @contextmanager
+    def updating(self, wait_s: Optional[float] = None) -> Iterator[None]:
+        """
+        Hold the index alone — for a write, or for a read and the write that follows it.
+
+        Inside it `read()` and `write()` take no lock of their own: this instance holds it already, and
+        a second `flock` of one process on one file would wait for itself. For the same reason an
+        instance holding the index shared may not ask for it alone.
+
+        Args:
+            wait_s: How long to wait for the readers and another writer; this instance's bound when None
+
+        Returns:
+            A context; it raises FileLockHeldError when the wait runs out
+        """
+        if self._held is not None:
+            if not self._held_exclusive:
+                raise RuntimeError(f'{self._path} is held shared by this instance; release it before writing')
+            yield
+            return
+        lock = FileLock(self.get_lock_path(), wait_s=self._lock_wait_s if wait_s is None else wait_s)
+        lock.write_note(_holder_note())
+        self._held, self._held_exclusive = lock, True
+        try:
+            yield
+        finally:
+            self._held = None
+            # The note goes with its holder: left behind, it would name a process that is gone to a
+            # writer refused later by readers, who write none
+            lock.write_note('')
+            lock.release()
+
+    @contextmanager
+    def _reading(self) -> Iterator[None]:
+        """
+        Share the index with other readers while reading it; nothing to take where this instance holds it.
+
+        Returns:
+            A context; it raises FileLockHeldError when a writer holds the index past this instance's bound
+        """
+        if self._held is not None:
+            yield
+            return
+        lock = self._take_shared()
+        if lock is None:
+            yield
+            return
+        self._held, self._held_exclusive = lock, False
+        try:
+            yield
+        finally:
+            self._held = None
+            lock.release()
+
+    def _take_shared(self) -> Optional[FileLock]:
+        """
+        A shared hold on the lock file — opened for reading only on a data home this process may not write.
+
+        Returns:
+            The hold; None where the lock file can be neither created nor found, which on a read-only home
+            means no writer has reached this index yet
+        """
+        path = self.get_lock_path()
+        try:
+            return FileLock(path, shared=True, wait_s=self._lock_wait_s)
+        except OSError as error:
+            if error.errno not in _READ_ONLY_ERRNOS:
+                raise
+        try:
+            return FileLock(path, shared=True, wait_s=self._lock_wait_s, read_only=True)
+        except FileNotFoundError:
+            return None
+
+    def _never_written(self) -> bool:
+        """
+        Whether no writer has reached this index yet — the one absence a reader may answer without the lock.
+
+        Every writer creates the lock file before it writes the index, so an index that is missing BESIDE
+        its lock file is one a writer is replacing right now: on a mount where a replace is a delete
+        followed by a rename, a reader that answered from the missing file alone would serve an empty
+        index in that gap, without a word. Only both missing means nothing to read, and then a reader
+        creates no lock file either.
+
+        Returns:
+            True when neither the index nor its lock file is there
+        """
+        return not self._path.exists() and not self.get_lock_path().exists()
 
     def exists(self) -> bool:
         """
@@ -101,9 +273,16 @@ class AbstractStoreIndex(ABC):
         Returns:
             The index contents; empty with COLUMNS when the file is absent
         """
-        if not self._path.exists():
+        if self._never_written():
             return pd.DataFrame(columns=self.COLUMNS)
-        return pd.read_parquet(self._path)
+        with self._reading():
+            # A writer may have deleted it while this reader waited (the config directory's rebuild does)
+            if not self._path.exists():
+                return pd.DataFrame(columns=self.COLUMNS)
+            try:
+                return pd.read_parquet(self._path)
+            except FileNotFoundError as error:
+                raise StoreIndexReplacedError(self._path, 'read') from error
 
     def write(self, frame: pd.DataFrame, logic_version: Optional[int] = None) -> None:
         """
@@ -119,16 +298,22 @@ class AbstractStoreIndex(ABC):
                 every row was produced by the current logic — i.e. by `rebuild()`. An
                 incremental writer must go through `write_incremental` instead
         """
-        create_directory(self._path.parent, holds=f'the index {self._path.name}')
         table = pa.Table.from_pandas(frame[self.COLUMNS], preserve_index=False)
         metadata = dict(table.schema.metadata or {})
         version = self.LOGIC_VERSION if logic_version is None else logic_version
         metadata[LOGIC_VERSION_KEY] = str(version).encode()
         table = table.replace_schema_metadata(metadata)
 
-        tmp_path = self._path.with_suffix(self._path.suffix + '.tmp')
-        pq.write_table(table, tmp_path)
-        os.replace(tmp_path, self._path)
+        with self.updating():
+            create_directory(self._path.parent, holds=f'the index {self._path.name}')
+            tmp_path = self._path.with_suffix(self._path.suffix + '.tmp')
+            pq.write_table(table, tmp_path)
+            try:
+                os.replace(tmp_path, self._path)
+            except FileNotFoundError as error:
+                # Every writer of this index uses the one temporary name, so a writer that does not
+                # hold the lock and replaced first took this writer's file with it
+                raise StoreIndexReplacedError(self._path, 'replaced') from error
 
     def write_incremental(self, frame: pd.DataFrame) -> None:
         """
@@ -146,8 +331,9 @@ class AbstractStoreIndex(ABC):
         Args:
             frame: The complete new contents
         """
-        mixed = self.exists() and self.stored_logic_version() != self.LOGIC_VERSION
-        self.write(frame, logic_version=MIXED_LOGIC_VERSION if mixed else None)
+        with self.updating():
+            mixed = self.exists() and self.stored_logic_version() != self.LOGIC_VERSION
+            self.write(frame, logic_version=MIXED_LOGIC_VERSION if mixed else None)
 
     def stored_logic_version(self) -> Optional[int]:
         """
@@ -157,14 +343,17 @@ class AbstractStoreIndex(ABC):
             The stored version, or None when absent or unreadable (an index written before the
             stamp existed reads as None, which `is_current` treats as out of date)
         """
-        if not self._path.exists():
+        if self._never_written():
             return None
-        try:
-            metadata = pq.read_schema(self._path).metadata or {}
-            raw = metadata.get(LOGIC_VERSION_KEY)
-            return int(raw.decode()) if raw else None
-        except (OSError, ValueError, pa.ArrowException):
-            return None
+        with self._reading():
+            if not self._path.exists():
+                return None
+            try:
+                metadata = pq.read_schema(self._path).metadata or {}
+                raw = metadata.get(LOGIC_VERSION_KEY)
+                return int(raw.decode()) if raw else None
+            except (OSError, ValueError, pa.ArrowException):
+                return None
 
     def is_current(self) -> bool:
         """
@@ -215,6 +404,55 @@ class AbstractStoreIndex(ABC):
         if stored != self.LOGIC_VERSION:
             return f'built by index logic v{stored}, current is v{self.LOGIC_VERSION}'
         return None
+
+    def derive(self) -> Optional[pd.DataFrame]:
+        """
+        What a rebuild would write, computed without writing it.
+
+        How `read_valid()` answers a reader that may not or cannot rebuild the index itself. An index
+        whose rebuild cannot be separated from its write offers none.
+
+        Returns:
+            The contents a rebuild would write; None where this index offers no such derivation
+        """
+        return None
+
+    def read_valid(self) -> pd.DataFrame:
+        """
+        The index contents, rebuilt first when they may not be served — derived in memory where the
+        rebuild cannot be made.
+
+        The check runs under a shared hold, which is given up before the index is asked for alone: a
+        conversion `flock` cannot grant may leave the process holding nothing while it believes it
+        holds the shared lock. Alone, the check runs again, because another process may have rebuilt
+        the index while this one waited. A reader that does not get the index alone within
+        REBUILD_LOCK_WAIT_S, or may not write where it lives, derives the contents itself: a reader
+        never fails on the lock. An index that offers no derivation waits the full bound instead.
+
+        Returns:
+            The index contents
+        """
+        with self._reading():
+            if self.is_valid():
+                return self.read()
+        try:
+            with self.updating(wait_s=REBUILD_LOCK_WAIT_S):
+                if not self.is_valid():
+                    self.rebuild()
+                return self.read()
+        except (FileLockHeldError, OSError) as error:
+            if isinstance(error, OSError) and error.errno not in _READ_ONLY_ERRNOS:
+                raise
+            derived = self.derive()
+            if derived is not None:
+                return derived
+            if isinstance(error, OSError):
+                raise
+        # An index with no derivation of its own waits the full bound for the rebuild instead
+        with self.updating():
+            if not self.is_valid():
+                self.rebuild()
+            return self.read()
 
     @abstractmethod
     def rebuild(self) -> int:

@@ -4,9 +4,11 @@ Base class for bar-centric INDICATOR workers (RSI, Bollinger, MACD, ...)
 """
 
 from abc import abstractmethod
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple, Union
 
-from python.framework.types.market_types.market_data_types import Bar, TickData
+from python.framework.trading_env.algo_masks.algo_bar import AlgoBar
+from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
+from python.framework.types.market_types.market_data_types import Bar
 from python.framework.types.worker_types import ComputeBasis, WorkerResult
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 from python.framework.workers.abstract_worker import AbstractWorker
@@ -79,7 +81,7 @@ class AbstractIndicatorWorker(AbstractWorker):
         pass
 
     @abstractmethod
-    def should_recompute(self, tick: TickData, bar_updated: bool) -> bool:
+    def should_recompute(self, tick: AlgoTick, bar_updated: bool) -> bool:
         """
         Determine if worker should recompute on this tick
 
@@ -95,17 +97,17 @@ class AbstractIndicatorWorker(AbstractWorker):
     @abstractmethod
     def compute(
         self,
-        tick: TickData,
-        bar_history: Dict[str, List[Bar]],
-        current_bars: Dict[str, Bar],
+        tick: AlgoTick,
+        bar_history: Mapping[str, Tuple[Bar, ...]],
+        current_bars: Mapping[str, AlgoBar],
     ) -> WorkerResult:
         """
         Compute worker output based on bar data
 
         Args:
             tick: Current tick (for metadata/timestamp)
-            bar_history: Historical bars per timeframe
-            current_bars: Current bars per timeframe
+            bar_history: Historical bars per timeframe — frozen, oldest first
+            current_bars: Current (forming) bars per timeframe, as masks
 
         Returns:
             WorkerResult with outputs dict matching get_output_schema() keys
@@ -134,10 +136,10 @@ class AbstractIndicatorWorker(AbstractWorker):
     def effective_bars(
         self,
         timeframe: str,
-        bar_history: Dict[str, List[Bar]],
-        current_bars: Dict[str, Bar],
+        bar_history: Mapping[str, Tuple[Bar, ...]],
+        current_bars: Mapping[str, AlgoBar],
         count: Optional[int] = None,
-    ) -> List[Bar]:
+    ) -> Tuple[Union[Bar, AlgoBar], ...]:
         """
         Bars this worker computes on for a timeframe (#420).
 
@@ -159,15 +161,15 @@ class AbstractIndicatorWorker(AbstractWorker):
             count: Completed-bar window to keep (None = full history)
 
         Returns:
-            List of bars to compute on (history tail, plus the current bar when LIVE)
+            The bars to compute on (history tail, plus the current bar when LIVE)
         """
-        bars = bar_history.get(timeframe, [])
+        bars = tuple(bar_history.get(timeframe, ()))
         if count is not None:
             bars = bars[-count:]
         if self.get_compute_basis() == ComputeBasis.LIVE:
             current_bar = current_bars.get(timeframe)
             if current_bar:
-                bars = (bars if count is not None else list(bars)) + [current_bar]
+                bars = bars + (current_bar,)
         return bars
 
     def get_default_compute_basis(self) -> ComputeBasis:

@@ -88,7 +88,7 @@ class TickStreamRecorder:
         self._pending_restore: Optional[Tuple[datetime, float]] = None
         self._closed = False
         self._outages_started: int = 0
-        # Read by the tick loop on the main thread: one int, so a reader sees the old count or
+        # Read by the event loop on the main thread: one int, so a reader sees the old count or
         # the new one and never a mixture.
         self._outages_ended: int = 0
         self._refusals: Dict[RefusedPublicTradeReason, int] = {}
@@ -205,7 +205,7 @@ class TickStreamRecorder:
     def get_outages_ended(self) -> int:
         """
         Outages the stream came back from — a trade arrived after each. Safe to read from the
-        tick loop's thread.
+        event loop's thread.
 
         Returns:
             The count since the session started

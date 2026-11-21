@@ -23,17 +23,17 @@ from typing import Any, List
 
 import pytest
 
-from python.framework.reporting.store.ledger_aggregation import (
+from python.framework.reporting.aggregation.aggregation_fold import (
     aggregate_ledger_rows,
     identity_conflicts,
 )
-from python.framework.reporting.store.run_results_ledger import (
+from python.framework.reporting.aggregation.figure_catalog import (
     COLUMN_COMPANION_OF,
     COLUMN_REDUCTION,
 )
+from python.framework.types.aggregation_types import FigureKind, Reduction
 from python.framework.types.api.report_types import RunResultRow
 from python.framework.types.run_origin_types import CodeStand, RepositoryStand
-from python.framework.types.run_results_types import FigureKind, Reduction
 
 _RUN = '20260922_000000_deadbeef'
 
@@ -41,19 +41,12 @@ _RUN = '20260922_000000_deadbeef'
 # two groups rather than one input set.
 _GROUPING = ('run_id', 'currency')
 
-# Not combined at all — the enum's own comments say why, and `_reduce` returns None for them.
-_NOT_COMBINED = {Reduction.DERIVE, Reduction.COMPANION}
-
 # Order is the whole content of these three: the earliest, the latest, the most recent.
 # IDENTITY joins them for a different reason: its contract is that the rows AGREE, so feeding
 # it two different values asks a question the declaration forbids. What it actually does with
 # disagreeing rows is pinned on its own below — that is §49's open example, not a property.
 _ORDER_SENSITIVE = {Reduction.LAST, Reduction.FIRST, Reduction.SPAN_START, Reduction.SPAN_END,
                     Reduction.IDENTITY}
-
-# The result of these must be a value that actually occurred — they SELECT, they do not compute.
-_SELECTORS = {Reduction.MAX, Reduction.MAX_ABS, Reduction.MIN, Reduction.LAST, Reduction.FIRST,
-              Reduction.IDENTITY, Reduction.SPAN_START, Reduction.SPAN_END}
 
 
 def _numeric_columns() -> List[str]:
@@ -69,7 +62,8 @@ def _numeric_columns() -> List[str]:
     """
     columns = []
     for name, reduction in COLUMN_REDUCTION.items():
-        if name in _GROUPING or reduction in _NOT_COMBINED or name in COLUMN_COMPANION_OF:
+        if (name in _GROUPING or not reduction.folds_on_its_own()
+                or name in COLUMN_COMPANION_OF):
             continue
         field = RunResultRow.model_fields.get(name)
         if field is None:
@@ -146,7 +140,8 @@ class TestEveryNumericColumn:
         assert _fold(column, [3.0, 11.0]) == _fold(column, [11.0, 3.0])
 
     def test_a_selector_never_invents_a_value(self, column):
-        if COLUMN_REDUCTION[column] not in _SELECTORS:
+        # The result of a selecting reduction must be a value that actually occurred.
+        if not COLUMN_REDUCTION[column].selects():
             pytest.skip('this reduction computes rather than selects')
         if COLUMN_REDUCTION[column] is Reduction.SPAN_END and column == 'period_no':
             pytest.skip('its own value is the ordering key here, so the pair cannot vary')
@@ -211,14 +206,15 @@ class TestEveryReductionNamesItsKindOfFigure:
         for reduction in Reduction:
             assert isinstance(reduction.figure_kind(), FigureKind), reduction
 
-    def test_only_a_sum_is_a_flow(self):
+    def test_only_what_adds_up_is_a_flow(self):
         # A control total over several composites takes exactly the flows — so the flows must be
-        # exactly the columns that add up.
+        # exactly the reductions that add up: a sum, a count of rows, and a sum over a complete set,
+        # whose total is None as soon as one part is.
         flows = {r for r in Reduction if r.figure_kind() is FigureKind.FLOW}
-        assert flows == {Reduction.SUM}
+        assert flows == {Reduction.SUM, Reduction.COUNT, Reduction.SUM_COMPLETE}
 
     def test_what_is_never_combined_is_never_a_flow(self):
-        for reduction in _NOT_COMBINED:
+        for reduction in (r for r in Reduction if not r.folds_on_its_own()):
             assert reduction.figure_kind() is not FigureKind.FLOW, reduction
 
     def test_every_declared_column_has_a_kind(self):

@@ -11,6 +11,8 @@ index, plus the tolerant load of an index file written before the field existed.
 from pathlib import Path
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from python.data_management.importers.tick_data_importer import TickDataImporter
 from python.data_management.index.tick_index_manager import TickIndexManager
@@ -246,3 +248,56 @@ class TestAnchorCountersRoundTrip:
         df = pd.read_parquet(empty_dir / TickIndexManager.INDEX_FILE_PARQUET)
         assert 'anchor_resyncs' in df.columns
         assert 'anchor_max_correction_ms' in df.columns
+
+
+class TestServerClockRuleRoundTrip:
+    """
+    The server clock rule a file's times were converted with reaches the index (#647).
+
+    The importer writes it into every tick parquet's header since #562; the index is the only path
+    by which it reaches a run's record, the way the format version travels.
+    """
+
+    def test_the_rule_in_the_header_reaches_the_entry(self, tmp_path):
+        target = _import_ticks(tmp_path, symbol='SOLUSD')
+
+        manager = TickIndexManager(data_dir=str(target))
+        manager.build_index()
+
+        assert manager.index['kraken_spot']['SOLUSD'][0]['server_clock_rule'] == 'UTC+0h'
+
+    def test_a_file_that_states_no_rule_reads_back_as_none(self, tmp_path):
+        """'' is only the storage form: a reloaded entry says no rule was stated, never a rule."""
+        target = _import_ticks(tmp_path, symbol='LTCUSD')
+        index_file = target / TickIndexManager.INDEX_FILE_PARQUET
+        # Through Arrow, keeping the schema stamp: rewritten through pandas the index would be
+        # rebuilt from the file's header, which does state a rule
+        table = pq.read_table(index_file)
+        position = table.schema.get_field_index('server_clock_rule')
+        table = table.set_column(position, 'server_clock_rule', pa.array([''] * table.num_rows))
+        pq.write_table(table, index_file)
+
+        manager = TickIndexManager(data_dir=str(target))
+        manager.build_index()
+
+        assert manager.index['kraken_spot']['LTCUSD'][0]['server_clock_rule'] is None
+
+
+class TestOriginCountsPerSymbol:
+    """The tick status counts a symbol's files and ticks per origin class (#647)."""
+
+    def test_the_counts_follow_the_declared_order(self, tmp_path):
+        manager = TickIndexManager(data_dir=str(tmp_path))
+        manager.index = {'kraken_spot': {'ETHUSD': [
+            {'origin_class': 'production', 'tick_count': 10},
+            {'origin_class': 'external', 'tick_count': 1000},
+            {'origin_class': 'production', 'tick_count': 5},
+        ]}}
+
+        counts = manager.get_symbol_origin_counts('kraken_spot', 'ETHUSD')
+
+        assert [(c.origin_class, c.files, c.ticks) for c in counts] == [
+            ('production', 2, 15), ('external', 1, 1000)]
+
+    def test_a_symbol_the_index_does_not_hold_has_no_counts(self, tmp_path):
+        assert TickIndexManager(data_dir=str(tmp_path)).get_symbol_origin_counts('mt5', 'EURUSD') == []

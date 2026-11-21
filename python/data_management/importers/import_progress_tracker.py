@@ -333,14 +333,17 @@ class ImportProgressTracker:
     def mark_plan_complete(self) -> None:
         """
         Keep every planned step's estimate as it stands now that the scan has run — the
-        figures the summary later holds against what each step took.
+        figures the summary later holds against what each step took. The package fetch has run
+        already, before the scan, and keeps the estimate it ran with; a step done by then
+        without an estimate, the scan, stays out.
 
         Returns:
             None
         """
         self._plan_estimates = {
             step_id: step.estimate_s for step_id, step in self._steps.items()
-            if step.status == ImportStepStatus.PENDING}
+            if step.status == ImportStepStatus.PENDING
+            or (step.status == ImportStepStatus.DONE and step.estimate_s is not None)}
 
     @_locked
     def estimate_comparison(self) -> Tuple[List[ImportStepTiming], Optional[ImportStepTiming]]:

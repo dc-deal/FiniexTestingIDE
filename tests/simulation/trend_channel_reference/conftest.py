@@ -23,7 +23,7 @@ from python.framework.types.trading_env_types.trading_env_stats_types import Exe
 from tests.shared.fixture_helpers import (
     extract_execution_stats,
     extract_process_result,
-    extract_tick_loop_results,
+    extract_event_loop_results,
     extract_trade_history,
     run_scenario,
 )
@@ -31,6 +31,8 @@ from tests.shared.fixture_helpers import (
 _FIXTURE_DIR = Path(__file__).resolve().parents[2] / 'fixtures' / 'scenario_sets' / 'trend_channel_reference'
 LIMIT_FIXTURE = str(_FIXTURE_DIR / 'trend_channel_reference_limit_fixture.json')
 STOP_FIXTURE = str(_FIXTURE_DIR / 'trend_channel_reference_stop_fixture.json')
+SESSION_END_CLOSE_FIXTURE = str(
+    _FIXTURE_DIR / 'trend_channel_reference_session_end_close_fixture.json')
 
 
 # =============================================================================
@@ -47,6 +49,12 @@ def limit_batch() -> BatchExecutionSummary:
 def stop_batch() -> BatchExecutionSummary:
     """Execute the stop_breakout fixture once per session."""
     return run_scenario(STOP_FIXTURE)
+
+
+@pytest.fixture(scope='session')
+def session_end_close_batch() -> BatchExecutionSummary:
+    """Execute the fixture whose data ends while positions are open, closing them (#642)."""
+    return run_scenario(SESSION_END_CLOSE_FIXTURE)
 
 
 # =============================================================================
@@ -68,13 +76,13 @@ def stop_process_result(stop_batch: BatchExecutionSummary) -> ProcessResult:
 @pytest.fixture(scope='session')
 def limit_trades(limit_process_result: ProcessResult) -> List[TradeRecord]:
     """Trade history for the limit_pullback window."""
-    return extract_trade_history(extract_tick_loop_results(limit_process_result))
+    return extract_trade_history(extract_event_loop_results(limit_process_result))
 
 
 @pytest.fixture(scope='session')
 def stop_trades(stop_process_result: ProcessResult) -> List[TradeRecord]:
     """Trade history for the stop_breakout window."""
-    return extract_trade_history(extract_tick_loop_results(stop_process_result))
+    return extract_trade_history(extract_event_loop_results(stop_process_result))
 
 
 @pytest.fixture(scope='session')
@@ -86,10 +94,10 @@ def all_trades(limit_trades: List[TradeRecord], stop_trades: List[TradeRecord]) 
 @pytest.fixture(scope='session')
 def limit_execution_stats(limit_process_result: ProcessResult) -> ExecutionStats:
     """Execution stats for the limit_pullback window."""
-    return extract_execution_stats(extract_tick_loop_results(limit_process_result))
+    return extract_execution_stats(extract_event_loop_results(limit_process_result))
 
 
 @pytest.fixture(scope='session')
 def stop_execution_stats(stop_process_result: ProcessResult) -> ExecutionStats:
     """Execution stats for the stop_breakout window."""
-    return extract_execution_stats(extract_tick_loop_results(stop_process_result))
+    return extract_execution_stats(extract_event_loop_results(stop_process_result))

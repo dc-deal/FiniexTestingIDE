@@ -27,7 +27,10 @@ from python.framework.types.run_origin_types import RunChannel
 from python.framework.types.run_results_types import SweepContext
 from python.framework.types.scenario_types.scenario_set_types import LoadedScenarioConfig
 from python.framework.utils.run_id_utils import mint_run_id
-from python.framework.validators.sweep_grid_validator import validate_sweep_grid
+from python.framework.validators.sweep_grid_validator import (
+    validate_sweep_grid,
+    validate_sweep_objective,
+)
 from python.scenario.scenario_config_loader import ScenarioConfigLoader
 from python.scenario.scenario_set import ScenarioSet
 from python.scenario.scenario_strategy_runner import initialize_batch_and_run
@@ -66,6 +69,8 @@ class OptimizationRunner:
             The sweep id (group the ledger rows of this sweep by it)
         """
         spec = self._spec_loader.load_spec(spec_file)
+        # Fail-fast: an objective the ranking refuses would only show once every combination ran
+        validate_sweep_objective(spec.objective)
         base = self._scenario_loader.load_config(spec.base_scenario_set)
         if not base.scenarios:
             raise ValueError(

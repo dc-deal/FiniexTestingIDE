@@ -402,7 +402,7 @@ class TestAFailedReadIsNotARejection:
         error = ConnectionError('Kraken API error: [EAPI:Invalid nonce]')
         for _ in range(3):
             answer = processor._failure_response(
-                error, broker_ref='TX-1', timestamp=datetime.now(timezone.utc),
+                error, broker_ref='TX-1', ts_init=datetime.now(timezone.utc),
                 operation='status query', self_healing=True, is_read=True)
             assert answer.status == BrokerOrderStatus.UNRESOLVED
 

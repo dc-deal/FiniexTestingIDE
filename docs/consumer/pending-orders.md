@@ -81,7 +81,8 @@ An `unaccounted` order is the one to check by hand at the venue.
 `avg_in_flight_ms`, `min_in_flight_ms` and `max_in_flight_ms` are milliseconds from submission to
 the venue's answer — the acceptance or the refusal. In a backtest they are the modelled delay, not
 a measurement of a network; in a live session they are measured when the session reads the answer,
-which can be up to one heartbeat after it arrived. An acceptance the session learned later by
+right after it arrives — later only by a pass still running then, and while a stopping session
+waits for its last orders, up to one heartbeat after it. An acceptance the session learned later by
 asking carries no duration: that span would be the asking, not the venue.
 
 `in_flight_count` is how many answers the average rests on. **Weight by it when you average across
@@ -94,7 +95,8 @@ unit carried a duration. That is an absence and not a delay of zero — see
 ## The orders still resting at the end
 
 `active_limit_orders` and `active_stop_orders` hold the orders that were still resting when the
-unit ended — a backtest's data end, a session's last step.
+unit ended — a backtest's data end, a session's last step. `active_limit_count`,
+`active_stop_count` and `active_order_count` (the two together) count them.
 
 **In a backtest they are not open orders.** The same step that takes this snapshot records every
 one of them `expired` in [order history](/api/v1/docs/order-history), so after the run none of

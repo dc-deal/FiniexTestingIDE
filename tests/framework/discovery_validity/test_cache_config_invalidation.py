@@ -8,6 +8,10 @@ bar file, so a cache built under different parameters read as valid indefinitely
 The concrete case, measured in the survey: `data_coverage.thresholds.short` decides every gap's
 CATEGORY, and the category decides which scenarios `ScenarioDataValidator` excludes. Change the
 threshold, and yesterday's categories keep being served.
+
+The volatility family also records the METHOD that measured it (#647), apart from the fingerprint:
+a generated profile checks itself against that fingerprint, and a new method that leaves its
+windows unchanged must not call it stale.
 """
 
 from pathlib import Path
@@ -22,6 +26,9 @@ from python.framework.discoveries.data_coverage.data_coverage_report_cache impor
     DataCoverageReportCache,
 )
 from python.framework.discoveries.discovery_cache import DiscoveryCache
+from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer import (
+    VOLATILITY_METHOD_VERSION,
+)
 from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer_cache import (
     VolatilityProfileAnalyzerCache,
 )
@@ -81,6 +88,8 @@ class TestConfigFingerprintInvalidation:
 
         extra = {b'granularity': cache._granularity.encode()} \
             if isinstance(cache, DataCoverageReportCache) else None
+        if isinstance(cache, VolatilityProfileAnalyzerCache):
+            extra = {b'method_version': VOLATILITY_METHOD_VERSION.encode()}
         target = cache._get_cache_path('mt5', 'EURUSD', 'extreme_moves') \
             if isinstance(cache, DiscoveryCache) else cache._get_cache_path('mt5', 'EURUSD')
 
@@ -106,6 +115,28 @@ class TestConfigFingerprintInvalidation:
 
         cache._live_fingerprint = 'FINGERPRINT_A'
         assert cache.is_cache_valid('mt5', 'EURUSD', 'extreme_moves') is False
+
+
+class TestTheVolatilityMethodVersion:
+    """A volatility cache measured by another method is rebuilt; its fingerprint does not move."""
+
+    def _planted(self, tmp_path, source, method_version):
+        source_path, source_mtime = source
+        cache = _wire(VolatilityProfileAnalyzerCache(), tmp_path, source_path)
+        extra = {b'method_version': method_version} if method_version is not None else None
+        _plant(cache._get_cache_path('mt5', 'EURUSD'), 'FINGERPRINT_A', source_mtime + 10, extra)
+        cache._live_fingerprint = 'FINGERPRINT_A'
+        return cache
+
+    @pytest.mark.parametrize('method_version', [None, b'1'])
+    def test_a_cache_of_another_method_is_not_valid(self, tmp_path, source, method_version):
+        cache = self._planted(tmp_path, source, method_version)
+        assert cache.is_cache_valid('mt5', 'EURUSD') is False
+
+    def test_the_fingerprint_a_generated_profile_checks_is_the_config_s_alone(
+            self, tmp_path, source):
+        cache = self._planted(tmp_path, source, b'1')
+        assert cache.get_config_fingerprint('mt5', 'EURUSD') == 'FINGERPRINT_A'
 
 
 class TestMetadataReader:

@@ -40,7 +40,7 @@ tests/
 |---------|-------|-------------|
 | `batch_execution_summary` | session | Runs scenario once per session |
 | `process_result` | session | First scenario ProcessResult |
-| `tick_loop_results` | session | ProcessTickLoopResult with all data |
+| `event_loop_results` | session | ProcessEventLoopResult with all data |
 | `pending_row` | session | The scenario's pending-orders row, derived from its order events |
 | `portfolio_stats` | session | PortfolioStats for cross-validation |
 | `scenario_config` | session | Raw JSON config for assertions |

@@ -4,6 +4,23 @@
 
 End-to-end validation of AutoTrader mock sessions and unit testing of AutoTrader components.
 
+## Both account models
+
+The event loop is one for both account models, and the money paths branch inside it, so a margin
+defect hides behind a green spot suite. Where a whole session runs on a margin account:
+
+| Test | Profile | What runs at margin |
+|---|---|---|
+| `test_partial_close_live_pipeline.py` | `partial_close_lifecycle.json` (MT5 USDJPY) | warmup, a worker, partial closes, entry and exit trades, the event stream |
+| `test_event_channel_live_pipeline.py` | `event_channel_lifecycle.json` (MT5 USDJPY) | the decision event channel end to end |
+| `session_end/test_stop_waits_for_orders.py` | `session_stop_awaited_order_margin.json` (MT5 USDJPY) | a stop that waits for its order |
+| `safety/test_margin_safety_integration.py` | `margin_safety_test.json` (MT5 EURUSD) | the safety breaker on margin equity |
+
+The live executor suite builds its portfolio at margin unless a test asks for spot
+(`MockOrderExecution(spot_mode=True)`), and the money paths that differ are run in both
+(`[margin, spot]` in [live_executor_tests.md](live_executor_tests.md)). A margin session's whole
+report is also frozen as a golden sample (the fixture catalog's `mock_session_margin`).
+
 ## Test Files
 
 ### test_autotrader_mock_session.py
@@ -12,7 +29,7 @@ Full pipeline integration: runs a complete session with deterministic parquet re
 
 | Test | What it validates |
 |------|-------------------|
-| `test_full_mock_session` | Normal shutdown + **exit code 0**, tick count (63412), 0 warnings/errors, trades produced, stats collected. Clipping is not asserted: it compares wall-clock processing with the recorded tick spacing, so it measures the machine — the monitor's rule is tested in `test_live_clipping_monitor.py` |
+| `test_full_mock_session` | Normal shutdown + **exit code 0**, tick count (63412), 0 warnings/errors, trades produced, stats collected. Clipping is not asserted: a replay is never behind and never coalesces, so it never clips (#461) — the monitor's rule is tested in `test_live_clipping_monitor.py` |
 | `test_log_files_created` | Log directory structure: global, summary, session_logs/, events.csv |
 | `test_broker_report_written` | Broker report persisted (unified model) + rendered in the summary |
 | `test_safety_report_written` | The safety record reaches disk and names its baseline (#356 Phase C) — the end-to-end the unit tests cannot show: a chain of proven links is not a proven chain. Also pins that an unarmed limit reports `null`, not `0.0` |
@@ -131,11 +148,28 @@ recovered", both staleness contracts in ONE fast session driven by the
 |------|-------------------|
 | `test_session_completes_normally` | Normal shutdown, 3000 ticks, empty error pot despite the outage |
 | `test_stale_episode_reaches_the_pot_with_span` | Exactly one flip warning + one recovery line with the from–to span (the v0 stale protocol) |
+| `test_the_pause_keeps_the_session_on_the_replay_s_day` | The freeze is a pause in real time inside a replay of 2026-04-27 (#616): the session seals exactly one booking period, its end, and it opens and closes on the replay's day — before the replay's own time, an idle pass read the wall clock and the session sealed a period for every day up to the day it ran |
 | `test_decision_hook_fired_once` | `on_market_data_stale` edge-dispatched exactly once per episode |
 | `test_guard_blocked_the_stale_entry` | The probe's deliberate ghost-pass entry was refused by the guard (`STALE_MARKET_DATA` floor) and counted as a denial — nothing was sent |
 | `test_signal_side_fired_too` | `on_signal_stale` fired once (aged archive) — both contracts in one session |
 
 **Runtime:** ~10 seconds (one shared session; includes the 2 s deliberate freeze).
+
+### test_external_history_replay.py
+
+A mock session over a venue's published history (`external_history_replay_test.json`, ETHUSD on
+2025-06-02, before our own collection began) reports what it read as a backtest does (#647). External
+data is not admitted by default, so the test admits it for its own run, as an operator widens
+`admitted_origin_classes`; a plain run of the profile is refused at that gate. Where the archive holds
+no external ETHUSD history for that day — a published dataset never carries it — the test is
+skipped, not failed.
+
+| Test | What it validates |
+|------|-------------------|
+| `test_external_data_is_reported_with_the_warmup_into_it` | `data_origin_external` names the venue's published history and the warmup that reached into it |
+| `test_what_the_files_lack_is_reported` | the deficiency finding for the missing quote (`data_no_quote`) |
+
+**Runtime:** ~7 seconds (one shared session).
 
 ### test_tick_outage_stress.py
 
@@ -236,14 +270,27 @@ Unit tests for `LiveClippingMonitor` — no external dependencies, no tick data,
 
 | Class | Tests | What it validates |
 |-------|-------|-------------------|
-| `TestClippingDetection` | 5 | Core logic: processing_ms > tick_delta_ms triggers clipping, boundary cases (equal, zero, negative delta) |
-| `TestCounterAccuracy` | 5 | Mixed sequences, max/avg tracking, the processing times reaching the display — and the window behind the display's percentiles keeping only the most recent ticks while the session totals still count every one |
+| `TestClipping` | 4 | Clipping since #461: the ticks of a slice the algo did not compute on — a backlog's ticks behind the newest — counted as ticks against ticks; a frame's ticks arriving together, and a late tick the algo still computed on, are not clipped |
+| `TestCounterAccuracy` | 5 | Mixed sequences, max/avg tracking — the processing time is a pass's, however many ticks it held — the processing times reaching the display, and the window behind the display's percentiles keeping only the most recent ticks while the session totals still count every one |
 | `TestQueueDepthTracking` | 2 | Max queue depth updates, zero depth |
-| `TestPeriodicReports` | 5 | Interval timing, report generation, counter reset, zero-tick intervals, session totals persistence |
-| `TestSessionSummaryEdgeCases` | 4 | Empty session, 100% clipping, 0% clipping, single tick |
-| `TestStrategy` | 2 | Default and custom strategy |
+| `TestPeriodicReports` | 5 | Interval timing, report generation with ticks and passes, counter reset, zero-tick intervals, session totals persistence |
+| `TestSessionSummaryEdgeCases` | 4 | Empty session, a backlog with all but its newest tick clipped, 0% clipping, single tick |
 
 **Runtime:** <0.5 seconds.
+
+### test_answer_wakes_the_loop.py
+
+A venue's answer wakes the loop on arrival instead of waiting for the next tick or heartbeat
+(#461). A session's outcome is the same either way, so no outcome check can see a lost wake, and
+an unthrottled replay is taken whole before any answer arrives. The test therefore throttles
+`tp_triggered_test.json` (50 ms a tick, 40 ticks) and times the probe's answer from its put in the
+request processor's inbox to its take.
+
+| Test | What it validates |
+|------|-------------------|
+| `test_a_venue_answer_wakes_the_loop_between_ticks` | The answer reached the execution lane and waited less than half a tick gap. A listener that is never connected fails the first check, a wake that is never sent fails the second: the answer then waits one full gap for the next tick |
+
+**Runtime:** about 7 seconds.
 
 ### test_sim_at_parity.py
 

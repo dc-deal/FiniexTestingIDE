@@ -20,7 +20,7 @@ tests/autotrader/order_guard/
 
 ### Level 1 — Unit Tests
 
-Direct tests against `OrderGuard` with no executor, no tick loop, no scenario runner. The guard is
+Direct tests against `OrderGuard` with no executor, no event loop, no scenario runner. The guard is
 clock-agnostic — all time-dependent methods take an explicit `now: datetime` parameter, so tests
 simply pass fixed or advanced timestamps instead of patching `datetime.now()`.
 
@@ -37,7 +37,7 @@ End-to-end tests that run full backtesting scenarios through the DecisionTrading
 
 | Class | Scenario Config | What it validates |
 |-------|-----------------|-------------------|
-| `TestRejectionCooldown` | `order_guard_cooldown_test.json` | Margin rejection arms cooldown, subsequent order blocked as REJECTION_COOLDOWN, stats counted |
+| `TestRejectionCooldown` | `order_guard_cooldown_test.json` | Margin rejection arms cooldown, subsequent order blocked as REJECTION_COOLDOWN, stats counted; each margin rejection names the share of its requirement the free margin covered |
 
 ---
 
@@ -91,8 +91,8 @@ No shared fixtures — each test creates its own `OrderGuard` instance directly.
 
 | Fixture | Scope | Description |
 |---------|-------|-------------|
-| `cooldown_tick_loop` | module | Runs `order_guard_cooldown_test` scenario once |
-| `cooldown_order_history` | module | Extracts order history from tick loop results |
-| `cooldown_execution_stats` | module | Extracts ExecutionStats from tick loop results |
+| `cooldown_event_loop` | module | Runs `order_guard_cooldown_test` scenario once |
+| `cooldown_order_history` | module | Extracts order history from event loop results |
+| `cooldown_execution_stats` | module | Extracts ExecutionStats from event loop results |
 
 All scenario fixtures use `run_scenario()` from `tests/shared/fixture_helpers.py`.

@@ -1,5 +1,7 @@
 {
   "excluded": ["simulation/benchmark", "live_adapters", "live_field_study", "live_signal_feed", "security_cert"],
   "ignored": ["shared", "fixtures"],
-  "fail_fast": true
+  "fail_fast": true,
+  "lanes": 4,
+  "suite_timeout_seconds": 900
 }

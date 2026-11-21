@@ -28,7 +28,7 @@ def serialize_ticks_for_transport(
     """
     Trim DataFrame to transport columns and convert to list of dicts.
 
-    Filters the DataFrame to only the columns needed by the tick loop consumer,
+    Filters the DataFrame to only the columns needed by the event loop consumer,
     dropping all other columns (tick_volume, chart_tick_volume, spread_points,
     spread_pct, tick_flags, session, etc.).
 
@@ -103,7 +103,7 @@ def process_deserialize_ticks_batch(scenario_symbol: str, ticks_tuple_list: Dict
         ticks_tuple_list: Dict mapping symbol -> tuple of tick dicts
 
     Returns:
-        Tuple of TickData objects for the tick loop
+        Tuple of TickData objects for the event loop
     """
     ticks_tuple = ticks_tuple_list[scenario_symbol]
     if not ticks_tuple:
@@ -185,7 +185,7 @@ def deserialize_bars_batch(symbol: str, bars_tuple: Tuple[Any, ...]) -> Tuple[Ba
         bars_tuple: Tuple of bar dicts (immutable, CoW-friendly)
 
     Returns:
-        List of Bar objects for BarRenderer
+        The bars, frozen, for the warmup history
     """
     result = []
     for bar_dict in bars_tuple:
@@ -231,7 +231,7 @@ def serialize_current_bars(current_bars: Dict[str, Any]) -> Dict[str, Dict]:
     Serialize current bars for JSON export.
 
     Args:
-        current_bars: Dict[timeframe, Bar] from bar_rendering_controller
+        current_bars: Dict[timeframe, FormingBar] from bar_rendering_controller
 
     Returns:
         JSON-serializable dict

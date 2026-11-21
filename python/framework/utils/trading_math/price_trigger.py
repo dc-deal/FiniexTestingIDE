@@ -103,7 +103,7 @@ def mid_price(bid: float, ask: float) -> float:
     The midpoint of a quote, for callers that hold a raw bid/ask pair.
 
     `TickData.mid` answers the same question where a tick is in scope and stays inline there
-    because it sits in the tick loop — measured 2026-09-16, delegating costs 30 % of the
+    because it sits in the event loop — measured 2026-09-16, delegating costs 30 % of the
     property access. This exists for the places that have no tick: a `(bid, ask)` tuple from
     the executor's price cache, from a portfolio re-mark, or from a close path.
 

@@ -57,9 +57,9 @@ def _counters(summary, index: int):
     """The scenario's single SIGNAL worker counters + its processed tick count."""
     result = summary.process_result_list[index]
     assert result.success, f'Scenario {index} failed: {result.error_message}'
-    stats = result.tick_loop_results.signal_statistics
+    stats = result.event_loop_results.signal_statistics
     assert len(stats) == 1, 'the fixture binds exactly one SIGNAL worker per scenario'
-    return stats[0], result.tick_loop_results.coordination_statistics.ticks_processed
+    return stats[0], result.event_loop_results.coordination_statistics.ticks_processed
 
 
 class TestTickExactness:
@@ -149,13 +149,30 @@ class TestThresholdIsAParameter:
         assert clean.stale_ticks == 0 and tight.stale_ticks > 0
 
 
+class TestTheMountRecordsWhatItRead:
+    """
+    A scenario records what it read, per input file (#647). The server clock rule is a TICK file's —
+    the rule its times were converted with — so the mount collects it over the tick files only, while
+    the origin classes cover the signal files too.
+    """
+
+    def test_one_clock_rule_per_tick_file_and_none_for_a_signal_file(self, summary):
+        scenario = summary.single_scenario_list[0]
+
+        assert scenario.data_format_versions, 'the scenario read tick files'
+        assert len(scenario.server_clock_rules) == len(scenario.data_format_versions)
+        assert len(scenario.origin_classes) > len(scenario.data_format_versions), \
+            'the signal files are inputs too, and carry no clock rule'
+
+
+@pytest.fixture(scope='module')
+def report(summary):
+    """The signal report the batch's counters project into."""
+    return build_signal_report(_RUN_ID, summary.signal_scenario_map, run_units_from_batch(summary))
+
+
 class TestReportProjection:
     """The counters reach the model, keyed to the right scenario."""
-
-    @pytest.fixture(scope='class')
-    def report(self, summary):
-        return build_signal_report(_RUN_ID, 
-            summary.signal_scenario_map, run_units_from_batch(summary))
 
     def test_one_source_with_every_scenario(self, report):
         assert len(report.units) == 1

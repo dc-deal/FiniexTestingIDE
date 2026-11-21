@@ -17,7 +17,7 @@ from python.framework.exceptions.mount_errors import ScenarioPackageMissingError
 from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.types.config_types.data_origin_config_types import OriginClass
-from python.framework.types.coverage_report_types import GapCategory
+from python.framework.types.coverage_report_types import GapCategory, SeamSide
 from python.framework.types.process_data_types import ProcessDataPackage, RequirementsMap
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.validation_types import (
@@ -362,7 +362,7 @@ class ScenarioDataValidator:
 
         for instance_name, worker_type in worker_instances.items():
             try:
-                worker_class, _ = worker_factory.resolve_worker_class(worker_type)
+                worker_class, _ = worker_factory.resolve_configured_worker_class(worker_type)
             except ValueError as e:
                 errors.append(
                     f"Cannot resolve worker '{instance_name}' ({worker_type}): {e}"
@@ -571,8 +571,9 @@ class ScenarioDataValidator:
 
         For a short gap — and for a moderate or large one the run admits in
         backtesting.data_validation.allowed_gap_categories — auto-corrects start_date
-        to gap_end and emits a warning instead of an error. A data gap the run does
-        not admit, and any market closure, remain errors.
+        to gap_end and emits a warning instead of an error. So it does for any data gap in
+        a venue's published history, where no trade was missed (#647). A data gap the run
+        does not admit, and any market closure, remain errors.
 
         Args:
             scenario: Scenario to validate
@@ -597,17 +598,20 @@ class ScenarioDataValidator:
         gap_end = ensure_utc_aware(gap.gap_end)
 
         # A data gap the run admits is moved past, as the stretch check admits it mid-window; a short
-        # one always. A market closure stays an error.
+        # one always, and any data gap in external history. A market closure stays an error.
+        in_venue_history = report.seam_side(gap) == SeamSide.EXTERNAL_HISTORY
         shiftable = gap.category == GapCategory.SHORT or (
-            gap.category.is_data_gap() and gap.category in self._allowed_gap_categories)
+            gap.category.is_data_gap()
+            and (in_venue_history or gap.category in self._allowed_gap_categories))
         if shiftable:
             # Auto-correct: shift start_date past the data gap
             scenario.start_date = gap_end
             gap_minutes = (gap_end - start_date).total_seconds() / 60
+            whose = " of the venue's published history, no trades there" if in_venue_history else ''
             warnings.append(
                 f"start_date shifted {start_date.strftime('%Y-%m-%d %H:%M:%S')} → "
                 f"{gap_end.strftime('%Y-%m-%d %H:%M:%S')} UTC "
-                f'(inside {gap.category.value} gap, +{gap_minutes:.0f}min)'
+                f'(inside {gap.category.value} gap{whose}, +{gap_minutes:.0f}min)'
             )
         else:
             errors.append(
@@ -627,6 +631,10 @@ class ScenarioDataValidator:
     ) -> List[str]:
         """
         Validate that tick stretch is free of forbidden gaps.
+
+        A gap in a venue's published history is admitted whatever its category: the venue's
+        record lists every trade, so the gap is an hour nobody traded there, not data that is
+        missing (#647). Gaps in collected data are judged by allowed_gap_categories.
 
         Args:
             scenario: Scenario to validate
@@ -654,7 +662,8 @@ class ScenarioDataValidator:
             gap_start = ensure_utc_aware(gap.gap_start)
             gap_end = ensure_utc_aware(gap.gap_end)
 
-            if gap.category not in self._allowed_gap_categories:
+            if (gap.category not in self._allowed_gap_categories
+                    and report.seam_side(gap) != SeamSide.EXTERNAL_HISTORY):
                 errors.append(
                     f"{gap.severity_icon} {gap.category.value.upper()} gap detected in tick stretch "
                     f"({first_tick.strftime('%Y-%m-%d %H:%M:%S')} → {last_tick.strftime('%Y-%m-%d %H:%M:%S')}): "

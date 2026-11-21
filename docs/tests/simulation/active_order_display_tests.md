@@ -36,10 +36,10 @@ The conftest runs one batch (both scenarios), then extracts per-scenario fixture
 |---------|-------|-------------|
 | `batch_execution_summary` | session | Runs both scenarios once per session |
 | `process_result_limit` | session | ProcessResult for scenario 0 (active_limit_display) |
-| `tick_loop_results_limit` | session | Tick loop results for limit scenario |
+| `event_loop_results_limit` | session | Event loop results for limit scenario |
 | `active_orders_limit` | session | ActiveOrdersSnapshot for limit scenario |
 | `process_result_stop` | session | ProcessResult for scenario 1 (active_stop_display) |
-| `tick_loop_results_stop` | session | Tick loop results for stop scenario |
+| `event_loop_results_stop` | session | Event loop results for stop scenario |
 | `active_orders_stop` | session | ActiveOrdersSnapshot for stop scenario |
 
 ---
@@ -96,7 +96,7 @@ Both scenarios use intentionally unreachable prices to ensure the order stays ac
 trade_simulator._active_limit_orders / _active_stop_orders
   └→ get_active_orders_snapshot()
        └→ ActiveOrdersSnapshot.active_limit_orders / active_stop_orders: List[ActiveOrderSnapshot]
-            └→ ProcessTickLoopResult.active_orders
+            └→ ProcessEventLoopResult.active_orders
                  └→ active_orders_limit / active_orders_stop fixtures
 ```
 

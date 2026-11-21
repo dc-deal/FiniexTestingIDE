@@ -19,15 +19,18 @@ Synchronous algo processing in the main thread. Tick source in a separate thread
 Thread 1 (Tick Source):       Thread 2 (Main — Algo):          Thread 3 (Display):
 ──────────────────────       ────────────────────────          ──────────────────────
 while running:               while running:                    while running:
-  tick = source.next_tick()    tick = queue.get(timeout=1)       stats = display_q.drain()
-  tick_q.put(tick) ────────→                                     layout = render(stats)
-                               executor.on_tick(tick)             live.update(layout)
-                               bars = process_tick(tick)          sleep(0.3s)
-                               decision = orchestrate(...)
-                               execute_decision(...)           Connection stats polled
-                               clipping_monitor.record(...)    directly from tick_source
-                               display_q.put(stats) ──────→   (GIL-safe primitive reads)
+  ticks = source.receive()     instant = intake.next_instant()   stats = display_q.drain()
+  tick_q.put(tuple(ticks)) ─→  dispatch_live_instant(instant)    layout = render(stats)
+  # one arrival, one item        broker path + bars, each tick   live.update(layout)
+                                 algo once, on the newest        sleep(0.3s)
+                                 execute_decision(...)
+                               clipping_monitor.record_pass()  Connection stats polled
+                               display_q.put(stats) ──────→   directly from tick_source
+                                                               (GIL-safe primitive reads)
 ```
+
+A fourth thread, the broker adapter's worker, puts the venue's answers in the executor's inbox and
+wakes the main thread with a marker on the tick queue; only the main thread reads the inbox.
 
 **Why sync in main thread?** Workers and DecisionLogic are not async-safe. The queue pattern avoids "async infection" — the tick source handles I/O, the algo loop stays synchronous.
 
@@ -40,7 +43,7 @@ while running:               while running:                    while running:
 If the tick source were `async` in the same thread, every downstream caller would need to become `async` too:
 
 ```python
-async def run_tick_loop():
+async def run_event_loop():
     tick = await websocket.recv()             # async!
     result = await worker.process_tick(tick)   # Worker must become async!
     decision = await logic.execute(result)     # Logic must become async!
@@ -129,7 +132,7 @@ components into the shared framework.
 2. `setup_pipeline()` creates all objects (mirrors backtesting) and returns them as one
    `AutotraderPipelineBundle`
 3. `setup_tick_source()` starts tick source thread
-4. Enter tick loop
+4. Enter event loop
 
 Before step 2 the session has already written its run header, which names the profile it was
 given (`config_id`), what it runs with (`rendered_config_id`) and its code; step 2 freezes the
@@ -143,44 +146,57 @@ and the pipeline loading it. `--allow-dirty` lets a deliberate test through the 
 the run header and reported as a Tier-1 warning, and never through the second — see
 [Run Origin and Code Identity](../architecture/run_origin_and_code_identity.md#real-orders-from-uncommitted-code).
 
-### Tick Loop
+### Event Loop
 
-Each tick follows the same 5-step path as backtesting:
+The loop is the session's drive: it takes the next instant from the session's timeline and hands
+it to the loop core (`dispatch_live_instant`), which runs it in the phase order a backtest runs its
+instants in. The timeline (`LiveEventIntake`, #461) waits until the next of its timers falls due and
+is woken when a tick or a venue's answer arrives. An instant is a slice of the ticks that arrived —
+live, a backlog the loop fell behind on is one slice, so the algo computes once, on the newest —
+the venue's answers resolving, a timer, or several of them at one stamp. The timeline, its lanes and
+timers, and the full order of a pass are in [The Loop Core](../architecture/loop_core_architecture.md);
+what stays the AutoTrader's own — no clipping gate, a safety layer that may turn a decision into
+FLAT — is in [One order in both pipelines](../architecture/loop_core_architecture.md#one-order-in-both-pipelines).
+The main steps of a slice are the backtest's:
 
-1. **Broker Path** — `executor.on_tick(tick)` — pending order processing, price updates
-2. **Bar Rendering** — `bar_controller.process_tick(tick)` — aggregate ticks into OHLC bars
-3. **Bar History** — `bar_controller.get_all_bar_history()` — retrieve history for workers
-4. **Worker + Decision** — `orchestrator.process_tick()` → decision
+1. **Broker Path** — `executor.apply_tick(tick)` for every tick — prices, the market's state
+2. **Bar Rendering** — every tick into the OHLC bars
+3. **Venue's answers** — `executor.resolve_due(...)`: after a tick the tick's order processing
+   (with its synchronous status read of a MARKET order in transit), otherwise the heartbeat's
+4. **Worker + Decision** — once, on the newest tick → decision
 5. **Order Execution** — `decision_logic.execute_decision()` → orders via executor
 
-After each tick: `clipping_monitor.record_tick()` measures processing time.
+After each slice: `clipping_monitor.record_pass()` measures the pass and counts its clipped ticks:
+those of every arrival before the newest, one venue message each, whose trades are never clipped
+against each other (see [Observability](autotrader_observability.md#clipping-monitor-197)).
 
-When the tick queue times out (no tick within `heartbeat_interval_ms`, default
-1000 ms), the loop fires a **timer event** instead of falling through silently —
-the single main-loop consumer runs the cadence work without a second thread (#360):
+The **heartbeat** falls due one `heartbeat_interval_ms` (default 500 ms) after the last instant
+with ticks or the last heartbeat, so never inside a burst, and a venue's answer does not hold it
+off; the single main-loop consumer runs its cadence work without a
+second thread (#360):
 
-1. `executor.set_current_time(now)` — inject the wall-clock so the canonical clock
-   advances during idle (phase/op timeouts track real elapsed time, not a frozen tick).
-2. `executor.heartbeat()` — drain async worker responses (submit, edit, cancel,
-   query, trades), process order timeouts, **and re-poll active orders** so the
-   fill/cancel-confirm query fires during idle (not only on a real tick).
-3. `reconciler.reconcile()` if due — broker truth-pull on the timer too (was tick-only),
-   self-throttled by `min_interval_seconds`.
-4. `orchestrator.process_heartbeat()` — a **decision ghost-pass**: for a logic that
-   opts in via `wants_heartbeat()`, the decision runs with `tick=None` and the cached
-   worker results (workers do not recompute) so it can advance internal state, react to
-   drained events, and issue follow-up orders. No tick state is mutated (no `_tick_counter`
-   bump, no portfolio mark-dirty, no bar render).
+1. The canonical clock moves to the heartbeat's stamp, and a trading day that ended on a quiet feed
+   is sealed before anything the instant resolves.
+2. `executor.heartbeat()` — drain the async worker responses, process order timeouts, **and
+   re-poll active orders** so the fill/cancel-confirm query fires during idle.
+3. The market-data staleness check (#436), on the last real tick's age.
+4. The signal inbox (#141), then the decision events (#348).
+5. `orchestrator.process_heartbeat()` — a **decision ghost-pass**: for a logic that opts in via
+   `wants_heartbeat()`, the decision runs with `tick=None` and the cached worker results (workers
+   do not recompute). No tick state is mutated (no `_tick_counter` bump, no portfolio mark-dirty,
+   no bar render).
 
-It also pushes a *pulse* display frame so the dashboard shows `💓 N s since last tick`
-instead of freezing. See "Polling Cadence" below.
+It also pushes a *pulse* display frame so the dashboard shows `💓 N s since last tick` instead of
+freezing. The reconciliation, the state persistence and the state frames' cadence are timers of
+their own, due at their configured intervals even while the market is fast. See "Polling Cadence"
+in [Venue Integration](autotrader_venue_integration.md#polling-cadence-320).
 
-**Canonical clock (#360):** `get_current_time()` returns a loop-injected time — set from
-the tick timestamp in `on_tick`, and from the wall-clock on the heartbeat. The loop owns
-the between-tick time source, so the clock never freezes to the last tick. This is the one
-place wall-clock is read in the AutoTrader (decision logic and workers only ever call
-`get_current_time()`, the one canonical clock). In sim the injected time is the simulated tick
-time (reproducible).
+**Canonical clock (#360, #461):** `get_current_time()` returns a loop-injected time: the stamp of
+the instant on the receipt axis — the wall clock at arrival live, the recorded arrival in a replay
+(#616) — never going back. Live, the loop is the one place the wall clock is read in the
+AutoTrader (decision logic and workers only ever call `get_current_time()`). In sim the injected
+time is the recorded arrival as well (reproducible). Details:
+[Live Execution](../architecture/live_execution_architecture.md#canonical-clock--the-sessions-timeline-360-461).
 
 ### Shutdown
 
@@ -189,7 +205,7 @@ Two modes:
 | Mode | Trigger | Behavior |
 |------|---------|----------|
 | **Normal** | Tick source exhausted, SIGTERM | Finish orders per policy, collect full stats |
-| **Emergency** | SIGINT (Ctrl+C), a startup or tick-loop exception, or an EMERGENCY session-end escalation (#348) | Same cleanup, best-effort stats |
+| **Emergency** | SIGINT (Ctrl+C), a startup or event-loop exception, or an EMERGENCY session-end escalation (#348) | Same cleanup, best-effort stats |
 
 Signal handling: first Ctrl+C requests shutdown; a second within 3s forces exit.
 
@@ -233,7 +249,7 @@ and `get_outcome()` grades the session from there:
 |---|---|---|
 | `SUCCESS` | `0` | normal shutdown, or an operator Ctrl+C — no errors logged |
 | `CRASHED` | `1` | an uncaught exception reached the CLI |
-| `FAILED` | `2` | `emergency` that the operator did not initiate — startup abort, tick-loop crash, safety escalation, a refusal at the first tick |
+| `FAILED` | `2` | `emergency` that the operator did not initiate — startup abort, event-loop crash, safety escalation, a refusal at the first tick |
 | `FINISHED_WITH_ERRORS` | `3` | the session ended without an emergency, but errors were logged |
 
 A **refusal at the first tick** (#588) is an `emergency` that is neither a crash nor a startup
@@ -273,7 +289,7 @@ store is decoupled — it knows only a JSON dict plus the bot identity; orchestr
 (restore / snapshot / freshness gate) lives in `AutotraderMain`.
 
 Lifecycle: restore runs after warmup and before the first decision; saves fire on a hybrid
-cadence (every N ticks OR M seconds) from the tick loop — both the per-tick and the idle
+cadence (every N ticks OR M seconds) from the event loop — both the per-tick and the idle
 heartbeat branch — plus a final save on shutdown. An empty snapshot writes no file; a
 mid-session save failure is logged (error pot) but never aborts the session.
 

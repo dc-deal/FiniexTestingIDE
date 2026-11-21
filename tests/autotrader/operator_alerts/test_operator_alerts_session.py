@@ -2,18 +2,21 @@
 Operator Alerts in a Session — the wiring, end to end, on a short mock replay (#235).
 
 The channel and the monitor are stand-ins that keep what they were sent; everything between
-them and the tick loop is the real thing: the session builds its channels at startup, says when
+them and the event loop is the real thing: the session builds its channels at startup, says when
 the loop starts, pings while it passes, and ends with one closing message and its last word to
 the monitor. An abort is ONE message, sent at once — not a second one at the end. A boot step
 that refuses to start is one message too, quoting why, and a loop that never ran is vouched for
 by no ping at all.
 """
 
+import json
+
 import pytest
 
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader import autotrader_main as autotrader_main_module
 from python.framework.autotrader.autotrader_main import AutotraderMain
+from python.framework.autotrader.event_loop.autotrader_pass_hooks import AutotraderPassHooks
 from python.framework.autotrader.cold_start.cold_start_setup import ColdStartSetup
 from python.framework.autotrader.operator_alerts.liveness_pinger import LivenessPinger
 from python.framework.autotrader.operator_alerts.loop_progress import LoopProgress
@@ -22,6 +25,7 @@ from python.framework.autotrader.operator_alerts.operator_alert_dispatcher impor
 )
 from python.framework.autotrader.operator_alerts.operator_alert_messages import session_label
 from python.framework.autotrader.operator_alerts.operator_alerts import OperatorAlerts
+from python.framework.constants.run_layout_constants import IO_SUBDIR, STATE_FRAMES_FILE
 from python.framework.types.config_types.operator_alerts_config_types import (
     LivenessPingConfig,
     TelegramAlertsConfig,
@@ -37,6 +41,12 @@ from tests.shared.fixture_helpers import remove_run_dir
 
 # The shortest mock replay there is — 100 ticks; what it trades does not matter here
 PROFILE = 'configs/autotrader_profiles/mock/diagnostics_probe_test.json'
+
+# A longer replay that records its state frames, so a crash's last frame can be read back
+FRAMES_PROFILE = 'configs/autotrader_profiles/mock/state_frames_test.json'
+
+# The ticks a session passes before the crash a test provokes in its loop
+CRASH_AFTER = 40
 
 # What the cold start says when an unattended restart finds orders nobody confirmed
 REFUSAL = ('❌ COLD START ABORTED — 1 resting order(s) of ours need confirmation and nobody '
@@ -75,7 +85,7 @@ def _run():
     try:
         return trader.run()
     finally:
-        remove_run_dir(trader._run_dir)
+        remove_run_dir(trader.get_run_dir())
 
 
 def test_a_session_says_it_started_and_how_it_ended(recorded):
@@ -112,6 +122,45 @@ def test_an_abort_is_one_message_and_a_fail_ping(recorded, monkeypatch):
     assert channel.titles() == ['⛔ STARTUP FAILED']
     assert 'no tick source configured' in channel.delivered[0]
     assert monitor.requests == [FAIL_URL]      # the loop never ran; the alarm comes at once
+
+
+def test_a_crash_in_the_loop_reports_how_far_the_session_got(recorded, monkeypatch):
+    """
+    A crash in the event loop took the loop's counts along, and the session reported zero ticks
+    however long it had run (#636). The crash is provoked from outside, in a call the loop makes on
+    every slice; the slice it happens in counts, because the count moves before the slice is
+    applied. A replay's slice holds the ticks of one arrival millisecond (#461), so the count is
+    read where the crash happens rather than derived from the passes.
+    """
+    channel, _, _ = recorded
+    drain = AutotraderPassHooks._drain_signal_inbox
+    seen = {'slices': 0, 'ticks': 0}
+
+    def fall_after_some_slices(self, off_tick):
+        if not off_tick:
+            seen['slices'] += 1
+            if seen['slices'] > CRASH_AFTER:
+                seen['ticks'] = self._state.ticks_processed
+                raise RuntimeError('provoked in the event loop')
+        return drain(self, off_tick)
+
+    monkeypatch.setattr(AutotraderPassHooks, '_drain_signal_inbox', fall_after_some_slices)
+    trader = AutotraderMain(load_autotrader_config(FRAMES_PROFILE))
+    try:
+        result = trader.run()
+        frames_path = trader.get_run_dir() / IO_SUBDIR / STATE_FRAMES_FILE
+        frames = [json.loads(line)
+                  for line in frames_path.read_text(encoding='utf-8').splitlines()[1:]]
+    finally:
+        remove_run_dir(trader.get_run_dir())
+
+    assert result.get_outcome() is RunOutcome.FAILED
+    assert seen['ticks'] > CRASH_AFTER
+    assert result.ticks_processed == seen['ticks']
+    assert frames[-1]['written_for'] == 'shutdown'
+    assert frames[-1]['ticks_processed'] == seen['ticks']
+    assert channel.titles()[-1].endswith('RUNTIME ERROR — session aborted')
+    assert f"Ticks: {seen['ticks']:,}" in channel.delivered[-1].splitlines()
 
 
 def test_a_crash_while_shutting_down_is_said_and_fails_the_ping(recorded, monkeypatch):

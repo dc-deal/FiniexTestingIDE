@@ -35,7 +35,7 @@ and held complete by a test:
 made-up account value, and that switch would sit in production code where a copied profile turns
 it on: the breaker then fires without a loss, or never fires on a real one. A rule that cannot be
 provoked with a small real loss is proven offline instead, where the mock adapter moves the
-prices in the ticks and the real tick loop does the rest.
+prices in the ticks and the real event loop does the rest.
 
 ---
 

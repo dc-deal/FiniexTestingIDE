@@ -2,7 +2,7 @@
 FiniexTestingIDE - Signal Workers Test Fixtures
 Shared helpers for the SIGNAL worker / provider / hybrid-decision tests (#141).
 
-No tick loop, no batch. Builds SignalSeries / providers / workers in-process and
+No event loop, no batch. Builds SignalSeries / providers / workers in-process and
 injects them directly (the same seam the framework uses at construction).
 """
 

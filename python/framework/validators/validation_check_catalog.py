@@ -79,6 +79,10 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         "The decision logic or a worker reads the system clock instead of the run's own clock, "
         'which makes a backtest impossible to reproduce.'),
     ValidationCheckInfo(
+        'algo_preflight_skipped', 'A check of the algorithm could not run',
+        'A pre-flight that checks the decision logic or a worker could not find one of the files it '
+        'names, so the check did not run; the run itself may still find and use the file.'),
+    ValidationCheckInfo(
         'market_fit', 'Algorithm not recommended for this market',
         'The decision logic names the markets or instruments it is meant for, and this one is '
         'not among them.'),
@@ -86,6 +90,14 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
     ValidationCheckInfo(
         'broker_config_unavailable', 'Broker configuration unavailable',
         "The broker's configuration could not be fetched or loaded."),
+    ValidationCheckInfo(
+        'broker_config_document_unavailable', 'Recorded broker configuration unavailable',
+        "A backtest of a session's window names the broker configuration the session froze at its "
+        'start, and no configuration can be built from the document the loader read.'),
+    ValidationCheckInfo(
+        'broker_config_sources_differ', 'One broker configured from two sources',
+        'One scenario set configures a broker from a recorded document and another scenario '
+        'configures it differently; a run trades one configuration per broker.'),
     ValidationCheckInfo(
         'symbol_unknown', 'Symbol not in the broker configuration',
         'The broker configuration does not list the symbol.'),
@@ -222,6 +234,10 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         'Some tick files the run read carry an arrival time that was reconstructed after the '
         'fact rather than recorded on arrival.'),
     ValidationCheckInfo(
+        'data_arrival_time_offset', 'Arrival time offset',
+        'Some tick files the run read carry an arrival time whose clock was off from the event '
+        'time by more than a delivery takes, so the backtest orders them by the event time.'),
+    ValidationCheckInfo(
         'data_missing_trades', 'Trades missing from the data',
         "Some tick files the run read miss more of the venue's trades than reconnect noise "
         'explains.'),
@@ -236,6 +252,11 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         'order_event_stream_incomplete', 'Order-event stream lacks submissions',
         'The order-event stream holds fewer submissions than the executor counted — a record was '
         'lost, most likely to a failed write — so the counters derived from it are too low.'),
+    ValidationCheckInfo(
+        'usable_funds_negative', 'Funds below zero after own orders',
+        "A unit's funds in a currency fall below zero once its own unfilled orders are counted — "
+        'the balance moved past a claim the bot still holds, so the order cannot be filled in '
+        'full from what the account holds.'),
     ValidationCheckInfo(
         'time_divergence', 'Scenarios far apart in time',
         'The scenarios of one currency span many days, so their combined profit and loss is a '
@@ -291,6 +312,56 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         'robustness_overfit', 'Overfit',
         'Out-of-sample results fall sharply below in-sample results: the strategy is likely fitted '
         'to the in-sample windows.'),
+    # --- The divergence gate: may a backtest be compared with a live session ----------------
+    ValidationCheckInfo(
+        'divergence_gate_code_unknown', 'Code of a run unknown',
+        'Which code the session or the backtest ran cannot be read, so their code paths cannot '
+        'be held against each other.'),
+    ValidationCheckInfo(
+        'divergence_gate_uncommitted', 'Run on uncommitted code',
+        'The session or the backtest ran a framework that is not exactly one commit, so nobody '
+        'can say which code ran.'),
+    ValidationCheckInfo(
+        'divergence_gate_sessions_disagree', 'Sessions ran different code',
+        'The sessions of the compared window ran different releases or commits, where one '
+        'backtest can reproduce only one.'),
+    ValidationCheckInfo(
+        'divergence_gate_commit_unreadable', 'Commit not in this repository',
+        'The framework commit a run names is not in this repository, so its code path cannot be '
+        'read.'),
+    ValidationCheckInfo(
+        'divergence_gate_code_path', "File of the backtest's path changed",
+        "A file the backtest's code path reaches differs from the session's release in more than "
+        'its docstrings, and the release does not declare that change.'),
+    ValidationCheckInfo(
+        'divergence_gate_interpreter', 'Pinned under another interpreter',
+        "The release's declarations pin each changed file's syntax tree as one Python version "
+        'parses it, and the report runs under another, so the code path is not judged.'),
+    ValidationCheckInfo(
+        'divergence_gate_strategy', 'Strategy code differs',
+        'A decision logic or worker, or a repository it was loaded from, is different code in the '
+        'session and in the backtest.'),
+    ValidationCheckInfo(
+        'divergence_gate_strategy_config', 'Strategy configuration differs',
+        'The resolved strategy configuration holds a different value in the session and in the '
+        'backtest.'),
+    ValidationCheckInfo(
+        'divergence_gate_broker_config', 'Broker configuration differs',
+        'The session and the backtest did not trade under the same broker configuration — compared '
+        'by what it trades with, its fetch and export stamps left out; documents that differ only '
+        'in those stamps are named as advice and refuse nothing.'),
+    ValidationCheckInfo(
+        'divergence_gate_window', 'Window not read as measured',
+        "A backtest scenario did not read the compared window from its start to its end, or ran "
+        'to a tick limit instead.'),
+    ValidationCheckInfo(
+        'divergence_gate_feature_beyond_venue', 'Backtest allowed more than the venue',
+        'The backtest allowed order features the venue does not hold, which the session could not '
+        'have used.'),
+    ValidationCheckInfo(
+        'divergence_gate_frames_missing', 'Backtest recorded no state frames',
+        'A backtest scenario recorded no state frames, so its decisions and positions cannot be '
+        "held against the session's."),
     # --- Dated declarations the installation holds -------------------------------------------
     ValidationCheckInfo(
         'certificate_expired', 'Release certificate expired',

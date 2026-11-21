@@ -133,7 +133,7 @@ the two planes read in the order they were written. A read is the venue's whole 
   `reconciliation.broker_truth_min_interval_seconds` (300 s) have passed since the last such line.
   A change inside that distance is deferred, not dropped: the first cycle after it writes the
   picture as it is then, if it still differs, so the stream ends with the latest state however often
-  an order at the edge of a tolerance flips it. Inside the tick loop nothing waits: the balances are
+  an order at the edge of a tolerance flips it. Inside the event loop nothing waits: the balances are
   asked once, and a transient failure leaves them unread. A clean cycle forgets the last
   divergence, so one that returns is written — and warned in the session log — again.
 - **Not in a backtest.** The simulation's venue is its own book; there is nobody to ask.
@@ -156,7 +156,7 @@ than on every record; every later line is the API's `OrderEventRow` or — live 
 differently. Empty fields are left out of a line.
 
 - **Backtest** — a listener in each scenario subprocess appends to a list, which travels back in
-  `ProcessTickLoopResult.order_events` and `RunUnit.order_events`. `BatchReportCoordinator` writes
+  `ProcessEventLoopResult.order_events` and `RunUnit.order_events`. `BatchReportCoordinator` writes
   every unit's events at report time, unit after unit. A backtest whose scenarios placed no order
   writes no stream.
 - **Live session** — `open_order_event_stream`
@@ -217,9 +217,11 @@ session holds no list — each event goes to disk as it is recorded.
 
 ## Known limits
 
-- `ts_init` is the moment the main thread records the step — up to one heartbeat after the worker
-  received the venue's answer. The exact receipt stamp belongs to the event-loop rebuild (#457).
-  Live `in_flight_ms` is measured at the same moment, so it includes that wait too.
+- `ts_init` is the moment the main thread records the step — right after the worker received the
+  venue's answer, later only by a pass still running then, and up to one heartbeat later while a
+  stopping session waits for its last orders. The worker's own receipt stamp stays on the answer
+  and is not served. Live `in_flight_ms` is measured at the same moment, so it includes that wait
+  too.
 - Live `partially_filled` is recorded only where a partial is booked: a venue ending an order after
   partial execution. A resting entry that fills in parts is observed only when it fills (#342).
 - The mock venue reports the orders and balances a test seeded into it, not the ones a mock

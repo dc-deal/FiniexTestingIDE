@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - Liveness Pinger
 
-The outward sign that the tick loop is still passing (#235) — the alarm a dead process cannot
+The outward sign that the event loop is still passing (#235) — the alarm a dead process cannot
 send itself. A monitoring service (healthchecks.io and its kin) expects a ping every period and
 raises the alarm when one is missing; this thread sends it.
 
@@ -49,13 +49,13 @@ AlertSender = Callable[[OperatorAlertKind, OperatorAlertLevel, str, str], None]
 
 class LivenessPinger:
     """
-    Pings the monitoring service while the tick loop passes.
+    Pings the monitoring service while the event loop passes.
 
     Args:
         ping_url: The monitor's ping URL — a secret; '' watches the loop without pinging
         fail_url: The URL that tells the monitor the session failed, '' when it has none
         config: Interval, stall threshold, stamp file and request timeout
-        loop_progress: The tick loop's most recent pass
+        loop_progress: The event loop's most recent pass
         logger: The session logger
         alert: Sends an operator alert — a stall and a refused ping are worth one
         http_get: The GET call — `requests.get`, injected by tests
@@ -185,9 +185,9 @@ class LivenessPinger:
         if self._stalled:
             self._stalled = False
             resumed = ' — liveness pings resumed' if self._ping_url else ''
-            self._logger.info(f'📡 Tick loop passing again{resumed}')
-            self._alert(OperatorAlertKind.TICK_LOOP_RESUMED, OperatorAlertLevel.INFO,
-                        'Tick loop passing again',
+            self._logger.info(f'📡 Event loop passing again, noticed {_noticed_now()}{resumed}')
+            self._alert(OperatorAlertKind.EVENT_LOOP_RESUMED, OperatorAlertLevel.INFO,
+                        'Event loop passing again',
                         'Liveness pings resumed.' if self._ping_url else '')
         if not self._ping_url:
             return
@@ -205,11 +205,11 @@ class LivenessPinger:
         self._stalled = True
         stopped = ' — liveness pings stopped' if self._ping_url else ''
         self._logger.error(
-            f'🔇 Tick loop stalled: no pass for {since:.0f}s (threshold '
-            f'{self._stall_after_s:.0f}s){stopped}')
+            f'🔇 Event loop stalled: no pass for {since:.0f}s (threshold '
+            f'{self._stall_after_s:.0f}s), noticed {_noticed_now()}{stopped}')
         pings = '; liveness pings stopped' if self._ping_url else ''
-        self._alert(OperatorAlertKind.TICK_LOOP_STALLED, OperatorAlertLevel.CRITICAL,
-                    'TICK LOOP STALLED',
+        self._alert(OperatorAlertKind.EVENT_LOOP_STALLED, OperatorAlertLevel.CRITICAL,
+                    'EVENT LOOP STALLED',
                     f'No pass for {since:.0f}s{pings}. The process is alive but not trading — '
                     f'check the machine.')
         if self._fail_url and not self._fail_refused:
@@ -315,3 +315,18 @@ class LivenessPinger:
                     f'watcher will read this session as silent')
             return
         self._file_failing = False
+
+
+def _noticed_now() -> str:
+    """
+    The wall-clock instant this thread noticed a stall or a recovery, for the line that says so.
+
+    The session log stamps each line with the run's clock, which only the loop moves: a process that
+    was frozen as a whole logs its stall, once it runs again, under the instant of its last tick —
+    measured on the run host on 2026-11-12, a stall noticed at 09:40:48 stamped 08:59:59. The text
+    therefore carries the moment it was noticed, an observation and not an event stamp.
+
+    Returns:
+        The instant as `HH:MM:SS UTC`
+    """
+    return datetime.now(timezone.utc).strftime('%H:%M:%S UTC')

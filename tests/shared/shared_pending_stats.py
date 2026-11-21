@@ -81,7 +81,8 @@ class TestAnOrderTheDataEndMet:
 
     def test_it_is_counted_expired(self, pending_row: PendingOrdersUnitRow):
         """
-        Trade 2 opens at tick 5000 (last tick). No later tick exists to deliver it, so the
+        Trade 2 opens on the last algo pass, 4,995 — five pairs of the scenario's 5,000 ticks share
+        a millisecond, and a slice is one pass (#460). No later tick exists to deliver it, so the
         data's end meets it on its way.
         """
         assert pending_row.total_expired >= 1, (

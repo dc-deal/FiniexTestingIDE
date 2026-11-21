@@ -73,7 +73,7 @@ The baseline `conftest.py` wraps shared helpers from `tests/shared/fixture_helpe
 |---------|-------|-------------|
 | `batch_execution_summary` | session | Runs baseline scenario once per session via `run_scenario()` |
 | `process_result` | session | First scenario's ProcessResult from the batch |
-| `tick_loop_results` | session | ProcessTickLoopResult containing all execution data |
+| `event_loop_results` | session | ProcessEventLoopResult containing all execution data |
 | `scenario_config` | session | Raw JSON config loaded via `load_scenario_config()` |
 
 ### Statistics Fixtures
@@ -119,7 +119,7 @@ Validates order history contents and consistency with execution statistics count
 
 ### test_bar_snapshots.py
 
-Tests bar rendering functionality by validating snapshots captured during the tick loop.
+Tests bar rendering functionality by validating snapshots captured during the event loop.
 
 #### TestBarSnapshots
 
@@ -264,7 +264,7 @@ The test suite uses **internal consistency validation** rather than independent 
 ```
 BatchExecutionSummary
   └→ process_result_list[0]: ProcessResult
-       └→ tick_loop_results: ProcessTickLoopResult
+       └→ event_loop_results: ProcessEventLoopResult
             ├→ portfolio_stats: PortfolioStats
             ├→ trade_history: List[TradeRecord]
             ├→ order_history: List[OrderResult]

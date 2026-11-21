@@ -5,7 +5,10 @@ The measured speed of each import step, kept between imports to estimate the nex
 One JSON file, written once at the end of a complete import into the production archive and
 read at the start of the next. DERIVED and deletable: without the file the screen shows no
 estimate, and the next complete import writes it again. Each rate is a moving average, so one
-slow run on a busy machine moves the estimate without taking it over.
+slow run on a busy machine moves the estimate without taking it over. A measurement more than
+twice the stored rate, or under half of it, starts the rate again: a step that changed that much
+changed for a reason — new code, another machine — and averaging would hold the estimate back for
+several imports.
 """
 
 import json
@@ -26,6 +29,8 @@ vLog = get_global_logger()
 SCHEMA_VERSION = 1
 # Weight of the newest measurement in the moving average.
 SMOOTHING = 0.5
+# A measurement this many times faster or slower than the stored rate replaces it.
+RESTART_FACTOR = 2.0
 
 
 class ImportTimingsStore:
@@ -76,7 +81,9 @@ class ImportTimingsStore:
         Fold one import's measured rates into the stored ones and write the file.
 
         A step whose unit or worker count changed starts again from the new measurement:
-        averaging two different quantities would describe neither.
+        averaging two different quantities would describe neither. So does a step whose new rate
+        lies more than RESTART_FACTOR away from the stored one: it changed, and the old rate no
+        longer describes it.
 
         Args:
             measured: The rates this import measured, one sample each
@@ -88,7 +95,8 @@ class ImportTimingsStore:
         for step_id, rate in measured.items():
             previous = merged.get(step_id)
             if (previous is None or previous.unit != rate.unit
-                    or previous.workers != rate.workers):
+                    or previous.workers != rate.workers
+                    or _changed_too_much(previous.seconds_per_unit, rate.seconds_per_unit)):
                 merged[step_id] = rate
                 continue
             merged[step_id] = ImportStepRate(
@@ -114,3 +122,19 @@ class ImportTimingsStore:
             },
         }
         write_text_atomic(self._path, json.dumps(document, indent=2) + '\n')
+
+
+def _changed_too_much(stored: float, measured: float) -> bool:
+    """
+    Whether a new measurement lies more than RESTART_FACTOR away from the stored rate.
+
+    Args:
+        stored: The stored seconds per unit
+        measured: The new seconds per unit
+
+    Returns:
+        True when the new rate is over RESTART_FACTOR times the stored one, or under its share
+    """
+    if stored <= 0.0 or measured <= 0.0:
+        return False
+    return measured > stored * RESTART_FACTOR or measured < stored / RESTART_FACTOR

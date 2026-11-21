@@ -277,3 +277,45 @@ class TestTheArchiveStepProvesBeforeItRemoves:
         assert 'not proven imported' in out and 'inbox: 1 file(s)' in out
         assert not (tmp_path / 'finished' / 'Archives' / 'history_v1.zip').exists()
         assert len(list((tmp_path / 'raw').glob('*_ticks.json'))) == 1
+
+    def test_a_zip_a_failed_write_left_behind_is_refused_not_appended_to(
+            self, tmp_path, monkeypatch, capsys):
+        """
+        Mode 'a' on a file that is no zip writes a new archive BEHIND it, and the result still
+        passes `testzip` — so the step refuses such a file before it opens it (#647).
+        """
+        commands = self._commands(tmp_path, monkeypatch)
+        commands.convert(['BTCUSD'], raw_dir=tmp_path / 'raw')
+        self._import(tmp_path)
+        loose = list((tmp_path / 'finished').glob('*_ticks.json'))
+        fragment = tmp_path / 'finished' / 'Archives' / 'history_v1.zip'
+        fragment.parent.mkdir(parents=True)
+        fragment.write_bytes(b'PK\x03\x04 what a failed write left')
+
+        assert commands.archive('history_v1.zip') == 1
+
+        assert 'is no zip' in capsys.readouterr().out
+        assert fragment.read_bytes() == b'PK\x03\x04 what a failed write left'
+        assert loose[0].exists(), 'the loose copy stays'
+
+    def test_an_archive_behind_a_fragment_is_refused_and_nothing_is_removed(
+            self, tmp_path, monkeypatch, capsys):
+        """
+        A zip that already sits behind a fragment opens, passes `is_zipfile` and `testzip` — only
+        where its first member starts gives it away, and the step checks that after writing (#647).
+        """
+        commands = self._commands(tmp_path, monkeypatch)
+        commands.convert(['BTCUSD'], raw_dir=tmp_path / 'raw')
+        self._import(tmp_path)
+        loose = list((tmp_path / 'finished').glob('*_ticks.json'))
+        damaged = tmp_path / 'finished' / 'Archives' / 'history_v1.zip'
+        damaged.parent.mkdir(parents=True)
+        damaged.write_bytes(b'what a failed write left')
+        with zipfile.ZipFile(damaged, 'a') as archive:
+            archive.writestr('an_earlier_member.json', '{}')
+        assert zipfile.is_zipfile(damaged)
+
+        assert commands.archive('history_v1.zip') == 1
+
+        assert 'something sits in front of the archive' in capsys.readouterr().out
+        assert loose[0].exists(), 'the loose copy stays'

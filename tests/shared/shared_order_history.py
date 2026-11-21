@@ -14,7 +14,7 @@ Import this class into suite-specific test_order_history.py files.
 
 from typing import List
 
-from python.framework.types.process_data_types import ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessEventLoopResult
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.trading_env_stats_types import (
     EXECUTION_STATS_FIELD_BY_STATUS,
@@ -32,7 +32,7 @@ class TestOrderHistoryBaseline:
     def test_order_history_count_matches_stats(
         self,
         order_history: List[OrderResult],
-        tick_loop_results: ProcessTickLoopResult
+        event_loop_results: ProcessEventLoopResult
     ):
         """
         Every status count in execution_stats equals the rows of that status, exactly.
@@ -42,7 +42,7 @@ class TestOrderHistoryBaseline:
         rejections, and only one way for fills: a fill counted executed rows of opens but
         not of closes, and a refused amend counted as a rejected order.
         """
-        stats = tick_loop_results.execution_stats
+        stats = event_loop_results.execution_stats
         for status, field_name in EXECUTION_STATS_FIELD_BY_STATUS.items():
             if field_name is None:
                 continue

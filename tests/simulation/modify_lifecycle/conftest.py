@@ -37,8 +37,8 @@ def sim_executor() -> TradeSimulator:
         account_currency='USD',
         logger=logger,
         seeds={'inbound_latency_seed': 42},
-        inbound_latency_min_ms=0,
-        inbound_latency_max_ms=0,
+        inbound_latency_min_ms=1,
+        inbound_latency_max_ms=1,
     )
 
 
@@ -52,9 +52,9 @@ def feed_sim_tick(
     """
     Feed a tick at the given msc to advance the sim clock.
 
-    Used to drive _process_pending_orders (Phase 0 resolve + Phase 1 latency
-    drain + Phase 2/3 active polling). The msc value is what the latency
-    simulator and the modify/cancel apply_at_msc comparisons use.
+    Used to drive the simulator's resolution in the timeline's order (#460): what
+    is scheduled, the tick's trigger checks, then the latency fills. The msc value
+    is what the latency simulator and the modify/cancel apply_at_msc comparisons use.
     """
     tick = TickData(
         timestamp=datetime.fromtimestamp(msc / 1000.0, tz=timezone.utc),

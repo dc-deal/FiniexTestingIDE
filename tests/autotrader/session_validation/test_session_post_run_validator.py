@@ -27,9 +27,13 @@ from python.framework.types.component_metadata_types import ComponentMetadata
 from python.framework.types.config_types.scenario_settings_config_types import (
     ScenarioSettingsConfig,
 )
+from python.framework.types.data_deficiency_types import DataDeficiency
 from python.framework.types.log_level import LogLevel
 from python.framework.types.log_record_types import LogRecord
+from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
+from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.order_event_types import OrderEvent, OrderEventType
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from python.framework.types.validation_types import ValidationDomain, ValidationResult
@@ -307,3 +311,96 @@ class TestReadingsThatStartedFresh:
         SessionPostRunValidator(result, _config()).validate()
         assert all(f.check != 'carried_readings_not_continued'
                    for vr in result.session_validation_result for f in vr.findings)
+
+
+class TestTheSessionsFundsBelowZeroAfterOwnOrders:
+    """
+    The session says so when its funds fall below zero once its own unfilled orders count —
+    the same shared check as a backtest's (#557: the console's ⚠ moved here).
+    """
+
+    @staticmethod
+    def _result(usd: float, claimed: float) -> AutoTraderResult:
+        """
+        A spot session result holding `usd` while its unfilled orders claim `claimed`.
+
+        Args:
+            usd: What the account holds in USD
+            claimed: What its own unfilled orders claim in USD
+
+        Returns:
+            The result
+        """
+        stats = PortfolioStats(
+            broker_type=BrokerType.KRAKEN_SPOT, total_trades=0, total_long_trades=0,
+            total_short_trades=0, winning_trades=0, losing_trades=0, total_profit=0.0,
+            total_loss=0.0, account_max_drawdown=0.0, max_equity=0.0,
+            account_max_drawdown_pct=0.0, win_rate=0.0, profit_factor=None,
+            total_spread_cost=0.0, total_modelled_spread_cost=0.0, total_commission=0.0,
+            total_swap=0.0, maker_fee=0.0, taker_fee=0.0, total_fees=0.0, fees_charged=0.0,
+            currency='USD', broker_name='kraken', current_conversion_rate=1.0,
+            current_balance=usd, initial_balance=1000.0, spot_mode=True,
+            balances={'USD': usd}, committed_funds={'USD': claimed},
+            base_currency='BTC', quote_currency='USD')
+        return AutoTraderResult(portfolio_stats=stats)
+
+    def test_a_claim_beyond_the_balance_is_reported(self):
+        findings = _validated(self._result(usd=100.0, claimed=150.0), _config(with_settings=False))
+        assert [f.check for f in findings] == ['usable_funds_negative']
+        assert 'USD -50.0000 usable' in findings[0].message
+        assert findings[0].domain is ValidationDomain.PORTFOLIO
+
+    def test_a_covered_claim_says_nothing(self):
+        assert _validated(self._result(usd=500.0, claimed=150.0), _config(with_settings=False)) == []
+
+
+def _replayed(classes, grades, deficiencies, warmup=()) -> SingleScenario:
+    """
+    A scenario a mock session replayed, carrying what its mount read.
+
+    Args:
+        classes: The origin class of each file it read
+        grades: Their evidence grades
+        deficiencies: What each of them lacks
+        warmup: The bar timeframes whose warmup reached into external bars
+
+    Returns:
+        The scenario with only those fields set
+    """
+    scenario = SingleScenario(name='live_probe', scenario_index=0, symbol='ETHUSD',
+                              data_broker_type='kraken_spot', start_date='2016-03-01')
+    scenario.data_format_versions = ['1.7.0'] * len(classes)
+    scenario.origin_classes = list(classes)
+    scenario.origin_evidence_grades = list(grades)
+    scenario.data_deficiencies = [list(lacks) for lacks in deficiencies]
+    scenario.external_warmup_timeframes = list(warmup)
+    return scenario
+
+
+class TestWhatAReplayedSessionRead:
+    """
+    A mock session that replayed external data says so as a backtest does (#647). The checks are
+    the backtest's own, shared; a live-adapter session reads a socket and has nothing to report.
+    """
+
+    def _findings(self, replayed) -> list:
+        result = AutoTraderResult()
+        SessionPostRunValidator(result, _config(), replayed_scenario=replayed).validate()
+        return [f for vr in result.session_validation_result for f in vr.findings
+                if f.domain is ValidationDomain.DATA]
+
+    def test_external_data_and_what_it_lacks_are_reported(self):
+        findings = self._findings(_replayed(
+            ['external'], ['stamped'], [[DataDeficiency.NO_QUOTE]], warmup=['D1']))
+
+        checks = {finding.check: finding.message for finding in findings}
+        assert 'EXTERNAL DATA — 1 of 1 input file(s)' in checks['data_origin_external']
+        assert 'warmup from external history: live_probe (D1)' in checks['data_origin_external']
+        assert checks['data_no_quote'].endswith('→ 1 external')
+        assert 'data_origin_unstamped' not in checks
+
+    def test_a_replay_of_our_own_stamped_data_says_nothing(self):
+        assert self._findings(_replayed(['production'], ['stamped'], [[]])) == []
+
+    def test_a_live_adapter_session_has_no_replay_to_report(self):
+        assert self._findings(None) == []

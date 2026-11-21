@@ -14,12 +14,12 @@ import pytest
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.probe_metadata_types import ProbeMetadata
-from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessResult, ProcessEventLoopResult
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from tests.shared.fixture_helpers import (
     extract_probe_metadata,
     extract_process_result,
-    extract_tick_loop_results,
+    extract_event_loop_results,
     extract_trade_history,
     load_scenario_config,
     run_scenario,
@@ -48,29 +48,29 @@ def zb_process_result(zb_batch_summary: BatchExecutionSummary) -> ProcessResult:
 
 
 @pytest.fixture(scope='module')
-def zb_tick_loop_results(zb_process_result: ProcessResult) -> ProcessTickLoopResult:
-    """Extract tick loop results."""
-    return extract_tick_loop_results(zb_process_result)
+def zb_event_loop_results(zb_process_result: ProcessResult) -> ProcessEventLoopResult:
+    """Extract event loop results."""
+    return extract_event_loop_results(zb_process_result)
 
 
 @pytest.fixture(scope='module')
-def zb_execution_stats(zb_tick_loop_results: ProcessTickLoopResult) -> ExecutionStats:
+def zb_execution_stats(zb_event_loop_results: ProcessEventLoopResult) -> ExecutionStats:
     """Extract execution statistics."""
-    return zb_tick_loop_results.execution_stats
+    return zb_event_loop_results.execution_stats
 
 
 @pytest.fixture(scope='module')
-def zb_trade_history(zb_tick_loop_results: ProcessTickLoopResult) -> List[TradeRecord]:
+def zb_trade_history(zb_event_loop_results: ProcessEventLoopResult) -> List[TradeRecord]:
     """Extract trade history."""
-    return extract_trade_history(zb_tick_loop_results)
+    return extract_trade_history(zb_event_loop_results)
 
 
 @pytest.fixture(scope='module')
 def zb_probe_metadata(
-    zb_tick_loop_results: ProcessTickLoopResult
+    zb_event_loop_results: ProcessEventLoopResult
 ) -> ProbeMetadata:
     """Extract backtesting metadata."""
-    return extract_probe_metadata(zb_tick_loop_results)
+    return extract_probe_metadata(zb_event_loop_results)
 
 
 @pytest.fixture(scope='module')

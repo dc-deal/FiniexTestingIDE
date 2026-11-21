@@ -2,7 +2,7 @@
 
 An unattended session is only as good as what reaches the operator when it goes wrong — and as
 what reaches the monitor when nothing can be sent at all. This suite holds the alert channel, its
-dispatcher, the liveness ping and the texts to that: the tick loop never waits on a network, an
+dispatcher, the liveness ping and the texts to that: the event loop never waits on a network, an
 outage costs one message while a refusal closes the channel, a flapping symptom is one alert
 episode rather than a storm, the ping vouches for the LOOP rather than the process — and for no
 loop that never ran — a stalled loop reaches the operator even with the ping off, nothing on the
@@ -61,7 +61,7 @@ Also pinned in the suites whose code raises the alerts:
 
 | Test | What it verifies |
 |---|---|
-| `test_send_returns_at_once_while_the_channel_hangs` | the tick loop never waits |
+| `test_send_returns_at_once_while_the_channel_hangs` | the event loop never waits |
 | `test_a_full_queue_drops_the_oldest_and_says_so_at_once` | a bounded queue, the drop said when it starts — before the run is graded — once per streak |
 | `test_a_critical_alert_outranks_the_rest_when_the_queue_is_full` | the oldest alert below CRITICAL goes first |
 | `test_send_never_raises` | called from the abort path, a raise would skip the shutdown |
@@ -92,6 +92,7 @@ Also pinned in the suites whose code raises the alerts:
 | `test_no_ping_before_the_loop_has_passed` | nothing to vouch for yet |
 | `test_pings_while_the_loop_passes` | the ordinary ping |
 | `test_a_stalled_loop_silences_the_ping_and_says_so_once` | no ping, the fail URL once, one alert, one error line |
+| `test_the_stall_and_the_recovery_say_when_they_were_noticed` | both lines carry the wall-clock instant they were noticed, because the session log stamps them with the run's clock, which stands still while the whole process is frozen |
 | `test_the_ping_resumes_with_the_loop` | the stall ends, and the operator hears it |
 | `test_without_a_ping_url_it_only_watches_the_loop` | Telegram on, the ping off: the stall and its end are alerted; nothing pinged, no stamp file |
 | `test_the_watch_ends_with_its_thread` | once the session stops it, a shutdown longer than the threshold is no stall |
@@ -183,6 +184,7 @@ A 100-tick mock replay with the channel builder swapped for one wired to the sta
 |---|---|
 | `test_a_session_says_it_started_and_how_it_ended` | two messages; the started one names the framework's commit; the loop stamped the very progress the pinger reads; an ordinary last ping |
 | `test_an_abort_is_one_message_and_a_fail_ping` | STARTUP FAILED once, no second message at the end, the fail URL at once |
+| `test_a_crash_in_the_loop_reports_how_far_the_session_got` | #636 — a crash provoked in a call the loop makes on every slice, after 40 slices (a replay's slice holds the ticks of one arrival millisecond, #461), with the tick count read where it happens: the result, the last state frame and the RUNTIME ERROR alert all carry the ticks counted by then, the crash's slice included |
 | `test_a_crash_while_shutting_down_is_said_and_fails_the_ping` | a crash in the report phase is alerted, pings the fail URL, and still raises |
 | `test_a_refused_start_is_one_message_quoting_why_and_no_ping` | a cold start refusing an unattended restart: STARTUP REFUSED with its reason, graded by what it logged, and no ping for a loop that never ran |
 | `test_a_refused_start_whose_shutdown_crashes_shuts_down_once` | the refusal runs the one guarded shutdown — a crash in it is SESSION CRASHED, never a second STARTUP message |

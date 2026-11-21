@@ -413,7 +413,7 @@ class AbstractLogger(ABC):
         should_log_console = self._should_log_console(level)
         should_log_file = self._should_log_file(level)
         # Early exit (§16): building the record costs a clock read and an allocation, and a
-        # suppressed verbose() inside the tick loop would pay for both and throw it away.
+        # suppressed verbose() inside the event loop would pay for both and throw it away.
         if not (should_log_console or should_log_file or level in _REPORT_LEVELS):
             return
         # ONE clock read per log call. The file path renders its timestamp from this record
