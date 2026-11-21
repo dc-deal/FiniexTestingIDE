@@ -663,6 +663,21 @@ rebuilding it when it is stale. Making the index derivable again, so that it rej
   exercise the code and not the file. Bump it whenever the MEANING of a column changes.
 - **Writes are atomic** (temp file + replace): a truncated parquet is unreadable, and an unreadable
   index is indistinguishable from a missing one only until something reads it.
+- **Every index has a lock beside it** (`runs_index.lock` beside `runs_index.parquet`, #650). Whoever
+  writes the index holds it alone, whoever reads it shares it, and a read-modify-write — a run's row
+  at its start, its streams, its artifacts — holds it alone from the read to the write. It ends two
+  failures: every writer replaced the index through one temporary file, so two rebuilds at once took
+  each other's file; and where a replace is a delete followed by a rename, as on the development
+  container's bridged drive, a reader landed in the gap. No rebuild holds the lock while it scans its
+  sources — the run index's took two minutes on that drive (measured 2026-11-20) — and a reader that
+  finds the index stale and cannot take it alone within a few seconds, or may not write where it
+  lives, derives the contents in memory instead: no reader fails on the lock. A record never waits for
+  it — a ledger fragment, a run header and a carry-over are written without it — and a session's own
+  index writes give up after a few seconds with a warning, because a derived index loses nothing a
+  rebuild cannot restore. The API server waits only a few seconds, because its readers share one pool
+  of worker threads, and then answers `503 store_index_busy` with `Retry-After`. Like a bot's lock
+  file, the lock file is the kernel's handle, not a store, an entry or a member: deleting it loses
+  nothing.
 
 **The three data-index managers are registered but not migrated.** `TickIndexManager`,
 `BarsIndexManager` and `SignalIndexManager` are 1368 battle-tested lines carrying legacy-JSON

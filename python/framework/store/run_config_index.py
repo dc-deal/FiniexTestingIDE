@@ -199,9 +199,6 @@ class RunConfigIndex(AbstractStoreIndex):
         Args:
             entry: The version to record
         """
-        frame = self.read()
-        if not frame.empty:
-            frame = frame[frame['config_id'] != entry.config_id]
         row = pd.DataFrame([{
             'config_id': entry.config_id, 'kind': str(entry.kind),
             'frozen_file': entry.frozen_file, 'source_name': entry.source_name,
@@ -210,7 +207,13 @@ class RunConfigIndex(AbstractStoreIndex):
             'last_seen': entry.last_seen, 'param_hash': entry.param_hash,
             'scope_hash': entry.scope_hash, 'run_count': entry.run_count,
         }])
-        self.write_incremental(pd.concat([frame, row], ignore_index=True))
+        # The read and the write are one step: this index alone holds a version's history, so a
+        # row written back without another process's update is lost for good (#650)
+        with self.updating():
+            frame = self.read()
+            if not frame.empty:
+                frame = frame[frame['config_id'] != entry.config_id]
+            self.write_incremental(pd.concat([frame, row], ignore_index=True))
 
 
 def _to_entry(row) -> RunConfigEntry:

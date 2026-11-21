@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 60
+API_CONTRACT_VERSION = 61
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,13 +36,9 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "market-data: origin_classes on a symbol's coverage (new) — whose data its bars were rendered "
-    "from, over every timeframe, comma-joined: external for a venue's published history; empty where the bars "
-    "predate the origin stamp",
-    "market-data: collected_since on a symbol's coverage (new) — where our own collection takes over "
-    "from a venue's published history, ISO-8601 UTC; null where the bars hold no external history "
-    "before collected data",
-    "scenario-details: origin_classes on each data broker of the roll-up (new) — whose data the "
-    "broker's scenarios read, comma-joined",
+    "every route that reads a store index — runs, deployments, sweeps, the configuration directory "
+    "and others: 503 store_index_busy with Retry-After (new) when another process writes the index for "
+    "longer than the server waits for it, a few seconds; such a request used to end in a bare 500 or "
+    "wait without bound",
 ]
 

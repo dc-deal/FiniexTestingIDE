@@ -17,7 +17,10 @@ from typing import List, Optional
 
 import pandas as pd
 
-from python.framework.exceptions.store_errors import StoreIndexReplacedError
+from python.framework.exceptions.store_errors import (
+    LedgerFragmentVanishedError,
+    StoreIndexReplacedError,
+)
 from python.framework.store.abstract_store_index import (
     AbstractStoreIndex,
     store_index_filename,
@@ -25,6 +28,12 @@ from python.framework.store.abstract_store_index import (
 from python.framework.types.store_types import StoreId
 
 LEDGER_INDEX_FILE = store_index_filename(StoreId.RUN_LEDGER)
+
+# A fragment is rewritten in place when a booking period is added (#537), and on a mount where a
+# replace is a delete followed by a rename a rebuild can read it in the gap. It is read again for this
+# long before it counts as gone: nothing deletes a fragment, the pruner included
+_FRAGMENT_REREAD_S = 1.0
+_FRAGMENT_REREAD_INTERVAL_S = 0.02
 
 
 class RunLedgerIndex(AbstractStoreIndex):
@@ -221,16 +230,45 @@ class RunLedgerIndex(AbstractStoreIndex):
         # makes the mtime mean "the store as of this instant", which is what the comparison
         # already assumes, and the missed fragment shows up as stale on the next read.
         read_started_ns = time.time_ns()
+        frame = self.derive()
+        # The write and the date it carries are one step for every other reader
+        with self.updating():
+            self.write(frame)
+            self._stamp(read_started_ns)
+        return len(frame)
+
+    def derive(self) -> pd.DataFrame:
+        """
+        The union of the fragments, computed without writing it.
+
+        Returns:
+            Every fragment's rows in the canonical columns; empty with the columns when there is none
+        """
         fragments = self.fragments()
         if not fragments:
-            self.write(pd.DataFrame(columns=self.COLUMNS))
-            self._stamp(read_started_ns)
-            return 0
-        frame = pd.concat([pd.read_parquet(f) for f in fragments], ignore_index=True)
-        frame = frame.reindex(columns=self.COLUMNS)
-        self.write(frame)
-        self._stamp(read_started_ns)
-        return len(frame)
+            return pd.DataFrame(columns=self.COLUMNS)
+        frame = pd.concat([self._read_fragment(f) for f in fragments], ignore_index=True)
+        return frame.reindex(columns=self.COLUMNS)
+
+    @staticmethod
+    def _read_fragment(path: Path) -> pd.DataFrame:
+        """
+        One fragment, read again for a moment when it is caught between the two halves of its replace.
+
+        Args:
+            path: The fragment
+
+        Returns:
+            Its rows
+        """
+        deadline = time.monotonic() + _FRAGMENT_REREAD_S
+        while True:
+            try:
+                return pd.read_parquet(path)
+            except FileNotFoundError as error:
+                if time.monotonic() >= deadline:
+                    raise LedgerFragmentVanishedError(path, _FRAGMENT_REREAD_S) from error
+                time.sleep(_FRAGMENT_REREAD_INTERVAL_S)
 
     def _stamp(self, read_started_ns: int) -> None:
         """

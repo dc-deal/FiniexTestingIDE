@@ -166,7 +166,7 @@ tests/
 │   │                      scenario set's document against what its subprocess reads, the header naming it, never fatal (#547)
 │   ├── run_entry_census/  integration — real runs held to the run store's declaration: no undeclared file, every member written
 │   │                      somewhere, the stream versions, the run index row; a sweep and mock sessions, one without log files (#621)
-│   └── store/             unit — the store catalog: completeness, what it prints, its two dated-claim advisories, the shared index base (atomic write, delete-and-rebuild, logic version), generic form-A retrieval, carry-over envelope (#486), carry-over identity + declared continuation + boot continuity checks (#358)
+│   └── store/             unit — the store catalog: completeness, what it prints, its two dated-claim advisories, the shared index base (atomic write, delete-and-rebuild, logic version, the lock per index between processes, #650), generic form-A retrieval, carry-over envelope (#486), carry-over identity + declared continuation + boot continuity checks (#358)
 │
 ├── data/
 │   ├── import_pipeline/   unit + integration — tick import, duplicate detection

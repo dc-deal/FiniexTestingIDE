@@ -16,6 +16,7 @@ from typing import Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.acceptance_studies.abstract_acceptance_study import AbstractAcceptanceStudy
+from python.framework.autotrader.run_record.session_run_index import write_run_index_for_session
 from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
@@ -290,7 +291,9 @@ class AutotraderReportCoordinator:
 
         # Every artifact of this session is on disk now — the index records WHICH, so a consumer
         # knows what it can fetch instead of discovering it by 404 (#475).
-        SharedReportCoordinator.record_run_artifacts(self._run_dir)
+        write_run_index_for_session(
+            lambda index: SharedReportCoordinator.record_run_artifacts(self._run_dir, index),
+            self._summary_logger, "the session's artifacts")
 
         # Run-results ledger (#390) — append the session to the persistent cross-run store the
         # Parameter Optimization system ranks over. Same RunSummary model + provenance as the sim

@@ -19,7 +19,7 @@ raised somewhere, no route raises a literal, and the error table in `docs/consum
 lists exactly these codes.
 """
 
-from typing import Tuple
+from typing import Dict, Optional, Tuple
 
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.types.api.api_error_types import ApiErrorKind
@@ -127,6 +127,13 @@ ACTIVITY_REGISTRY_UNREADABLE = ApiErrorKind(
     'The list of what runs on this machine could not be read ({reason}) — the server cannot say '
     'what runs, which is not the same as nothing running')
 
+# --- Stores: an index another process is writing ----------------------------------------------
+
+STORE_INDEX_BUSY = ApiErrorKind(
+    503, 'store_index_busy',
+    'The {index} is being written by another process and did not come free in time; try again in '
+    'a few seconds')
+
 # --- Identity ---------------------------------------------------------------------------------
 
 IDENTITY_UNBOUND = ApiErrorKind(
@@ -145,19 +152,22 @@ API_ERRORS: Tuple[ApiErrorKind, ...] = (
     CONFIG_FILE_NOT_FOUND,
     DOCUMENT_NOT_FOUND, EMPTY_QUERY, QUERY_TOO_LONG,
     ACTIVITY_REGISTRY_UNREADABLE,
+    STORE_INDEX_BUSY,
     IDENTITY_UNBOUND,
 )
 
 
-def api_error(kind: ApiErrorKind, **values: object) -> ApiException:
+def api_error(kind: ApiErrorKind, headers: Optional[Dict[str, str]] = None,
+              **values: object) -> ApiException:
     """
     The exception a route raises for one catalog entry.
 
     Args:
         kind: The catalog entry
+        headers: Response headers the answer needs to be actionable, such as `Retry-After`
         values: The placeholders its message names
 
     Returns:
         The ApiException carrying the entry's status, code and filled sentence
     """
-    return ApiException(kind.status, kind.code, kind.message.format(**values))
+    return ApiException(kind.status, kind.code, kind.message.format(**values), headers=headers)

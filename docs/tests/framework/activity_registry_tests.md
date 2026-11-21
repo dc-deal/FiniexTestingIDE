@@ -35,6 +35,13 @@ leaves no descriptor open. A holder in another process is seen, and `kill -9` fr
 once. The note a holder leaves replaces the one before, a missing file has none and is not
 created, a released lock writes nothing, and the file is readable by its owner alone (#598).
 
+The forms a store index needs (#650): two shared holders hold at once, an exclusive request is
+refused beside one and a shared request beside an exclusive holder, and a shared holder writes no
+note. A request that waits ends as soon as the holder lets go; one whose wait runs out names the
+holder's note and how long it waited, a sub-second wait included, and a request that did not wait
+says nothing about waiting. A read-only hold takes an existing file without writing it, never
+creates a missing one, and cannot be exclusive.
+
 ## `test_activity_registry.py`
 
 - **Listed while it runs:** an entry is listed with its lock held and every field it was given; the

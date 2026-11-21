@@ -28,20 +28,38 @@ class StoreIndexReplacedError(FiniexError, FileNotFoundError):
     """
     An index file vanished between two steps of reading or replacing it.
 
-    Another process replaced the same index at that moment. On a mount where a replace is a delete
-    followed by a rename, as on the development container's bridged drive, a reader or a second
-    writer can land in the gap between the two. Nothing is lost, because an index is derived. It is
-    a FileNotFoundError, so whoever caught the bare error before catches this one (#650).
+    Every writer of this application holds the index's lock (#650), so this needs a file deleted by
+    hand, a program that takes no lock, or a reader that could not take it — on a data home it may only
+    read, before any writer created the lock file. Nothing is lost, because an index is derived. It is a
+    FileNotFoundError, so whoever caught the bare error before catches this one.
     """
 
     def __init__(self, path: Path, step: str):
         self.path = path
         self.step = step
         super().__init__(
-            f'The index {path} vanished while it was being {step} - most likely another process '
-            f'(the API server, a run, a CLI) is rebuilding it at this moment. Nothing is lost: the '
-            f'index is derived, and the next read finds it rebuilt. Two processes rebuilding one '
-            f'index at once is #650.'
+            f'The index {path} vanished while it was being {step}. Every writer of this application '
+            f'holds the lock beside it, so it was deleted by hand, replaced by a program that takes no '
+            f'lock, or read where this process could not take the lock. Nothing is lost: the index is '
+            f'derived, and the next read rebuilds it.'
+        )
+
+
+class LedgerFragmentVanishedError(FiniexError, FileNotFoundError):
+    """
+    A ledger fragment the index was being rebuilt from stayed missing while it was read again.
+
+    A fragment is replaced in place when a booking period is added, and nothing deletes one, so a
+    fragment that does not come back was removed by hand or by a process outside this application.
+    """
+
+    def __init__(self, path: Path, reread_s: float):
+        self.path = path
+        super().__init__(
+            f'The ledger fragment {path} was not there for {reread_s:.0f} s while the ledger index was '
+            f'rebuilt from it. A fragment is replaced in place when a booking period closes and is never '
+            f'deleted, so it was removed by hand or by another program. The run it records is missing '
+            f'from the ledger until the file is back.'
         )
 
 

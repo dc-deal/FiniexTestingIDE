@@ -425,9 +425,7 @@ class RunResultsLedger:
         """
         if not self._index.fragments():
             return pd.DataFrame(columns=LEDGER_COLUMNS)
-        if not self._index.is_valid():
-            self._index.rebuild()
-        df = self._index.read()
+        df = self._index.read_valid()
         if sweep_id is not None:
             df = df[df['sweep_id'] == sweep_id]
         if scenario_set_name is not None:

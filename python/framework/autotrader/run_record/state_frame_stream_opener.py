@@ -9,11 +9,10 @@ its reconciler — stays here.
 
 from typing import Optional
 
-from python.configuration.app_config_manager import AppConfigManager
+from python.framework.autotrader.run_record.session_run_index import write_run_index_for_session
 from python.framework.bars.bar_rendering_controller import BarRenderingController
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.process.state_frame_recorder import StateFrameRecorder
-from python.framework.reporting.store.run_index import RunIndex
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.live.reconciler import Reconciler
@@ -68,8 +67,9 @@ def open_state_frame_stream(
     logger.info(
         f'📼 State frames: one per {settings.cadence_timeframe} period of the canonical clock, at '
         f'a closed bar and at an order → {appender.get_path()}')
-    RunIndex(AppConfigManager().get_file_logging_config_object().run_index) \
-        .record_streams(run_id, run_writer.get_run_dir())
+    write_run_index_for_session(
+        lambda index: index.record_streams(run_id, run_writer.get_run_dir()), logger,
+        'its state-frame stream')
     return StateFrameRecorder(
         appender, settings.cadence_timeframe, config.symbol, executor, worker_orchestrator,
         bar_controller, trading_model,

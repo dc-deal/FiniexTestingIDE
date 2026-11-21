@@ -128,11 +128,13 @@ class DiscoveryCacheIndex(AbstractStoreIndex):
             path: The cache file just written
         """
         path = Path(path)
-        current = self.read()
-        kept = current[current['path'] != str(path)] if not current.empty else current
         row = pd.DataFrame([_index_row(path)], columns=self.COLUMNS)
-        frame = row if kept.empty else pd.concat([kept, row], ignore_index=True)
-        self.write_incremental(frame)
+        # The read and the write are one step: two caches written at once both keep their row (#650)
+        with self.updating():
+            current = self.read()
+            kept = current[current['path'] != str(path)] if not current.empty else current
+            frame = row if kept.empty else pd.concat([kept, row], ignore_index=True)
+            self.write_incremental(frame)
 
 
 def _index_row(path: Path) -> Dict:

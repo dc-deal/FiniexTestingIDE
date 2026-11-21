@@ -67,6 +67,7 @@ that is not safelisted, so they are published deliberately.
 | 500 | `market_type_not_configured` | a broker in the bar index has no market type configured — a defect on this side |
 | 500 | `identity_unbound` | a verified token is bound to no account — a defect on this side |
 | 500 | `activity_registry_unreadable` | the list of what runs on the machine could not be read — not the same as nothing running |
+| 503 | `store_index_busy` | another process is writing the index the route reads and it did not come free within a few seconds — carries `Retry-After`; ask again then |
 
 ## The four 404s of one run, and why they are four
 

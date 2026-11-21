@@ -23,7 +23,12 @@ from fastapi.routing import APIRoute
 
 from python.api.api_auth_setup import setup_api_auth
 from python.api.api_contract import API_CONTRACT_VERSION, API_PREFIX, CHANGES, CONTRACT_HEADER
-from python.api.api_error_catalog import ARTIFACT_UNREADABLE, IDENTITY_UNBOUND, api_error
+from python.api.api_error_catalog import (
+    ARTIFACT_UNREADABLE,
+    IDENTITY_UNBOUND,
+    STORE_INDEX_BUSY,
+    api_error,
+)
 from python.api.api_route_documents import describes
 from python.api.endpoints import (
     bars_router,
@@ -46,7 +51,10 @@ from python.framework.constants.recorded_stream_constants import UNIT_RECORDED_S
 from python.framework.docs_search.docs_corpus import DOCS_ROOT
 from python.framework.docs_search.docs_search_index import docs_search_index
 from python.framework.exceptions.api_errors import ApiException
+from python.framework.exceptions.file_lock_errors import FileLockHeldError
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
+from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.store.abstract_store_index import set_process_lock_wait_s
 from python.framework.types.api.api_identity_types import ApiConsumerIdentity
 from python.framework.types.api.api_types import (
     ApiContractResponse,
@@ -179,6 +187,15 @@ def _describe_the_api(app: FastAPI, app_version: str) -> List[str]:
     return lines
 
 
+# How long the server's readers wait for a store index another process is writing. Above the
+# longest ordinary hold — a ledger rebuild, 3.5-6.4 s on the development container's bridged
+# drive — and short of tying up a worker thread every route needs (#650)
+API_INDEX_LOCK_WAIT_S = 10.0
+
+# What a busy index answer tells a client to wait before it asks again
+STORE_INDEX_RETRY_AFTER_S = 5
+
+
 def create_app() -> FastAPI:
     """
     Create and configure the FastAPI application.
@@ -186,6 +203,7 @@ def create_app() -> FastAPI:
     Returns:
         Configured FastAPI instance with CORS, error handler, and routes registered.
     """
+    set_process_lock_wait_s(API_INDEX_LOCK_WAIT_S)
     app_version = AppConfigManager().get_version()
     # When THIS process started serving — a provenance stamp, so the wall clock is right for it
     # (§9) — and the monotonic reading the uptime is measured from, so a clock step cannot make
@@ -294,6 +312,15 @@ def create_app() -> FastAPI:
         # One answer for every route that reads a stored artifact: a record that no longer matches
         # its model is a known condition, never an unexplained server error
         return await api_exception_handler(request, api_error(ARTIFACT_UNREADABLE, reason=str(exc)))
+
+    @app.exception_handler(FileLockHeldError)
+    async def store_index_busy_handler(request: Request, exc: FileLockHeldError) -> JSONResponse:
+        # A store index another process held past the server's wait (#650). The holder's note names a
+        # process and its command line: it stays in this server's log and is never served
+        get_global_logger().warning(f'⚠️ {request.url.path} answered 503: {exc}')
+        index = exc.path.stem.replace('_', ' ')
+        return await api_exception_handler(request, api_error(
+            STORE_INDEX_BUSY, headers={'Retry-After': str(STORE_INDEX_RETRY_AFTER_S)}, index=index))
 
     @app.get('/api/v1/health', response_model=HealthResponse,
              openapi_extra=describes('server'))

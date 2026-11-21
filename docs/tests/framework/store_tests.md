@@ -61,18 +61,45 @@ once, as runs.
 
 ## `test_store_index_replaced.py`
 
-**An index that vanishes under its reader or writer says so (#650).** Two processes that rebuild
-one index at the same moment collide where a replace is a delete followed by a rename: one of
-them finds the file gone between two of its own steps. Each test makes the file really vanish at
-that step, and none mocks the error into being:
+**An index that vanishes under its reader or writer says so (#650).** Every writer holds the
+index's lock, so the file can vanish between two steps of a reader or writer only where something
+outside the lock removed it. Each test makes the file really vanish at that step, and none mocks
+the error into being:
 
 - a reader finds the index gone between its existence check and the open;
 - a second writer's replace takes the one temporary file both writers wrote;
 - the ledger index is gone between its write and the date its rebuild sets on it.
 
 Each time the error is still a `FileNotFoundError`, so whoever caught the bare one catches it, and
-its text names the index, the likely cause, that nothing is lost and the issue that removes the
-collision.
+its text names the index, the step, what can still cause it and that nothing is lost.
+
+## `test_store_index_lock.py`
+
+**A lock per store index (#650): whoever writes it holds it alone, whoever reads it shares it.** The
+failures it ends happened between processes, so the tests that matter run real child processes, each
+handed every path it uses — a child inherits none of this suite's redirections.
+
+- The lock file stands beside the index and is free after a write; an index that is not there is read
+  without one, so a reader creates no file; one instance inside its own hold never waits for itself.
+- The note of the process that holds an index alone names it while it holds, and goes with it.
+- **Two processes noting runs of one configuration both count.** The run-config index alone holds a
+  version's run count and first sighting, so an update lost there is lost for good.
+- **Two processes registering runs into one run index keep every row.** Without the lock the second
+  writer wrote the index back without the first one's rows: measured 2026-11-20 on the code before it,
+  15 of 30 rows survived.
+- A reader waits for a writer and reads what it wrote — also one that arrives while the index is missing
+  beside its lock file, between the delete and the rename of a replace, where it would otherwise have
+  read nothing; a wait that runs out names the holding process.
+- Three processes that rebuild one stale ledger index at once all answer with every row. A reader that
+  cannot take a stale index alone, or may not write where it lives, derives the rows in memory and
+  writes nothing — the read-only home is a refusal injected at the open, because the suite runs as
+  root.
+- On a data home it may not write, a reader reads an index a writer reached under the lock file that
+  writer left, opened for reading only.
+- A ledger fragment caught between the two halves of its replace is read again; one that stays
+  missing is named.
+- A session's run-index update that cannot take the index gives up with a warning naming the rebuild
+  command, and the session goes on.
 
 ## `test_run_entry_members.py`
 

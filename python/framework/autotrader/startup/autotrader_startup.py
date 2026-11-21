@@ -15,6 +15,7 @@ from python.configuration.market_config_manager import MarketConfigManager
 from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.autotrader.dry_run_resolver import resolve_orders_to, session_orders_to
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
+from python.framework.autotrader.run_record.session_run_index import write_run_index_for_session
 from python.framework.autotrader.startup.autotrader_account_model import AutotraderAccountModel
 from python.framework.autotrader.startup.autotrader_broker_config_setup import create_broker_config
 from python.framework.autotrader.startup.autotrader_data_preparer import build_scenario_from_config
@@ -31,6 +32,7 @@ from python.framework.constants.run_layout_constants import (
     SESSION_LOG_NAME,
 )
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.exceptions.file_lock_errors import FileLockHeldError
 from python.framework.exceptions.order_feature_errors import OrderFeatureRefusedError
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.live_trade_executor_factory import build_live_executor
@@ -38,10 +40,10 @@ from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_startup_preparation import inject_signal_providers
 from python.framework.reporting.io.run_header_io import data_windows_of
-from python.framework.reporting.store.run_index import RunIndex
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.signal_data.signal_source_resolver import SignalSourceResolver
 from python.framework.signal_data.transport.signal_boot_resolver import prepare_live_signal_boot
+from python.framework.store.abstract_store_index import SESSION_INDEX_LOCK_WAIT_S
 from python.framework.store.broker_config_freeze import freeze_broker_config
 from python.framework.store.entry_members.run_entry_members import run_member_folder
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
@@ -152,12 +154,13 @@ def _register_profile_config(source: Optional[Path], session_logger: ScenarioLog
         return ''
     try:
         store = RunConfigStore(Path(AppConfigManager().get_run_configs_path()))
+        store.set_index_lock_wait_s(SESSION_INDEX_LOCK_WAIT_S)
         entry = store.register(Path(source), RunConfigKind.AUTOTRADER_PROFILE)
         # Registration says the content exists; this says a RUN used it. Two steps on
         # purpose — a config listed by the finder is registered without being run.
         store.note_run(entry.config_id)
         return entry.config_id
-    except (OSError, ValueError, KeyError) as error:
+    except (OSError, ValueError, KeyError, FileLockHeldError) as error:
         session_logger.warning(
             f'Run-config store: the profile {Path(source).name} was not registered '
             f'({type(error).__name__}: {error}). This session carries no config_id, so the run '
@@ -186,10 +189,11 @@ def _register_rendered_profile(
         return ''
     try:
         store = RunConfigStore(Path(AppConfigManager().get_run_configs_path()))
+        store.set_index_lock_wait_s(SESSION_INDEX_LOCK_WAIT_S)
         entry = store.register_document(rendered_profile, RunConfigKind.AUTOTRADER_RENDERED)
         store.note_run(entry.config_id)
         return entry.config_id
-    except (OSError, ValueError, KeyError) as error:
+    except (OSError, ValueError, KeyError, FileLockHeldError) as error:
         session_logger.warning(
             f'Run-config store: the rendered configuration was not frozen '
             f'({type(error).__name__}: {error}). This session carries no rendered_config_id, so '
@@ -338,8 +342,8 @@ def create_autotrader_loggers(
             run_purpose=config.run_purpose,
             report_contract=API_CONTRACT_VERSION,
         )
-        RunIndex(AppConfigManager().get_file_logging_config_object().run_index).register_run(
-            header, run_dir)
+        write_run_index_for_session(
+            lambda index: index.register_run(header, run_dir), session_logger, 'this session')
 
     # Create session_logs/ subdir (event loop will create files there) — only when log files are
     # written: the run directory exists either way, the daily logs only with the switch on (#621)

@@ -175,6 +175,7 @@ logs/
 runs/
 # Derived certificate index (#486) — rebuilt from the committed certificates themselves
 tests/certificates_index.parquet
+tests/certificates_index.lock
 
 # OS generated files
 .DS_Store

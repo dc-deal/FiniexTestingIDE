@@ -190,6 +190,15 @@ of its own before the app builds its reader.
 | `TestTheServerFindsItself` | `server_activity_id` is null when the server is not listed and names the server's own row when it is |
 | `TestOneInstant` | the machine's memory is served beside the rows without a full machine reading, so the processor window `/machine-resources` measures over is left as it was |
 
+## A store index another process is writing (`test_store_index_busy.py`)
+
+What a request answers when the index its route reads is held by another process (#650). The test
+holds the session ledger's index lock itself and gives the server a short wait.
+
+| Class | What it validates |
+|---|---|
+| `TestAHeldIndex` | an index held past the server's wait answers `503 store_index_busy` with `Retry-After` and the contract header, its detail naming the index and never the holder's note — a process and its command line, which stay in the server's log; an ordinary hold that ends within the wait is waited for and answered `200` |
+
 ## How a running session stands (`test_state_frames_route.py`)
 
 `/reports/runs/{run_id}/state-frames/latest` (#611) serves the latest state frame of each unit, read

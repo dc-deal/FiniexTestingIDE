@@ -1,11 +1,10 @@
 """
 An index that vanishes under its reader or writer says so (#650).
 
-Two processes that rebuild one index at the same moment collide: on a mount where a replace is a
-delete followed by a rename, one of them finds the file gone between two of its own steps. Each
-test below makes the file really vanish at that step — nothing is mocked into raising — and holds
-the error to what the operator reads: which index, that another process is the likely cause, that
-nothing is lost, and the issue that removes the collision.
+Every writer holds the index's lock, so the file can vanish between two steps of a reader or writer
+only where something outside the lock removed it. Each test below makes the file really vanish at
+that step — nothing is mocked into raising — and holds the error to what the operator reads: which
+index, at which step, what can still cause it, and that nothing is lost.
 """
 
 import os
@@ -32,15 +31,14 @@ class _OneColumnIndex(AbstractStoreIndex):
 
 
 def _assert_names_the_collision(error: StoreIndexReplacedError, path: Path, step: str) -> None:
-    """The error is still a FileNotFoundError, and its text says what happened and what to do."""
+    """The error is still a FileNotFoundError, and its text says what happened and what is lost."""
     assert isinstance(error, FileNotFoundError)
     assert error.path == path
     text = str(error)
     assert str(path) in text
     assert f'being {step}' in text
-    assert 'another process' in text
+    assert 'deleted by hand' in text
     assert 'Nothing is lost' in text
-    assert '#650' in text
 
 
 class TestTheReaderLandsInTheGap:

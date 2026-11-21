@@ -33,6 +33,20 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 61 — 2026-11-21 (#650)
+
+A request that meets a store index another process is writing waits for it, and says so when it
+cannot.
+
+- [Errors](/api/v1/docs/errors): **`503 store_index_busy`** (new), carrying `Retry-After`. Every
+  route that reads a store index — the run list, deployments, sweeps, the configuration directory
+  and the others — waits a few seconds for another process that is writing it, and answers with
+  this code when the index does not come free in that time. Such a request used to end in a bare
+  `500`, or, while the index was being rebuilt by two requests at once, in one for the slower of
+  them; it now waits for the first one and answers `200`.
+
+One error code added; nothing changed or removed.
+
 ## Version 60 — 2026-11-20 (#647)
 
 Coverage and the scenario details say whose data was there and whose was read.
@@ -137,85 +151,15 @@ earlier way and can differ from a backtest of the same data recorded now.
 Fields added on four rows, one operation and one check added, seven meanings changed; nothing
 removed.
 
-## Version 56 — 2026-11-15 (#666)
-
-A list says what a reader opens a run or a sweep to find out.
-
-- [Runs](/api/v1/docs/runs): **`total_units`**, **`failed_count`** and **`succeeded_count`** on
-  every row (new) — how many units the run had, its scenarios in a backtest or the session in live,
-  and how many of them failed or did not, as the run's
-  [warnings-errors](/api/v1/docs/warnings-errors) outcome counts them; the same three names mean
-  the same there. Null on a run recorded before this contract, while a session still runs, and on
-  a run that died before its close.
-- [Sweeps](/api/v1/docs/sweeps): **`best_combinations`** on every row of the list (new) — the
-  first-ranked combination in each account currency, with its `run_id`, its `objective_value` and
-  its `sweep_params`, by the same rule the sweep detail ranks with. `best_combinations_key` names
-  what keys it: `currency`. None for a sweep whose recorded objective cannot rank.
-- [Sweeps](/api/v1/docs/sweeps), the detail: **`total_units`**, **`failed_count`** and
-  **`succeeded_count`** on every combination (new) — the run's unit counts, as on the run list;
-  null where not recorded. A sweep
-  whose recorded objective cannot rank its combinations is refused with **`409
-  sweep_objective_unrankable`** (new, see [errors](/api/v1/docs/errors)), where it was a server
-  error.
-- [Sweeps](/api/v1/docs/sweeps), the detail: **`total_final_equity`** and
-  **`total_initial_balance`** on every combination (new) — what the run's accounts in that currency
-  held at its end and started with, each summed over its accounts, so a combination of several
-  scenarios has an end equity where `final_equity` is null. A sweep may rank by it. Null on a run
-  recorded before this contract and while a session runs.
-- [Sweeps](/api/v1/docs/sweeps): a figure that is not a number — a name, a flag — no longer ranks
-  a sweep; such a sweep is refused like one ranked by a figure a run can leave undefined.
-
-Fields added on two lists and the sweep detail, one error code added, an objective that is no
-number refused; nothing removed or renamed.
-
-## Version 55 — 2026-11-12 (#379)
-
-A worker can draw its outputs on a run's chart, as an indicator pane: one value per closed bar of its
-timeframe, on the candles or in a pane of its own. A session that records them serves them beside
-its state frames. Its document is [indicator series](/api/v1/docs/indicator-series).
-
-- `GET /api/v1/drawing-types` (new, open like `/timeframes`): the JSON Schema of a served indicator
-  series, with the style vocabulary in its definitions.
-- [Recorded streams](/api/v1/docs/recorded-streams), the timeline: one row per drawing worker,
-  **`stream_kind: "indicator_series"`**, named for its worker instance, its records' time in
-  `bar_time` and its cadence the finest timeframe the worker draws on. `recording` is null for a
-  unit that records no state frames.
-- Recorded streams, the window: **`indicator_series`** (new), one entry per series of every drawing
-  worker, with the page's bars of its own `timeframe` in parallel arrays `times` and `data`, keyed by
-  `layer` in `keys`; a worker that draws on two timeframes gives an entry for each. A
-  changed meaning: the window merges every stream of the unit by time, so **`limit`, `matched`,
-  `returned` and `next_from` count over every stream**, and a page ends before the first record any
-  stream left out.
-- [Runs](/api/v1/docs/runs): **`stream_files`** also names a session's indicator series files, one
-  per drawing worker.
-- [Errors](/api/v1/docs/errors) on both routes: `streams_not_recorded` means the run records neither
-  state frames nor an indicator series; `state_frame_not_written_yet` that none of the unit's streams
-  has written its header yet.
-
-**A run recorded before this contract** records no indicator series; its timeline and window answer
-as before. A backtest's series are recorded but not served yet, like the rest of its streams over
-time.
-
-## Version 54 — 2026-11-12 (#497)
-
-A backtest's drawdown curve now begins in the replayed time.
-
-- [Portfolio](/api/v1/docs/portfolio), a changed meaning: **`drawdown_started_at`** is the instant
-  the equity curve began on the run's own clock — the replayed time in a backtest, the market's time
-  in a session. Until now it was the wall clock when the unit began measuring, so a backtest of last
-  September said its curve began on the day the backtest ran, and two runs of one scenario differed
-  in it. It is **empty** when a session ended before its first pass.
-
-**A run recorded before this contract** keeps the wall-clock instant it was written with.
-
-A field changed its meaning; nothing added, removed or renamed.
-
-## Versions 53 and earlier
+## Versions 56 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 56** — 2026-11-15 (#666): A list says what a reader opens a run or a sweep to find out — `total_units`, `failed_count` and `succeeded_count` on every row of [runs](/api/v1/docs/runs) and on a [sweep](/api/v1/docs/sweeps)'s combinations, `best_combinations` on the sweep list, `total_final_equity` and `total_initial_balance` on a combination; a sweep whose objective cannot rank its combinations is refused with `409 sweep_objective_unrankable`.
+- **Version 55** — 2026-11-12 (#379): A worker draws its outputs on a run's chart as [indicator series](/api/v1/docs/indicator-series) — the open `GET /api/v1/drawing-types` schema route, an `indicator_series` row per drawing worker on the [recorded streams](/api/v1/docs/recorded-streams) timeline and the series in its window, whose `limit`, `matched`, `returned` and `next_from` now count over every stream; `stream_files` on [runs](/api/v1/docs/runs) names the series files.
+- **Version 54** — 2026-11-12 (#497): `drawdown_started_at` on the [portfolio](/api/v1/docs/portfolio) is the instant the equity curve began on the run's own clock — the replayed time in a backtest — where it was the wall clock; empty when a session ended before its first pass.
 - **Version 53** — 2026-11-09 (#557): `entry_tick_index` and `duration_ticks` on [trade history](/api/v1/docs/trade-history) are null on a trade whose position a session restored at boot, because no tick of the closing session is its entry; `duration_s` still answers.
 - **Version 52** — 2026-11-09 (#557): Every figure a console printed is a field the API serves — `duration_ticks` and the per-trade analytics on [trade history](/api/v1/docs/trade-history), the failed counts on [order history](/api/v1/docs/order-history), `open_position_count` and the active pending counts, `total_costs` on the [aggregated portfolio](/api/v1/docs/aggregated-portfolio), `execution_rate_pct` on the [run summary](/api/v1/docs/run-summary), the worker and decision totals, the profiling figures, `keys` on the lists and the check `usable_funds_negative`; a figure folded over rows an older run does not keep is null there.
 - **Version 51** — 2026-11-05 (#646): A deployment no longer reads twice in the list: the sessions without booked figures stand in no row of their own, each booked row of [deployments](/api/v1/docs/deployments) counts them as `sessions_without_figures` and `sessions_failed`, and the row with `currency: null` is served only for a deployment that has booked nothing.

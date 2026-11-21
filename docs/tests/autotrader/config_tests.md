@@ -152,6 +152,7 @@ failed store from one never asked, so the failure is said in the session's log a
 | `test_a_rendered_configuration_the_store_cannot_freeze_is_reported_with_its_cause` | The same for `rendered_config_id`, the identity a backtest of the session's window reads |
 | `test_a_registration_that_succeeds_says_nothing` | A working store returns its ids and logs nothing |
 | `test_nothing_to_register_is_not_a_failure` | No profile path or no rendered document returns an empty id without a warning |
+| `test_a_held_run_config_index_costs_the_registration_never_the_start` | The store waits only the session's short bound for its index lock (#650); a holder past it costs both ids and a warning naming the holder, never the start |
 
 ### `test_uncommitted_code_guard.py` (#551)
 

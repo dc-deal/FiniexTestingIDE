@@ -64,6 +64,15 @@ class RunConfigStore:
         """
         return self._index
 
+    def set_index_lock_wait_s(self, wait_s: float) -> None:
+        """
+        How long this store waits for its index lock before giving up.
+
+        Args:
+            wait_s: The bound in seconds; a session hands its short one (#650)
+        """
+        self._index.set_lock_wait_s(wait_s)
+
     def register(self, source: Path, kind: RunConfigKind) -> RunConfigEntry:
         """
         Record what a file currently holds, freezing its content if that content is new.
@@ -96,24 +105,27 @@ class RunConfigStore:
         if not frozen.exists():
             self._freeze(raw, frozen)
 
-        known = self._index.by_id(config_id)
-        entry = RunConfigEntry(
-            config_id=config_id,
-            kind=kind,
-            frozen_file=frozen.name,
-            source_name=source.name,
-            source_path=str(source),
-            source_mtime=stat.st_mtime,
-            source_size=stat.st_size,
-            # A content id that is already known keeps the date it was FIRST seen — that date is
-            # the one the history reads, and re-registering an unchanged file must not move it.
-            first_seen=known.first_seen if known else now,
-            last_seen=now,
-            param_hash=_param_hash(raw),
-            scope_hash=_scope_hash(raw) if kind is RunConfigKind.SCENARIO_SET else None,
-            run_count=known.run_count if known else 0,
-        )
-        self._index.upsert(entry)
+        # The id's earlier row and the new one are read and written as one step, so a
+        # concurrent registration keeps its first_seen and run_count (#650)
+        with self._index.updating():
+            known = self._index.by_id(config_id)
+            entry = RunConfigEntry(
+                config_id=config_id,
+                kind=kind,
+                frozen_file=frozen.name,
+                source_name=source.name,
+                source_path=str(source),
+                source_mtime=stat.st_mtime,
+                source_size=stat.st_size,
+                # A content id that is already known keeps the date it was FIRST seen — that date is
+                # the one the history reads, and re-registering an unchanged file must not move it.
+                first_seen=known.first_seen if known else now,
+                last_seen=now,
+                param_hash=_param_hash(raw),
+                scope_hash=_scope_hash(raw) if kind is RunConfigKind.SCENARIO_SET else None,
+                run_count=known.run_count if known else 0,
+            )
+            self._index.upsert(entry)
         return entry
 
     def register_document(self, content: Dict[str, Any], kind: RunConfigKind) -> RunConfigEntry:
@@ -147,20 +159,23 @@ class RunConfigStore:
         if not frozen.exists():
             self._freeze(content, frozen)
 
-        known = self._index.by_id(config_id)
-        entry = RunConfigEntry(
-            config_id=config_id,
-            kind=kind,
-            frozen_file=frozen.name,
-            source_name='',
-            source_path='',
-            source_mtime=0.0,
-            source_size=0,
-            first_seen=known.first_seen if known else now,
-            last_seen=now,
-            run_count=known.run_count if known else 0,
-        )
-        self._index.upsert(entry)
+        # The id's earlier row and the new one are read and written as one step, so a
+        # concurrent registration keeps its first_seen and run_count (#650)
+        with self._index.updating():
+            known = self._index.by_id(config_id)
+            entry = RunConfigEntry(
+                config_id=config_id,
+                kind=kind,
+                frozen_file=frozen.name,
+                source_name='',
+                source_path='',
+                source_mtime=0.0,
+                source_size=0,
+                first_seen=known.first_seen if known else now,
+                last_seen=now,
+                run_count=known.run_count if known else 0,
+            )
+            self._index.upsert(entry)
         return entry
 
     def resolve(self, source_name: str) -> Optional[Path]:
@@ -240,12 +255,14 @@ class RunConfigStore:
         Args:
             config_id: The content id the run named
         """
-        entry = self._index.by_id(config_id)
-        if entry is None:
-            return
-        entry.run_count += 1
-        entry.last_seen = datetime.now(timezone.utc)
-        self._index.upsert(entry)
+        # Counted under one hold: two runs that note one configuration at once both count (#650)
+        with self._index.updating():
+            entry = self._index.by_id(config_id)
+            if entry is None:
+                return
+            entry.run_count += 1
+            entry.last_seen = datetime.now(timezone.utc)
+            self._index.upsert(entry)
 
     def _frozen_path(self, config_id: str, kind: RunConfigKind) -> Path:
         """

@@ -9,7 +9,7 @@ the session has ended, for what is derived from it.
 from pathlib import Path
 from typing import List, Tuple
 
-from python.configuration.app_config_manager import AppConfigManager
+from python.framework.autotrader.run_record.session_run_index import write_run_index_for_session
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.io.order_event_stream_io import (
@@ -18,7 +18,6 @@ from python.framework.reporting.io.order_event_stream_io import (
     order_events_of,
 )
 from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
-from python.framework.reporting.store.run_index import RunIndex
 from python.framework.store.entry_members.run_dir_reader import RunDirReader
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
@@ -60,8 +59,9 @@ def open_order_event_stream(
     writer = OrderEventStreamWriter(appender, unit_name)
     executor.add_order_event_listener(writer)
     executor.add_broker_truth_listener(writer.write_broker_truth)
-    RunIndex(AppConfigManager().get_file_logging_config_object().run_index) \
-        .record_streams(run_id, run_writer.get_run_dir())
+    write_run_index_for_session(
+        lambda index: index.record_streams(run_id, run_writer.get_run_dir()), executor.logger,
+        'its order-event stream')
     return writer
 
 
