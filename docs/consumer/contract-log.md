@@ -33,6 +33,25 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 63 — 2026-11-22 (#627)
+
+A spot position whose holding an operator sold outside the bot — by hand at the venue while the bot
+was down — can now end: a start declared so books it as closed.
+
+- [Trade history](/api/v1/docs/trade-history): **`close_reason: closed_externally`** (new value) —
+  such a close. It is booked at the entry price, so its gross P&L is zero and its net P&L the entry
+  fee; the sale itself happened outside every record of the bot.
+- [Trade history](/api/v1/docs/trade-history): **`exit_observed`** on a trade row (new) — false for
+  such a close, whose exit price and P&L are therefore not measured; true on every other trade and
+  on every row recorded before this contract.
+- [Trade history](/api/v1/docs/trade-history): **`external_closes`** in the trade totals (new) —
+  how many trades were closed that way. `manual_closes` no longer counts them.
+- [Runs](/api/v1/docs/runs): **`origin.book_closed_externally`** in the run header (new) — the
+  position notes the start was told were closed outside the bot, as typed; empty when none. The
+  start books only what the venue confirms, so a name here is not proof that it booked anything.
+
+Two fields, one count and one value added; one count narrowed; nothing removed.
+
 ## Version 62 — 2026-11-21 (#499)
 
 A session whose start found orders of another owner on its own instrument, on an account declared
@@ -113,41 +132,13 @@ What a run read says more, and one count says what its name says: a file without
 
 Two fields added, one meaning changed; nothing removed.
 
-## Version 58 — 2026-11-16 (#461)
-
-An AutoTrader session runs on a timeline, as a backtest does since version 57: it waits for the next
-thing that falls due, is woken when a tick or a venue's answer arrives, and runs each instant in the
-backtest's phase order.
-
-- [Order events](/api/v1/docs/order-events): **`ts_event`** (new) — the venue's own stamp of the
-  step, where it reports one. Today that is a live order's fill in full, stamped with the time the
-  venue closed the order; null in a backtest, a mock session and a dry run, and on every other event.
-- A changed meaning for every time an AutoTrader session records — `event_time` on the order events,
-  a state frame's instant, a trade's entry and exit: it is when a tick or an answer reached the
-  session, no longer the venue's stamp of the tick, so a live session's times move by the feed's
-  delay. A backlog the session fell behind on is one slice, the algo computing once on its newest
-  tick, and a venue's answer resolves when it arrives rather than at the next tick or heartbeat —
-  except while a stopping session waits for its last orders, which reads them a heartbeat apart.
-- [Worker and decision](/api/v1/docs/worker-decision): a session's `ticks_processed` no longer
-  counts the ticks of a backlog behind its newest — they never reached the algorithm, as a
-  backtest's clipped ticks do not.
-- [Order events](/api/v1/docs/order-events) and [pending orders](/api/v1/docs/pending-orders): a
-  live `in_flight_ms` still runs until the session reads the answer, and the session now reads it
-  right after it arrives — later only by a pass still running then — no longer up to one heartbeat
-  after it, except while a stopping session waits for its last orders.
-
-**A session recorded before this contract** carries null in `ts_event`, its times are the venue's
-stamp of each tick, and its `in_flight_ms` can run up to one heartbeat long; it can differ from a
-session of the same data recorded now.
-
-One field added, three meanings changed; nothing removed.
-
-## Versions 57 and earlier
+## Versions 58 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 58** — 2026-11-16 (#461): An AutoTrader session runs on a timeline — `ts_event` (new) on [order events](/api/v1/docs/order-events), the venue's own stamp of a step where it reports one; every time a session records is when a tick or an answer reached it, no longer the venue's stamp of the tick; a backlog is one slice and a session's `ticks_processed` no longer counts its older ticks; a live `in_flight_ms` ends when the answer is read right after it arrives. A session recorded before it can differ from one of the same data recorded now.
 - **Version 57** — 2026-11-16 (#460): A backtest runs on its timeline — `algo_passes` and `ghost_passes` on [scenario details](/api/v1/docs/scenario-details), the [worker and decision](/api/v1/docs/worker-decision) rows and [profiling](/api/v1/docs/profiling), with the per-pass time beside the per-tick one, several shares and budget figures taken per pass, the `instant_resolution` operation and the `data_arrival_time_offset` [validation check](/api/v1/docs/validation-checks); a backtest recorded before it carries null counts.
 - **Version 56** — 2026-11-15 (#666): A list says what a reader opens a run or a sweep to find out — `total_units`, `failed_count` and `succeeded_count` on every row of [runs](/api/v1/docs/runs) and on a [sweep](/api/v1/docs/sweeps)'s combinations, `best_combinations` on the sweep list, `total_final_equity` and `total_initial_balance` on a combination; a sweep whose objective cannot rank its combinations is refused with `409 sweep_objective_unrankable`.
 - **Version 55** — 2026-11-12 (#379): A worker draws its outputs on a run's chart as [indicator series](/api/v1/docs/indicator-series) — the open `GET /api/v1/drawing-types` schema route, an `indicator_series` row per drawing worker on the [recorded streams](/api/v1/docs/recorded-streams) timeline and the series in its window, whose `limit`, `matched`, `returned` and `next_from` now count over every stream; `stream_files` on [runs](/api/v1/docs/runs) names the series files.

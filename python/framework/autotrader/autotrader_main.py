@@ -223,6 +223,7 @@ class AutotraderMain:
         allow_dirty: bool = False,
         first_start: bool = False,
         accept_composite_change: Optional[str] = None,
+        book_closed_externally: Optional[List[str]] = None,
     ):
         self._config = config
         # #355: a human DECLARED that they are watching this start (CLI --attended). Cold-start
@@ -249,6 +250,10 @@ class AutotraderMain:
         # composite, so a flag left behind can never accept a later change; lands in the header's
         # origin as typed.
         self._accept_composite_change = accept_composite_change
+        # #627: the position notes the operator declares closed outside the bot for THIS start
+        # (`--book-closed-externally <id>`). Position ids never come back, so a flag left behind
+        # can close no later note; lands in the header's origin as typed.
+        self._book_closed_externally = list(book_closed_externally or [])
         # #598: this bot's lock, held from before the first carry-over read until after the
         # last write; and whether a failed start had a passing cause (exit 75)
         self._bot_lock: Optional[FileLock] = None
@@ -471,7 +476,8 @@ class AutotraderMain:
         # identity. The HostIdentityError travels to the CLI, which reports it as a refusal.
         origin = build_run_origin(self._channel, allow_dirty=self._allow_dirty,
                                   first_start=self._first_start,
-                                  accept_composite_change=self._accept_composite_change)
+                                  accept_composite_change=self._accept_composite_change,
+                                  book_closed_externally=self._book_closed_externally)
         # Then the code identity: before the loggers, because the header written in there records
         # it, and held here, because the startup guard asks it — which must not depend on a header
         # having been written. A capture that FAILS is held too, and refused inside the startup
@@ -689,10 +695,15 @@ class AutotraderMain:
                     profile_path=self._config.config_path,
                     broker_type=self._config.broker_type),
                 accept_composite_change=self._accept_composite_change,
+                book_closed_externally=self._book_closed_externally,
             )
             if self._cold_start.configuration_finding is not None:
                 # Held like the market-fit advisory: the record's channel lives on the result
                 self._startup_findings.append(self._cold_start.configuration_finding)
+            if self._cold_start.closed_externally_finding is not None:
+                # #627: on the record, and before the first order for the person at the terminal
+                self._startup_findings.append(self._cold_start.closed_externally_finding)
+                print(f'  ⚠️  {self._cold_start.closed_externally_finding.message}')
             if self._cold_start.acceptance_notice:
                 # The person at the terminal sees it before the first order, as with --allow-dirty
                 print(f'  {self._cold_start.acceptance_notice}')

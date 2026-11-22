@@ -248,6 +248,13 @@ and a replay never clips. The session's `clipping_ratio` is its clipped ticks ov
 **close type** (`close_type` on an order-history row and a trade) — Whether a close took the whole
 position (`full`) or part of it (`partial`). Set once the close fills; empty on every other row.
 
+**closed externally** (`close_reason: closed_externally`; `external_closes`;
+`origin.book_closed_externally`) — A spot position whose holding an operator sold outside the bot,
+by hand at the venue, booked as closed when a start was told so (`--book-closed-externally`) and the
+venue's balances confirmed the coins were gone. Booked at the entry price with *exit observed*
+false, and without moving a balance, because the venue already shows the sale. Not *external*,
+which is the origin of archived data.
+
 **closed** (a run) — A run that wrote its *footprint*, its very last step: everything it was going
 to write is written. Not *completed*, which means its results reached the ledger — the step just
 before. See [Store Entry Members](architecture/store_entry_members.md#the-footprint-a-run-closes-with).
@@ -472,10 +479,15 @@ in time: when an order's event happened is its *event time*.
 backtest's position carried, or the one a logic named for its own exit. Empty on every other close.
 A trade's exit slippage is measured against it. See *own exit*.
 
+**exit observed** (`exit_observed` on a trade row) — Whether the bot saw a trade's exit: false only
+for a position *closed externally*, whose exit price, gross P&L and fees are then not measurements.
+Not *observation*, a dry run on a real feed.
+
 **external** (`origin_class: external`) — Data no instance of ours recorded: a venue's published
 history, brought in by a converter that stamps its own identity. A backtest reads it only where
 `admitted_origin_classes` admits it, and it is never admissible for a parity measurement. Not
 *unknown*, which means nobody could be named. See [Data Provenance](architecture/data_provenance.md).
+Not *closed externally*, a position sold outside the bot.
 
 **features beyond venue** (`features_beyond_venue`) — The order features a scenario set allows its
 backtest although the venue's API does not hold them: a declared exception, recorded in the run's

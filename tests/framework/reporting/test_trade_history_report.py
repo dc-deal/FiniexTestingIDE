@@ -498,6 +498,16 @@ class TestTheBreakdownIsFoldedOnTheModel:
         assert (a.winning_trades, a.losing_trades) == (1, 1)
         assert (a.sl_closes, a.tp_closes, a.scenario_end_closes, a.manual_closes) == (1, 1, 0, 1)
 
+    def test_a_close_outside_the_bot_is_counted_apart_from_a_manual_one(self):
+        """#627: `manual_closes` is the strategy's own close; a sale by hand is not one."""
+        external = _trade(position_id='x1', net_pnl=-0.3, close_reason=CloseReason.CLOSED_EXTERNALLY)
+        external.exit_observed = False
+        a = self._analytics([external, _trade(position_id='m1', close_reason=CloseReason.MANUAL)])
+
+        assert (a.external_closes, a.manual_closes) == (1, 1)
+        (row,) = [r for r in build_trade_history_report(_RUN_ID, _units([external])).trades]
+        assert (row.close_reason, row.exit_observed) == ('closed_externally', False)
+
     def test_the_averages_divide_the_totals_by_the_trades(self):
         a = self._analytics([_trade(position_id='w1', net_pnl=20.0),
                              _trade(position_id='l1', net_pnl=-10.0)])

@@ -843,7 +843,11 @@ The check is deliberately **one-sided**. The account is shared, so holding MORE 
 claims is normal and says nothing (what a bot may *use* is declared capital, #489). Holding
 LESS is not: the note then claims a position the account cannot cover, which is what happens
 when something sold outside this bot. That is reported and the book is left as written —
-shrinking it to fit would invent a number and hide the event.
+shrinking it to fit would invent a number and hide the event. The note ends only when one start is
+told so (`--book-closed-externally <id>`) and the shortfall confirms it: the note is then left out
+of the restore and booked as a trade closed outside the bot, at its entry price and without moving
+a balance (#627, *After a holding was sold by hand* in
+[Unattended Operation](../autotrader/unattended_operation.md)).
 
 The note is faithful rather than minimal, and the reason is silent failure. A sparse note does
 not crash; it produces a closing trade record that looks complete and is not — excursion

@@ -308,7 +308,8 @@ class TradeHistorySummary(AbstractBatchSummarySection):
         # leave it standing rather than trade one deletion for one re-addition.
         print(
             f'      Close Reasons: SL={a.sl_closes} | TP={a.tp_closes} | Manual={a.manual_closes}'
-            + (f' | Scenario End={a.scenario_end_closes}' if a.scenario_end_closes else ''))
+            + (f' | Scenario End={a.scenario_end_closes}' if a.scenario_end_closes else '')
+            + (f' | Outside the bot={a.external_closes}' if a.external_closes else ''))
 
         print(f"\n   {renderer.bold('💰 P&L BREAKDOWN:')}")
         print(f'      Gross P&L: {self._format_value(a.gross_pnl, renderer)} {currency}')

@@ -45,7 +45,7 @@ from python.framework.types.trading_env_types.order_types import (
     RESTING_ORDER_TYPES,
     OrderDirection,
 )
-from python.framework.types.validation_types import ValidationFinding
+from python.framework.types.validation_types import Severity, ValidationDomain, ValidationFinding
 from python.framework.utils.broker_asset_utils import normalize_broker_asset
 from python.framework.utils.connection_ladder import run_with_ladder
 from python.framework.utils.run_id_utils import parse_client_order_id
@@ -64,6 +64,9 @@ from python.framework.validators.carry_over_configuration_validator import (
 # than a fact. One satoshi is the smallest unit any supported venue settles in, so a real
 # divergence is always larger and a computed one is always smaller.
 _BOOK_DUST = 1e-8
+
+# The finding a start leaves when it books notes closed outside the bot (#627)
+_BOOK_CLOSED_EXTERNALLY_CHECK = 'book_closed_externally'
 
 # Skip reasons whose order carries a key of OUR shape, so its counter came from a session of
 # THIS bot. A foreign symbol is excluded on purpose: position ids are numbered per bot.
@@ -117,6 +120,8 @@ class ColdStartAdopter:
             proves nothing about whether anybody reads it
         decision_logic: Asked to answer for the situation (#493). None means nobody is asked,
             which is how the framework alone decides
+        book_closed_externally: The position notes this one start declares closed outside the
+            bot (`--book-closed-externally <id>`, #627); empty when none
     """
 
     def __init__(
@@ -134,6 +139,7 @@ class ColdStartAdopter:
         compare_configuration: Optional[
             Callable[[ColdStartPayload], ConfigurationComparison]] = None,
         accept_composite_change: Optional[str] = None,
+        book_closed_externally: Optional[List[str]] = None,
     ):
         self._executor = executor
         self._store = store
@@ -169,6 +175,10 @@ class ColdStartAdopter:
         # #499: orders of another owner on this bot's instrument while the account is declared
         # exclusive — the boot holds the session's entries over them
         self._boot_premise_violation: Optional[BootPremiseViolation] = None
+        # #627: the notes this start declares closed outside the bot, and those it took out
+        self._book_closed_externally = list(book_closed_externally or [])
+        self._closed_externally: List[PositionCarryOver] = []
+        self._closed_externally_finding: Optional[ValidationFinding] = None
         # #499: orders of another owner on this bot's instrument an operator accepted at an
         # earlier start and that still rest — they hold nothing, and the premise is still false
         self._accepted_foreign_refs: List[str] = []
@@ -209,6 +219,24 @@ class ColdStartAdopter:
             The violation the boot holds the entries over; None when the start found none
         """
         return self._boot_premise_violation
+
+    def get_closed_externally(self) -> List[PositionCarryOver]:
+        """
+        The notes this start took out of the book as closed outside the bot (#627).
+
+        Returns:
+            The notes; empty when it closed none
+        """
+        return list(self._closed_externally)
+
+    def get_closed_externally_finding(self) -> Optional[ValidationFinding]:
+        """
+        The finding the start leaves on the run's record when it closed notes outside the bot (#627).
+
+        Returns:
+            A run-scoped warning; None when it closed none
+        """
+        return self._closed_externally_finding
 
     def get_accepted_foreign_refs(self) -> List[str]:
         """
@@ -289,6 +317,11 @@ class ColdStartAdopter:
                 'does not have. Both paths are exercised by the cold-start suite and by a '
                 'real run, not by a rehearsal.'
             )
+            if self._book_closed_externally:
+                self._logger.info(
+                    f"🧬 Cold start (dry run): --book-closed-externally "
+                    f"{' '.join(self._book_closed_externally)} is ignored — a dry run restores no "
+                    f'position book, so there is no note to close.')
             # No skipped orders and no book: a dry run queried nothing and restored nothing,
             # so the carry-over's own high-water mark is all there is to go on.
             self._raise_counter_floor([], payload.highest_position_counter)
@@ -313,6 +346,7 @@ class ColdStartAdopter:
         # to ABORT on a give-up (§43), so an unnecessary read is not merely a wasted REST
         # call — it is a way to end a boot over a number nobody needed.
         shortfall = 0.0
+        balances: Optional[Dict[str, float]] = None
         if book:
             balances = self._pull_broker_balances()
             if balances is None:
@@ -322,8 +356,11 @@ class ColdStartAdopter:
                     'session may start — but nothing has confirmed that the account still '
                     'covers the book.'
                 )
-            else:
-                shortfall = self._cross_check_book(book, balances)
+        # #627: before the cross-check, the situation and the configuration check, so all three
+        # speak about the book that remains
+        book = self._take_out_closed_externally(book, balances)
+        if book and balances is not None:
+            shortfall = self._cross_check_book(book, balances)
 
         ours, skipped = self._split(broker_orders, known_keys)
         self._report_unattributable(skipped)
@@ -341,7 +378,12 @@ class ColdStartAdopter:
 
         # #626 — here for the same reason as the exclusivity check: the situation is on file and
         # nothing is applied yet, so a refused boot leaves the executor as it found it.
-        if not self._check_configuration(payload, ours, book):
+        configured_payload = payload
+        if self._closed_externally:
+            closed_ids = {note.position_id for note in self._closed_externally}
+            configured_payload = payload.model_copy(update={'open_positions': [
+                note for note in payload.open_positions if note.position_id not in closed_ids]})
+        if not self._check_configuration(configured_payload, ours, book):
             return False
 
         if ours:
@@ -358,6 +400,8 @@ class ColdStartAdopter:
         # === From here the session is allowed to start, so state may change ===
         self._situation.applied = True
         self._restore_position_book(book)
+        if self._closed_externally:
+            self._executor.book_closed_externally(self._closed_externally)
         if ours:
             self._executor.adopt_resting_orders(ours)
             # The consequence is stated, not left to be discovered. An adopted order makes
@@ -370,7 +414,9 @@ class ColdStartAdopter:
                 f'has_pending_orders() is true from the first tick — an algo that gates on it '
                 f'will wait until these orders fill or are cancelled.'
             )
-        self._raise_counter_floor(ours, payload.highest_position_counter, skipped, book)
+        # The closed notes count too: their ids were minted by this bot and must never come back
+        self._raise_counter_floor(ours, payload.highest_position_counter, skipped,
+                                  book + self._closed_externally)
         return True
 
     # ============================================
@@ -572,6 +618,115 @@ class ColdStartAdopter:
             )
         self._logger.warning('\n'.join(lines))
 
+    def _take_out_closed_externally(
+        self,
+        book: List[PositionCarryOver],
+        balances: Optional[Dict[str, float]],
+    ) -> List[PositionCarryOver]:
+        """
+        Take the notes this start declares closed outside the bot out of the book (#627).
+
+        An operator sold the holding at the venue while the bot was down; nothing else could end
+        its note. The declaration is honoured only where the venue confirms it: the account's
+        shortfall against the book's LONG notes has to cover every note named. A note whose coins
+        the account still holds stays — closing it would lose a holding that is still there from
+        every record. A SHORT note is not checked against the base balance (closing it buys the
+        base back, a claim on the shared quote), so it cannot be confirmed and stays too.
+
+        Args:
+            book: The notes this session may restore
+            balances: Asset → amount as the venue reports it; None when they could not be read
+
+        Returns:
+            The notes that remain to be restored
+        """
+        named = self._book_closed_externally
+        if not named:
+            return book
+
+        ids_in_book = {note.position_id for note in book}
+        unknown = [position_id for position_id in named if position_id not in ids_in_book]
+        if unknown:
+            where = ('this session is not in spot mode, so it restores no position notes'
+                     if not self._executor.portfolio.is_spot_mode()
+                     else 'the restored book holds no such note')
+            self._logger.info(
+                f"🧬 Cold start: --book-closed-externally {', '.join(unknown)} closes nothing — "
+                f'{where}.')
+
+        candidates = [note for note in book if note.position_id in named]
+        if not candidates:
+            return book
+        if balances is None:
+            self._logger.warning(
+                f"⚠️ Cold start: --book-closed-externally {', '.join(n.position_id for n in candidates)} "
+                f'is not honoured — the venue\'s balances could not be read, so nothing confirms '
+                f'that the holding left the account. The notes are restored as they are.')
+            return book
+
+        shorts = [note for note in candidates if note.direction != OrderDirection.LONG.value]
+        if shorts:
+            self._logger.warning(
+                f"⚠️ Cold start: --book-closed-externally {', '.join(n.position_id for n in shorts)} "
+                f'is not honoured — a SHORT note cannot be held against the base balance, so '
+                f'nothing confirms that it was closed. Restored as it is.')
+        longs = [note for note in candidates if note.direction == OrderDirection.LONG.value]
+        if not longs:
+            return book
+
+        base, held, booked = self._holding_against_book(book, balances)
+        named_lots = sum(note.lots * note.contract_size for note in longs)
+        if named_lots - (booked - held) > _BOOK_DUST:
+            self._logger.warning(
+                f"⚠️ Cold start: --book-closed-externally {', '.join(n.position_id for n in longs)} "
+                f'is not honoured — the notes claim {named_lots} {base}, but the account holds '
+                f'{held} {base} against a book of {booked}, so at most {max(booked - held, 0.0)} '
+                f'left it. Closing them would lose a holding that is still there. Restored as '
+                f'they are.')
+            return book
+
+        self._closed_externally = longs
+        lines = [f'⚠️ Cold start: {len(longs)} position note(s) booked as closed outside this bot, '
+                 f'as this start declares (--book-closed-externally) — at the entry price, '
+                 f'because the exit was not seen here; the account\'s balances are not moved:']
+        for note in longs:
+            lines.append(f'   {note.position_id}  {note.direction} {note.lots} {note.symbol} '
+                         f'@ {note.entry_price}')
+        self._logger.warning('\n'.join(lines))
+        self._closed_externally_finding = ValidationFinding(
+            severity=Severity.WARNING, check=_BOOK_CLOSED_EXTERNALLY_CHECK,
+            domain=ValidationDomain.SETUP, scope='run',
+            message=(f'This start declared {len(longs)} position note(s) closed outside the bot '
+                     f"({', '.join(n.position_id for n in longs)}); each is booked at its entry "
+                     f'price with exit_observed false. Its gross P&L is zero by construction, not '
+                     f'measured — the sale itself happened outside every record of the bot.'))
+        closed_ids = {note.position_id for note in longs}
+        return [note for note in book if note.position_id not in closed_ids]
+
+    def _holding_against_book(
+        self,
+        book: List[PositionCarryOver],
+        balances: Dict[str, float],
+    ) -> Tuple[str, float, float]:
+        """
+        The base asset the account holds against what the book's LONG notes claim of it.
+
+        Only a LONG note claims the base: at spot an open SHORT has already spent it.
+
+        Args:
+            book: The notes
+            balances: Asset → amount as the venue reports it
+
+        Returns:
+            (base asset, amount held, amount the LONG notes claim), in base units
+        """
+        base = self._executor.broker.get_symbol_specification(self._symbol).base_currency
+        held = sum(amount for asset, amount in balances.items()
+                   if normalize_broker_asset(asset) == base)
+        booked = sum(record.lots * record.contract_size for record in book
+                     if record.direction == OrderDirection.LONG.value)
+        return base, held, booked
+
     def _cross_check_book(
         self,
         book: List[PositionCarryOver],
@@ -612,23 +767,23 @@ class ColdStartAdopter:
         if not book:
             return 0.0
 
-        base = self._executor.broker.get_symbol_specification(self._symbol).base_currency
-        held = sum(
-            amount for asset, amount in balances.items()
-            if normalize_broker_asset(asset) == base
-        )
-        booked = sum(
-            record.lots * record.contract_size for record in book
-            if record.direction == OrderDirection.LONG.value
-        )
+        base, held, booked = self._holding_against_book(book, balances)
 
         if booked - held > _BOOK_DUST:
+            # The way out names only the notes the shortfall could cover: the start honours the
+            # flag for no more than the coins that left the account (#627)
+            closable = [r.position_id for r in book
+                        if r.direction == OrderDirection.LONG.value
+                        and r.lots * r.contract_size - (booked - held) <= _BOOK_DUST]
+            way_out = (f' If a holding was sold outside this bot, start once with '
+                       f"--book-closed-externally and its note: {', '.join(closable)}."
+                       if closable else '')
             self._logger.error(
                 f'❌ Cold start: the restored book\'s LONG positions claim {booked} {base} '
                 f'but the account '
                 f'holds {held} — {booked - held} short. Something sold outside this bot '
                 f'between the sessions. The book is NOT adjusted: closing against it will '
-                f'fail or partially fill. Check the account by hand.'
+                f'fail or partially fill. Check the account by hand.{way_out}'
             )
             return booked - held
 

@@ -74,6 +74,7 @@ from python.framework.types.live_types.reconciliation_types import (
     ReconciliationResult,
 )
 from python.framework.types.market_types.market_data_types import TickData
+from python.framework.types.persistence_types import PositionCarryOver
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
     EntryType,
@@ -285,6 +286,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # #499 — the causes that hold this session's new entries; placed at the boot, lifted by
         # the cause going away or by the operator
         self._entry_holds = EntryHolds()
+        # #627 — position notes a start declared closed outside the bot, booked in the first
+        # instant's resolutions, when the canonical clock first has a time to stamp them with
+        self._notes_closed_externally: List[PositionCarryOver] = []
 
         # #327 — Multi-consumer fan-out for TradesQueryResponse. Consumers
         # (DriftAuditor, future Reconciliation #151) register via
@@ -636,6 +640,20 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         )
         return in_flight
 
+    def book_closed_externally(self, notes: List[PositionCarryOver]) -> None:
+        """
+        Take position notes a start declared closed outside the bot, to book at the first instant (#627).
+
+        They never enter the portfolio's open positions — no pass of the decision logic, the ghost
+        pass before the first tick included, sees them open. The record waits only for the clock:
+        before the session's first instant there is no time to stamp it with, so `resolve_due`
+        books them at the first one.
+
+        Args:
+            notes: The notes the cold start took out of the restored book
+        """
+        self._notes_closed_externally = list(notes)
+
     def adopt_resting_orders(
         self,
         adoptions: List[Tuple[str, BrokerOrder]],
@@ -842,6 +860,18 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         Args:
             up_to_msc: The instant's stamp
         """
+        # #627: the notes a start declared closed outside the bot, at the first instant — here, in
+        # the resolutions, after the day boundary was checked, so the record lands in the booking
+        # period the session is in, and before anything is delivered to the decision logic
+        if self._notes_closed_externally:
+            notes, self._notes_closed_externally = self._notes_closed_externally, []
+            for note in notes:
+                record = self.portfolio.close_note_externally(note, self._tick_counter)
+                self.logger.info(
+                    f'📒 {record.position_id} booked as closed outside this bot: '
+                    f'{record.direction.value} {record.lots} {record.symbol} at its entry price '
+                    f'{record.exit_price}, net {record.net_pnl:.2f} {record.account_currency} '
+                    f'(the entry fee), exit not observed.')
         if self._instant_had_tick:
             self._process_pending_orders()
         else:

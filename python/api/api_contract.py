@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 62
+API_CONTRACT_VERSION = 63
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,14 +36,13 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "order-history: rejection_reason entries_held (new value) — a new entry refused while the session "
-    "holds its entries, because at its start orders of another owner rested on the bot's instrument "
-    "on an account declared exclusive; closing the position and cancelling its orders stay free",
-    "order-history and order-events: end_reason entries_held (new value) — a resting entry the "
-    "framework cancelled when the session's entries were held",
-    "deployments: exclusivity_violated_at on a session row (new) — when its start found the account's "
-    "declared exclusivity false on its instrument — it held its entries, or an operator had accepted "
-    "those orders at an earlier start; null where it found nothing",
-    "sweeps: exclusivity_violated_at on a combination (new) — null on every backtest",
+    "trade-history: close_reason closed_externally (new value) — a spot position whose holding was sold "
+    "outside the bot, booked when a start declared so; external_closes (new) counts them in the trade "
+    "totals, and manual_closes no longer includes them",
+    "trade-history: exit_observed on a trade row (new) — false for a close made outside the bot: its exit "
+    "price is the entry price and its gross P&L zero by construction, not measured; true on every other "
+    "trade and on every row recorded before",
+    "runs: origin.book_closed_externally in the run header (new) — the position notes the start was told "
+    "were closed outside the bot, as typed; empty when none",
 ]
 

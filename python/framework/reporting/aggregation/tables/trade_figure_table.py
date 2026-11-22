@@ -222,6 +222,20 @@ def closed_at_scenario_end(row: Any) -> int:
     return 1 if row.close_reason == 'scenario_end' else 0
 
 
+def closed_externally(row: Any) -> int:
+    """
+    Whether a trade's holding was sold outside the bot and a start booked it so — one count each
+    (#627).
+
+    Args:
+        row: A trade row
+
+    Returns:
+        1 when it was, else 0
+    """
+    return 1 if row.close_reason == 'closed_externally' else 0
+
+
 def short_trade_count(combined: Dict[str, Any], rows: Sequence[Any]) -> int:
     """
     The group's short trades — every trade that was not long.
@@ -238,17 +252,18 @@ def short_trade_count(combined: Dict[str, Any], rows: Sequence[Any]) -> int:
 
 def manual_close_count(combined: Dict[str, Any], rows: Sequence[Any]) -> int:
     """
-    The group's trades closed by neither stop loss, take profit nor the scenario's end.
+    The group's trades closed by neither stop loss, take profit, the scenario's end nor outside the
+    bot.
 
     Args:
         combined: The figures being built, the counts already folded
         rows: The trades
 
     Returns:
-        The trade count less the three named kinds of close
+        The trade count less the four named kinds of close
     """
     return (combined['trade_count'] - combined['sl_closes'] - combined['tp_closes']
-            - combined['scenario_end_closes'])
+            - combined['scenario_end_closes'] - combined['external_closes'])
 
 
 def _per_trade(combined: Dict[str, Any], total: str) -> float:
@@ -408,6 +423,8 @@ TRADE_ANALYTICS_TABLE = FoldTable(
                                        empty_value=0),
         'scenario_end_closes': FigureDeclaration(Reduction.SUM, source=closed_at_scenario_end,
                                                  empty_value=0),
+        'external_closes': FigureDeclaration(Reduction.SUM, source=closed_externally,
+                                             empty_value=0),
         'manual_closes': FigureDeclaration(Reduction.DERIVE),
         'avg_gross_pnl': FigureDeclaration(Reduction.DERIVE),
         'avg_fees': FigureDeclaration(Reduction.DERIVE),

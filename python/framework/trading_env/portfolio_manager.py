@@ -842,6 +842,7 @@ class PortfolioManager:
         exit_trades: Optional[List[BrokerTrade]] = None,
         exit_submission: Optional[SubmissionMetadata] = None,
         exit_level: Optional[float] = None,
+        exit_observed: bool = True,
     ) -> TradeRecord:
         """
         Convert closed Position to TradeRecord.
@@ -854,6 +855,8 @@ class PortfolioManager:
             exit_submission: Submission-moment snapshot from close PendingOrder (#340/#345)
             exit_level: The level a stop-loss or take-profit close fired at, None for every
                 other close (#625)
+            exit_observed: False for a close made outside the bot, whose exit nobody here saw
+                (#627)
 
         Returns:
             TradeRecord with all fields for P&L verification
@@ -906,7 +909,55 @@ class PortfolioManager:
             modelled_spread_cost=position.get_modelled_spread_cost(),
             entry_quote_modelled=position.entry_quote_modelled,
             exit_quote_modelled=position.exit_quote_modelled,
+            exit_observed=exit_observed,
         )
+
+    def close_note_externally(self, record: PositionCarryOver, exit_tick_index: int) -> TradeRecord:
+        """
+        Book a position note whose holding left the account outside the bot (#627).
+
+        An operator sold the holding at the venue while the bot was down, and a start declared so.
+        The session read its balances from the venue, so the sale is already in them: nothing here
+        moves a balance — a close through `close_position_portfolio` would take the coins a second
+        time and credit the proceeds twice. The note never enters `open_positions`, so no pass of
+        the decision logic sees it open.
+
+        The bot never saw the exit, so the record carries the entry price as its exit price: its
+        gross P&L is zero by construction, not measured, and its fees are the ones the bot paid at
+        the entry. Pricing it at the market of the moment it is booked — possibly days after the
+        sale — would invent a result nobody realised; the venue's own execution is what can
+        replace it (#652's read of the venue's closed orders).
+
+        Args:
+            record: The note read back from the carry-over
+            exit_tick_index: Tick counter at the booking
+
+        Returns:
+            The trade record it filed
+        """
+        if not self._spot_mode:
+            # Margin (#209, 2026-11-22): unreachable today — the cold start restores no margin note,
+            # so none is declared closed. Refused rather than booked: a margin position is a venue
+            # object, its close is read from the venue, and a note over it is the older answer.
+            raise ValueError(
+                f'Position note {record.position_id} cannot be booked as closed outside the bot: '
+                f'only a spot note is the bot\'s own record; a margin position comes from the venue.')
+        position = carry_over_to_position(record)
+        position.update_current_price(
+            position.entry_price, position.entry_price, position.entry_tick_value, position.digits)
+        realized_pnl = position.unrealized_pnl
+        position.status = PositionStatus.CLOSED
+        position.close_time = self._clock_now()
+        position.close_price = position.entry_price
+        position.exit_tick_value = position.entry_tick_value
+        position.exit_tick_index = exit_tick_index
+        # No book was crossed at the exit, so it carries none: the exit's spread leg measures 0.0
+        trade_record = self._create_trade_record(
+            position, CloseType.FULL, CloseReason.CLOSED_EXTERNALLY, exit_observed=False)
+        self._record_spread_attribution(trade_record)
+        self._file_trade_record(trade_record)
+        self._update_statistics(position, realized_pnl, trade_record.total_fees)
+        return trade_record
 
     # ============================================
     # Performance - Caching

@@ -630,8 +630,8 @@ Not cases:
    into the profile. The session continues as one series. A value marked `not set` cannot be
    restored in a file (case 3).
 2. **Finish under the old configuration** — run it until nothing is open, then switch. Resting
-   orders alone can be cancelled at the venue. A holding sold by hand stays in the bot's position
-   book (#627), so at spot the bot has to close it itself.
+   orders alone can be cancelled at the venue. A holding sold by hand ends its note only with
+   `--book-closed-externally` (*After a holding was sold by hand*, below).
 3. **Accept it for this start** — `--accept-composite-change <key>`, with the key the refusal
    printed. What is open continues under the new configuration. The run header records the key
    (`origin.accept_composite_change`), the session's warnings carry `composite_change_accepted` with
@@ -698,6 +698,47 @@ would block entries from the first tick — past a hard limit, flatten real posi
 real money never had — and a simulated denominator below it would loosen every limit. A session
 that starts fresh says why at its start and in its warnings (`carried_readings_not_continued`); a
 new deployment the operator asked for is only said.
+
+## After a holding was sold by hand
+
+The bot is down, the price moves, and the operator sells the holding at the venue's website. At spot
+the bot's position is its own note in the carry-over, not something the venue knows, so nothing ends
+that note: every following start finds the book claiming coins the account no longer holds, logs an
+ERROR (the session ends with exit 3), and restores the note. The strategy then believes it still
+holds the position, and a restart under a changed configuration stays refused because the note
+counts as open.
+
+**Start once with `--book-closed-externally <position_id>`**, the id the ERROR names (repeat it for
+several notes):
+
+```
+❌ Cold start: the restored book's LONG positions claim 0.004 BTC but the account holds 0.0 — 0.004 short.
+   … If its holding was sold outside this bot, start once with --book-closed-externally and the note:
+   pos_btcusd_7
+```
+
+The start honours it only where the venue confirms it: the account must no longer hold the coins the
+named notes claim, or they are restored as they are and a warning says so. A confirmed note never
+reaches the strategy; it is booked at the session's first instant as a trade with
+`close_reason: closed_externally`:
+
+- **at its entry price, with `exit_observed: false`** — the bot never saw the sale, so its gross P&L
+  is zero by construction and its fees are the entry's. The sale's real price and fee stand in no
+  record of the bot; the trade's P&L therefore differs from the account's change by the result of
+  that sale. Pricing it at the market of the moment of the start, possibly days later, would invent a
+  result nobody realised.
+- **without moving a balance** — the session read its balances from the venue, which already shows
+  the sale.
+
+The run header records the ids as typed (`origin.book_closed_externally`), and the session's warnings
+carry `book_closed_externally`. The next start, without the flag, finds a covered book and is clean.
+Left in a service unit the flag closes nothing later, because position ids never come back. A dry run
+and a margin session ignore it: the first restores no notes, the second reads its positions from the
+venue.
+
+The established systems decide this from the venue's evidence where they have it — a closing order
+the venue reports — and the bot will too once it reads the venue's closed orders at the start (#652).
+Until then the operator's word is the only evidence, so the bot never decides it alone.
 
 ## What the venue could do, and why it does not here
 

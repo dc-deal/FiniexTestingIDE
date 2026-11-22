@@ -59,6 +59,9 @@ class RunOrigin(BaseModel):
         accept_composite_change: The composite the operator let this one start continue what the
             venue still held under (`--accept-composite-change <key>`, #626) — recorded as typed,
             None when not given; the session's own record says whether it let anything through
+        book_closed_externally: The position notes this one start declared closed outside the bot
+            (`--book-closed-externally <id>`, #627) — recorded as typed, empty when not given; the
+            session's trade records say which of them it booked
     """
     channel: RunChannel
     client: str
@@ -67,6 +70,7 @@ class RunOrigin(BaseModel):
     allow_dirty: bool = False
     first_start: bool = False
     accept_composite_change: Optional[str] = None
+    book_closed_externally: List[str] = []
 
 
 class RepositoryState(BaseModel):

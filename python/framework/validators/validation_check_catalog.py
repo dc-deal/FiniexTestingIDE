@@ -177,6 +177,10 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         'A start declared --accept-composite-change and continued what the venue still held '
         'under another composite than the one that opened it.'),
     ValidationCheckInfo(
+        'book_closed_externally', 'Position notes booked as closed outside the bot',
+        'A start declared --book-closed-externally and booked spot position notes whose holding the '
+        'account no longer held, at their entry price, without a measured exit.'),
+    ValidationCheckInfo(
         'carried_configuration_not_compared', 'Configuration not compared with the carry-over',
         'The session took over what the venue still held without being able to compare its '
         'configuration with the one that opened it.'),

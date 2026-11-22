@@ -109,7 +109,7 @@ class TradeHistoryRow(BaseModel):
     exit_price: float
     exit_time: str          # ISO-8601 UTC
     duration_s: float
-    close_reason: str       # '' (manual) | 'sl_triggered' | 'tp_triggered' | 'scenario_end'
+    close_reason: str       # '' (manual) | 'sl_triggered' | 'tp_triggered' | 'scenario_end' | 'closed_externally'
     gross_pnl: float
     total_fees: float
     net_pnl: float
@@ -138,6 +138,11 @@ class TradeHistoryRow(BaseModel):
     mae_distance: float = 0.0
     mfe_distance: float = 0.0
     price_unit: str = ''
+    # Whether the bot saw this trade's exit (#627). False for a close made outside the bot
+    # (`close_reason: closed_externally`): the exit price is the entry price, the gross P&L zero by
+    # construction rather than measured, and the fees the ones the bot paid. True on every row
+    # written before the field existed, none of which was such a close.
+    exit_observed: bool = True
     r_multiple: float | None = None  # net_pnl / initial_risk; None when no stop loss
     # Full projection (#393) — lets the console audit table render purely from the model
     scenario_name: str = ''     # owning run unit (sim: scenario; live: session) → grouping
@@ -238,10 +243,11 @@ class TradeAnalytics(BaseModel):
     winning_trades: int = 0
     losing_trades: int = 0
     # How the group's trades were closed, by `close_reason`; `manual_closes` is every trade the
-    # other three do not name
+    # other four do not name. `external_closes` counts `closed_externally` (#627)
     sl_closes: int = 0
     tp_closes: int = 0
     scenario_end_closes: int = 0
+    external_closes: int = 0
     manual_closes: int = 0
     # Per trade: the group's totals over its trade count; 0.0 over no trade
     avg_gross_pnl: float = 0.0

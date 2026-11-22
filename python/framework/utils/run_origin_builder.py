@@ -32,7 +32,8 @@ from python.framework.utils.git_info_utils import get_framework_root
 
 def build_run_origin(channel: RunChannel, allow_dirty: bool = False,
                      first_start: bool = False,
-                     accept_composite_change: Optional[str] = None) -> RunOrigin:
+                     accept_composite_change: Optional[str] = None,
+                     book_closed_externally: Optional[List[str]] = None) -> RunOrigin:
     """
     State who or what started a run, for whom, and on which installation.
 
@@ -55,6 +56,9 @@ def build_run_origin(channel: RunChannel, allow_dirty: bool = False,
         accept_composite_change: The composite the operator accepted for this one start
             (`--accept-composite-change <key>`), None when not given; only an AutoTrader session
             can carry it
+        book_closed_externally: The position notes the operator declared closed outside the bot
+            for this one start (`--book-closed-externally <id>`); only an AutoTrader session can
+            carry it
 
     Returns:
         The run's origin
@@ -67,6 +71,7 @@ def build_run_origin(channel: RunChannel, allow_dirty: bool = False,
         allow_dirty=allow_dirty,
         first_start=first_start,
         accept_composite_change=accept_composite_change,
+        book_closed_externally=list(book_closed_externally or []),
     )
 
 
