@@ -162,6 +162,19 @@ def test_where_the_orders_went_round_trips(tmp_ledger, make_run_summary, make_pr
     assert rows['r2'].orders_to is None
 
 
+def test_a_start_that_found_the_exclusivity_false_says_so_on_its_rows(
+        tmp_ledger, make_run_summary, make_provenance):
+    """#499 — the instant comes back as written; a session whose start found nothing reads None."""
+    tmp_ledger.append(make_run_summary(), make_provenance(
+        run_id='r1', exclusivity_violated_at='2026-11-24T01:05:00+00:00'))
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='r2'))
+
+    rows = {row.run_id: row for row in tmp_ledger.read_rows()}
+
+    assert rows['r1'].exclusivity_violated_at == '2026-11-24T01:05:00+00:00'
+    assert rows['r2'].exclusivity_violated_at is None
+
+
 def test_sweep_objective_persisted(tmp_ledger, make_run_summary, make_provenance):
     """The sweep spec's objective + direction round-trip so report can default to them."""
     tmp_ledger.append(make_run_summary(net_pnl=1.0), make_provenance(

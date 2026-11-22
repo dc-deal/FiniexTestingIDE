@@ -34,6 +34,8 @@ class OperatorAlertKind(Enum):
     EMERGENCY_STOP = 'emergency_stop'
     SAFETY_BLOCKED = 'safety_blocked'
     SAFETY_CLEARED = 'safety_cleared'
+    ENTRIES_HELD = 'entries_held'
+    ENTRIES_LIFTED = 'entries_lifted'
     MARKET_DATA_STALE = 'market_data_stale'
     MARKET_DATA_RECOVERED = 'market_data_recovered'
     SIGNAL_STALE = 'signal_stale'

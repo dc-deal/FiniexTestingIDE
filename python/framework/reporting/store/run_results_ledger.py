@@ -113,6 +113,11 @@ LEDGER_COLUMNS: List[str] = [
     # and then traded real money reads as one series, and its P&L adds simulated fills to real
     # ones. Appended, so older fragments read back None: not recorded.
     'orders_to',
+    # When the session's start found its account's declared exclusivity false on its own
+    # instrument and held its entries (#499) — its start, ISO-8601 UTC. The money figures on the
+    # row stand, but their denominator is not provably the bot's own. None where the start found
+    # nothing, on every backtest, and on an older fragment: not recorded.
+    'exclusivity_violated_at',
     # How the run ENDED and what its warnings-errors channels held, from the outcome the report
     # counted once for both pipelines — so a run list can say whether a run is worth opening
     # without opening it. Run-level values, repeated on every row of the run. Appended, so older
@@ -523,6 +528,7 @@ class RunResultsLedger:
             'run_type': p.run_type,
             # A parquet column holds the enum's VALUE; reading it back restores the enum.
             'orders_to': p.orders_to.value if p.orders_to else None,
+            'exclusivity_violated_at': p.exclusivity_violated_at,
             'trial_count': p.trial_count,
             # A parquet column holds the enum's VALUE; reading it back restores the enum.
             'run_outcome': p.run_outcome.value if p.run_outcome else None,

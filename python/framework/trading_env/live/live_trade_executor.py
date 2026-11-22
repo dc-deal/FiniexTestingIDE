@@ -42,6 +42,7 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.trading_env.broker_config import BrokerConfig
+from python.framework.trading_env.entry_holds import EntryHolds
 from python.framework.trading_env.live.live_request_processor import LiveRequestProcessor
 from python.framework.trading_env.portfolio_manager import UNSET, _UnsetType
 from python.framework.types.config_types.autotrader_defaults_config_types import (
@@ -81,6 +82,7 @@ from python.framework.types.trading_env_types.active_orders_snapshot_types impor
     ActiveOrdersSnapshot,
 )
 from python.framework.types.trading_env_types.awaited_order_types import AwaitedOrder
+from python.framework.types.trading_env_types.entry_hold_types import EntryHold
 from python.framework.types.trading_env_types.executor_mode_types import ExecutorMode
 from python.framework.types.trading_env_types.latency_simulator_types import (
     ModificationRequest,
@@ -280,6 +282,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # order id, so a key of the id alone let a second close at the ceiling find the first
         # one's entry and never end, and let the second close's answer lift the first's block.
         self._unresolved_at_ceiling: Set[Tuple[Optional[int], str]] = set()
+        # #499 — the causes that hold this session's new entries; placed at the boot, lifted by
+        # the cause going away or by the operator
+        self._entry_holds = EntryHolds()
 
         # #327 — Multi-consumer fan-out for TradesQueryResponse. Consumers
         # (DriftAuditor, future Reconciliation #151) register via
@@ -2810,6 +2815,24 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         """
         return {order_id for _, order_id in self._unresolved_at_ceiling}
 
+    def get_entry_holds(self) -> EntryHolds:
+        """
+        The session's entry holds, for the boot that places one and the cycle that lifts it.
+
+        Returns:
+            The register this executor's guard reads
+        """
+        return self._entry_holds
+
+    def get_active_entry_holds(self) -> Tuple[EntryHold, ...]:
+        """
+        The session's standing entry holds (#499), read by the OrderGuard at every new entry.
+
+        Returns:
+            The standing holds; empty when entries are free
+        """
+        return self._entry_holds.get_active()
+
     @staticmethod
     def _ceiling_key(pending: PendingOrder) -> Tuple[Optional[int], str]:
         """
@@ -3841,6 +3864,25 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         return self._cancel_resting_order(
             order_id, self._active_stop_orders, 'Stop',
             OrderInitiator.STRATEGY, OrderEndReason.CANCEL_REQUESTED)
+
+    def cancel_resting_entries(self) -> List[str]:
+        """
+        Cancel every resting order that would open a position, as a hold of the entries asks (#499).
+
+        A resting entry the venue fills while entries are held is new risk through the back door,
+        so it goes; an order that closes — a protective exit — stays, because it reduces what the
+        session holds. The row says the framework ended it and why, never that the strategy did.
+
+        Returns:
+            The ids whose cancel was scheduled
+        """
+        scheduled: List[str] = []
+        for orders, label in ((self._active_limit_orders, 'Limit'), (self._active_stop_orders, 'Stop')):
+            for pending in [p for p in orders if p.order_action is PendingOrderAction.OPEN]:
+                if self._cancel_resting_order(pending.pending_order_id, orders, label,
+                                              OrderInitiator.FRAMEWORK, OrderEndReason.ENTRIES_HELD):
+                    scheduled.append(pending.pending_order_id)
+        return scheduled
 
     # ============================================
     # Pending Order Awareness

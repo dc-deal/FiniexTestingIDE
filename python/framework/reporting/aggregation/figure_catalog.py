@@ -60,6 +60,10 @@ LEDGER_FIGURES: Dict[str, FigureDeclaration] = {
     # One answer per run. Across a deployment's runs a disagreement is exactly the case worth
     # reporting: simulated and real money in one history.
     'orders_to': FigureDeclaration(Reduction.IDENTITY),
+    # When the run's start found the account's declared exclusivity false (#499) — one answer per
+    # run, like the one above. Across a deployment's sessions a disagreement says the premise
+    # changed between them, and that is reported rather than picked.
+    'exclusivity_violated_at': FigureDeclaration(Reduction.IDENTITY),
     # One configuration per run, on each of its rows. Across a deployment's sessions a
     # disagreement says the configuration moved between them — reported, as `profile_hash` is.
     'rendered_config_id': FigureDeclaration(Reduction.IDENTITY),

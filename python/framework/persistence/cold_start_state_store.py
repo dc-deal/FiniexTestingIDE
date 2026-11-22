@@ -30,6 +30,7 @@ from python.framework.persistence.carry_over_identity import accepts_carry_over,
 from python.framework.persistence.cold_start_state_index import ColdStartStateIndex
 from python.framework.store.abstract_store_index import SESSION_INDEX_LOCK_WAIT_S
 from python.framework.types.persistence_types import (
+    AcceptedForeignOrders,
     AccountDrawdownCarryOver,
     CarryOverEnvelope,
     CarryOverLoad,
@@ -255,6 +256,7 @@ class ColdStartStateStore:
         replace_readings: bool = False,
         venue_claims_configuration: Optional[ConfigurationCarryOver] = None,
         deployment_id: Optional[str] = None,
+        accepted_foreign_orders: Optional[AcceptedForeignOrders] = None,
         refresh_index: bool = True,
     ) -> None:
         """
@@ -307,6 +309,9 @@ class ColdStartStateStore:
                 None convention once more, and here it is what makes N session records one
                 history: a join key not written WHILE the sessions ran cannot be added
                 afterwards, because nothing left behind says which of them belonged together
+            accepted_foreign_orders: The orders of another owner an operator accepted on this
+                bot's instrument (#499). Same None convention: a write that accepted nothing
+                leaves what an earlier start accepted
             refresh_index: Whether to rebuild the store index afterwards. False for the
                 writes that happen DURING a session: the rebuild reads every bot's document
                 and costs 26-40 ms on this project's tree (§42), which has no business inside
@@ -367,6 +372,8 @@ class ColdStartStateStore:
             payload.venue_claims_configuration = venue_claims_configuration
         if deployment_id is not None:
             payload.deployment_id = deployment_id
+        if accepted_foreign_orders is not None:
+            payload.accepted_foreign_orders = accepted_foreign_orders
 
         envelope = CarryOverEnvelope(
             schema_version=_SCHEMA_VERSION,

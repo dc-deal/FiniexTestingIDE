@@ -175,6 +175,7 @@ On a cancelled, expired or unaccounted row, `initiator` says who ended the order
 | `order_timeout` | it did not fill within the order timeout |
 | `resolution_ceiling` | its answer was lost, and the venue never named it however long it was asked |
 | `session_end` | the live session ended with the order still out |
+| `entries_held` | it would have opened a position while the session held its entries — cancelled by the framework when the hold began |
 | `scenario_end` | the backtest's data ended with the order still out |
 | `venue_cancelled` | the venue cancelled it on its own |
 | `venue_expired` | the venue let it expire |
@@ -190,7 +191,7 @@ set on a `denied` and on a `rejected` row. The vocabulary:
 ```
 insufficient_margin · insufficient_funds · invalid_lot_size · symbol_not_tradeable
 market_closed · invalid_price · order_type_not_supported · broker_error
-rejection_cooldown · stale_market_data · unaccounted_order · position_not_found
+rejection_cooldown · stale_market_data · unaccounted_order · entries_held · position_not_found
 remainder_below_minimum · order_feature_not_declared
 ```
 
@@ -204,6 +205,10 @@ Four of them are worth spelling out, because their names do not carry their mean
   unaccounted for: the venue was asked about it as long as the session said it would ask, and
   never named it. **It may still be resting there.** Closing and protecting what is already held
   continue; only new entries stop.
+- **`entries_held`** — a new entry was refused because the session holds its entries: at its start,
+  orders of another owner rested on the bot's own instrument while the account is declared
+  exclusive. The session manages and closes what it has and opens nothing new until those orders
+  are gone or an operator lifts the hold. Closing and cancelling are never refused for it.
 - **`position_not_found`** — a close for a position that is not held. In a backtest the simulated
   venue also refuses a close whose position was closed while the close was on its way.
 

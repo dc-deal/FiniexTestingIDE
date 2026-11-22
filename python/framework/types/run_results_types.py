@@ -134,6 +134,12 @@ class RunProvenance:
     # comparable when they agree on it, and the money figures of a deployment that mixes the
     # two add simulated P&L to real. None where the rule refused the profile.
     orders_to: Optional[OrdersTo] = None
+    # When this session's start found its account's declared exclusivity false on its own
+    # instrument — orders of another owner rested there, held over or accepted by an operator
+    # (#499) — ISO-8601
+    # UTC, the session's start. The money figures on the row stand, but their denominator is not
+    # provably the bot's own. None where the start found nothing, and on every backtest.
+    exclusivity_violated_at: Optional[str] = None
     # How many candidates this run was selected FROM (#32). One for a run nobody swept, which is
     # a statement and not a placeholder: an absent value means the row predates the field, while
     # 1 means one attempt, and the two must not read alike.

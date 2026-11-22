@@ -451,6 +451,7 @@ def build_deployment_histories(rows: List[RunResultRow]) -> Dict[str, List[Deplo
                 orders_to_changed=bool(
                     previous and previous.orders_to is not None and row.orders_to is not None
                     and previous.orders_to != row.orders_to),
+                exclusivity_violated_at=row.exclusivity_violated_at,
                 # Only between two sessions that both recorded it: an older row has no stand, no
                 # line and is never a change, and it does not hide what moved across it. A start
                 # that failed has no currency, and its series adds nothing up a line could split.

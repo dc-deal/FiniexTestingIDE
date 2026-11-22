@@ -26,6 +26,7 @@ from python.framework.persistence.cold_start_state_store import ColdStartStateSt
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.autotrader_types.cold_start_types import (
     AdoptedOrder,
+    BootPremiseViolation,
     ColdStartSituation,
     ColdStartVerdict,
     ConfigurationComparison,
@@ -35,7 +36,11 @@ from python.framework.types.autotrader_types.cold_start_types import (
 )
 from python.framework.types.config_types.autotrader_defaults_config_types import ColdStartDefaults
 from python.framework.types.live_types.reconciliation_types import BrokerOrder
-from python.framework.types.persistence_types import ColdStartPayload, PositionCarryOver
+from python.framework.types.persistence_types import (
+    AcceptedForeignOrders,
+    ColdStartPayload,
+    PositionCarryOver,
+)
 from python.framework.types.trading_env_types.order_types import (
     RESTING_ORDER_TYPES,
     OrderDirection,
@@ -161,6 +166,12 @@ class ColdStartAdopter:
         self._configuration_comparison: Optional[ConfigurationComparison] = None
         self._configuration_finding: Optional[ValidationFinding] = None
         self._acceptance_notice = ''
+        # #499: orders of another owner on this bot's instrument while the account is declared
+        # exclusive — the boot holds the session's entries over them
+        self._boot_premise_violation: Optional[BootPremiseViolation] = None
+        # #499: orders of another owner on this bot's instrument an operator accepted at an
+        # earlier start and that still rest — they hold nothing, and the premise is still false
+        self._accepted_foreign_refs: List[str] = []
 
     def get_configuration_comparison(self) -> Optional[ConfigurationComparison]:
         """
@@ -189,6 +200,25 @@ class ColdStartAdopter:
             The notice; '' when no change was accepted
         """
         return self._acceptance_notice
+
+    def get_boot_premise_violation(self) -> Optional[BootPremiseViolation]:
+        """
+        What the exclusivity check found on this bot's instrument (#499).
+
+        Returns:
+            The violation the boot holds the entries over; None when the start found none
+        """
+        return self._boot_premise_violation
+
+    def get_accepted_foreign_refs(self) -> List[str]:
+        """
+        The orders of another owner on this bot's instrument that an operator accepted at an earlier
+        start, and that still rest (#499).
+
+        Returns:
+            Their venue references; empty when none rest
+        """
+        return list(self._accepted_foreign_refs)
 
     def get_situation(self) -> Optional[ColdStartSituation]:
         """
@@ -306,7 +336,7 @@ class ColdStartAdopter:
         # still leaves a full record — and deliberately WITHOUT consulting the verdict: the
         # hook may only lift the one refusal the framework makes for lack of an ANSWER
         # (#493), and this one is made for lack of exclusivity, which no algo can supply.
-        if not self._check_exclusivity(skipped):
+        if not self._check_exclusivity(skipped, payload.accepted_foreign_orders):
             return False
 
         # #626 — here for the same reason as the exclusivity check: the situation is on file and
@@ -818,12 +848,12 @@ class ColdStartAdopter:
             lines.append(f'{len(ours)} resting order(s) of ours — {orders}')
         return lines
 
-    def _check_exclusivity(self, skipped: List[SkippedOrder]) -> bool:
+    def _check_exclusivity(self, skipped: List[SkippedOrder],
+                           accepted: Optional[AcceptedForeignOrders]) -> bool:
         """
-        Hold a declared-exclusive account against what the venue actually reports (#489).
+        Hold a declared-exclusive account against what the venue actually reports (#489, #499).
 
-        REPORTS, and does not refuse. That is one answer rather than two, and the reason
-        is the same in both halves — a refusal is not the safe outcome here:
+        Does not refuse: a refusal is not the safe outcome here —
 
         - It leaves a state that is not "flat and safe" but **exposed and unmanaged**. This
           bot may hold a spot position; a refusal abandons it at the venue with nothing
@@ -839,9 +869,10 @@ class ColdStartAdopter:
         stranger on the instrument this bot TRADES, where at spot the exposures merge into
         one balance no tag can split and the bot cannot size an order against what is
         actually its own. That is an ERROR into the session pot rather than a warning, and
-        it is what **#499** turns into a boot-time HALT once #349 has built the state to
-        hold it: start, manage what is ours, place nothing new until an operator clears it.
-        Withholding new risk is the institutional answer; refusing to run is not.
+        the boot HOLDS the session's entries over it (#499): it starts, manages and closes
+        what is its own, and places nothing new until those orders are gone or an operator
+        accepts them. An order the operator accepted at an earlier start holds nothing again,
+        but it is still said, as a warning: the account is still not this bot's alone.
 
         UNKNOWN_SESSION is not judged at all. Its key HAS our shape, and on an account
         declared exclusive nobody else uses our key format, so it is more likely ours rather
@@ -850,10 +881,11 @@ class ColdStartAdopter:
 
         Args:
             skipped: Everything the split left alone, each with its reason and ownership
+            accepted: The orders of another owner an operator accepted at an earlier start
 
         Returns:
-            True — always, today. The signature keeps the boolean because #499 makes this
-            decidable, and a caller that already honours it needs no change then
+            True — the session starts either way; what holds its entries is recorded for the
+            boot (`get_boot_premise_violation`)
         """
         if not self._exclusive_account:
             return True
@@ -871,19 +903,37 @@ class ColdStartAdopter:
                 f"{', '.join(f'{o.symbol} {o.broker_ref}' for o in elsewhere)}"
             )
 
-        if on_our_symbol:
-            refs = ', '.join(o.broker_ref for o in on_our_symbol)
+        accepted_refs = set(accepted.broker_refs) if accepted is not None else set()
+        already_accepted = [o.broker_ref for o in on_our_symbol if o.broker_ref in accepted_refs]
+        unaccepted = [o.broker_ref for o in on_our_symbol if o.broker_ref not in accepted_refs]
+        self._accepted_foreign_refs = already_accepted
+        if already_accepted:
+            self._logger.warning(
+                f'⚠️ Cold start: {len(already_accepted)} order(s) of another owner on '
+                f'{self._symbol} were accepted by the operator at {accepted.accepted_at_utc}, so '
+                f'they hold no entries — but they still rest, while this profile declares '
+                f'capital.exclusive_account=true. Every account-level risk limit measures a '
+                f"denominator that is not this bot's alone: {', '.join(already_accepted)}"
+            )
+
+        if unaccepted:
+            refs = ', '.join(unaccepted)
             self._logger.error(
-                f'❌ Cold start: {len(on_our_symbol)} order(s) carrying no key of ours rest '
+                f'❌ Cold start: {len(unaccepted)} order(s) carrying no key of ours rest '
                 f'on {self._symbol} — the very instrument this bot trades — while this '
                 f'profile declares capital.exclusive_account=true. At spot both exposures '
                 f'merge into one balance that no tag can separate, so this bot cannot size '
-                f'an order against what is actually its own: {refs}. The session STARTS '
-                f"anyway, because refusing would abandon this bot's own exposure at the "
-                f'venue — #499 turns this into a HALT that keeps managing what is ours while '
-                f'placing nothing new. Until then: cancel those orders at the venue, or set '
-                f'capital.exclusive_account=false.'
+                f'an order against what is actually its own: {refs}. The session STARTS and '
+                f'HOLDS its entries: it manages and closes what is its own and opens nothing '
+                f'new, because refusing to start would abandon its exposure at the venue. The '
+                f'hold lifts when those orders are gone, or when an operator lifts it at a '
+                f'start with --attended; or set capital.exclusive_account=false.'
             )
+            self._boot_premise_violation = BootPremiseViolation(
+                symbol=self._symbol, foreign_refs=unaccepted, accepted_refs=already_accepted,
+                detail=(f'{len(unaccepted)} order(s) of another owner rest on {self._symbol} '
+                        f'while the account is declared exclusive ({refs}) — cancel them at the '
+                        f'venue, or start with --attended and lift the hold'))
 
         return True
 

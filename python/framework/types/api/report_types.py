@@ -34,6 +34,7 @@ from python.framework.types.run_origin_types import CodeIdentity, CodeStand, Run
 from python.framework.types.run_outcome_types import RunOutcome
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.trading_env_types.broker_types import FeeSource
+from python.framework.types.trading_env_types.entry_hold_types import EntryHoldLift, EntryHoldReason
 from python.framework.types.trading_env_types.order_event_types import (
     OrderEventPlane,
     OrderEventType,
@@ -1995,6 +1996,11 @@ class RunResultRow(BaseModel):
     # Where the run's orders went — `venue` is real money and nothing else (#362). None on a
     # fragment written before the column existed: not recorded.
     orders_to: OrdersTo | None = None
+    # When the session's start found its account's declared exclusivity false on its own
+    # instrument and held its entries (#499), ISO-8601 UTC — its start. The money figures on the
+    # row stand, but their denominator is not provably the bot's own. None where the start found
+    # nothing, on every backtest, and on a row of `logic_version` 22 or older: not recorded.
+    exclusivity_violated_at: str | None = None
     # What the run ran with (#547, on every row since #476): the run-config store ids of its
     # rendered configuration and of its frozen broker configuration — comma-joined where a
     # backtest traded under several. '' on a fragment written before the columns existed, and
@@ -2361,6 +2367,12 @@ class DeploymentSessionRow(BaseModel):
             rehearsal; None on a session recorded before the field existed
         orders_to_changed: True when `orders_to` differs from the previous session's — a
             deployment that went from a rehearsal to real money, or back
+        exclusivity_violated_at: When the session's start found its account's declared
+            exclusivity false on its own instrument (#499) — it held its entries, or an operator
+            had accepted those orders at an earlier start — its start,
+            ISO-8601 UTC. Its money figures stand, but their denominator is not provably the
+            bot's own. None where the start found nothing, and on a session recorded before
+            the field existed
         code_changes: What moved in the code since the previous session, one entry per repository
             that did. Empty when nothing moved, on the first session of a series, and on a session
             recorded before the field existed, which is no change: the sessions on either side of
@@ -2384,6 +2396,7 @@ class DeploymentSessionRow(BaseModel):
     operation_changed: bool = False
     orders_to: Optional[OrdersTo] = None
     orders_to_changed: bool = False
+    exclusivity_violated_at: Optional[str] = None
     code_changes: list[DeploymentCodeChange] = []
 
 
@@ -3524,6 +3537,32 @@ class SafetyDayRow(BaseModel):
     limit_hit: bool = False
 
 
+class EntryHoldRow(BaseModel):
+    """
+    One time the session held its entries (#499): it managed and closed what was its own and opened
+    nothing new, from its start to its end.
+
+    A reason can hold twice in one session — lifted, and found again — so a row is its reason and
+    its start together. Both instants are on the session's clock, which begins with its first
+    market data; what the start found before then is dated by nothing rather than by a wall-clock
+    reading a replay could never repeat.
+
+    Args:
+        reason: Why the entries were held
+        held_at: When the hold began, ISO-8601 UTC; None — from the session's start, before its
+            clock began
+        detail: What held them, as the operator was told
+        lifted_at: When it ended, ISO-8601 UTC; None while it stood at the end, and for a hold
+            lifted at the start
+        lifted_by: How it ended; None — still held when the session ended
+    """
+    reason: EntryHoldReason
+    held_at: Optional[str] = None
+    detail: str = ''
+    lifted_at: Optional[str] = None
+    lifted_by: Optional[EntryHoldLift] = None
+
+
 class SafetyReport(RunScopedReport):
     """
     The risk denominator this session ran against, and how far it moved (#356 / #314).
@@ -3586,6 +3625,8 @@ class SafetyReport(RunScopedReport):
             the venue and nobody has confirmed otherwise
         flatten_kept: Spot holdings the hard stop kept on purpose (spot_liquidate_to_quote
             off): open at the venue by decision, not by failure
+        entry_holds: Every time the session held its entries (#499), in the order they began
+        entry_holds_key: What makes one of those rows unique
     """
     symbol: str = ''
     enabled: bool = False
@@ -3613,6 +3654,8 @@ class SafetyReport(RunScopedReport):
     flatten_outcome: Optional[FlattenOutcome] = None
     flatten_unconfirmed: list[str] = []
     flatten_kept: list[str] = []
+    entry_holds: list[EntryHoldRow] = []
+    entry_holds_key: list[str] = ['reason', 'held_at']
 
     @computed_field
     @property
@@ -3624,6 +3667,28 @@ class SafetyReport(RunScopedReport):
             The number of day rows
         """
         return len(self.days)
+
+    @computed_field
+    @property
+    def entry_hold_count(self) -> int:
+        """
+        How often the session held its entries.
+
+        Returns:
+            The number of entry-hold rows
+        """
+        return len(self.entry_holds)
+
+    @computed_field
+    @property
+    def entries_held_at_end(self) -> bool:
+        """
+        Whether a hold still stood when the session ended.
+
+        Returns:
+            True when any row was never lifted
+        """
+        return any(row.lifted_by is None for row in self.entry_holds)
 
 
 class SignalUsageRow(BaseModel):

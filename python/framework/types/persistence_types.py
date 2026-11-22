@@ -294,6 +294,12 @@ class RiskBaseline(BaseModel):
         exclusive_account: The #489 declaration in force when it was taken. The denominator
             is the bot's own only if the account is the bot's alone, and a drawdown shown
             without that premise is a number about somebody else's deposits too
+        exclusivity_violated_at_utc: When the start of the session that took this record found
+            the declaration false on this bot's own instrument — orders of another owner rested
+            there, held over or accepted by an operator (#499) — ISO-8601 UTC, the session's
+            start. The figures measured against it
+            stand, but their denominator is not provably the bot's own. None when that start
+            found nothing
     """
     kind: BaselineKind
     value: float
@@ -302,6 +308,7 @@ class RiskBaseline(BaseModel):
     mark_price: Optional[float] = None
     quantities: Optional[BaselineQuantities] = None
     exclusive_account: bool = False
+    exclusivity_violated_at_utc: Optional[str] = None
 
 
 class AccountDrawdownCarryOver(BaseModel):
@@ -377,6 +384,23 @@ class ConfigurationCarryOver(BaseModel):
     rendered_config_id: str = ''
 
 
+class AcceptedForeignOrders(BaseModel):
+    """
+    Orders of another owner the operator accepted on this bot's instrument, at a start they watched (#499).
+
+    The profile declares the account exclusive and the start found these orders on the very instrument
+    this bot trades, so it held the session's entries; the operator lifted the hold and so said these
+    orders may rest there. The next start does not hold its entries again over the same orders — only
+    over one it has not seen. A list of the venue's references, because those are what the venue names.
+
+    Args:
+        broker_refs: The venue's references of the accepted orders
+        accepted_at_utc: When the operator accepted them, ISO-8601 UTC
+    """
+    broker_refs: List[str] = Field(default_factory=list)
+    accepted_at_utc: str = ''
+
+
 class ColdStartPayload(BaseModel):
     """
     The framework's own carry-over: what the NEXT session needs to recognise its predecessor
@@ -424,6 +448,9 @@ class ColdStartPayload(BaseModel):
             NOT derivable afterwards, because the profile name says which bot rather than
             which deployment — the same profile stopped for a month and restarted is a second
             one, and from outside the two look identical
+        accepted_foreign_orders: Orders of another owner the operator accepted on this bot's
+            instrument (#499). None means none was accepted — a start holds its entries over
+            every such order it finds
     """
     session_keys: List[str] = Field(default_factory=list)
     highest_position_counter: int = 0
@@ -438,6 +465,7 @@ class ColdStartPayload(BaseModel):
     readings_orders_to: Optional[OrdersTo] = None
     venue_claims_configuration: Optional[ConfigurationCarryOver] = None
     deployment_id: Optional[str] = None
+    accepted_foreign_orders: Optional[AcceptedForeignOrders] = None
 
 
 class ReadingsVerdict(StrEnum):

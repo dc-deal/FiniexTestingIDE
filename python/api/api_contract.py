@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 61
+API_CONTRACT_VERSION = 62
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,9 +36,14 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "every route that reads a store index — runs, deployments, sweeps, the configuration directory "
-    "and others: 503 store_index_busy with Retry-After (new) when another process writes the index for "
-    "longer than the server waits for it, a few seconds; such a request used to end in a bare 500 or "
-    "wait without bound",
+    "order-history: rejection_reason entries_held (new value) — a new entry refused while the session "
+    "holds its entries, because at its start orders of another owner rested on the bot's instrument "
+    "on an account declared exclusive; closing the position and cancelling its orders stay free",
+    "order-history and order-events: end_reason entries_held (new value) — a resting entry the "
+    "framework cancelled when the session's entries were held",
+    "deployments: exclusivity_violated_at on a session row (new) — when its start found the account's "
+    "declared exclusivity false on its instrument — it held its entries, or an operator had accepted "
+    "those orders at an earlier start; null where it found nothing",
+    "sweeps: exclusivity_violated_at on a combination (new) — null on every backtest",
 ]
 

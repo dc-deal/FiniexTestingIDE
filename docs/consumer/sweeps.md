@@ -180,6 +180,8 @@ that before trusting the order:
   `external_warmup_timeframes` the bar timeframes whose warmup reached back into a venue's published
   history. They say what kind of data and how much, never which files. `features_beyond_venue` names the order features the run was allowed beyond what its
   venue's API holds, empty for every other row. Empty, and the counts null, on a row written before they existed.
+- `exclusivity_violated_at` — null on every combination: it is a session's, set when its start found
+  its account's declared exclusivity false, and a backtest meets no venue at its start.
 - `rendered_config_id` · `broker_config_id` — what the combination ran with: the run-config
   store's ids of its rendered scenario set and of the broker configuration it traded under,
   comma-joined where it traded under several. `config_hash` on the run's

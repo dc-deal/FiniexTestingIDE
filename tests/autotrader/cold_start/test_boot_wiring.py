@@ -23,6 +23,7 @@ would drag in a broker, a tick source and a decision logic without testing any o
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import List, Optional, Set
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -38,8 +39,10 @@ from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.persistence.cold_start_state_store import ColdStartStateStore
 from python.framework.persistence.position_book_watcher import PositionBookWatcher
+from python.framework.types.autotrader_types.cold_start_types import BootPremiseViolation
 from python.framework.types.config_types.autotrader_defaults_config_types import SafetyConfig
 from python.framework.types.persistence_types import (
+    AcceptedForeignOrders,
     AccountDrawdownCarryOver,
     BaselineKind,
     BaselineOrigin,
@@ -51,7 +54,8 @@ from python.framework.types.persistence_types import (
     RiskBaseline,
 )
 from python.framework.types.run_kind_types import OrdersTo, TicksFrom
-from tests.autotrader.cold_start.conftest import RecordingLogger
+from python.framework.types.trading_env_types.entry_hold_types import EntryHoldReason
+from tests.autotrader.cold_start.conftest import RecordingLogger, make_broker_order
 
 _CLOCK = datetime(2026, 9, 14, 8, 0, tzinfo=timezone.utc)
 
@@ -73,6 +77,7 @@ class SpyStore:
              replace_readings: bool = False,
              venue_claims_configuration: Optional[ConfigurationCarryOver] = None,
              deployment_id: Optional[str] = None,
+             accepted_foreign_orders: Optional[AcceptedForeignOrders] = None,
              refresh_index: bool = True) -> None:
         if self._fail:
             raise OSError('disk full')
@@ -88,6 +93,7 @@ class SpyStore:
             'replace_readings': replace_readings,
             'venue_claims_configuration': venue_claims_configuration,
             'deployment_id': deployment_id,
+            'accepted_foreign_orders': accepted_foreign_orders,
             'refresh_index': refresh_index,
         })
 
@@ -163,6 +169,8 @@ def _main(executor, store, persist: bool, keys_in_use=None,
     # reads the booking-period high-water mark from it (#537), and the store treats the value
     # as a floor, so a zero here leaves a deployment's period count alone.
     main._event_loop = None
+    # #499 — nothing an attended start accepted, the case of every test here
+    main._accepted_foreign_orders = None
     main._cold_start = ColdStartSetup(
         proceed=True,
         store=store,
@@ -538,6 +546,93 @@ class TestWhoIsEligible:
 
         assert setup.proceed is True
         assert setup.store is None
+
+
+class TestAHeldStartStillWrites:
+    """
+    A start that holds its entries (#499) is a start that went through: it runs, and it writes its
+    carry-over. A held session that wrote none would leave its session key unrecorded beside the
+    orders it manages, and the next start would no longer know them as its own.
+    """
+
+    def test_it_persists_and_hands_on_what_it_holds_over(self, executor, config, logger, tmp_path):
+        executor.broker.adapter.set_broker_orders([
+            make_broker_order('OQ7X2A-HUMAN', 'somebody-elses-format', symbol='BTCUSD'),
+        ])
+        profile = SimpleNamespace(
+            cold_start=config.model_copy(update={'enabled': True, 'path': str(tmp_path)}),
+            adapter_type='mock', symbol='BTCUSD', bot_id='held01', carry_over_from=None,
+            get_unit_name=lambda: 'btcusd_held', capital=SimpleNamespace(exclusive_account=True))
+
+        setup = setup_cold_start(
+            config=profile, executor=executor, decision_logic=None, logger=logger,
+            run_id='r1', attended=False, adoption_skipped_by=None, dry_run=False)
+
+        assert (setup.proceed, setup.persist, setup.persist_venue_claims) == (True, True, True)
+        assert setup.boot_premise_violation.foreign_refs == ['OQ7X2A-HUMAN']
+
+
+class TestTheHoldAtTheStart:
+    """
+    What the start does with what the cold start found (#499): whether it holds, whether it stamps
+    the money records, and whether anything but the operator can lift the hold. Without a reconcile
+    nothing observes the orders going, so only an attended start lifts it.
+    """
+
+    _VIOLATION = BootPremiseViolation(
+        symbol='BTCUSD', foreign_refs=['OQ5A1-HUMAN'],
+        detail='1 order(s) of another owner rest on BTCUSD while the account is declared exclusive')
+
+    @staticmethod
+    def _main(executor, setup: ColdStartSetup, reconciler=None) -> AutotraderMain:
+        """A session object carrying only what the hold at the start reads."""
+        main = AutotraderMain.__new__(AutotraderMain)
+        main._executor = executor
+        main._cold_start = setup
+        main._run_timestamp = _CLOCK
+        main._reconciler = reconciler
+        main._operator_alerts = MagicMock()
+        main._session_logger = RecordingLogger()
+        main._exclusivity_violated_at = None
+        main._accepted_foreign_orders = None
+        main._boot_premise_lifter = None
+        return main
+
+    def test_without_a_reconcile_nothing_lifts_it_by_itself(self, executor):
+        main = self._main(executor, ColdStartSetup(boot_premise_violation=self._VIOLATION))
+
+        main._hold_entries_at_boot(attended=False)
+
+        assert executor.get_entry_holds().is_held(EntryHoldReason.BOOT_PREMISE)
+        assert main._boot_premise_lifter is None
+        assert main._exclusivity_violated_at == _CLOCK.isoformat()
+
+    def test_with_a_reconcile_its_cycles_may_lift_it(self, executor):
+        main = self._main(executor, ColdStartSetup(boot_premise_violation=self._VIOLATION),
+                          reconciler=object())
+
+        main._hold_entries_at_boot(attended=False)
+
+        assert main._boot_premise_lifter is not None
+
+    def test_an_accepted_order_still_resting_holds_nothing_and_is_stamped(self, executor):
+        """The operator accepted it, so nothing is held; the account is still not the bot's alone."""
+        main = self._main(executor, ColdStartSetup(accepted_foreign_refs=['OQ5A1-HUMAN']),
+                          reconciler=object())
+
+        main._hold_entries_at_boot(attended=False)
+
+        assert not executor.get_entry_holds().is_held(EntryHoldReason.BOOT_PREMISE)
+        assert main._boot_premise_lifter is None
+        assert main._exclusivity_violated_at == _CLOCK.isoformat()
+
+    def test_a_clean_start_stamps_nothing(self, executor):
+        main = self._main(executor, ColdStartSetup(), reconciler=object())
+
+        main._hold_entries_at_boot(attended=False)
+
+        assert main._exclusivity_violated_at is None
+        assert not executor.get_entry_holds().get_all()
 
 
 class TestBothReadsHonourADeclaredContinuation:

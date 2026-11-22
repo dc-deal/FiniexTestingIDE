@@ -98,6 +98,30 @@ class SkippedOrder:
     key_is_ours: Optional[bool] = None
 
 
+@dataclass(frozen=True)
+class BootPremiseViolation:
+    """
+    What the start found against the account's declared exclusivity, on the instrument this bot trades (#499).
+
+    The profile declares the account this bot's alone, and orders carrying no key of ours rest on its
+    own instrument — at spot both exposures merge into one balance, so the bot cannot size an order
+    against what is actually its own. The session starts and holds its entries until the orders are
+    gone or an operator accepts them.
+
+    Args:
+        symbol: The instrument they rest on — this bot's
+        foreign_refs: The venue's references of those orders, none of them accepted by an operator yet
+        detail: The sentence the hold, its alert and its record carry
+        accepted_refs: Orders of another owner on the same instrument an operator accepted at an
+            earlier start and that still rest — an acceptance at this start keeps them beside the new
+            ones, since the carry-over holds one set
+    """
+    symbol: str
+    foreign_refs: List[str]
+    detail: str
+    accepted_refs: List[str] = field(default_factory=list)
+
+
 @dataclass
 class ColdStartSituation:
     """

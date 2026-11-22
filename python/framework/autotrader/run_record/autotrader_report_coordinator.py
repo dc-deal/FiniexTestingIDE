@@ -124,6 +124,7 @@ class AutotraderReportCoordinator:
         replayed_scenario: Optional[SingleScenario] = None,
         observed_feed: Optional[SignalObservedSeries] = None,
         deployment_id: str = '',
+        exclusivity_violated_at: Optional[str] = None,
     ):
         """
         Initialize the report coordinator.
@@ -144,12 +145,17 @@ class AutotraderReportCoordinator:
                 shared MountPreparer run the sim batch uses; empty for a session without one
             replayed_scenario: A mock session's scenario after the mount filled what it read —
                 its ledger row's consumption record; None for a live-adapter session
+            deployment_id: The resolved deployment, '' when the session stands alone
+            exclusivity_violated_at: When the session's start found the account's declared
+                exclusivity false on its instrument (#499) — the ledger rows say it; None when
+                it found nothing
         """
         self._result = result
         self._run_dir = run_dir
         self._run_id = run_id
         # The RESOLVED deployment, '' when this session stands alone (#497).
         self._deployment_id = deployment_id
+        self._exclusivity_violated_at = exclusivity_violated_at
         self._run_timestamp = run_timestamp
         self._config = config
         self._decision_logic = decision_logic
@@ -253,12 +259,14 @@ class AutotraderReportCoordinator:
         # have fired, which is the question a parity proof asks before anything is armed.
         # No baseline means nothing was ever measured, and an artifact then asserts a
         # denominator that does not exist.
+        # The entry holds (#499) ride in it. A session that held its entries and stopped before its
+        # first tick, so took no baseline, could not place an order either: its hold stands in the
+        # error pot's report and the session log, never in figures nobody measured.
         safety_report = None
-        if (result.safety_session is not None
-                and result.safety_session.baseline is not None):
+        if result.safety_session is not None and result.safety_session.baseline is not None:
             safety_report = build_safety_report_from_session(
-                self._run_id, result.safety_session, self._config.safety,
-                self._config.symbol)
+                self._run_id, result.safety_session, self._config.safety, self._config.symbol,
+                entry_holds=result.entry_holds)
             writer.write_section(SAFETY_ARTIFACT, safety_report)
 
         # Venue account (#362) — what the venue held at the session's start and end, and what
@@ -306,7 +314,8 @@ class AutotraderReportCoordinator:
             deployment_id=self._deployment_id, run_dir=self._run_dir,
             logger=self._summary_logger, replayed_scenario=self._replayed_scenario,
             broker_config_id=(self._broker_config.get_frozen_config_id()
-                              if self._broker_config is not None else ''))
+                              if self._broker_config is not None else ''),
+            exclusivity_violated_at=self._exclusivity_violated_at)
         # The session's ledger entries (#537): its booking periods ARE its ledger rows, and no
         # aggregate row is written beside them — the deployment history sums over rows, and a
         # summary standing next to its own evidence would count the month twice.

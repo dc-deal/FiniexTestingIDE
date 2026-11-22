@@ -414,9 +414,17 @@ called a dry run, although the `dry_run` flag reads true for it too. To be renam
 See [AutoTrader Configuration](autotrader/autotrader_configuration.md).
 
 **end reason** (`end_reason`) — Why an order ended without filling: the strategy's cancel, the
-order timeout, the resolution ceiling, the end of the session or of
+order timeout, the resolution ceiling, an *entry hold*, the end of the session or of
 the backtest's data, or the venue's own cancel or expiry. Stands beside *initiator* on the same row
 or event.
+
+**entry hold** (`entries_held` as a rejection and an end reason; *Entries held* / *Entries lifted*
+alerts) — A session that runs and opens nothing new: it manages and closes its position, and every
+order that would open one is refused at the order path. Today a start holds its entries when orders
+of another owner rest on the bot's own instrument while the account is declared exclusive. A hold
+is *lifted* — by its cause measurably gone, or by the operator — and never by time. *Hold* here is
+the verb of withholding: not a *holding*, which is a spot balance, and lifting a hold is not a
+*release* of the software. See [Capital and Safety](autotrader/autotrader_capital_and_safety.md).
 
 **entry member** — One file a store entry may hold, declared by the store: its path, its shape
 (a *snapshot member*, a stream, a report output, a log), which pipeline writes it and when, and which

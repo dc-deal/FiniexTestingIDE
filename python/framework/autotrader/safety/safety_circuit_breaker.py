@@ -260,6 +260,9 @@ class SafetyCircuitBreaker:
             restored=None,
             spot_mode=self._trading_model == TradingModel.SPOT,
             exclusive_account=self._config.capital.exclusive_account,
+            # The day's record carries what the session's start found, like the session's own
+            exclusivity_violated_at_utc=(self._risk_baseline.get_exclusivity_violated_at_utc()
+                                         if self._risk_baseline is not None else None),
             clock_fn=clock_fn,
             logger=self._logger,
         )

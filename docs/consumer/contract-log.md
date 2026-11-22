@@ -33,6 +33,30 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 62 — 2026-11-21 (#499)
+
+A session whose start found orders of another owner on its own instrument, on an account declared
+exclusive, starts and holds its entries: it manages and closes its position and opens nothing new
+until those orders are gone or an operator lifts the hold.
+
+- [Order history](/api/v1/docs/order-history): **`rejection_reason: entries_held`** (new value) — a
+  new entry refused while the session held its entries. Closing the position and cancelling its
+  orders are never refused for it.
+- [Order history](/api/v1/docs/order-history) and [order events](/api/v1/docs/order-events):
+  **`end_reason: entries_held`** (new value), with `initiator: framework` — a resting entry
+  cancelled when the hold began, because the venue filling it would have been new risk.
+- [Deployments](/api/v1/docs/deployments): **`exclusivity_violated_at`** on a session row (new) —
+  when its start found the declared exclusivity false, its start in ISO-8601 UTC: it held its
+  entries, or an operator had accepted those orders at an earlier start. Its money figures stand,
+  but their denominator is not provably the bot's own; null where the start found nothing.
+- [Sweeps](/api/v1/docs/sweeps): **`exclusivity_violated_at`** on a combination (new) — null on
+  every backtest, which meets no venue at its start.
+
+**A row recorded before this contract** carries `logic_version` 22 or older and null in
+`exclusivity_violated_at`: not recorded, never a clean start.
+
+Two values and two fields added; nothing changed or removed.
+
 ## Version 61 — 2026-11-21 (#650)
 
 A request that meets a store index another process is writing waits for it, and says so when it
@@ -118,45 +142,13 @@ session of the same data recorded now.
 
 One field added, three meanings changed; nothing removed.
 
-## Version 57 — 2026-11-16 (#460)
-
-A backtest runs on its timeline: it orders its ticks by when they arrived, computes the algo once
-for the ticks that arrived in one millisecond, and fills an order at the instant it comes due rather
-than at the next tick.
-
-- [Scenario details](/api/v1/docs/scenario-details): **`algo_passes`** and **`ghost_passes`** (new) —
-  how often the algo computed, and how often a heartbeat logic's decision ran between ticks. Where
-  ticks share a millisecond, `algo_passes` falls below `ticks_processed`, which still counts ticks.
-  A changed meaning: `non_flat_signal_pct` and `trades_requested_pct` are per pass, algo and
-  heartbeat passes together.
-- [Worker and decision](/api/v1/docs/worker-decision): `algo_passes` and `ghost_passes` on a unit row
-  (new), and **`algo_avg_per_pass_ms`** (new) — the algo path's own time per pass, beside
-  `algo_avg_per_tick_ms`. A changed meaning: `compute_ratio_pct` is a worker's calls per algo pass.
-- [Profiling](/api/v1/docs/profiling): **`algo_passes`**, **`algo_pass_ms`** and
-  **`avg_per_algo_pass_ms`** on a unit row, **`total_algo_passes`** and **`avg_per_algo_pass_ms`**
-  on the aggregate (new) — the time of one pass beside the time per tick. A changed meaning:
-  `p95_processing_ms`, `suggested_budget_ms` and `scenarios_over_p5` are taken per algo pass, and
-  `inter_tick` counts one interval per arrival: the ticks that arrived in one millisecond count
-  once, so a burst no longer puts the P5 at 0 ms. A new operation in `operations`,
-  `instant_resolution`: the broker work of an instant without a tick, which `trade_simulator`
-  counted before.
-- [Validation checks](/api/v1/docs/validation-checks): a new id, `data_arrival_time_offset` — a tick
-  file whose recorded arrival time a drifting clock set off, so the backtest orders it by event time.
-
-**A backtest recorded before this contract** carries null in both counts — nothing counted them —
-and its per-pass shares read as before, because each of its passes was one tick. Its pass times are
-null, and its budget figures are taken per tick, as they were then. Its figures were produced the
-earlier way and can differ from a backtest of the same data recorded now.
-
-Fields added on four rows, one operation and one check added, seven meanings changed; nothing
-removed.
-
-## Versions 56 and earlier
+## Versions 57 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 57** — 2026-11-16 (#460): A backtest runs on its timeline — `algo_passes` and `ghost_passes` on [scenario details](/api/v1/docs/scenario-details), the [worker and decision](/api/v1/docs/worker-decision) rows and [profiling](/api/v1/docs/profiling), with the per-pass time beside the per-tick one, several shares and budget figures taken per pass, the `instant_resolution` operation and the `data_arrival_time_offset` [validation check](/api/v1/docs/validation-checks); a backtest recorded before it carries null counts.
 - **Version 56** — 2026-11-15 (#666): A list says what a reader opens a run or a sweep to find out — `total_units`, `failed_count` and `succeeded_count` on every row of [runs](/api/v1/docs/runs) and on a [sweep](/api/v1/docs/sweeps)'s combinations, `best_combinations` on the sweep list, `total_final_equity` and `total_initial_balance` on a combination; a sweep whose objective cannot rank its combinations is refused with `409 sweep_objective_unrankable`.
 - **Version 55** — 2026-11-12 (#379): A worker draws its outputs on a run's chart as [indicator series](/api/v1/docs/indicator-series) — the open `GET /api/v1/drawing-types` schema route, an `indicator_series` row per drawing worker on the [recorded streams](/api/v1/docs/recorded-streams) timeline and the series in its window, whose `limit`, `matched`, `returned` and `next_from` now count over every stream; `stream_files` on [runs](/api/v1/docs/runs) names the series files.
 - **Version 54** — 2026-11-12 (#497): `drawdown_started_at` on the [portfolio](/api/v1/docs/portfolio) is the instant the equity curve began on the run's own clock — the replayed time in a backtest — where it was the wall clock; empty when a session ended before its first pass.

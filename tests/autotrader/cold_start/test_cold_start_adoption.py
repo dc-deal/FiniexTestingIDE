@@ -20,6 +20,7 @@ from python.framework.autotrader.cold_start.cold_start_adopter import ColdStartA
 from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
 from python.framework.types.autotrader_types.cold_start_types import SkipReason
 from python.framework.types.config_types.autotrader_defaults_config_types import ColdStartDefaults
+from python.framework.types.persistence_types import AcceptedForeignOrders
 from python.framework.types.trading_env_types.order_types import OrderType
 from python.framework.utils.run_id_utils import build_client_order_id
 from tests.autotrader.cold_start.conftest import PREVIOUS_SESSION_KEY, make_broker_order
@@ -365,34 +366,84 @@ class TestADeclaredExclusiveAccount:
         Returns:
             Whether the boot allowed the session to start
         """
+        return self._boot(executor, store, logger, exclusive).run()
+
+    def _boot(self, executor, store, logger, exclusive: bool) -> ColdStartAdopter:
+        """
+        The adopter of a boot with or without the declaration, before it runs.
+
+        Args:
+            executor, store, logger: the fixtures
+            exclusive: what the profile declares
+
+        Returns:
+            The adopter, for its run and what it found
+        """
         _remember_previous_session(store)
-        return _adopter(executor, store, logger).run() if not exclusive else ColdStartAdopter(
+        return _adopter(executor, store, logger) if not exclusive else ColdStartAdopter(
             executor=executor, store=store, config=ColdStartDefaults(adoption_mode='auto'),
             symbol='BTCUSD', logger=logger, exclusive_account=True,
-        ).run()
+        )
 
-    def test_a_stranger_on_our_own_symbol_reaches_the_error_pot_and_starts(
+    def test_a_stranger_on_our_own_symbol_reaches_the_error_pot_and_holds_the_entries(
             self, executor, store, logger):
         """
         The loudest case, and it still STARTS — refusing is not the safe outcome.
 
         A refusal would abandon this bot's own position and its resting order at the venue
         with nothing reconciling them, and its stop and target live in the very process that
-        declined to start. It would also deadlock two sibling bots and
-        loop against a supervisor. #499 turns this into a HALT that keeps managing what is
-        ours while placing nothing new; until that state exists, the honest answer is an
-        ERROR the operator cannot miss.
+        declined to start. It would also deadlock two sibling bots and loop against a
+        supervisor. So the session starts and HOLDS its entries (#499): it manages what is
+        its own and places nothing new — and the ERROR stays, because the operator must hear it.
         """
         executor.broker.adapter.set_broker_orders([
             make_broker_order('OQ7X2A-HUMAN', 'somebody-elses-format', symbol='BTCUSD'),
         ])
+        adopter = self._boot(executor, store, logger, exclusive=True)
 
-        assert self._run(executor, store, logger, exclusive=True) is True
-        assert any('exclusive_account=true' in e for e in logger.errors)
-        # Both ways out are named, because the operator has to pick one.
-        assert any('cancel those orders' in e for e in logger.errors)
-        # And the issue that will change this is named, so nobody re-derives the reasoning.
-        assert any('#499' in e for e in logger.errors)
+        assert adopter.run() is True
+        violation = adopter.get_boot_premise_violation()
+        assert (violation.symbol, violation.foreign_refs) == ('BTCUSD', ['OQ7X2A-HUMAN'])
+        assert any('exclusive_account=true' in e and 'HOLDS its entries' in e for e in logger.errors)
+        # Every way out is named, because the operator has to pick one.
+        assert any('--attended' in e and 'exclusive_account=false' in e for e in logger.errors)
+
+    def test_a_stranger_the_operator_accepted_holds_nothing_again(self, executor, store, logger):
+        """
+        An attended start accepted the order (#499); the next start, attended or not, holds nothing.
+
+        It is still said, as a warning, and handed on: the account is still not this bot's alone, so
+        the money records carry the stamp as they did at the start that accepted it.
+        """
+        executor.broker.adapter.set_broker_orders([
+            make_broker_order('OQ7X2A-HUMAN', 'somebody-elses-format', symbol='BTCUSD'),
+        ])
+        adopter = self._boot(executor, store, logger, exclusive=True)
+        store.save(session_key=PREVIOUS_SESSION_KEY, highest_position_counter=0,
+                   accepted_foreign_orders=AcceptedForeignOrders(
+                       broker_refs=['OQ7X2A-HUMAN'], accepted_at_utc='2026-11-24T08:30:00+00:00'))
+
+        assert adopter.run() is True
+        assert adopter.get_boot_premise_violation() is None
+        assert not any('exclusive_account=true' in e for e in logger.errors)
+        assert any('accepted by the operator' in w and 'still rest' in w for w in logger.warnings)
+        assert adopter.get_accepted_foreign_refs() == ['OQ7X2A-HUMAN']
+
+    def test_a_new_stranger_beside_an_accepted_one_holds_again(self, executor, store, logger):
+        executor.broker.adapter.set_broker_orders([
+            make_broker_order('OQ7X2A-HUMAN', 'somebody-elses-format', symbol='BTCUSD'),
+            make_broker_order('OQ9Z4C-NEW', 'somebody-elses-format', symbol='BTCUSD'),
+        ])
+        adopter = self._boot(executor, store, logger, exclusive=True)
+        store.save(session_key=PREVIOUS_SESSION_KEY, highest_position_counter=0,
+                   accepted_foreign_orders=AcceptedForeignOrders(
+                       broker_refs=['OQ7X2A-HUMAN'], accepted_at_utc='2026-11-24T08:30:00+00:00'))
+
+        assert adopter.run() is True
+        violation = adopter.get_boot_premise_violation()
+        assert violation.foreign_refs == ['OQ9Z4C-NEW']
+        # Carried beside the new one, so an acceptance at this start keeps it in the one stored set
+        assert violation.accepted_refs == ['OQ7X2A-HUMAN']
 
     def test_the_same_stranger_says_nothing_without_the_declaration(
             self, executor, store, logger):

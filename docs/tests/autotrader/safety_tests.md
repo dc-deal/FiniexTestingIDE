@@ -64,7 +64,7 @@ forgotten. A thirty-day unattended run will restart.
 | `TestTheHighWaterMark` | rises with a peak, never falls with a drawdown, ignored entirely by a fixed baseline, and every advance carries its own date |
 | `TestASpotRecordCanBeReDerived` | `value == quote + base × mark_price`; a margin record carries no price, because a cash-denominated account has none |
 | `TestTheOperatorIsTold` | a restore is said out loud; a mode changed between runs is a warning and the RECORD wins |
-| `TestTheExclusivityDeclarationTravelsWithIt` | the #489 declaration is stamped on the record — a drawdown percentage without it is a number about somebody else's deposits too |
+| `TestTheExclusivityDeclarationTravelsWithIt` | the #489 declaration is stamped on the record — a drawdown percentage without it is a number about somebody else's deposits too; and beside it, when the session's start found the declaration false and held its entries (#499), since when — empty when the start found nothing |
 | `TestARestoredKindGovernsTheBehaviourToo` | the restored kind becomes the session's MODE, both directions. Keeping the label while running the configured mode would convert the record on its first advance — the silent conversion one step later |
 
 ### Level 1 — The Hard Stop (`test_emergency_flatten.py`, #356)
@@ -100,6 +100,18 @@ bound to a stub, the DERIVE half against the real builder. Nothing here renders.
 | `TestHowCloseItCame` | the share of the configured limit; `None` rather than 0.0 when no limit is configured; the NEARER of the percentage and absolute limits wins; the hard threshold is measured separately |
 | `TestTheFloorIsOneQuantityWithTwoSpellings` | the report names the config key the account model writes, so one limit is not read as two |
 | `TestTheWorstDayIsChosenInTheBuilder` | it names the DAY, not only the number; limit-hit days are counted; a session shorter than a day has no worst day |
+
+### Level 1 — The Entry Hold at the Start (`test_entry_holds_at_boot.py`, #499)
+
+A start that finds orders of another owner on the bot's instrument, while the account is declared
+exclusive, starts and holds its entries. Both account models where money moves.
+
+| Class | What it validates |
+|-------|-------------------|
+| `TestTheStartHoldsItsEntries` | an unattended start holds, dated from the start rather than by the wall clock, sends a critical alert and logs into the error pot; without a reconcile the alert says only `--attended` lifts it; the session's resting entries are cancelled with the hold, ended by the framework with `entries_held` and never "by the strategy" |
+| `TestAnAttendedStartMayLiftIt` | a no keeps the hold; a yes lifts it as the operator's, sends the lifted alert and returns the orders it accepted for the carry-over — beside the ones accepted at an earlier start that still rest, because the carry-over holds one set |
+| `TestTheHoldLiftsWhenItsOrdersAreGone` | a cycle that still shows those orders keeps the hold, and so does one that could not read the venue; a completed cycle without them lifts it on the session's clock, whatever other owner's order rests elsewhere; a lifted hold is not lifted twice |
+| `TestTheRecordNamesEveryHold` | a held session's safety report names every hold beside the figures it measured, with its declared key; a lifted hold states how and when |
 
 ### Level 2 — Integration Tests: Spot
 

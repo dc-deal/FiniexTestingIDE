@@ -31,6 +31,13 @@ simply pass fixed or advanced timestamps instead of patching `datetime.now()`.
 | `TestConfigurableThreshold` | Custom `max_consecutive_rejections`, cooldown duration in message |
 | `TestTheDenialIdsAreReproducible` | A guard numbers its denials `guard_1`, `guard_2`, … and two fresh guards number the same denials the same way — two identical backtests write identical order-event streams (#362) |
 
+`test_entry_holds.py` — the entry holds of a session (#499), the register the guard reads:
+
+| Class | What it validates |
+|-------|-------------------|
+| `TestTheRegister` | a hold stands until it is lifted and stays in the record after; a second hold of a standing reason keeps the first one's start; lifting nothing answers nothing; a lifted reason can hold again |
+| `TestEveryReasonDeclaresHowItEnds` | every reason declares at least one lift route; a lift by an undeclared route is refused; every declared route is performed somewhere in the framework, and every lift the framework performs is declared — the declaration held in both directions by a walk over the source |
+
 ### Level 2 — Scenario Integration Tests
 
 End-to-end tests that run full backtesting scenarios through the DecisionTradingApi + OrderGuard + TradeSimulator pipeline. Uses `margin_stress_probe` decision logic with `trade_sequence` support.

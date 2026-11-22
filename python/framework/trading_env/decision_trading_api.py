@@ -418,14 +418,15 @@ class DecisionTradingApi:
             return AlgoOrderResult(refusal)
 
         # Pre-trade guard — rejection cooldown + stale-market-data block (#436) +
-        # unresolved-write block (#487). Time source is the executor's current tick
+        # unresolved-write block (#487) + entry hold (#499). Time source is the executor's current tick
         # timestamp: simulated in backtests (keeps cooldowns deterministic and sim-correct),
         # wall-clock in live. The market-data status is always fresh in sim, and the
-        # unresolved set is always empty there.
+        # unresolved set and the entry holds are always empty there.
         now = self._executor.get_current_time()
         guard_result = self._order_guard.validate(
             request, now, self._executor.get_market_data_status(),
-            unresolved_at_ceiling=self._executor.get_unresolved_at_ceiling())
+            unresolved_at_ceiling=self._executor.get_unresolved_at_ceiling(),
+            entry_holds=self._executor.get_active_entry_holds())
         if guard_result is not None:
             self._executor.record_guard_rejection(guard_result)
             return AlgoOrderResult(guard_result)

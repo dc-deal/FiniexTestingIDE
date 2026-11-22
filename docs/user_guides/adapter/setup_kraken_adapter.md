@@ -257,15 +257,15 @@ If the account is exclusively this bot's, say so and let the boot check it:
 
 The boot then **reports** what contradicts the declaration — an error when an order it cannot
 recognise rests on the instrument this bot trades, a warning when one sits elsewhere — and the
-session starts either way. Left at its default (`false`) nothing is checked and nothing is said;
+session starts either way. On the instrument it trades, it also **holds its entries** until those
+orders are gone or you lift the hold at a start with `--attended`. Left at its default (`false`) nothing is checked and nothing is said;
 the thresholds simply measure whatever is on the account.
 
-> **Reported, not refused — on purpose.** A refusal would stop the session, and a stopped session
-> is not a safe one: this bot may hold a position and a protective resting order at the venue, and
-> refusing abandons both with nothing reconciling them until somebody looks. Withholding new risk
-> while continuing to manage what is already open is the institutional answer, and that state is
-> tracked as #499. Until it exists, the boot tells you loudly and keeps running — so **read the
-> session log after a restart if you declared exclusivity.**
+> **Held, not refused — on purpose.** A refusal would stop the session, and a stopped session
+> is not a safe one: this bot may hold a position at the venue, and refusing abandons it with
+> nothing reconciling it until somebody looks. So the session runs, manages what is already open
+> and places nothing new. You hear it as *Entries held*; cancel the other orders at the venue, or
+> start with `--attended` and accept them.
 
 A minimum-order check runs either way: a bot whose account can neither buy nor sell one
 minimum volume refuses at boot rather than at its first signal.

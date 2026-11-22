@@ -86,6 +86,7 @@ class AutotraderSessionSummary:
         self._render_stats(renderer)
         self._render_cold_start(renderer)
         self._render_safety(renderer)
+        self._render_entry_holds(renderer)
         self._render_venue_account(renderer)
         self._render_output_locations(renderer)
 
@@ -218,6 +219,30 @@ class AutotraderSessionSummary:
                 print(renderer.red(
                     f'     NOT confirmed flat — still open at the venue: {still}. '
                     f'Check the account by hand.'))
+
+    def _render_entry_holds(self, renderer: ConsoleRenderer) -> None:
+        """
+        Every time the session held its entries (#499), and whether one still stood at its end.
+
+        Its own block rather than part of the safety block above: a start that held its entries can
+        end before it ever measured a baseline, and the hold is what the operator must find then.
+        """
+        report = self._safety_report
+        if report is None or not report.entry_holds:
+            return
+
+        print()
+        state = (renderer.red('STILL HELD at session end') if report.entries_held_at_end
+                 else 'lifted')
+        print(f'⏸️ Entries held: {report.entry_hold_count}x, {state}')
+        for row in report.entry_holds:
+            since = row.held_at or 'the start'
+            if row.lifted_by is None:
+                ended = 'still held'
+            else:
+                ended = f'lifted ({row.lifted_by.value}) at {row.lifted_at or "the start"}'
+            print(f'  {row.reason.value} since {since}, {ended}')
+            print(f'    {row.detail}')
 
     def _render_venue_account(self, renderer: ConsoleRenderer) -> None:
         """

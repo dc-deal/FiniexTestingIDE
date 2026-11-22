@@ -82,6 +82,7 @@ def _loop(reconciler, executor) -> AutotraderCadenceWork:
     loop._reconciler = reconciler
     loop._executor = executor
     loop._intake = lambda: None
+    loop._on_reconciled = None
     return loop
 
 

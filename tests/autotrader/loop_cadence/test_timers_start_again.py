@@ -69,6 +69,7 @@ def _loop(reconciler=None, state_store=None) -> Tuple[AutotraderCadenceWork, _Ar
     loop = AutotraderCadenceWork.__new__(AutotraderCadenceWork)
     loop._axis_now_msc = lambda: _NOW_MSC
     loop._intake = lambda: intake
+    loop._on_reconciled = None
     loop._reconciler = reconciler
     loop._state_store = state_store
     loop._executor = MagicMock()

@@ -200,6 +200,8 @@ SERVED_UNFOLDED: Dict[type, Dict[str, str]] = {
         **{name: "a copy of the session's record of the emergency flatten"
            for name in ('flatten_fired', 'flatten_reason', 'flatten_outcome',
                         'flatten_unconfirmed', 'flatten_kept')},
+        'entry_holds': 'a listing: one row per time the session held its entries',
+        'entry_holds_key': 'the declaration of what makes one of those rows unique',
     },
     SignalSourceRow: {
         'source': 'the group: the family folds one source at a time',

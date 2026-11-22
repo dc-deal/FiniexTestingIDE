@@ -98,6 +98,7 @@ true — a recurrence before the all-clear keeps the episode open.
 | SESSION CRASHED while shutting down — the report may be incomplete | ⛔ |
 | The liveness ping was refused (wrong URL, deleted check) / its fail URL was refused | ⛔ / ⚠️ |
 | Safety circuit breaker — new entries blocked / cleared | ⚠️ / ✅ |
+| Entries held — the start found orders of another owner on the bot's instrument while the account is declared exclusive: the session runs, manages and closes its position and opens nothing new, its resting entries cancelled; and whether it lifts by itself or only at a start with `--attended` / Entries lifted — those orders are gone, or the operator accepted them | ⛔ / ✅ |
 | Market data stale / fresh again — including no first tick within `market_data_stale_after_s` of the loop's start, a feed that never connected | ⚠️ / ✅ |
 | A signal input stale / fresh again | ⚠️ / ✅ |
 | A trading day closed — its booking period: trades, net P&L and the open part, fees, equity at the close and at the open, the deepest dip; `daily_digest` switches it off. Days one late check closes together — a machine that slept, a clock that jumped — are the first day in full and one message for the rest, naming their span | ✅ |

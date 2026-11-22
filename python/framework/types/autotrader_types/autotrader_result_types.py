@@ -36,6 +36,7 @@ from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.types.trading_env_types.active_orders_snapshot_types import (
     ActiveOrdersSnapshot,
 )
+from python.framework.types.trading_env_types.entry_hold_types import EntryHold
 from python.framework.types.trading_env_types.order_event_types import OrderEvent
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
@@ -133,6 +134,8 @@ class AutoTraderResult:
             so a session that recovered from a deep excursion is not read as a quiet one.
             None when the session never built an event loop. Captured raw; the report model
             is derived from it
+        entry_holds: Every time the session held its entries (#499), lifted ones included —
+            empty for a simulation and a session nothing held. Captured raw from the executor
         session_validation_result: Post-run advisory findings (Tier 1) — the live counterpart
             of BatchExecutionSummary.batch_validation_result
         session_reach: How far the session got — what its footprint judges the files that open
@@ -185,6 +188,7 @@ class AutoTraderResult:
     cold_start_situation: Optional[ColdStartSituation] = None
     cold_start_verdict: Optional[ColdStartVerdict] = None
     safety_session: Optional[SafetySessionRecord] = None
+    entry_holds: List[EntryHold] = field(default_factory=list)
     # The session's LEDGER entries (#537) — one per closed booking period. Collected in the
     # loop and written by the report coordinator, so the parquet write stays off the measured
     # path and the simulation's subprocess can carry the same shape back over its bridge.

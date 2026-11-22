@@ -215,6 +215,7 @@ class OrderEndReason(Enum):
     ORDER_TIMEOUT = 'order_timeout'              # No fill within the order timeout
     RESOLUTION_CEILING = 'resolution_ceiling'    # Its answer was lost, and the venue never named it however long we asked
     SESSION_END = 'session_end'                  # The live session ended with the order still out
+    ENTRIES_HELD = 'entries_held'                # It would have opened a position while the session held its entries (#499)
     SCENARIO_END = 'scenario_end'                # The backtest's data ended with the order still out
     VENUE_CANCELLED = 'venue_cancelled'          # The venue cancelled it on its own
     VENUE_EXPIRED = 'venue_expired'              # The venue let it expire
@@ -267,6 +268,11 @@ class RejectionReason(Enum):
     # sent, neither open nor closed. It may be resting there. New ENTRIES stop while that
     # is true; closing and protecting what is already held do not.
     UNACCOUNTED_ORDER = 'unaccounted_order'
+    # #499 — the session holds its entries: a cause it cannot settle by itself stands, such as
+    # orders of another owner on this bot's instrument on an account declared exclusive. Like
+    # UNACCOUNTED_ORDER a refusal of our own and no broker's answer, so it feeds no cooldown;
+    # closing and protecting the open position stay free.
+    ENTRIES_HELD = 'entries_held'
     # A close for a position this bot does not hold. The simulation's venue also refuses a
     # close whose position was closed while the close was on its way.
     POSITION_NOT_FOUND = 'position_not_found'

@@ -251,6 +251,24 @@ class TestTheExclusivityDeclarationTravelsWithIt:
 
         assert tracker.get_baseline().exclusive_account is True
 
+    def test_a_start_that_found_the_declaration_false_says_so_beside_it(self):
+        # #499 — the start held its entries over orders of another owner on this instrument; the
+        # figures measured against this record stand, and the record says what they rest on
+        tracker = RiskBaselineTracker(
+            mode=BaselineKind.SESSION_FIXED, restored=None, spot_mode=False, exclusive_account=True,
+            clock_fn=lambda: _LATER, logger=_RecordingLogger(),
+            exclusivity_violated_at_utc='2026-11-24T01:05:00+00:00')
+
+        tracker.ensure_taken(10_000.0)
+
+        assert tracker.get_baseline().exclusivity_violated_at_utc == '2026-11-24T01:05:00+00:00'
+        assert tracker.get_exclusivity_violated_at_utc() == '2026-11-24T01:05:00+00:00'
+
+    def test_a_start_that_found_nothing_leaves_it_empty(self):
+        tracker = _tracker(exclusive_account=True)
+        tracker.ensure_taken(10_000.0)
+        assert tracker.get_baseline().exclusivity_violated_at_utc is None
+
 
 class TestARestoredKindGovernsTheBehaviourToo:
     """

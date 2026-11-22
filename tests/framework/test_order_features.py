@@ -133,6 +133,9 @@ class _FakeExecutor:
     def get_unresolved_at_ceiling(self) -> set:
         return set()
 
+    def get_active_entry_holds(self) -> tuple:
+        return ()
+
     def record_guard_rejection(self, result: OrderResult) -> None:
         self.guard_rejections.append(result)
 

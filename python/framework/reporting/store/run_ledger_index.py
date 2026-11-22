@@ -167,7 +167,10 @@ class RunLedgerIndex(AbstractStoreIndex):
     # mixed-version advisory flags a ranking over both generations. `server_clock_rules`
     # and `external_warmup_timeframes` appended; an older fragment reads them back ''. Nothing is
     # back-filled: the old count is a different measure, not a wrong one.
-    LOGIC_VERSION: int = 22
+    # 22 → 23 (contract 62, #499): `exclusivity_violated_at` appended — when a session's start found
+    # its account's declared exclusivity false on its own instrument (held over, or accepted). An
+    # older fragment reads it back None: not recorded, never a clean start.
+    LOGIC_VERSION: int = 23
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

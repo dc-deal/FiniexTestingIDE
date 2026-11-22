@@ -46,6 +46,8 @@ class SealedPeriodBooker:
             for a live-adapter session
         broker_config_id: The run-config store id the session froze its broker configuration
             under at its start; '' where it froze none
+        exclusivity_violated_at: When the session's start found the account's declared
+            exclusivity false on its instrument (#499); None when it found nothing
     """
 
     def __init__(
@@ -58,6 +60,7 @@ class SealedPeriodBooker:
         logger: AbstractLogger,
         replayed_scenario: Optional[SingleScenario] = None,
         broker_config_id: str = '',
+        exclusivity_violated_at: Optional[str] = None,
     ):
         self._config = config
         self._run_id = run_id
@@ -67,6 +70,7 @@ class SealedPeriodBooker:
         self._logger = logger
         self._replayed_scenario = replayed_scenario
         self._broker_config_id = broker_config_id
+        self._exclusivity_violated_at = exclusivity_violated_at
         # Built at the first seal and kept: nothing in it moves while the session runs
         self._provenance: Optional[RunProvenance] = None
 
@@ -83,7 +87,8 @@ class SealedPeriodBooker:
                     self._config, self._run_id, self._run_timestamp, None,
                     deployment_id=self._deployment_id, run_dir=self._run_dir,
                     logger=self._logger, replayed_scenario=self._replayed_scenario,
-                    broker_config_id=self._broker_config_id)
+                    broker_config_id=self._broker_config_id,
+                    exclusivity_violated_at=self._exclusivity_violated_at)
             RunResultsLedger(Path(AppConfigManager().get_run_ledger_path())).write_sealed_periods(
                 self._provenance, periods)
         except Exception as error:   # noqa: BLE001 — a booking must never end a trading session

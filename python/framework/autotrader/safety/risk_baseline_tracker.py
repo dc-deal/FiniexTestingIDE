@@ -39,6 +39,8 @@ class RiskBaselineTracker:
         restored: The predecessor's record, or None on a first run
         spot_mode: Whether the account holds inventory (decides mark_price / quantities)
         exclusive_account: The #489 declaration, stamped onto every record taken here
+        exclusivity_violated_at_utc: When this session's start found the declaration false on its
+            own instrument (#499), stamped beside it; None when it found nothing
         clock_fn: The canonical clock, which answers None before the first event
         logger: Session logger — the operator must see which baseline a session is on
     """
@@ -51,15 +53,26 @@ class RiskBaselineTracker:
         exclusive_account: bool,
         clock_fn: Callable[[], Optional[datetime]],
         logger: AbstractLogger,
+        exclusivity_violated_at_utc: Optional[str] = None,
     ):
         self._mode = mode
         self._spot_mode = spot_mode
         self._exclusive_account = exclusive_account
+        self._exclusivity_violated_at_utc = exclusivity_violated_at_utc
         self._clock_fn = clock_fn
         self._logger = logger
         self._baseline: Optional[RiskBaseline] = None
         if restored is not None:
             self._adopt_restored(restored)
+
+    def get_exclusivity_violated_at_utc(self) -> Optional[str]:
+        """
+        When this session's start found the account's exclusivity false on its instrument (#499).
+
+        Returns:
+            The session's start, ISO-8601 UTC; None when it found nothing
+        """
+        return self._exclusivity_violated_at_utc
 
     # ============================================
     # Taking and advancing
@@ -222,6 +235,7 @@ class RiskBaselineTracker:
             mark_price=mark_price if self._spot_mode else None,
             quantities=quantities if self._spot_mode else None,
             exclusive_account=self._exclusive_account,
+            exclusivity_violated_at_utc=self._exclusivity_violated_at_utc,
         )
 
     @staticmethod

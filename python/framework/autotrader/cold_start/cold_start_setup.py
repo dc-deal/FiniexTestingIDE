@@ -14,7 +14,7 @@ what to do when the answer is "do not start".
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import Optional, Set
+from typing import List, Optional, Set
 
 from python.configuration.data_home import resolve_in_data_home
 from python.framework.autotrader.cold_start.cold_start_adopter import ColdStartAdopter
@@ -26,6 +26,7 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.cold_start_types import (
+    BootPremiseViolation,
     ColdStartSituation,
     ColdStartVerdict,
     CurrentConfiguration,
@@ -74,6 +75,12 @@ class ColdStartSetup:
             it takes over were made under (#626) leaves on the run's record, when anything
         acceptance_notice: The notice of a change `--accept-composite-change` let through, for
             the console — '' when none was
+        boot_premise_violation: Orders of another owner on this bot's instrument while the
+            account is declared exclusive (#499): the session starts and holds its entries
+            over them. None when the start found none
+        accepted_foreign_refs: Orders of another owner on this bot's instrument an operator
+            accepted at an earlier start, still resting (#499): they hold nothing, and the
+            account's exclusivity is still false
     """
     proceed: bool = True
     store: Optional[ColdStartStateStore] = None
@@ -85,6 +92,8 @@ class ColdStartSetup:
     refusal: str = ''
     configuration_finding: Optional[ValidationFinding] = None
     acceptance_notice: str = ''
+    boot_premise_violation: Optional[BootPremiseViolation] = None
+    accepted_foreign_refs: List[str] = field(default_factory=list)
 
 
 def setup_cold_start(
@@ -198,6 +207,8 @@ def setup_cold_start(
         verdict=adopter.get_verdict(),
         configuration_finding=adopter.get_configuration_finding(),
         acceptance_notice=adopter.get_acceptance_notice(),
+        boot_premise_violation=adopter.get_boot_premise_violation(),
+        accepted_foreign_refs=adopter.get_accepted_foreign_refs(),
     )
 
 

@@ -71,6 +71,8 @@ from python.framework.autotrader.run_record.session_records import (
     stream_diagnostics_rows,
 )
 from python.framework.autotrader.run_record.state_frame_stream_opener import open_state_frame_stream
+from python.framework.autotrader.safety.boot_entry_hold import hold_entries_at_boot
+from python.framework.autotrader.safety.boot_premise_lifter import BootPremiseLifter
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.shutdown_status_holder import ShutdownStatusHolder
 from python.framework.autotrader.startup.autotrader_data_preparer import prepare_mock_session_data
@@ -141,6 +143,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.live_types.broker_truth_types import BrokerTruthReadReason
 from python.framework.types.persistence_types import (
+    AcceptedForeignOrders,
     AccountDrawdownCarryOver,
     BaselineKind,
     CarryOverLoad,
@@ -157,6 +160,7 @@ from python.framework.types.scenario_types.scenario_set_types import SingleScena
 from python.framework.types.signal_data_types import (
     SignalObservedSeries,
 )
+from python.framework.types.trading_env_types.entry_hold_types import EntryHoldReason
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.validation_types import ValidationFinding, ValidationResult
 from python.framework.utils.code_identity_builder import verify_component_digests
@@ -342,6 +346,13 @@ class AutotraderMain:
         # session may write it, and the keys the venue is holding. An empty setup means the
         # step did not run (disabled, Field Study, or a simulation executor).
         self._cold_start: ColdStartSetup = ColdStartSetup()
+        # #499 — what an attended start accepted when it lifted the entry hold, for the boot's
+        # carry-over write; and what lifts the hold once its orders are gone
+        self._accepted_foreign_orders: Optional[AcceptedForeignOrders] = None
+        # When this session's start found the declared exclusivity false — its start, ISO-8601 UTC —
+        # for the risk baseline and the ledger rows; None when it found nothing
+        self._exclusivity_violated_at: Optional[str] = None
+        self._boot_premise_lifter: Optional[BootPremiseLifter] = None
         # #356 — built only once the cold start has decided the session may proceed, because
         # it reads the predecessor's record through that store. Every abort BEFORE that point
         # still reaches _shutdown, which persists the carry-over, so None is a state the
@@ -690,6 +701,12 @@ class AutotraderMain:
                 # rather than returned, so the one guarded shutdown below runs it.
                 raise StartupRefusedError(
                     self._cold_start.refusal or 'The cold start refused the boot.')
+
+            # === ENTRY HOLD AT THE START (#499) ===
+            # Orders of another owner on this bot's instrument while the account is declared
+            # exclusive: the session starts and holds its entries. Before the first carry-over write
+            # below, which records what an attended start accepted.
+            self._hold_entries_at_boot(attended)
 
             # === RISK BASELINE (#356) ===
             # Built BEFORE the first carry-over write below, which now carries the record.
@@ -1070,6 +1087,30 @@ class AutotraderMain:
             self._session_logger.warning(f'⚠️  {warning}')
             print(f'  ⚠️  {warning}')
 
+    def _hold_entries_at_boot(self, attended: bool) -> None:
+        """
+        Hold the session's entries over what the cold start found against the account's exclusivity
+        (#499), and record that the premise was false.
+
+        Args:
+            attended: Whether a human declared they are watching this start, with a terminal
+        """
+        violation = self._cold_start.boot_premise_violation
+        if violation is None and not self._cold_start.accepted_foreign_refs:
+            return
+        # The premise is false either way — the orders are held over, or an operator accepted
+        # them — so every account-level figure measures a denominator that is not this bot's alone
+        self._exclusivity_violated_at = self._run_timestamp.isoformat() if self._run_timestamp else None
+        if violation is None or not isinstance(self._executor, LiveTradeExecutor):
+            return
+        self._accepted_foreign_orders = hold_entries_at_boot(
+            violation, self._executor, attended, reconciled=self._reconciler is not None,
+            operator_alerts=self._operator_alerts, logger=self._session_logger)
+        if (self._reconciler is not None
+                and self._executor.get_entry_holds().is_held(EntryHoldReason.BOOT_PREMISE)):
+            self._boot_premise_lifter = BootPremiseLifter(
+                violation, self._executor, self._operator_alerts, self._session_logger)
+
     def _check_stop_budget(self, attended: bool) -> None:
         """
         Say at the start where this session's stop cannot keep what its settings promise (#630).
@@ -1328,6 +1369,9 @@ class AutotraderMain:
             persist_carry_over=(
                 (lambda: self._persist_cold_start_carry_over(refresh_index=False))
                 if self._cold_start.persist else None),
+            # #499 — the start's entry hold lifts on the reconcile cycle that shows its orders gone
+            on_reconciled=(self._boot_premise_lifter.observe
+                           if self._boot_premise_lifter is not None else None),
             state_frames=self._state_frames,
             indicator_series=self._indicator_series,
             # #476: each sealed trading day reaches the ledger when it seals, so a session that
@@ -1335,7 +1379,8 @@ class AutotraderMain:
             book_sealed_periods=SealedPeriodBooker(
                 self._config, self._run_id, run_timestamp, self._deployment_id, self._run_dir,
                 self._session_logger, self._replayed_scenario,
-                broker_config_id=self._executor.broker.get_frozen_config_id()).book,
+                broker_config_id=self._executor.broker.get_frozen_config_id(),
+                exclusivity_violated_at=self._exclusivity_violated_at).book,
             # #476: and its streams' day moves into their day records at the same boundary
             seal_streams=self._stream_sealer.seal,
             open_stop_budget=self._open_stop_budget,
@@ -1600,6 +1645,10 @@ class AutotraderMain:
         result = AutoTraderResult(
             cold_start_situation=self._cold_start.situation,
             cold_start_verdict=self._cold_start.verdict,
+            # #499 — read from the executor whether or not a loop ran: a start that held its
+            # entries and then failed still held them
+            entry_holds=(list(self._executor.get_entry_holds().get_all())
+                         if isinstance(self._executor, LiveTradeExecutor) else []),
             session_duration_s=session_duration,
             ticks_processed=ticks_processed,
             ticks_clipped=ticks_clipped,
@@ -1786,6 +1835,7 @@ class AutotraderMain:
             replayed_scenario=self._replayed_scenario,
             observed_feed=self._collect_observed_feed(),
             deployment_id=self._deployment_id,
+            exclusivity_violated_at=self._exclusivity_violated_at,
         ).generate_and_log()
 
         self._shutdown_status.enter_step(ShutdownStep.ALERTS)
@@ -2109,6 +2159,8 @@ class AutotraderMain:
             restored=restored,
             spot_mode=self._executor.portfolio.is_spot_mode(),
             exclusive_account=self._config.capital.exclusive_account,
+            # #499 — what this session's start found against that declaration, stamped beside it
+            exclusivity_violated_at_utc=self._exclusivity_violated_at,
             # Answers None before the first event, which is what makes the boot-balances
             # stamp honest provenance rather than an invented canonical time (§9).
             clock_fn=self._executor.get_current_time_if_set,
@@ -2247,6 +2299,9 @@ class AutotraderMain:
                 # alone — a debugging start of a deployed profile must not end the deployment
                 # it was asked to stay out of.
                 deployment_id=self._deployment_id or None,
+                # #499 — the orders of another owner an attended start accepted, so the next start
+                # holds nothing over them. None leaves what an earlier start accepted
+                accepted_foreign_orders=self._accepted_foreign_orders,
                 refresh_index=refresh_index,
             )
             self._replace_readings_pending = False

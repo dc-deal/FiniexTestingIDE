@@ -135,6 +135,7 @@ money's, so the session rows' `max_drawdown` restarts where the kind of run chan
 | `max_drawdown` / `max_drawdown_pct` | the cumulative account decline as of that session; both are null where the session's rows carry none |
 | `orders_to` | where its orders went — `venue` is real money, `simulated` a rehearsal; null when not recorded |
 | `strategy_changed` / `operation_changed` / `orders_to_changed` | what differed from the session before |
+| `exclusivity_violated_at` | when its start found orders of another owner on the bot's instrument while the account is declared exclusive — it held its entries, or an operator had accepted those orders at an earlier start — its start; its money figures stand, but their denominator is not provably the bot's own. Null where the start found nothing, and on a session recorded before the field existed |
 | `code_changes` | which repositories' code differed from the session before, and how far; see [which code the sessions started on](#which-code-the-sessions-started-on) |
 | `bot` / `bot_id` | which bot ran it; `bot_id` is empty until the session has booked a day |
 | `currency` | the row's account currency; null when it has no booked figures |

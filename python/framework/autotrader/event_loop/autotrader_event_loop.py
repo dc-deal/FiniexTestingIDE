@@ -70,6 +70,7 @@ from python.framework.types.autotrader_types.display_label_cache import DisplayL
 from python.framework.types.autotrader_types.safety_session_types import SafetySessionRecord
 from python.framework.types.config_types.market_config_types import TradingModel
 from python.framework.types.disturbance_episode_types import DisturbanceEpisode, MarketDataTickStats
+from python.framework.types.live_types.reconciliation_types import ReconciliationResult
 from python.framework.types.loop_types.live_intake_stats_types import LiveIntakeStats
 from python.framework.types.loop_types.live_pass_kind_types import LivePassKind
 from python.framework.types.loop_types.loop_event_types import DataSliceEvent, TimeEvent
@@ -146,6 +147,7 @@ class AutotraderEventLoop:
         state_store: Optional[AlgoStateStore] = None,
         risk_baseline: Optional[RiskBaselineTracker] = None,
         persist_carry_over: Optional[Callable[[], bool]] = None,
+        on_reconciled: Optional[Callable[[ReconciliationResult], None]] = None,
         signal_inbox: Optional[SignalInbox] = None,
         signal_transport: Optional[AbstractSignalTransport] = None,
         carried_period_no: int = 0,
@@ -265,7 +267,7 @@ class AutotraderEventLoop:
             self._operator_alerts, self._all_clear_after_s, logger, self._state)
         self._cadence = AutotraderCadenceWork(
             config, executor, decision_logic, reconciler, state_store, risk_baseline,
-            persist_carry_over, logger, self._get_intake, self._axis_now_msc)
+            persist_carry_over, logger, self._get_intake, self._axis_now_msc, on_reconciled)
         self._trading_days = AutotraderTradingDays(
             executor, self._booking, self._safety, self._cadence, trading_model, day_anchor,
             run_dir, self._operator_alerts, config.operator_alerts.telegram.daily_digest,

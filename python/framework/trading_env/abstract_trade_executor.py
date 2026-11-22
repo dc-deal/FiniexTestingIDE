@@ -91,6 +91,7 @@ from python.framework.types.trading_env_types.broker_types import (
     FeeType,
     SymbolSpecification,
 )
+from python.framework.types.trading_env_types.entry_hold_types import EntryHold
 from python.framework.types.trading_env_types.executor_mode_types import ExecutorMode
 from python.framework.types.trading_env_types.latency_simulator_types import (
     PendingOperation,
@@ -3149,6 +3150,18 @@ class AbstractTradeExecutor(ABC):
             Internal order ids at the resolution ceiling (empty in the normal case)
         """
         return set()
+
+    def get_active_entry_holds(self) -> Tuple[EntryHold, ...]:
+        """
+        The session's standing entry holds (#499), read by the OrderGuard at every new entry.
+
+        Empty in simulation: a backtest meets no venue at its start, so no cause can hold its
+        entries. The live executor overrides it.
+
+        Returns:
+            The standing holds; empty when entries are free
+        """
+        return ()
 
     def get_current_time(self) -> datetime:
         """

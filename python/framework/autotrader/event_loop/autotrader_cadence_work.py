@@ -14,6 +14,7 @@ from python.framework.persistence.position_book_watcher import PositionBookWatch
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.live.reconciler import Reconciler
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
+from python.framework.types.live_types.reconciliation_types import ReconciliationResult
 from python.framework.types.loop_types.timer_kind_types import TimerKind
 
 
@@ -40,6 +41,8 @@ class AutotraderCadenceWork:
         intake: The session's timeline, which the timers are armed on; None before the loop
             built it
         axis_now_msc: The receipt axis now, in UTC epoch milliseconds
+        on_reconciled: Told every reconcile cycle's answer — the start's entry hold lifts there
+            (#499); None when nothing watches the cycles
     """
 
     def __init__(
@@ -54,6 +57,7 @@ class AutotraderCadenceWork:
         logger: ScenarioLogger,
         intake: Callable[[], Optional[LiveEventIntake]],
         axis_now_msc: Callable[[], int],
+        on_reconciled: Optional[Callable[[ReconciliationResult], None]] = None,
     ):
         self._executor = executor
         self._decision_logic = decision_logic
@@ -63,6 +67,7 @@ class AutotraderCadenceWork:
         self._logger = logger
         self._intake = intake
         self._axis_now_msc = axis_now_msc
+        self._on_reconciled = on_reconciled
         # #355 — the open book is written when it CHANGES, in two classes. A STRUCTURAL
         # change (a position opens, closes, is partially closed) is written at once: it cannot
         # be recovered, and waiting out an interval is exactly the window a hard kill takes
@@ -121,6 +126,8 @@ class AutotraderCadenceWork:
             self._executor.apply_order_attributions(result.attributed_orders)
         if result.broker_truth_due:
             self._executor.record_reconcile_truth(result)
+        if self._on_reconciled is not None:
+            self._on_reconciled(result)
         intake = self._intake()
         if intake is not None:
             intake.arm(TimerKind.RECONCILE, self._axis_now_msc() + round(

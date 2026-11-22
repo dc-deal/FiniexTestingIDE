@@ -22,6 +22,9 @@ Current rules:
 - Unresolved-write block (#487) — blocks NEW entries while an order sent earlier
   was never named open or closed by the venue after its resolution ran out. A
   latch, not a cooldown: it ends when the order is accounted for.
+- Entry hold (#499) — blocks NEW entries while the session holds them: a cause it
+  cannot settle by itself stands (EntryHolds). Lifted by the cause going away or by
+  the operator, never by time.
 - Undeclared level (#625) — refuses an order carrying a level its decision logic
   did not declare (refuse_undeclared_features()).
 
@@ -49,6 +52,7 @@ State updates flow through two paths:
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Sequence, Set
 
+from python.framework.types.trading_env_types.entry_hold_types import EntryHold
 from python.framework.types.trading_env_types.market_data_status_types import MarketDataStatus
 from python.framework.types.trading_env_types.order_types import (
     OpenOrderRequest,
@@ -100,6 +104,7 @@ class OrderGuard:
         now: datetime,
         market_data_status: Optional[MarketDataStatus] = None,
         unresolved_at_ceiling: Optional[Set[str]] = None,
+        entry_holds: Sequence[EntryHold] = (),
     ) -> Optional[OrderResult]:
         """
         Pre-validate an order request against the guard rules.
@@ -112,6 +117,8 @@ class OrderGuard:
             unresolved_at_ceiling: Orders the venue never named after the resolution ran
                 out (#487). Non-empty blocks new entries; empty in sim and in the
                 ordinary live case
+            entry_holds: The session's standing entry holds (#499). Non-empty blocks new
+                entries; empty in sim, where nothing holds them
 
         Returns:
             OrderResult(DENIED) if blocked, None otherwise
@@ -149,6 +156,17 @@ class OrderGuard:
                     f'accounted for by the venue '
                     f"({', '.join(sorted(unresolved_at_ceiling))}) — check the account"
                 ),
+            )
+
+        # Entry hold (#499): the session holds its entries because a cause it cannot settle by
+        # itself stands. Entries only, as above — this guard is reached on an OpenOrderRequest,
+        # so the open position is still closed, its stop and target still move, its orders are
+        # still cancelled.
+        if entry_holds:
+            return self._refuse(
+                request, now,
+                reason=RejectionReason.ENTRIES_HELD,
+                message=f"Entry blocked: entries are held — {'; '.join(h.detail for h in entry_holds)}",
             )
 
         cooldown_until = self._cooldown_until.get(request.direction)

@@ -175,6 +175,7 @@ def build_run_provenance_from_session(
     logger: AbstractLogger,
     replayed_scenario: Optional[SingleScenario] = None,
     broker_config_id: str = '',
+    exclusivity_violated_at: Optional[str] = None,
 ) -> RunProvenance:
     """
     Build an AutoTrader session's provenance bundle for the results ledger.
@@ -201,6 +202,8 @@ def build_run_provenance_from_session(
             consumption is recorded exactly as a backtest's; None for a live-adapter session
         broker_config_id: The run-config store id the session froze its broker configuration
             under at its start (#547); '' where it was not frozen
+        exclusivity_violated_at: When the session's start found the account's declared
+            exclusivity false on its instrument (#499); None when it found nothing
 
     Returns:
         The provenance bundle
@@ -255,6 +258,7 @@ def build_run_provenance_from_session(
         run_type=RUN_TYPE_AUTOTRADER,
         # The same resolution the header was stamped with at the start, so the two agree.
         orders_to=resolve_orders_to(config),
+        exclusivity_violated_at=exclusivity_violated_at,
         # What the session runs with, and the broker configuration it froze at its start — on
         # every row, so a session killed on day 29 still names both in the rows it left (#476)
         rendered_config_id=rendered_config_id,

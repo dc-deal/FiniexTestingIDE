@@ -1010,6 +1010,16 @@ drops it into the abandoned bucket — the false alarm measured twice in five fi
 | `TestTheKeyIsUniquePerWrite` | a close does not reuse its entry's key, two partial closes send two different keys, and the close key still parses as one of ours |
 | `TestTheKeyIsRecorded` | a resting order carries the key it sent, and an in-flight close is not reported as abandoned |
 
+## test_entry_hold_gate.py — a held session opens nothing new (#499)
+
+The gate sits where the unaccounted-order latch already sits: only an order that would open is
+refused. Both account models.
+
+| Class | What it validates |
+|---|---|
+| `TestTheGuardRefusesEntriesWhileHeld` | a standing hold refuses a market and a resting entry with `entries_held` and its detail; no hold refuses nothing |
+| `TestAHeldSessionManagesWhatItHas` | a new entry is denied, never submitted and booked as a guard refusal; the open position is still closed; entries are free again once the hold is lifted |
+
 ## test_unresolved_write_resolution.py — asking, and what the answer may become (#487)
 
 #473 made a lost answer honest; it left open that nothing ever ASKED. The in-flight window was
