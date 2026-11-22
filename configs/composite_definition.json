@@ -61,6 +61,7 @@
     "shutdown": "neutral",
     "state_frames": "neutral",
     "state_persistence": "neutral",
+    "storage": "neutral",
     "symbol": "neutral",
     "tick_source": "neutral",
     "tick_source.type": "defining",

@@ -186,6 +186,18 @@ exceptions: each module with its count and its reason. A new rename fails, an ex
 second one included, and so does one that went away until its entry is lowered or removed — the
 list may only shrink.
 
+## `test_session_storage.py`
+
+**Where a session records, and whether it can (#632).** The roots a session writes come from the
+store catalog — every session store has one, the global log is written into its folder — and the
+profile places the two carry-overs. The start check writes a probe of one page of data, passes
+writable roots with room and leaves no probe, replaces and removes one a crash left behind, and
+refuses — naming the store — a root that cannot be written or created (injected, because the suite
+runs as root) and a disk below the floor, naming its stores, a folder on it and the floor; every
+failing store and filesystem is named in one refusal. The machine reader measures roots on one
+filesystem as one reading under its device number, a root not there yet at its nearest parent, and
+reports the room a process that is not root may use (`f_bavail`); every session store is measured.
+
 ## `test_run_entry_writer.py`
 
 **One run's files written by member (#621).** A member another pipeline writes and a member of

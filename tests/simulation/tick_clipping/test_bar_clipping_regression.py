@@ -292,6 +292,9 @@ def _build_autotrader_event_loop(ticks_with_flags):
 
     tick_source = MagicMock()
     tick_source.is_exhausted.return_value = True
+    # The loop arms its timers on the source's time at the start (the disk reading always, #632)
+    # — a bare MagicMock there reaches a comparison of deadlines and raises.
+    tick_source.get_idle_pass_time.return_value = BAR_START
 
     loop = AutotraderEventLoop(
         config=config,

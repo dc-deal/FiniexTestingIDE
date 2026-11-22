@@ -24,6 +24,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     ShutdownDefaults,
     StateFramesDefaults,
     StatePersistenceDefaults,
+    StorageDefaults,
     TickSourceConfig,
 )
 from python.framework.types.config_types.operator_alerts_config_types import OperatorAlertsConfig
@@ -117,6 +118,7 @@ class AutoTraderConfig:
             ends (#492). Two axes; `orders: 'leave'` is the loosening one and needs the
             broker's posture behind it, the same way `dry_run` does
         shutdown: The waits of the session's stop and the kill they have to fit under (#630)
+        storage: The free disk the start requires and the watch while the session runs (#632)
         operator_alerts: The out-of-band channels to the operator (#235) — Telegram alerts and
             the liveness ping, both off by default
         deployment: Whether this profile's sessions form one continuous deployment (#497).
@@ -156,6 +158,7 @@ class AutoTraderConfig:
     cold_start: ColdStartDefaults = field(default_factory=ColdStartDefaults)
     session_end: SessionEndDefaults = field(default_factory=SessionEndDefaults)
     shutdown: ShutdownDefaults = field(default_factory=ShutdownDefaults)
+    storage: StorageDefaults = field(default_factory=StorageDefaults)
     capital: CapitalDefaults = field(default_factory=CapitalDefaults)
     operator_alerts: OperatorAlertsConfig = field(default_factory=OperatorAlertsConfig)
     config_path: Optional[Path] = None

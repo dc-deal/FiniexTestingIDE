@@ -73,6 +73,7 @@ RENDERED_BLOCKS_WITHOUT_COUNTERPART: Dict[str, str] = {
     'shutdown': 'the waits of a stop',
     'capital': "the account's exclusivity, which only the live risk limits read",
     'operator_alerts': 'the channels to the operator',
+    'storage': "the disk under the session's records; a backtest's records are not the compared ones",
     'dry_run': 'the backtest places no order at a venue',
 }
 

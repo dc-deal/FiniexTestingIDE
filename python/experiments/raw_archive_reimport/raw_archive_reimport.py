@@ -104,6 +104,7 @@ from python.experiments.raw_archive_reimport.raw_archive_reimport_types import (
 )
 from python.framework.store.abstract_store_index import store_index_filename
 from python.framework.types.store_types import StoreId
+from python.framework.utils.machine_resources_reader import MachineResourcesReader
 from python.framework.utils.time_utils import ensure_utc_aware, parse_datetime
 
 TOOL_VERSION = '1.0'
@@ -440,7 +441,9 @@ class RawArchiveReimport:
             results.append((True, f'no selected member lies in {self._refused_dir}'))
 
         needed = sum(member.size_bytes for member in members)
-        free = shutil.disk_usage(self._existing_ancestor(self._raw_dir)).free
+        # The machine's one reader of free disk (#632)
+        (disk,) = MachineResourcesReader().read_disks({StoreId.RAW_INBOX: self._raw_dir.resolve()})
+        free = disk.free_bytes
         if free >= _DISK_HEADROOM * needed:
             results.append((True, f'free {_format_bytes(free)} ≥ {_DISK_HEADROOM} × '
                                   f'{_format_bytes(needed)}'))
@@ -851,22 +854,6 @@ class RawArchiveReimport:
         found = list(self._raw_dir.glob(_TICKS_GLOB))
         found.extend(self._raw_dir.glob(f'{_TICKS_GLOB}{_PART_SUFFIX}'))
         return sorted(path.name for path in found)
-
-    @staticmethod
-    def _existing_ancestor(path: Path) -> Path:
-        """
-        The path itself, or its nearest existing parent, to measure free disk on.
-
-        Args:
-            path: A directory that may not exist yet
-
-        Returns:
-            An existing directory
-        """
-        candidate = path.resolve()
-        while not candidate.exists():
-            candidate = candidate.parent
-        return candidate
 
 
 # =============================================================================

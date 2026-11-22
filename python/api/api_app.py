@@ -55,6 +55,7 @@ from python.framework.exceptions.file_lock_errors import FileLockHeldError
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.store.abstract_store_index import set_process_lock_wait_s
+from python.framework.store.session_store_roots import session_store_roots
 from python.framework.types.api.api_identity_types import ApiConsumerIdentity
 from python.framework.types.api.api_types import (
     ApiContractResponse,
@@ -251,6 +252,8 @@ def create_app() -> FastAPI:
     # What the machine routes read, built once per application (#595, #603)
     app.state.machine_reader = machine_reader
     app.state.machine_thresholds = machine_thresholds
+    # The roots a session writes into, whose filesystems the machine view measures (#632)
+    app.state.session_store_roots = session_store_roots()
     # When the latest-frame route reads a session's recording as stopped (#611)
     app.state.state_frames_thresholds = state_frames_thresholds
     # The runs the run list has read as ended: an ended recording cannot change, so their streams

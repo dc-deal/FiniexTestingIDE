@@ -27,7 +27,8 @@ router = APIRouter()
             openapi_extra=describes('server'))
 def machine_resources(request: Request) -> MachineResourcesResponse:
     state = request.app.state
-    return describe_machine(state.machine_reader.read(), state.machine_thresholds)
+    return describe_machine(state.machine_reader.read(), state.machine_thresholds,
+                            state.machine_reader.read_disks(state.session_store_roots))
 
 
 @router.get('/activities', response_model=ActivityListResponse,

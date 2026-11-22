@@ -93,7 +93,7 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.exceptions.code_identity_errors import CodeIdentityCaptureError
 from python.framework.exceptions.live_execution_errors import StartupRefusedError
-from python.framework.exceptions.persistence_errors import CarriedLevelError
+from python.framework.exceptions.persistence_errors import CarriedLevelError, SessionStorageError
 from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
 from python.framework.logging.scenario_logger import ScenarioLogger
@@ -113,6 +113,7 @@ from python.framework.signal_data.transport.abstract_signal_transport import (
 from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.signal_data.transport.signal_transport_setup import setup_signal_transport
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.store.session_store_roots import session_store_roots
 from python.framework.stress_test.stale_data_stress_driver import StaleDataStressDriver
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
@@ -165,6 +166,7 @@ from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.validation_types import ValidationFinding, ValidationResult
 from python.framework.utils.code_identity_builder import verify_component_digests
 from python.framework.utils.file_lock import FileLock
+from python.framework.utils.machine_resources_reader import MachineResourcesReader
 from python.framework.utils.run_origin_builder import build_run_origin, capture_code_identity
 from python.framework.utils.trading_math.price_trigger import mid_price
 from python.framework.validators.algo_clock_validator import validate_algo_clock
@@ -179,6 +181,7 @@ from python.framework.validators.carry_over_identity_validator import (
 from python.framework.validators.component_metadata_advisory import check_market_fit
 from python.framework.validators.session_end_validator import resolve_session_end_policy
 from python.framework.validators.session_post_run_validator import SessionPostRunValidator
+from python.framework.validators.session_storage_validator import check_session_storage
 from python.framework.validators.stop_budget_validator import check_stop_budget
 from python.framework.validators.uncommitted_code_validator import (
     describe_uncommitted_code,
@@ -581,6 +584,19 @@ class AutotraderMain:
             # exits 2, which a supervisor does not restart. A refused boot leaves the book as it is.
             if self._carried_load is not None and self._carried_load.level_refusal:
                 raise CarriedLevelError(self._carried_load.level_refusal)
+
+            # === THE STORES CAN BE WRITTEN (#632) ===
+            # Before the first order: a session that cannot record would trade without a record.
+            # Refused like the two above — STARTUP FAILED, an alert, exit 2. The run directory and
+            # its header are written by now, so the run store's own refusal ends earlier and louder.
+            storage_refusal = check_session_storage(
+                session_store_roots(self._config.cold_start.path,
+                                    self._config.state_persistence.path),
+                self._config.storage.min_free_gb_to_start, MachineResourcesReader())
+            if storage_refusal is not None:
+                raise SessionStorageError(
+                    f'This session cannot record its trading: {storage_refusal}. Free the disk or '
+                    f'fix the store, then start again.')
 
             self._setup_signal_handlers()
 

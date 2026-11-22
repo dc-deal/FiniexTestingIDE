@@ -99,6 +99,7 @@ true — a recurrence before the all-clear keeps the episode open.
 | The liveness ping was refused (wrong URL, deleted check) / its fail URL was refused | ⛔ / ⚠️ |
 | Safety circuit breaker — new entries blocked / cleared | ⚠️ / ✅ |
 | Entries held — the start found orders of another owner on the bot's instrument while the account is declared exclusive: the session runs, manages and closes its position and opens nothing new, its resting entries cancelled; and whether it lifts by itself or only at a start with `--attended` / Entries lifted — those orders are gone, or the operator accepted them | ⛔ / ✅ |
+| Disk low / recovered — free space on the disk of the session's stores below `storage.warn_free_gb`, naming a folder on it and its stores; recovered once it has stayed above for the all-clear period | ⚠️ / ✅ |
 | Market data stale / fresh again — including no first tick within `market_data_stale_after_s` of the loop's start, a feed that never connected | ⚠️ / ✅ |
 | A signal input stale / fresh again | ⚠️ / ✅ |
 | A trading day closed — its booking period: trades, net P&L and the open part, fees, equity at the close and at the open, the deepest dip; `daily_digest` switches it off. Days one late check closes together — a machine that slept, a clock that jumped — are the first day in full and one message for the rest, naming their span | ✅ |
@@ -698,6 +699,35 @@ would block entries from the first tick — past a hard limit, flatten real posi
 real money never had — and a simulated denominator below it would loosen every limit. A session
 that starts fresh says why at its start and in its warnings (`carried_readings_not_continued`); a
 new deployment the operator asked for is only said.
+
+## The disk under the records
+
+A session that cannot record would trade without a record, and a disk that fills during a thirty-day
+run stops every record at once — without a warning, the first sign is the first failed write (#632).
+
+**Before the first order**, the start writes a probe of one page into every root the session records
+into — the run store, the ledger, the frozen configurations and patches, the logs, the activity list,
+the broker cache and both carry-overs — and removes it again. A permission bit is not enough: it
+answers yes to root on a read-only folder and says nothing of a network mount or a quota, and an empty
+file would pass a block quota that refuses data. And every filesystem
+those roots live on needs `storage.min_free_gb_to_start` free, measured as a process that is not root
+may use it: the last 5 to 10 % of a filesystem is reserved for root, and a session running as root
+would write into it until the very last byte. Either failing ends the start as STARTUP FAILED, with an
+alert and exit 2, which a supervisor does not restart; every store and filesystem that fails is named in
+the one refusal:
+
+```
+❌ STARTUP FAILED — This session cannot record its trading: the disk under /srv/finiex/runtime/cold_start_state
+   (the cold_start_state, global_log, run_configs, run_ledger, runs store(s)) has 0.6 GB free, below
+   autotrader.storage.min_free_gb_to_start (1 GB) — the session's records would stop when it is full.
+   Free the disk or fix the store, then start again.
+```
+
+**While the session runs**, a timer of its timeline reads the free space every
+`storage.check_interval_s`. Below `storage.warn_free_gb` the operator hears it once per filesystem —
+*Disk low*, naming a folder on that disk and its stores — and once more, *Disk recovered*, when the space has stayed above the
+floor for the alerts' all-clear period. The same figures are on the machine view the API serves
+(`/machine-resources`, `disks`).
 
 ## After a holding was sold by hand
 

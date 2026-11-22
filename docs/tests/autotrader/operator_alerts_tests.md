@@ -176,6 +176,20 @@ Also pinned in the suites whose code raises the alerts:
 | `test_a_mock_session_switches_both_off` | switched on in the defaults, a mock replay still sends and pings nothing |
 | `test_a_mock_profile_that_says_so_keeps_its_answer` | a profile that sets `enabled` keeps it |
 
+### `test_storage_watch.py` — the disk under the records (#632)
+
+| Test | What it pins |
+|---|---|
+| `test_a_disk_with_room_says_nothing` | above the warning floor no alert and no warning |
+| `test_below_the_floor_it_alerts_once_naming_the_stores` | one *Disk low* per episode, its warning naming the free space, a folder on the filesystem, its stores and the floor |
+| `test_the_all_clear_waits_for_the_quiet_period` | *Disk recovered* only after the space stayed above the floor for the all-clear period |
+| `test_an_episode_belongs_to_its_filesystem_when_its_stores_change` | an episode is keyed by the filesystem's device, so a store moving away does not orphan it — the all-clear still comes |
+| `test_a_failed_reading_is_said_once_and_never_stops_the_session` | a reading that raises (a stale mount) is one *Disk unreadable* warning; the next reading works again |
+| `test_its_interval_is_the_configured_one` | the timer's interval is `storage.check_interval_s` |
+| `test_the_storage_block_refuses_values_that_mean_nothing` | an interval of zero and a negative floor are refused |
+| `test_the_storage_block_has_its_defaults` | 1 GB to start, 2 GB to warn, 60 s between readings |
+| `test_a_watch_without_an_alert_channel_still_logs` | without a channel the low disk is still in the session log |
+
 ### `test_operator_alerts_session.py` — the wiring, end to end
 
 A 100-tick mock replay with the channel builder swapped for one wired to the stand-ins.

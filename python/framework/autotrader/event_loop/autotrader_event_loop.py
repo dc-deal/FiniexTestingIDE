@@ -23,6 +23,7 @@ from python.framework.autotrader.event_loop.autotrader_market_data_watch import 
 )
 from python.framework.autotrader.event_loop.autotrader_pass_hooks import AutotraderPassHooks
 from python.framework.autotrader.event_loop.autotrader_stop_wait import AutotraderStopWait
+from python.framework.autotrader.event_loop.autotrader_storage_watch import AutotraderStorageWatch
 from python.framework.autotrader.event_loop.autotrader_trading_days import AutotraderTradingDays
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.operator_alerts.operator_alerts import OperatorAlerts
@@ -59,6 +60,7 @@ from python.framework.signal_data.transport.abstract_signal_transport import (
     AbstractSignalTransport,
 )
 from python.framework.signal_data.transport.signal_inbox import SignalInbox
+from python.framework.store.session_store_roots import session_store_roots
 from python.framework.stress_test.stale_data_stress_driver import StaleDataStressDriver
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
@@ -268,6 +270,11 @@ class AutotraderEventLoop:
         self._cadence = AutotraderCadenceWork(
             config, executor, decision_logic, reconciler, state_store, risk_baseline,
             persist_carry_over, logger, self._get_intake, self._axis_now_msc, on_reconciled)
+        # #632 — the free space under the session's records, read on a timer of the timeline
+        self._storage_watch = AutotraderStorageWatch(
+            config.storage,
+            session_store_roots(config.cold_start.path, config.state_persistence.path),
+            executor, self._operator_alerts, self._all_clear_after_s, logger)
         self._trading_days = AutotraderTradingDays(
             executor, self._booking, self._safety, self._cadence, trading_model, day_anchor,
             run_dir, self._operator_alerts, config.operator_alerts.telegram.daily_digest,
@@ -416,6 +423,10 @@ class AutotraderEventLoop:
                 self._cadence.persist_state_if_due(ticks_processed)
             if TimerKind.PERSISTENCE in timers:
                 self._cadence.persist_state_now(ticks_processed)
+            if TimerKind.DISK_READING in timers:
+                self._storage_watch.check()
+                self._intake.arm(TimerKind.DISK_READING, self._axis_now_msc() + round(
+                    self._storage_watch.get_interval_s() * 1000))
 
             # === Position Book Carry-Over (#355, on change) ===
             # A fill can resolve on any instant, so the book can change on any instant
@@ -560,6 +571,8 @@ class AutotraderEventLoop:
         if self._state_store is not None:
             intake.arm(TimerKind.PERSISTENCE,
                        now + round(self._state_store.get_save_interval_seconds() * 1000))
+        intake.arm(TimerKind.DISK_READING,
+                   now + round(self._storage_watch.get_interval_s() * 1000))
         self._intake = intake
         if self._state_frames is not None:
             self._arm_state_frame_slot()

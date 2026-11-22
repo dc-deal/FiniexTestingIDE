@@ -43,6 +43,8 @@ class OperatorAlertKind(Enum):
     EVENT_LOOP_STALLED = 'event_loop_stalled'
     EVENT_LOOP_RESUMED = 'event_loop_resumed'
     LIVENESS_PING_REFUSED = 'liveness_ping_refused'
+    DISK_LOW = 'disk_low'
+    DISK_RECOVERED = 'disk_recovered'
     DAY_CLOSED = 'day_closed'
     ORDERS_UNANSWERED_AT_STOP = 'orders_unanswered_at_stop'
     SESSION_ENDED = 'session_ended'

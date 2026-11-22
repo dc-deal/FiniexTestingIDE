@@ -10,6 +10,7 @@ from typing import List, Tuple
 
 from python.framework.types.api.api_types import (
     MachineCpuResponse,
+    MachineDiskResponse,
     MachineMemoryResponse,
     MachineResourcesResponse,
 )
@@ -17,6 +18,7 @@ from python.framework.types.config_types.machine_resources_config_types import (
     MachineResourcesConfig,
 )
 from python.framework.types.machine_resources_types import (
+    DiskReading,
     MachineResourcesReading,
     MemoryReading,
     PressureLevel,
@@ -25,13 +27,15 @@ from python.framework.validators.machine_pressure_validator import judge_memory_
 
 
 def describe_machine(reading: MachineResourcesReading,
-                     thresholds: MachineResourcesConfig) -> MachineResourcesResponse:
+                     thresholds: MachineResourcesConfig,
+                     disks: List[DiskReading]) -> MachineResourcesResponse:
     """
     Serve one reading of the machine, with the pressure verdict on its memory.
 
     Args:
         reading: The processors and the memory, read now
         thresholds: Where `warn` and `critical` begin
+        disks: The filesystems a session's stores live on, read now (#632)
 
     Returns:
         The reading as served, its thresholds beside the memory they grade
@@ -48,6 +52,9 @@ def describe_machine(reading: MachineResourcesReading,
         memory=memory,
         pressure_level=level,
         pressure_reasons=reasons,
+        disks=[MachineDiskResponse(stores=disk.stores, free_bytes=disk.free_bytes,
+                                   total_bytes=disk.total_bytes, free_pct=disk.free_pct)
+               for disk in disks],
     )
 
 

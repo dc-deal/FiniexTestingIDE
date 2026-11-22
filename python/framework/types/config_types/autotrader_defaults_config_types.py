@@ -318,6 +318,32 @@ class SessionEndDefaults(StrictConfigModel):
     positions: Literal['close', 'leave'] = 'leave'
 
 
+class StorageDefaults(StrictConfigModel):
+    """
+    The disk a session records on — checked before its first order and watched while it runs (#632).
+
+    A session that cannot write its records trades without a record, and a disk that fills during a
+    thirty-day run stops every record at once. Space is measured as a process that is not root may
+    use it: the last 5 to 10 % of a filesystem is reserved for root, and a session running as root
+    would otherwise write to the very last byte before anything warns. The block says how a session
+    is kept, not what it is compared as: it is neutral in the composite definition.
+
+    `min_free_gb_to_start`
+        The free space the start requires on every filesystem a store of the session lives on; below
+        it the start is refused, naming the filesystem's stores.
+
+    `warn_free_gb`
+        Below it, while the session runs, the operator is alerted once; when the space has come back
+        above it, once more.
+
+    `check_interval_s`
+        How often the session reads the free space.
+    """
+    min_free_gb_to_start: float = Field(1.0, ge=0.0)
+    warn_free_gb: float = Field(2.0, ge=0.0)
+    check_interval_s: float = Field(60.0, gt=0.0)
+
+
 class ShutdownDefaults(StrictConfigModel):
     """
     The waits of a session's stop, and the kill they have to fit under (#630).
@@ -545,5 +571,6 @@ class AutotraderDefaultsConfig(StrictConfigModel):
     cold_start: ColdStartDefaults = ColdStartDefaults()
     session_end: SessionEndDefaults = SessionEndDefaults()
     shutdown: ShutdownDefaults = ShutdownDefaults()
+    storage: StorageDefaults = StorageDefaults()
     tick_source: TickSourceConfig = TickSourceConfig()
     operator_alerts: OperatorAlertsConfig = OperatorAlertsConfig()

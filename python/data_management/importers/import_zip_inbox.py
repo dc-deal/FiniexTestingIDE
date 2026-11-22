@@ -35,7 +35,9 @@ from python.framework.types.import_types.import_inbox_types import (
     InboxZipMember,
     InboxZipSettlement,
 )
+from python.framework.types.store_types import StoreId
 from python.framework.utils.file_utils import create_directory
+from python.framework.utils.machine_resources_reader import MachineResourcesReader
 
 # A tick export's own name: SYMBOL_YYYYMMDD_HHMMSS_ticks.json. The stamp is the collector's file
 # start on its own clock.
@@ -232,10 +234,9 @@ class ImportZipInbox:
             Why they do not fit, None when they do
         """
         needed = sum(member.size_bytes for member in content.members)
-        existing = self._unpacking_dir
-        while not existing.exists() and existing != existing.parent:
-            existing = existing.parent
-        free = shutil.disk_usage(existing).free
+        # The machine's one reader of free disk: the room a process that is not root may use (#632)
+        (disk,) = MachineResourcesReader().read_disks({StoreId.RAW_INBOX: self._unpacking_dir})
+        free = disk.free_bytes
         if needed <= free:
             return None
         return (f'its files need {needed / _BYTES_PER_GB:.1f} GB unpacked and the disk of '

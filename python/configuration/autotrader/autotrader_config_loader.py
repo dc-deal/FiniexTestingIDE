@@ -31,6 +31,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     ShutdownDefaults,
     StateFramesDefaults,
     StatePersistenceDefaults,
+    StorageDefaults,
     TickSourceConfig,
 )
 from python.framework.types.config_types.operator_alerts_config_types import OperatorAlertsConfig
@@ -81,6 +82,7 @@ _KNOWN_INDICATOR_SERIES_KEYS: frozenset     = allowlist_from(IndicatorSeriesDefa
 _KNOWN_COLD_START_KEYS: frozenset           = allowlist_from(ColdStartDefaults)
 _KNOWN_SESSION_END_KEYS: frozenset          = allowlist_from(SessionEndDefaults)
 _KNOWN_SHUTDOWN_KEYS: frozenset             = allowlist_from(ShutdownDefaults)
+_KNOWN_STORAGE_KEYS: frozenset              = allowlist_from(StorageDefaults)
 _KNOWN_OPERATOR_ALERTS_KEYS: frozenset      = allowlist_from(OperatorAlertsConfig)
 _KNOWN_CAPITAL_KEYS: frozenset              = allowlist_from(CapitalDefaults)
 _KNOWN_DEPLOYMENT_KEYS: frozenset           = allowlist_from(DeploymentConfig)
@@ -171,6 +173,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     cold_start_raw = raw.get('cold_start', {})
     session_end_raw = raw.get('session_end', {})
     shutdown_raw = raw.get('shutdown', {})
+    storage_raw = raw.get('storage', {})
     operator_alerts_raw = raw.get('operator_alerts', {})
     capital_raw = raw.get('capital', {})
     deployment_raw = raw.get('deployment', None)
@@ -216,6 +219,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
     check_unknown_keys('cold_start',          cold_start_raw,   _KNOWN_COLD_START_KEYS)
     check_unknown_keys('session_end',         session_end_raw,  _KNOWN_SESSION_END_KEYS)
     check_unknown_keys('shutdown',            shutdown_raw,     _KNOWN_SHUTDOWN_KEYS)
+    check_unknown_keys('storage',             storage_raw,      _KNOWN_STORAGE_KEYS)
     check_unknown_keys('operator_alerts',     operator_alerts_raw, _KNOWN_OPERATOR_ALERTS_KEYS)
     check_unknown_keys('capital',             capital_raw,      _KNOWN_CAPITAL_KEYS)
     check_unknown_keys('deployment',          deployment_raw,   _KNOWN_DEPLOYMENT_KEYS)
@@ -329,6 +333,7 @@ def load_autotrader_config(config_path: str) -> AutoTraderConfig:
         cold_start=ColdStartDefaults(**_block(cold_start_raw)),
         session_end=SessionEndDefaults(**_block(session_end_raw)),
         shutdown=ShutdownDefaults(**_block(shutdown_raw)),
+        storage=StorageDefaults(**_block(storage_raw)),
         capital=CapitalDefaults(**_block(capital_raw)),
         operator_alerts=OperatorAlertsConfig(**_block(
             operator_alerts_raw,

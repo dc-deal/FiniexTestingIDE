@@ -157,7 +157,8 @@ class TestThePressureVerdict:
 def test_the_route_serves_the_reading_with_its_verdict_and_thresholds():
     body = TestClient(create_app()).get('/api/v1/machine-resources').json()
 
-    assert set(body) == {'measured_at', 'cpu', 'memory', 'pressure_level', 'pressure_reasons'}
+    assert set(body) == {'measured_at', 'cpu', 'memory', 'pressure_level', 'pressure_reasons',
+                         'disks', 'keys'}
     assert body['cpu']['count'] > 0
     assert body['memory']['limit_source'] in ('cgroup', 'machine')
     assert 0 < body['memory']['used_pct'] < 100

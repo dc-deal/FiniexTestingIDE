@@ -6,25 +6,30 @@ much of it is in use. The binding limit is read the way a container runtime does
 first, the machine only where no smaller limit is set — because a container reading the machine's
 totals reports memory its processes can never have (#416).
 
-Every read here is a small file in procfs or sysfs, which the kernel answers from memory; nothing
-touches the project tree.
+Every read of processors and memory is a small file in procfs or sysfs, which the kernel answers
+from memory; nothing touches the project tree. The disk is read apart, by `read_disks`, for the
+store roots a caller names (#632): a statfs per filesystem, which a refresh that shows no disk never
+pays.
 """
 
 import os
+import shutil
 import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import psutil
 
 from python.framework.types.machine_resources_types import (
     CpuReading,
+    DiskReading,
     LimitSource,
     MachineResourcesReading,
     MemoryReading,
 )
+from python.framework.types.store_types import StoreId
 
 CGROUP_ROOT = Path('/sys/fs/cgroup')
 
@@ -134,6 +139,36 @@ class MachineResourcesReader:
             limit_source=source,
         )
 
+    def read_disks(self, roots: Dict[StoreId, Path]) -> List[DiskReading]:
+        """
+        How much room the filesystems the given stores live on still have — one reading per
+        filesystem, its stores listed (#632).
+
+        A root that does not exist yet is measured at its nearest existing parent, where it will be
+        created; the filesystem is told apart by its device.
+
+        Args:
+            roots: Each store's root
+
+        Returns:
+            One reading per filesystem, in the order of their first store
+        """
+        by_device: Dict[int, List[StoreId]] = {}
+        anchors: Dict[int, Path] = {}
+        for store, root in sorted(roots.items(), key=lambda item: item[0].value):
+            anchor = _existing_ancestor(root)
+            device = os.stat(anchor).st_dev
+            by_device.setdefault(device, []).append(store)
+            anchors.setdefault(device, anchor)
+        readings: List[DiskReading] = []
+        for device, stores in by_device.items():
+            usage = shutil.disk_usage(anchors[device])
+            readings.append(DiskReading(
+                stores=stores, device=device, free_bytes=int(usage.free),
+                total_bytes=int(usage.total),
+                free_pct=round(usage.free / usage.total * 100.0, 1) if usage.total > 0 else None))
+        return readings
+
     def _cgroup_memory(self) -> Optional[Tuple[int, int]]:
         """
         The cgroup's memory limit and use, cgroup v2 first, v1 second.
@@ -175,6 +210,23 @@ class MachineResourcesReader:
         if quota_text is None or period_text is None or int(quota_text) <= 0:
             return None
         return int(quota_text) / int(period_text)
+
+
+def _existing_ancestor(path: Path) -> Path:
+    """
+    The path itself when it exists, else its nearest parent that does — where a path that is not
+    there yet will be created, and so the filesystem it will live on.
+
+    Args:
+        path: Any path
+
+    Returns:
+        The nearest existing path at or above it
+    """
+    current = Path(path)
+    while not current.exists() and current != current.parent:
+        current = current.parent
+    return current
 
 
 def _busy_and_total(times: Any) -> Tuple[float, float]:

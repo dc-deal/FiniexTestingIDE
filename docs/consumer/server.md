@@ -189,7 +189,10 @@ that moment is; [activities](/api/v1/docs/activities) says who holds the memory.
  "memory": {"limit_bytes": 32495570944, "used_bytes": 13323186176, "used_pct": 41.0,
             "limit_source": "machine", "warn_at_pct": 80.0, "critical_at_pct": 90.0},
  "pressure_level": "ok",
- "pressure_reasons": []}
+ "pressure_reasons": [],
+ "disks": [{"stores": ["cold_start_state", "global_log", "run_configs", "run_ledger", "runs"],
+            "free_bytes": 318000000000, "total_bytes": 1022800000000, "free_pct": 31.1}],
+ "keys": {"disks": ["stores"]}}
 ```
 
 **The limit is the one that binds.** Where the server runs in a container with a memory limit
@@ -210,8 +213,18 @@ without knowing this server's configuration. A busy processor is the machine doi
 every backtest uses all of them — and is shown, never graded. `pressure_reasons` holds one sentence
 per reason, written for a person; show it as it comes. It is empty when the level is `ok`.
 
+**The disks are the room left under a session's records** (since contract 64). One row per
+filesystem that holds a store an AutoTrader session writes into — its run directory, the ledger, the
+carry-overs and the others, where the store catalog places them — named by those stores, never by a
+path on the machine; several stores usually share one, and `keys` says that the stores make a row unique. `free_bytes` is the room a
+process that is not root may still use: the last 5 to 10 % of a filesystem is reserved for root, and
+a session running as root writes into it, so this is the figure that warns in time. `free_pct` is
+null for a filesystem that reports no size. A session alerts its operator below its own warning
+floor and refuses to start below another; this route only shows the numbers.
+
 **How often to ask.** Every few seconds is what this route is made for: one reading costs a fraction
-of a millisecond on the server and touches no file of the project. Hold the last answer and show
+of a millisecond on the server (a statfs per filesystem for the disks) and touches no file of the
+project. Hold the last answer and show
 its `measured_at`, so a reading that has stopped arriving is visibly old rather than silently
 current.
 

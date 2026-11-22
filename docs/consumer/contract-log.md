@@ -33,6 +33,18 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 64 — 2026-11-22 (#632)
+
+The machine view says how much room is left under an AutoTrader session's records.
+
+- [Server](/api/v1/docs/server): **`disks`** on `/machine-resources` (new) — one row per filesystem
+  that holds a store an AutoTrader session writes into, where the store catalog places it, named by
+  those stores and never by a path: `stores`, `free_bytes` (the room a process that is not root may
+  still use), `total_bytes` and `free_pct` (null for a filesystem that reports no size). **`keys`**
+  (new) declares that `stores` makes a disk row unique.
+
+One field and its key added; nothing changed or removed.
+
 ## Version 63 — 2026-11-22 (#627)
 
 A spot position whose holding an operator sold outside the bot — by hand at the venue while the bot
@@ -108,36 +120,13 @@ Coverage and the scenario details say whose data was there and whose was read.
 
 Three fields added; nothing changed or removed.
 
-## Version 59 — 2026-11-19 (#647)
-
-What a run read says more, and one count says what its name says: a file without a stamp.
-
-- [Sweeps](/api/v1/docs/sweeps): **`unstamped_input_files`** on a combination counts the files whose
-  origin no stamp attests — evidence grade other than `stamped` — whatever their class. A venue's
-  published history carries the stamp of the converter that brought it in, so it no longer counts.
-  A changed meaning: a row with `logic_version` 21 or older counted the files that were not
-  production data stamped by their producer, so every external file counted there.
-- [Sweeps](/api/v1/docs/sweeps): **`server_clock_rules`** (new) — the server clock rules the
-  combination's tick files' times were converted with, comma-joined, such as `UTC+0h`; empty where no
-  file stated one.
-- [Sweeps](/api/v1/docs/sweeps): **`external_warmup_timeframes`** (new) — the bar timeframes whose
-  warmup reached back before our own collection, into a venue's published history; empty where none
-  did.
-- [Warnings and errors](/api/v1/docs/warnings-errors): a mock session reports what its replay read,
-  as a backtest does — `data_origin_external` for a venue's published history,
-  `data_origin_unstamped` for files no producer stamped, and what the files lack.
-
-**A row recorded before this contract** carries `logic_version` 21 or older, the old meaning of
-`unstamped_input_files`, and empty values in the two new fields.
-
-Two fields added, one meaning changed; nothing removed.
-
-## Versions 58 and earlier
+## Versions 59 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 59** — 2026-11-19 (#647): What a run read says more — on [sweeps](/api/v1/docs/sweeps) `unstamped_input_files` counts the files no stamp attests (a changed meaning: before, every external file counted), `server_clock_rules` and `external_warmup_timeframes` (new); a mock session reports what its replay read in [warnings and errors](/api/v1/docs/warnings-errors), as a backtest does. A row with `logic_version` 21 or older keeps the old meaning.
 - **Version 58** — 2026-11-16 (#461): An AutoTrader session runs on a timeline — `ts_event` (new) on [order events](/api/v1/docs/order-events), the venue's own stamp of a step where it reports one; every time a session records is when a tick or an answer reached it, no longer the venue's stamp of the tick; a backlog is one slice and a session's `ticks_processed` no longer counts its older ticks; a live `in_flight_ms` ends when the answer is read right after it arrives. A session recorded before it can differ from one of the same data recorded now.
 - **Version 57** — 2026-11-16 (#460): A backtest runs on its timeline — `algo_passes` and `ghost_passes` on [scenario details](/api/v1/docs/scenario-details), the [worker and decision](/api/v1/docs/worker-decision) rows and [profiling](/api/v1/docs/profiling), with the per-pass time beside the per-tick one, several shares and budget figures taken per pass, the `instant_resolution` operation and the `data_arrival_time_offset` [validation check](/api/v1/docs/validation-checks); a backtest recorded before it carries null counts.
 - **Version 56** — 2026-11-15 (#666): A list says what a reader opens a run or a sweep to find out — `total_units`, `failed_count` and `succeeded_count` on every row of [runs](/api/v1/docs/runs) and on a [sweep](/api/v1/docs/sweeps)'s combinations, `best_combinations` on the sweep list, `total_final_equity` and `total_initial_balance` on a combination; a sweep whose objective cannot rank its combinations is refused with `409 sweep_objective_unrankable`.

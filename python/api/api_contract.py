@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 63
+API_CONTRACT_VERSION = 64
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,13 +36,8 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "trade-history: close_reason closed_externally (new value) — a spot position whose holding was sold "
-    "outside the bot, booked when a start declared so; external_closes (new) counts them in the trade "
-    "totals, and manual_closes no longer includes them",
-    "trade-history: exit_observed on a trade row (new) — false for a close made outside the bot: its exit "
-    "price is the entry price and its gross P&L zero by construction, not measured; true on every other "
-    "trade and on every row recorded before",
-    "runs: origin.book_closed_externally in the run header (new) — the position notes the start was told "
-    "were closed outside the bot, as typed; empty when none",
+    "machine-resources: disks (new) — one row per filesystem that holds a store an AutoTrader session "
+    "writes into, named by those stores (keys: disks → stores), with free_bytes (the room a process that "
+    "is not root may use), total_bytes and free_pct (null when a filesystem reports no size)",
 ]
 

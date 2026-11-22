@@ -567,6 +567,12 @@ run against it. See [Store Entry Members](architecture/store_entry_members.md#th
 
 **fragment** — One ledger file, written per run. Nothing else is called a fragment.
 
+**free space** (`free_bytes` in the machine view's `disks`, `storage.min_free_gb_to_start`,
+`storage.warn_free_gb`) — The room on a filesystem that a process which is not root may still
+write. Not the filesystem's whole free space: the last few percent are reserved for root, and a
+session running as root would write into them until the very last byte. See
+[Unattended Operation](autotrader/unattended_operation.md#the-disk-under-the-records).
+
 **frozen** — Kept by a run, at its start, as a copy in the run-config store and named by its
 content: the configuration it was given (`config_id`), the one an AutoTrader session ran with
 (`rendered_config_id`), the broker configuration (`broker_config_id`). A frozen copy is never
