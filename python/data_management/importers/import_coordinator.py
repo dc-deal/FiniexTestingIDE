@@ -1667,8 +1667,8 @@ def _by_hand_line(by_hand: InboxByHand) -> str:
         parts.append(f'{len(by_hand.zips_without_manifest)} zip(s) without a manifest '
                      f'({", ".join(by_hand.zips_without_manifest)})')
     if by_hand.zips_with_manifest:
-        parts.append(f'{len(by_hand.zips_with_manifest)} package zip(s) carried in with their '
-                     f'manifest ({", ".join(by_hand.zips_with_manifest)})')
+        parts.append(f'{len(by_hand.zips_with_manifest)} package zip(s) with a manifest, not '
+                     f'fetched now ({", ".join(by_hand.zips_with_manifest)})')
     return f'✋ By hand: {by_hand.file_count()} file(s) — {", ".join(parts)}'
 
 

@@ -77,7 +77,8 @@ class PackageServiceStatus:
             empty — never the token
         waiting: Packages waiting for our receipt; None when the list was not read
         acknowledged: Packages acknowledged; None when the list was not read
-        newest_package: The newest package listed; None when the list was not read or is empty
+        last_listed_package: The last package its list names — a service lists its packages
+            oldest first; None when the list was not read or is empty
         check_note: Why the list was not read when a check was asked for ('' otherwise)
     """
     package_service: str
@@ -88,7 +89,7 @@ class PackageServiceStatus:
     credential: str
     waiting: Optional[int] = None
     acknowledged: Optional[int] = None
-    newest_package: Optional[str] = None
+    last_listed_package: Optional[str] = None
     check_note: str = ''
 
 

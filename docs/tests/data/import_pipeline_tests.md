@@ -506,7 +506,7 @@ with `Range` support, and the receipt:
 - **TestWhatCameByHand** — the summary names the loose files and the zips without a manifest that
   no service delivered; an import with nothing by hand prints no such line
 - **TestTheConfiguration** — the tracked file mirrors the model's defaults, switched off; an address
-  and the switch in the workspace copy make a source
+  and the switch in the workspace copy make a source; switched on without an address it says so
 - **TestTheContractsFields** — a listing's source is read from `source`; a manifest's member
   sizes are read beside their hashes
 
@@ -521,8 +521,9 @@ command (#120). Run against configuration copies in a temporary directory and st
 - **TestTheRegistry** — the registry lists exactly the peers whose configuration models carry a
   package block, found by walking the configuration types; each service has a name of its own
 - **TestTheStatusRows** — without a check no list is read; a check counts what waits and what was
-  acknowledged and names the newest package; a switched-off or silent service's list is not read
-  and says why; the table shows each service and never a token
+  acknowledged and names the last package listed; a switched-off or silent service's list is not
+  read and says why, and only the silent switched-on one fails the check (the exit code); one
+  service's malformed list fails its own row only; the table shows each service and never a token
 - **TestTheCommand** — `data_index_cli.py package-sources` lists the tracked services, switched off
 
 ### test_bar_render_replace.py

@@ -286,8 +286,8 @@ class InboxByHand:
         loose_tick_files: Tick exports lying loose in the inbox
         loose_signal_files: Signal files lying loose in the inbox
         zips_without_manifest: The zips that came without a package manifest, by name
-        zips_with_manifest: Package zips carried in with their manifest that no service listed
-            for fetching in this import, by name
+        zips_with_manifest: Package zips lying with their manifest that no service delivered in
+            this import — carried in by hand, or left by an earlier import — by name
     """
     loose_tick_files: int = 0
     loose_signal_files: int = 0

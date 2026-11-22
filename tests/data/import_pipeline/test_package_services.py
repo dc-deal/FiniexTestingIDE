@@ -27,7 +27,10 @@ from python.configuration.package_service_registry import (
     resolve_package_services,
 )
 from python.configuration.sentiment_config_manager import SentimentConfigManager
-from python.data_management.importers.package_service_status import build_package_service_status
+from python.data_management.importers.package_service_status import (
+    any_list_unread,
+    build_package_service_status,
+)
 from python.framework.reporting.console.package_services_summary import render_package_services
 from python.framework.types.config_types.package_service_config_types import (
     ActivePackageSource,
@@ -175,7 +178,7 @@ class TestTheStatusRows:
         row = build_package_service_status(
             [_resolution(PackageServiceState.ON)], check=False,
             client_factory=lambda source: _StubClient(None))[0]
-        assert (row.waiting, row.acknowledged, row.newest_package, row.check_note) == (
+        assert (row.waiting, row.acknowledged, row.last_listed_package, row.check_note) == (
             None, None, None, '')
         assert row.credential == 'no credentials file found'
 
@@ -186,7 +189,8 @@ class TestTheStatusRows:
             [_resolution(PackageServiceState.ON)], check=True,
             client_factory=lambda source: _StubClient(listings))[0]
         assert (row.waiting, row.acknowledged) == (1, 1)
-        assert row.newest_package == 'crypto_sentiment-0002-20261122'
+        assert row.last_listed_package == 'crypto_sentiment-0002-20261122'
+        assert not any_list_unread([row])
 
     def test_a_check_reads_no_list_of_a_service_that_is_off_or_silent(self):
         off, silent = build_package_service_status(
@@ -195,6 +199,22 @@ class TestTheStatusRows:
         assert off.check_note == 'not read — rag: switched off'
         assert silent.check_note == 'not read — the service did not answer'
         assert silent.waiting is None
+        # A switched-off service is not a failed check; a silent switched-on one is
+        assert not any_list_unread([off]) and any_list_unread([off, silent])
+
+    def test_a_malformed_list_fails_its_own_row_only(self):
+        class _Malformed:
+            def list_packages(self):
+                raise ValueError('state is not a known word')
+
+        listings = [_listing('crypto_sentiment-0001-20261116', PackageState.READY)]
+        clients = iter([_Malformed(), _StubClient(listings)])
+        broken, fine = build_package_service_status(
+            [_resolution(PackageServiceState.ON), _resolution(PackageServiceState.ON)],
+            check=True, client_factory=lambda source: next(clients))
+        assert broken.check_note == ('not read — its list could not be read: '
+                                     'state is not a known word')
+        assert fine.waiting == 1
 
     def test_the_table_shows_each_service_and_never_a_token(self, capsys):
         rows = build_package_service_status(

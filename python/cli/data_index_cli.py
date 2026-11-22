@@ -26,7 +26,10 @@ from python.data_management.importers.import_coordinator import (
     ImportCoordinator,
     import_paths_from_config,
 )
-from python.data_management.importers.package_service_status import build_package_service_status
+from python.data_management.importers.package_service_status import (
+    any_list_unread,
+    build_package_service_status,
+)
 from python.data_management.importers.tick_data_reporter import run_summary_report
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.data_inspector import DataInspector
@@ -78,15 +81,19 @@ class DataIndexCli:
         )
         return IMPORT_EXIT_CODES[coordinator.run()]
 
-    def cmd_package_sources(self, check: bool = False) -> None:
+    def cmd_package_sources(self, check: bool = False) -> int:
         """
         List every package service an import can fetch from.
 
         Args:
             check: Read each switched-on service's list
+
+        Returns:
+            The exit code: 1 when a check could not read a switched-on service's list, else 0
         """
-        render_package_services(
-            build_package_service_status(resolve_package_services(), check=check), checked=check)
+        rows = build_package_service_status(resolve_package_services(), check=check)
+        render_package_services(rows, checked=check)
+        return 1 if any_list_unread(rows) else 0
 
     def cmd_tick_data_report(self, broker_type: str = None):
         """
@@ -212,7 +219,7 @@ def main():
             ))
 
         elif args.command == 'package-sources':
-            cli.cmd_package_sources(check=args.check)
+            sys.exit(cli.cmd_package_sources(check=args.check))
 
         elif args.command == 'tick-data-report':
             cli.cmd_tick_data_report(broker_type=args.broker_type)

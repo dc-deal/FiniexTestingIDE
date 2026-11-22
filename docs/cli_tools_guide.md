@@ -148,7 +148,9 @@ already have a Parquet. Ticks come first, then the signals, then the discovery c
 
 `package-sources` lists every package service: what it delivers, whether it is switched on, its
 endpoint and address, and which credential file answered — never a token. `--check` also reads
-each switched-on service's list: the packages waiting for a receipt, those acknowledged, the newest.
+each switched-on service's list: the packages waiting for a receipt, those acknowledged, the last
+one listed; it exits `1` when the list of a switched-on service could not be read, so a script can
+rely on the exit code.
 
 In a terminal the import shows one live screen with every step, machine memory as a bar and an
 estimate from earlier imports; every line also goes to its own log file, which the summary names

@@ -59,5 +59,5 @@ def _list_line(row: PackageServiceStatus) -> str:
     """
     if row.check_note:
         return row.check_note
-    return (f'waiting {row.waiting} · acknowledged {row.acknowledged} · newest '
-            f'{row.newest_package or "—"}')
+    return (f'waiting {row.waiting} · acknowledged {row.acknowledged} · last listed '
+            f'{row.last_listed_package or "—"}')

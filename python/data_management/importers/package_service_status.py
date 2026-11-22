@@ -47,7 +47,13 @@ def build_package_service_status(
             rows.append(PackageServiceStatus(
                 **base, check_note=f'not read — {service.describe_state()}'))
             continue
-        listings = client_factory(service.source).list_packages()
+        try:
+            listings = client_factory(service.source).list_packages()
+        except (KeyError, TypeError, ValueError) as error:
+            # One service's malformed list is that service's row, as in the import's fetch
+            rows.append(PackageServiceStatus(
+                **base, check_note=f'not read — its list could not be read: {error}'))
+            continue
         if listings is None:
             rows.append(PackageServiceStatus(
                 **base, check_note='not read — the service did not answer'))
@@ -57,5 +63,19 @@ def build_package_service_status(
             waiting=sum(1 for listing in listings if listing.state is PackageState.READY),
             acknowledged=sum(1 for listing in listings
                              if listing.state is PackageState.DELIVERED),
-            newest_package=listings[-1].package_id if listings else None))
+            last_listed_package=listings[-1].package_id if listings else None))
     return rows
+
+
+def any_list_unread(rows: List[PackageServiceStatus]) -> bool:
+    """
+    Whether a check could not read the list of a switched-on service — what the status command's
+    exit code says, so a script or an outside check can rely on it.
+
+    Args:
+        rows: The status rows of a check
+
+    Returns:
+        True when a switched-on service's row says why its list was not read
+    """
+    return any(row.state is PackageServiceState.ON and row.check_note for row in rows)

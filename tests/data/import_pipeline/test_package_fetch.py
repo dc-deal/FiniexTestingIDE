@@ -638,6 +638,20 @@ class TestTheConfiguration:
         assert source.credentials_file == 'peers/collector_credentials.json'
         assert (source.package_service, source.delivers) == ('collector', ImportSection.TICKS)
 
+    def test_switched_on_without_an_address_it_says_so(self, tmp_path, monkeypatch):
+        override = tmp_path / 'data_collector_config.json'
+        override.write_text(json.dumps({'packages': {'enabled': True}}), encoding='utf-8')
+        monkeypatch.setattr(
+            'python.configuration.data_collector_config_manager.is_config_isolation_active',
+            lambda: False)
+
+        resolution = DataCollectorConfigManager(
+            user_config_path=str(override)).resolve_package_source()
+
+        assert resolution.state is PackageServiceState.NO_ADDRESS
+        assert resolution.source is None
+        assert resolution.describe_state() == 'collector: no address'
+
 
 class TestTheContractsFields:
     """The fields both package services serve under one name (the collector's answer of

@@ -847,7 +847,8 @@ Acknowledge packages  for each package whose zip lies in data/finished/: the rec
   installation's connected sources are opt-in.
 - **`data_index_cli.py package-sources`** lists every package service — what it delivers, its
   switch, its endpoint, whether an address is set, which credential file answered and whether its
-  token is empty, never the token — and with `--check` what each switched-on service's list holds.
+  token is empty, never the token — and with `--check` what each switched-on service's list holds;
+  a list that cannot be read is that service's row, and the command then exits `1`.
 - **An import fetches only when it is told to (`--fetch`).** A receipt releases the service's
   originals, so no import of another line and no stray run should send one unasked; without the
   flag the step shows skipped as `not asked for — an import fetches with --fetch`.
@@ -871,7 +872,7 @@ Acknowledge packages  for each package whose zip lies in data/finished/: the rec
   zip without a manifest.
 - **What came by hand is named in the summary**, as a source of its own: every file the inbox held
   at the scan that no service delivered in this import — loose tick exports and signal files, zips
-  without a manifest, package zips carried in with theirs. Both ways stay open; nothing is imported
+  without a manifest, package zips lying with theirs (carried in, or left by an earlier import). Both ways stay open; nothing is imported
   twice, because a file the archive holds already is skipped as a duplicate.
 
 ```
