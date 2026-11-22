@@ -68,7 +68,10 @@ The inbox therefore holds only what still needs importing, and a re-run costs no
 - **The inbox is flat.** A JSONL in a folder of `data/raw/` is not read. The pipeline comes from the
   envelopes, so a folder would only say again what the file says itself — or contradict it.
 - **A producer's package** is a zip of one pipeline's day files, lying flat in it and named after
-  their pipeline and day: `crypto_sentiment_2026-11-10.jsonl`. The import checks the name's
+  their pipeline and day: `crypto_sentiment_2026-11-10.jsonl`. An import run with `--fetch` fetches
+  the producer's packages from its package service once `packages.enabled` is switched on in the
+  workspace copy of `sentiment_config.json` — from the active producer endpoint, with its
+  credential ([Fetching from the package services](data_import_pipeline.md#fetching-from-the-package-services)). The import checks the name's
   pipeline — everything before the last underscore — against the envelopes' and refuses a file
   where the two differ; a file refused from a zip goes to `data/refused/<zip stem>/`. The zip
   itself moves to `data/finished/` and is the archive of its files

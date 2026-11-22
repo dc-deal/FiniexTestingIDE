@@ -404,7 +404,8 @@ tree:
 - **TestBothArchives** — ticks and signals are imported, moved and rendered; every step ends
   done, except the caches, which a scoped import shows skipped as `not the production archive`,
   the zip unpacking, shown skipped as `no zip in the inbox`, and the package fetch and receipt,
-  shown skipped as `no package source configured`; the frame's first step is the package fetch;
+  shown skipped as `not asked for — an import fetches with --fetch`; the frame's first step is the
+  package fetch;
   the import's own log holds both importers' lines, the summary and the line naming itself; the
   frame serializes to JSON; the scan names the broker from each file's metadata head
 - **TestPinnedIssue** — a duplicate is counted and pinned as the bottom line; an `--override` run,
@@ -442,7 +443,9 @@ Every import drains the one import inbox, and a zip there is imported like loose
 through the coordinator against a temporary tree with its own finished, unpacking and refused
 directories:
 
-- **TestTheOutcomes** — exactly IMPORTED and ALREADY_ARCHIVED count as taken by the archive
+- **TestTheOutcomes** — exactly IMPORTED, ALREADY_ARCHIVED and EMPTY count as taken
+- **TestAnEmptyExport** — a valid export with no tick writes nothing, leaves for finished/, and is
+  counted apart in the summary and named as a warning (F2-263)
 - **TestLooseFilesLeaveTheInbox** — a file the validation refuses (an overlap) and one that cannot
   be read go to the refused directory, unchanged, with a note naming the reason, and the summary
   lists them; a duplicate is counted as before and leaves the inbox — the identical file already in
@@ -476,9 +479,10 @@ directories:
 
 ### test_package_fetch.py
 
-The import fetches the data collector's tick packages and acknowledges them (#120). Run through
-the coordinator against a stub package service on a local port (`ThreadingHTTPServer`) that serves
-the list, a manifest, the zip with `Range` support, and the receipt:
+An import run with `--fetch` fetches the packages of every switched-on package service and
+acknowledges each to the service it came from (#120). Run through the coordinator against stub
+package services on local ports (`ThreadingHTTPServer`), each serving the list, a manifest, the zip
+with `Range` support, and the receipt:
 
 - **TestAPackageIsFetchedImportedAndAcknowledged** — the whole exchange: the zip and its manifest end
   in finished/, the inbox is empty, the receipt carries the zip's SHA-256 and what the import did; a
@@ -493,11 +497,33 @@ the list, a manifest, the zip with `Range` support, and the receipt:
 - **TestTheReceipt** — a 409 is an error and nothing is marked; a receipt whose answer is lost is sent
   once and settled by reading the package back
 - **TestAServiceThatFails** — a refused token is asked once, not retried, and the import goes on with
-  the inbox; `--no-fetch` shows the step skipped with its reason
-- **TestTheConfiguration** — the tracked file mirrors the model's defaults and fetches nothing; an
-  address in the workspace copy makes a source
+  the inbox; an import not asked to fetch shows the step skipped with its reason
+- **TestSeveralServices** — each receipt goes to the service its package came from; one service
+  failing leaves the other's packages fetched and acknowledged; an import of the signals reaches
+  the signal service alone; switched-off services name their state on the skipped step
+- **TestAPackageAlreadyInTheInbox** — a listed package's zip lying in the inbox under its own name
+  and hash is taken without a download (`in inbox`) and acknowledged
+- **TestWhatCameByHand** — the summary names the loose files and the zips without a manifest that
+  no service delivered; an import with nothing by hand prints no such line
+- **TestTheConfiguration** — the tracked file mirrors the model's defaults, switched off; an address
+  and the switch in the workspace copy make a source
 - **TestTheContractsFields** — a listing's source is read from `source`; a manifest's member
   sizes are read beside their hashes
+
+### test_package_services.py
+
+Every package service is declared in its own peer's file and listed by one registry and one
+command (#120). Run against configuration copies in a temporary directory and stub lists:
+
+- **TestTheRagEnginesService** — switched off in the tracked file; switched on, it fetches from the
+  active producer endpoint with its credential file's name and the collector's ladder; switched on
+  without an address it says so; the tracked block mirrors the model
+- **TestTheRegistry** — the registry lists exactly the peers whose configuration models carry a
+  package block, found by walking the configuration types; each service has a name of its own
+- **TestTheStatusRows** — without a check no list is read; a check counts what waits and what was
+  acknowledged and names the newest package; a switched-off or silent service's list is not read
+  and says why; the table shows each service and never a token
+- **TestTheCommand** — `data_index_cli.py package-sources` lists the tracked services, switched off
 
 ### test_bar_render_replace.py
 

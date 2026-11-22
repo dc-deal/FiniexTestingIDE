@@ -9,11 +9,11 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from python.configuration.data_home import workspace_path
+from python.configuration.package_service_resolution import resolve_package_service
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.types.config_types.data_collector_config_types import (
-    ActivePackageSource,
-    DataCollectorConfig,
-)
+from python.framework.types.config_types.data_collector_config_types import DataCollectorConfig
+from python.framework.types.import_types.import_progress_types import ImportSection
+from python.framework.types.import_types.package_types import PackageServiceResolution
 from python.framework.utils.config_merge_utils import deep_merge, is_config_isolation_active
 
 vLog = get_global_logger()
@@ -25,6 +25,9 @@ class DataCollectorConfigManager:
 
     Globally available: instantiate where needed, no injection.
     """
+
+    # The collector's name among the package services
+    PACKAGE_SERVICE = 'collector'
 
     def __init__(
         self,
@@ -51,22 +54,22 @@ class DataCollectorConfigManager:
         """
         return self._config
 
-    def resolve_package_source(self) -> Optional[ActivePackageSource]:
+    def resolve_package_source(self) -> PackageServiceResolution:
         """
-        The package service the import fetches from, address and credential file together.
+        The collector's package service: its tick packages, address and credential file together.
 
         Returns:
-            The active source, None when its address is empty — nothing is fetched then
+            The resolution — on, switched off, or without an address
         """
         packages = self._config.packages
         endpoint = packages.get_active_endpoint()
-        if not endpoint.base_url:
-            return None
-        return ActivePackageSource(
-            name=packages.active,
-            base_url=endpoint.base_url.rstrip('/'),
-            credentials_file=endpoint.credentials_file,
-            connection=packages.connection)
+        return resolve_package_service(
+            package_service=self.PACKAGE_SERVICE,
+            delivers=ImportSection.TICKS,
+            config=packages,
+            endpoint_name=packages.active,
+            base_url=endpoint.base_url,
+            credentials_file=endpoint.credentials_file)
 
     def _load(self) -> Dict[str, Any]:
         """

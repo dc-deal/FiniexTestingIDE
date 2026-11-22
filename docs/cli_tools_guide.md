@@ -129,9 +129,9 @@ them to Parquet and renders the bars for every configured timeframe.
 
 | | |
 |---|---|
-| **VS Code** | `📥 Import` · `📥 Import (Override)` |
-| **CLI** | `python python/cli/data_index_cli.py import [--override] [--only ticks\|signals] [--no-display] [--no-fetch]` |
-| **Purpose** | Fetch the data collector's tick packages, import the import inbox — tick exports and signal files, loose or in zips — render bars, rebuild the discovery caches, acknowledge the packages taken |
+| **VS Code** | `📥 Import` · `📥 Import (fetch packages)` · `📥 Import (Override)` · `📥 Package services` |
+| **CLI** | `python python/cli/data_index_cli.py import [--override] [--only ticks\|signals] [--no-display] [--fetch]` · `python python/cli/data_index_cli.py package-sources [--check]` |
+| **Purpose** | Import the import inbox — tick exports and signal files, loose or in zips — render bars, rebuild the discovery caches; with `--fetch`, first fetch the packages of every switched-on package service and acknowledge each one taken |
 
 Each broker's timestamps are converted to UTC through its server clock rule in `market_config.json`
 (see [Data Import Pipeline](data_pipeline/data_import_pipeline.md)); `--override` re-imports files that
@@ -141,8 +141,14 @@ already have a Parquet. Ticks come first, then the signals, then the discovery c
 - `--override` — replace an existing Parquet instead of skipping the file
 - `--only ticks` / `--only signals` — import only one kind; the other kind's files stay in the inbox
 - `--no-display` — log line by line instead of showing the live screen
-- `--no-fetch` — fetch no package from the data collector first (see [Fetching the collector's
-  packages](data_pipeline/data_import_pipeline.md#fetching-the-collectors-packages))
+- `--fetch` — first fetch the packages of every switched-on package service — the data
+  collector's tick packages, the RAG engine's signal packages — and acknowledge each one taken (see
+  [Fetching from the package services](data_pipeline/data_import_pipeline.md#fetching-from-the-package-services));
+  without it the import drains the inbox alone
+
+`package-sources` lists every package service: what it delivers, whether it is switched on, its
+endpoint and address, and which credential file answered — never a token. `--check` also reads
+each switched-on service's list: the packages waiting for a receipt, those acknowledged, the newest.
 
 In a terminal the import shows one live screen with every step, machine memory as a bar and an
 estimate from earlier imports; every line also goes to its own log file, which the summary names

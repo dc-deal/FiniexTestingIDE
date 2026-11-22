@@ -152,11 +152,32 @@ def _log(coordinator: ImportCoordinator) -> str:
 
 
 class TestTheOutcomes:
-    """What the archive holds once an export's import ended."""
+    """Which exports the import is through with once their import ended."""
 
-    def test_taken_means_in_the_archive(self):
+    def test_taken_means_in_the_archive_or_valid_and_empty(self):
         taken = {outcome for outcome in InboxImportOutcome if outcome.is_taken()}
-        assert taken == {InboxImportOutcome.IMPORTED, InboxImportOutcome.ALREADY_ARCHIVED}
+        assert taken == {InboxImportOutcome.IMPORTED, InboxImportOutcome.ALREADY_ARCHIVED,
+                         InboxImportOutcome.EMPTY}
+
+
+class TestAnEmptyExport:
+    """A valid export with no tick writes nothing, and is counted apart rather than as imported
+    (it used to count as processed with only a log line)."""
+
+    def test_it_leaves_for_finished_counted_and_named(self, tmp_path):
+        paths = _paths(tmp_path)
+        empty = build_minimal_tick_json(symbol='AAAUSD', start_time='2026.01.15 10:00:00')
+        empty['ticks'] = []
+        write_json_fixture(paths.inbox, _export_name('AAAUSD', '2026.01.15 10:00:00'), empty)
+
+        coordinator = _run(paths)
+
+        assert _tick_files(paths) == []
+        assert _inbox(paths) == []
+        assert (paths.finished / _export_name('AAAUSD', '2026.01.15 10:00:00')).exists()
+        log = _log(coordinator)
+        assert '0 file(s) processed · 0 ticks · 1 empty export(s), nothing written' in log
+        assert 'EMPTY EXPORT' in log and 'it holds no tick' in log
 
 
 class TestLooseFilesLeaveTheInbox:

@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - Package Client
-Reads the data collector's package service (#120): the list, a manifest, a zip, and sends the
-receipt for a package the import took.
+Reads one package service (#120) — the data collector's, the RAG engine's: the list, a manifest, a
+zip, and sends the receipt for a package the import took.
 
 Every read runs under the connection ladder and through the classified HTTP attempt, so a
 transport fault, a 429 or a 5xx is retried and a refusal is not. The receipt is a write: it is
@@ -18,7 +18,8 @@ import requests
 from python.configuration.credentials_cascade import resolve_credentials_file
 from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
 from python.framework.logging.bootstrap_logger import get_global_logger
-from python.framework.types.config_types.data_collector_config_types import ActivePackageSource
+from python.framework.types.config_types.package_service_config_types import ActivePackageSource
+from python.framework.types.config_types.sentiment_config_types import ResolvedCredential
 from python.framework.types.import_types.package_types import (
     PackageListing,
     PackageManifest,
@@ -33,9 +34,6 @@ from python.framework.utils.connection_ladder import (
 from python.framework.utils.http_attempt import send_classified
 
 vLog = get_global_logger()
-
-# The connection as the operator reads it in a ladder's log line
-LADDER_NAME = 'tick_packages'
 
 _CHUNK_BYTES = 1 << 20
 # The service's own limit for a receipt's note
@@ -65,7 +63,9 @@ class PackageClient:
         self._read_token = (read_token if read_token is not None
                             else lambda: _token_from_cascade(source.credentials_file))
         self._wait = wait
-        self._ladder = ConnectionLadder(name=LADDER_NAME, policy=source.connection, logger=vLog)
+        # The connection as the operator reads it in a ladder's log line, one per service
+        self._ladder = ConnectionLadder(name=f'{source.package_service}_packages',
+                                        policy=source.connection, logger=vLog)
 
     def list_packages(self) -> Optional[List[PackageListing]]:
         """
@@ -232,6 +232,23 @@ class PackageClient:
         return {'Authorization': f'Bearer {token}'} if token else {}
 
 
+def read_package_credential(credentials_file: str) -> ResolvedCredential:
+    """
+    A package service's token, read through the credential cascade, with the file that answered.
+
+    Args:
+        credentials_file: The configured name, e.g. 'peers/collector_credentials.json'
+
+    Returns:
+        The token — empty when none is configured — and the answering file, None when none did
+    """
+    path = resolve_credentials_file(credentials_file)
+    if path is None:
+        return ResolvedCredential(token='', source=None)
+    with open(path, 'r') as handle:
+        return ResolvedCredential(token=json.load(handle).get('api_token', ''), source=str(path))
+
+
 def _token_from_cascade(credentials_file: str) -> str:
     """
     The package service's token, read through the credential cascade.
@@ -242,11 +259,7 @@ def _token_from_cascade(credentials_file: str) -> str:
     Returns:
         The token, empty when none is configured
     """
-    path = resolve_credentials_file(credentials_file)
-    if path is None:
-        return ''
-    with open(path, 'r') as handle:
-        return json.load(handle).get('api_token', '')
+    return read_package_credential(credentials_file).token
 
 
 def _listing_of(entry: Dict[str, Any]) -> Optional[PackageListing]:

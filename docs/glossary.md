@@ -804,6 +804,13 @@ is measured against it), while `stop_loss` / `take_profit` on the position and t
 empty, and so do the R-multiple and, where no trade has one, `expectancy`. Counted in `sl_tp_triggered` like a close the framework's own
 level check made, once when the close goes out. See [Quickstart — Own Exits](user_guides/quickstart_guide.md).
 
+**package service** (`package_service`; `packages` in a peer's config file) — A peer that serves
+its files as packages the import fetches with `--fetch`: the data collector (tick packages) and
+the RAG engine (signal packages). Each is declared in its own peer's file with an `enabled`
+switch, off until a workspace copy turns it on; `data_index_cli.py package-sources` lists them. Not
+the *service* account kind of the API. See [Data Import
+Pipeline](data_pipeline/data_import_pipeline.md#fetching-from-the-package-services).
+
 **pane** (`pane` on an *indicator series*) — One stacked area of a run's chart with its own scale:
 `price`, the candles' pane, or one under it named for the series drawn there. Not a *panel*, which is
 a block of a screen, such as a stop's panel in the console.
@@ -1138,8 +1145,9 @@ its parent. Not itself a run. See [Parameter Optimization](architecture/paramete
 **tick package** — One weekly delivery of the data collector's finished tick files: a zip per
 collector with a manifest naming every file and its SHA-256, sealed at a UTC cutoff (#120). The
 import fetches it, imports it like any zip and acknowledges it with the zip's hash. Not a Python
-package, and not the *data package* a user downloads to run the IDE out of the box (#564). See [Data
-Import Pipeline](data_pipeline/data_import_pipeline.md#fetching-the-collectors-packages).
+package, and not the *data package* a user downloads to run the IDE out of the box (#564). The RAG
+engine's signal packages follow the same contract; both come from a *package service*. See [Data
+Import Pipeline](data_pipeline/data_import_pipeline.md#fetching-from-the-package-services).
 
 **tick source** — The AutoTrader component that feeds ticks into the loop, chosen by
 `tick_source.type`: the replaying `mock` source or a venue feed.

@@ -16,12 +16,13 @@ rule; see [signal_data_source.md](signal_data_source.md).
 **Flow:**
 ```
 data_index_cli.py import → ImportCoordinator
-  ├─ Fetch the data collector's tick packages into the import inbox (see Fetching the collector's packages)
+  ├─ With --fetch: fetch the packages of every switched-on package service into the import inbox
+  │   (see Fetching from the package services)
   ├─ Scan the one import inbox, data/raw/ (each file's size; a tick file's broker from the metadata at
   │   its head; a zip's files from its central directory, and its kind — tick exports or signal files)
   ├─ Ticks: unpack the tick zips, a step of its own (see Zip packages in the inbox), then import (below)
   ├─ Signals: unpack the signal zips, then import (signal_data_source.md) → discovery caches, once
-  ├─ Acknowledge each fetched package whose zip reached data/finished/
+  ├─ Acknowledge each package whose zip reached data/finished/, to the service it came from
   └─ Its own log: logs/imports/import_<import_id>.log
        ↓
 Data Collectors (JSON)
@@ -484,8 +485,11 @@ python -m python.cli.data_index_cli import --only ticks
 python -m python.cli.data_index_cli import --only signals
 python -m python.cli.data_index_cli import --no-display
 
-# Without fetching the data collector's packages first
-python -m python.cli.data_index_cli import --no-fetch
+# Fetch the packages of every switched-on package service first
+python -m python.cli.data_index_cli import --fetch
+
+# Which package services there are, and whether each is switched on (--check reads their lists)
+python -m python.cli.data_index_cli package-sources --check
 ```
 
 The command exits `0` when everything imported, `1` when the import counted errors (a refused
@@ -751,6 +755,7 @@ calls an Invalid Message Channel:
 |---|---|
 | wrote it to the archive | `data/finished/` |
 | skipped it as a duplicate — the archive holds it already | `data/finished/` |
+| found no tick in it — a valid export, nothing to write; counted apart and named as a warning | `data/finished/` |
 | refused it (structural validation, overlap) or failed on it (unreadable JSON, a write error) | `data/refused/`, with `<name>.refused.txt` beside it |
 
 - **A refused file is kept unchanged** — it is raw source of truth — and its note gains one line per
@@ -806,42 +811,73 @@ data/raw/week45.zip
 - **Filing a zip into `data/finished/Archives/` stays a step by hand.** The import never reads or
   writes that folder.
 
-### Fetching the collector's packages
+### Fetching from the package services
 
-The data collector packs its finished tick files into weekly packages — one Deflate zip per
-collector (`kraken`, `mt5`) with a manifest, sealed Sunday 00:00 UTC, or at any cutoff by a command
-on its machine — and serves them at `/v1/packages` (#120). The import fetches them before it scans the inbox, and acknowledges each one
-it took once the import is through:
+Two peers serve their files as packages under one contract (#120): the data collector its weekly
+tick packages — one Deflate zip per collector (`kraken`, `mt5`) with a manifest, sealed Sunday
+00:00 UTC, or at any cutoff by a command on its machine — and the RAG engine its signal packages,
+one pipeline per zip. Each serves them at `/v1/packages`. An import run with `--fetch` fetches them
+before it scans the inbox, and acknowledges each one it took once the import is through:
 
 ```
-Fetch packages        every package that waits for our receipt, oldest first
+Fetch packages        every switched-on service whose packages feed an archive this import writes
+                      (the collector's ticks, the RAG engine's signals — --only narrows it): every
+                      list first, then each package that waits for our receipt, oldest first
   zip in data/finished/ already (same SHA-256)   → nothing to fetch; only the receipt is due
   zip in data/refused/                           → not fetched again, not acknowledged
+  zip in data/raw/ under its own name and hash   → taken as it is ("in inbox"); its receipt is due
   otherwise   the manifest → data/raw/<zip stem>.manifest.json
               the zip → data/raw/<zip>.part, resumed with a Range request after a break-off,
               renamed to data/raw/<zip> once its SHA-256 matches the list
 … the import as above: a fetched zip whose files differ from its manifest — a name or a size,
   checked before anything is unpacked, or a file's SHA-256, checked while it is unpacked — is
   refused whole; the manifest moves with its zip
-Acknowledge packages  for each package whose zip lies in data/finished/: the receipt, carrying the
-                      SHA-256 of the zip we hold and what the import did with it
+Acknowledge packages  for each package whose zip lies in data/finished/: the receipt, sent to the
+                      service the package came from, carrying the SHA-256 of the zip we hold and
+                      what the import did with it
 ```
 
-- **The receipt is what releases the collector's original files** — it moves them to a trash
-  folder that is emptied only on the operator's word, and keeps the zip — so it is sent only for a
-  zip in `data/finished/`. A zip in `data/refused/` is not acknowledged: the
-  package stays waiting, and the collector reports it overdue after 14 days.
+- **Every package service is declared in its own peer's file**, its address beside its credential:
+  the collector in `configs/data_collector_config.json` → `packages` (its endpoints and the active
+  one), the RAG engine in `configs/sentiment_config.json` → `packages`, which fetches from the
+  active `producer` endpoint — the host and the token stand once. Each block has an `enabled`
+  switch and the ladder of its reads (`connection`: a few attempts, then degrade). **Both are
+  switched off in the tracked files**, so a clone, the test session and a fresh machine fetch from
+  nothing until a workspace copy switches a service on and names its address — the way an
+  installation's connected sources are opt-in.
+- **`data_index_cli.py package-sources`** lists every package service — what it delivers, its
+  switch, its endpoint, whether an address is set, which credential file answered and whether its
+  token is empty, never the token — and with `--check` what each switched-on service's list holds.
+- **An import fetches only when it is told to (`--fetch`).** A receipt releases the service's
+  originals, so no import of another line and no stray run should send one unasked; without the
+  flag the step shows skipped as `not asked for — an import fetches with --fetch`.
+- **The receipt is what releases a service's original files** — the collector moves them to a
+  trash folder that is emptied only on the operator's word, and keeps the zip — so it is sent only
+  for a zip in `data/finished/`. A zip in `data/refused/` is not acknowledged: the package stays
+  waiting, and the collector reports it overdue after 14 days.
 - **Nothing is kept about the exchange but the files themselves.** What to fetch and what to
-  acknowledge is read fresh from the list and from the two directories, so a receipt whose answer
-  was lost is simply sent again by the next import; a repeated receipt changes nothing.
-- **The service failing stops the fetch, never the import.** Every read runs under the connection
-  ladder (`packages.connection`); a give-up — or a refused token, which is not retried — counts an
-  error, and the import goes on with what lies in the inbox. The receipt is a write: sent once,
-  and an answer that is lost is settled by reading the package back.
-- **Where it fetches from** is `configs/data_collector_config.json` → `packages`: the active
-  endpoint's address beside its credential file (`peers/collector_credentials.json`). The tracked
-  address is empty, so nothing is fetched until a workspace copy names it; the step then shows
-  skipped as `no package source configured`. `--no-fetch` skips it on purpose.
+  acknowledge is read fresh from the lists and from the directories, so a receipt whose answer
+  was lost is simply sent again by the next import; a repeated receipt changes nothing. The pattern
+  is the one of a consumer's committed offset: what was not acknowledged is offered again, and a
+  second fetch of the same package is harmless because its zip is recognised by its hash and its
+  files by their names in the archive.
+- **A service failing stops its own fetch, never another's and never the import.** Every read
+  runs under its service's ladder (`collector_packages`, `rag_packages`); a give-up — or a refused
+  token, which is not retried — counts an error for that service, and the import goes on with the
+  other services and with what lies in the inbox. The receipt is a write: sent once, and an answer
+  that is lost is settled by reading the package back.
+- **A package zip is recognised by its own name first, then its hash.** A copy under another name
+  is not that package: the package is downloaded under its own name, and the copy is imported as a
+  zip without a manifest.
+- **What came by hand is named in the summary**, as a source of its own: every file the inbox held
+  at the scan that no service delivered in this import — loose tick exports and signal files, zips
+  without a manifest, package zips carried in with theirs. Both ways stay open; nothing is imported
+  twice, because a file the archive holds already is skipped as a duplicate.
+
+```
+📦 Packages: collector 1 fetched · rag 3 fetched, 1 in inbox
+✋ By hand: 2 file(s) — 1 loose tick export(s), 1 zip(s) without a manifest (week45.zip)
+```
 
 ---
 

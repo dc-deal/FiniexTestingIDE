@@ -121,6 +121,8 @@ class TickDataImporter:
 
         # Batch processing statistics
         self.processed_files = 0
+        # Valid exports that held no tick — nothing written, counted apart from the processed
+        self.empty_files = 0
         self.total_ticks = 0
         self.errors = []
         self.warnings = []
@@ -272,7 +274,13 @@ class TickDataImporter:
             How its import ended
         """
         try:
-            self.convert_json_to_parquet(json_file)
+            if not self.convert_json_to_parquet(json_file):
+                warning_msg = (f'EMPTY EXPORT {json_file.name}{origin}: it holds no tick — '
+                               'nothing written')
+                vLog.warning(warning_msg)
+                self.warnings.append(warning_msg)
+                self.empty_files += 1
+                return InboxImportResult(outcome=InboxImportOutcome.EMPTY)
             self.processed_files += 1
             return InboxImportResult(outcome=InboxImportOutcome.IMPORTED)
         except ArtificialDuplicateException as e:
@@ -431,7 +439,7 @@ class TickDataImporter:
             vLog.warning(f'   {finding}')
             self.warnings.append(finding)
 
-    def convert_json_to_parquet(self, json_file: Path):
+    def convert_json_to_parquet(self, json_file: Path) -> bool:
         """
         Converts single JSON file to optimized Parquet with UTC conversion.
 
@@ -448,6 +456,9 @@ class TickDataImporter:
 
         Args:
             json_file: The export to convert
+
+        Returns:
+            True when a parquet file was written, False when the export holds no tick
         """
 
         # ===========================================
@@ -465,8 +476,7 @@ class TickDataImporter:
         metadata = data['metadata']
 
         if not ticks:
-            vLog.warning(f'No ticks in {json_file.name}')
-            return
+            return False
 
         # ===========================================
         # 2. DISPLAY BROKER METADATA (FIXED)
@@ -749,6 +759,8 @@ class TickDataImporter:
             vLog.error(f'Error Type: {type(e)}')
             raise
 
+        return True
+
     def _apply_server_clock(self, df: pd.DataFrame,
                             server_clock: ServerClockConfig) -> Tuple[pd.DataFrame, str]:
         """
@@ -1024,6 +1036,8 @@ class TickDataImporter:
         vLog.info('PROCESSING SUMMARY')
         vLog.info('=' * 80)
         vLog.info(f'✅ Processed files: {self.processed_files}')
+        if self.empty_files:
+            vLog.info(f'⚠️  Empty exports (nothing written): {self.empty_files}')
         vLog.info(f'✅ Total ticks: {self.total_ticks:,}')
         for broker_type, offset_counts in self._applied_offsets.items():
             counts_str = ' · '.join(

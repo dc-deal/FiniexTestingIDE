@@ -275,6 +275,36 @@ class InboxScan:
     signal_zips: List[InboxZipContent] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class InboxByHand:
+    """
+    What the inbox held at the scan that no package service delivered in this import — what came
+    by hand. A package zip fetched now, or found in the inbox under its own name and hash, is not
+    among it: it is counted with the packages.
+
+    Args:
+        loose_tick_files: Tick exports lying loose in the inbox
+        loose_signal_files: Signal files lying loose in the inbox
+        zips_without_manifest: The zips that came without a package manifest, by name
+        zips_with_manifest: Package zips carried in with their manifest that no service listed
+            for fetching in this import, by name
+    """
+    loose_tick_files: int = 0
+    loose_signal_files: int = 0
+    zips_without_manifest: List[str] = field(default_factory=list)
+    zips_with_manifest: List[str] = field(default_factory=list)
+
+    def file_count(self) -> int:
+        """
+        How many files and zips came by hand.
+
+        Returns:
+            Loose files and zips together
+        """
+        return (self.loose_tick_files + self.loose_signal_files
+                + len(self.zips_without_manifest) + len(self.zips_with_manifest))
+
+
 @dataclass
 class ImportStepTiming:
     """

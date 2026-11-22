@@ -16,13 +16,12 @@ import time
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 import pyarrow.parquet as pq
 
 from python.configuration.app_config_manager import AppConfigManager
-from python.configuration.data_collector_config_manager import DataCollectorConfigManager
 from python.configuration.import_config_manager import ImportConfigManager
 from python.data_management.importers.bar_importer import (
     BarImporter,
@@ -51,6 +50,7 @@ from python.framework.types.import_types.import_progress_types import (
     ImportSection,
     ImportStepId,
     ImportStepStatus,
+    InboxByHand,
     InboxFile,
     InboxScan,
 )
@@ -68,11 +68,14 @@ from python.framework.types.import_types.tick_index_types import (
     TickIndexRebuildReason,
     TickIndexRun,
 )
+from python.framework.types.config_types.package_service_config_types import ActivePackageSource
 from python.framework.types.import_types.package_types import (
     PackageFetch,
     PackageFetchOutcome,
     PackageListing,
     PackageManifest,
+    PackageServiceResolution,
+    PackageServiceState,
     PackageState,
     PackageReceiptOutcome,
 )
@@ -132,17 +135,6 @@ def import_paths_from_config() -> ImportPaths:
     )
 
 
-def package_client_from_config() -> Optional[PackageClient]:
-    """
-    The client of the data collector's package service, from data_collector_config.json.
-
-    Returns:
-        The client, None when no address is configured — nothing is fetched then
-    """
-    source = DataCollectorConfigManager().resolve_package_source()
-    return PackageClient(source) if source is not None else None
-
-
 class ImportCoordinator:
     """
     Runs one import over the import inbox: each raw file, loose or in a zip, goes to the import
@@ -155,9 +147,10 @@ class ImportCoordinator:
             kind stay in the inbox
         show_display: Ask for the live screen; it still stays off when the config switches it
             off or stdout is not a terminal
-        package_client: The data collector's package service, None when nothing is fetched
-        no_fetch_reason: Why nothing is fetched when package_client is None, shown on the
-            skipped step
+        package_services: Every package service as its configuration resolves it; None when the
+            import was not asked to fetch (no --fetch)
+        client_factory: Builds the client of a switched-on service; the package client when
+            omitted, a test hands in its own
     """
 
     def __init__(
@@ -167,8 +160,8 @@ class ImportCoordinator:
         only: Optional[ImportSection] = None,
         show_display: bool = True,
         channel: RunChannel = RunChannel.DIRECT,
-        package_client: Optional[PackageClient] = None,
-        no_fetch_reason: str = 'no package source configured',
+        package_services: Optional[List[PackageServiceResolution]] = None,
+        client_factory: Callable[[ActivePackageSource], PackageClient] = PackageClient,
     ):
         self._paths = paths
         # How the import was started, as its entry point declares it — for its entry in the list
@@ -203,17 +196,21 @@ class ImportCoordinator:
         self._frame_queue: Optional[queue.Queue] = None
         self._started = 0.0
         self._scan = InboxScan()
+        # What the inbox held at the scan that no package service delivered now
+        self._by_hand = InboxByHand()
         # Entries of each counted list the tracker has already seen — what tells a NEW issue
         # apart, per list, so the pinned one is the newest even when lists grow out of order
         self._issues_seen: Dict[str, int] = {}
 
-        # The collector's packages: what the fetch did with each, their manifests by zip name,
-        # how each receipt ended, and what the exchange gave to report
-        self._package_client = package_client
-        self._no_fetch_reason = no_fetch_reason
+        # The package services' packages: the services, a client per switched-on service this
+        # import fetches from, what the fetch did with each package, their manifests by zip name,
+        # how each receipt ended (by service and package), and what the exchange gave to report
+        self._package_services = package_services
+        self._client_factory = client_factory
+        self._package_clients: Dict[str, PackageClient] = {}
         self._package_fetches: List[PackageFetch] = []
         self._package_manifests: Dict[str, PackageManifest] = {}
-        self._receipts: Dict[str, Tuple[PackageReceiptOutcome, Optional[str]]] = {}
+        self._receipts: Dict[Tuple[str, str], Tuple[PackageReceiptOutcome, Optional[str]]] = {}
         self._package_warnings: List[str] = []
         self._package_errors: List[str] = []
 
@@ -327,15 +324,16 @@ class ImportCoordinator:
         wants_ticks = self._only in (None, ImportSection.TICKS)
         wants_signals = self._only in (None, ImportSection.SIGNALS)
 
-        # The collector's packages land in the import inbox before it is scanned, so the fetch
-        # runs ahead of the plan, logged line by line; the screen shows it done once it opens
-        if wants_ticks:
-            tracker.add_step(ImportStepId.PACKAGES_FETCH, ImportSection.INBOXES,
-                             'Fetch packages', counter_unit='packages')
-            if self._package_client is None:
-                tracker.skip_step(ImportStepId.PACKAGES_FETCH, self._no_fetch_reason)
-            else:
-                self._run_fetch_step()
+        # The package services' packages land in the import inbox before it is scanned, so the
+        # fetch runs ahead of the plan, logged line by line; the screen shows it done once it
+        # opens. Each service is reached only for an archive this import writes
+        fetch_skipped_because = self._open_package_clients(wants_ticks, wants_signals)
+        tracker.add_step(ImportStepId.PACKAGES_FETCH, ImportSection.INBOXES,
+                         'Fetch packages', counter_unit='packages')
+        if fetch_skipped_because:
+            tracker.skip_step(ImportStepId.PACKAGES_FETCH, fetch_skipped_because)
+        else:
+            self._run_fetch_step()
 
         tracker.add_step(ImportStepId.SCAN, ImportSection.INBOXES, 'Scan the import inbox',
                          counter_unit='files')
@@ -398,13 +396,12 @@ class ImportCoordinator:
             # an import scoped elsewhere says so instead of leaving the step out
             if not self._writes_production:
                 tracker.skip_step(ImportStepId.CACHES, 'not the production archive')
-        if wants_ticks:
-            tracker.add_step(ImportStepId.PACKAGES_RECEIPT, ImportSection.SHARED,
-                             'Acknowledge packages', counter_unit='packages')
-            if self._package_client is None:
-                tracker.skip_step(ImportStepId.PACKAGES_RECEIPT, self._no_fetch_reason)
-            elif not self._receipts_due():
-                tracker.skip_step(ImportStepId.PACKAGES_RECEIPT, 'no package to acknowledge')
+        tracker.add_step(ImportStepId.PACKAGES_RECEIPT, ImportSection.SHARED,
+                         'Acknowledge packages', counter_unit='packages')
+        if fetch_skipped_because:
+            tracker.skip_step(ImportStepId.PACKAGES_RECEIPT, fetch_skipped_because)
+        elif not self._receipts_due():
+            tracker.skip_step(ImportStepId.PACKAGES_RECEIPT, 'no package to acknowledge')
         tracker.publish(force=True)
 
         scan = self._scan_inboxes()
@@ -417,6 +414,7 @@ class ImportCoordinator:
         self._show_scan_result(scan)
         tracker.finish_step(ImportStepId.SCAN)
         self._scan = scan
+        self._by_hand = self._inbox_by_hand(scan)
 
         if wants_ticks:
             self._plan_tick_quantities(scan, tick_bytes)
@@ -424,142 +422,220 @@ class ImportCoordinator:
             self._plan_signal_quantities(scan, signal_bytes)
         tracker.publish(force=True)
 
+    def _inbox_by_hand(self, scan: InboxScan) -> InboxByHand:
+        """
+        What the scan found that no package service delivered in this import — read before any
+        file leaves the inbox, while a carried-in manifest still lies beside its zip.
+
+        Args:
+            scan: The inbox as the scan found it
+
+        Returns:
+            The loose files and the zips that came by hand
+        """
+        delivered = {fetch.manifest.zip_name for fetch in self._package_fetches
+                     if fetch.manifest is not None and fetch.outcome in (
+                         PackageFetchOutcome.FETCHED, PackageFetchOutcome.IN_INBOX)}
+        zips = [content.zip_path for content in scan.tick_zips + scan.signal_zips
+                if content.zip_path.name not in delivered]
+        return InboxByHand(
+            loose_tick_files=sum(1 for entry in scan.tick_files if entry.zip_member is None),
+            loose_signal_files=sum(1 for entry in scan.signal_files if entry.zip_member is None),
+            zips_without_manifest=[path.name for path in zips
+                                   if not manifest_companion(path).exists()],
+            zips_with_manifest=[path.name for path in zips if manifest_companion(path).exists()])
+
+    def _open_package_clients(self, wants_ticks: bool, wants_signals: bool) -> Optional[str]:
+        """
+        Open a client for every switched-on package service whose packages feed an archive this
+        import writes.
+
+        Args:
+            wants_ticks: Whether the import writes the tick archive
+            wants_signals: Whether the import writes the signal archive
+
+        Returns:
+            Why nothing is fetched, None when at least one service is reached
+        """
+        if self._package_services is None:
+            return 'not asked for — an import fetches with --fetch'
+        wanted = {section for section, wants in ((ImportSection.TICKS, wants_ticks),
+                                                 (ImportSection.SIGNALS, wants_signals)) if wants}
+        services = [service for service in self._package_services if service.delivers in wanted]
+        for service in services:
+            if service.state is PackageServiceState.ON:
+                self._package_clients[service.package_service] = self._client_factory(
+                    service.source)
+        if self._package_clients:
+            return None
+        if not services:
+            return "no package service feeds this import's archives"
+        return ' · '.join(service.describe_state() for service in services)
+
     def _run_fetch_step(self) -> None:
         """
-        Fetch the collector's packages that wait for our receipt into the import inbox, each proven
-        by its hash before it counts as arrived. The service failing stops the fetch, never the
-        import: what lies in the inbox is imported all the same.
+        Fetch the packages that wait for our receipt from every opened package service into the
+        import inbox, each proven by its hash before it counts as arrived. Every service's list
+        is read first, then the packages are fetched in turn. A service failing stops its own
+        fetch, never another service's and never the import: what lies in the inbox is imported
+        all the same.
 
         Returns:
             None
         """
         tracker = self._tracker
         tracker.start_step(ImportStepId.PACKAGES_FETCH)
-        listings: Optional[List[PackageListing]]
-        try:
-            listings = self._package_client.list_packages()
-        except (KeyError, TypeError, ValueError) as error:
-            listings = None
-            self._count_package_error(f'PACKAGES: the package list could not be read: {error}')
-        if listings is None:
-            if not self._package_errors:
+        ready: List[Tuple[str, PackageListing]] = []
+        failed_services: List[str] = []
+        for package_service, client in self._package_clients.items():
+            listings: Optional[List[PackageListing]]
+            try:
+                listings = client.list_packages()
+            except (KeyError, TypeError, ValueError) as error:
+                failed_services.append(package_service)
                 self._count_package_error(
-                    'PACKAGES: the package service did not answer — nothing fetched; the import '
-                    'goes on with what lies in the inbox')
-            tracker.finish_step(ImportStepId.PACKAGES_FETCH, ImportStepStatus.FAILED)
-            return
+                    f'PACKAGES {package_service}: the package list could not be read: {error}')
+                continue
+            if listings is None:
+                failed_services.append(package_service)
+                self._count_package_error(
+                    f'PACKAGES {package_service}: the package service did not answer — nothing '
+                    'fetched from it; the import goes on with what lies in the inbox')
+                continue
+            ready.extend((package_service, listing) for listing in listings
+                         if listing.state is PackageState.READY)
 
-        ready = [listing for listing in listings if listing.state is PackageState.READY]
         tracker.set_quantity(ImportStepId.PACKAGES_FETCH, ImportRateUnit.MB,
-                             sum(listing.size_bytes for listing in ready) / BYTES_PER_MB)
+                             sum(listing.size_bytes for _, listing in ready) / BYTES_PER_MB)
         tracker.set_total(ImportStepId.PACKAGES_FETCH, len(ready))
-        for done, listing in enumerate(ready):
+        for done, (package_service, listing) in enumerate(ready):
             tracker.advance(ImportStepId.PACKAGES_FETCH, done,
-                            current_item=f'{listing.package_id} '
+                            current_item=f'{package_service} {listing.package_id} '
                                          f'({format_size(listing.size_bytes)})')
-            self._package_fetches.append(self._fetch_package(listing))
+            self._package_fetches.append(self._fetch_package(package_service, listing))
             self._update_counters()
         tracker.advance(ImportStepId.PACKAGES_FETCH, len(ready))
-        tracker.set_detail(ImportStepId.PACKAGES_FETCH, _fetch_counts(self._package_fetches)
-                           or 'nothing waits')
-        tracker.finish_step(ImportStepId.PACKAGES_FETCH, _status_after(not any(
-            fetch.outcome is PackageFetchOutcome.FAILED for fetch in self._package_fetches)))
+        not_reached = [service.describe_state() for service in self._package_services
+                       if service.package_service not in self._package_clients]
+        tracker.set_detail(ImportStepId.PACKAGES_FETCH, ' · '.join(
+            [_fetch_counts_by_service(self._package_fetches) or 'nothing waits']
+            + [f'{name}: did not answer' for name in failed_services] + not_reached))
+        fetched_all = not failed_services and not any(
+            fetch.outcome is PackageFetchOutcome.FAILED for fetch in self._package_fetches)
+        tracker.finish_step(ImportStepId.PACKAGES_FETCH, _status_after(fetched_all))
 
-    def _fetch_package(self, listing: PackageListing) -> PackageFetch:
+    def _fetch_package(self, package_service: str, listing: PackageListing) -> PackageFetch:
         """
         Fetch one package into the inbox, unless the finished or the refused directory holds its
-        zip already. A download that broke off is resumed by the next attempt or the next import.
+        zip already, or the inbox does under its own name and hash. A download that broke off is
+        resumed by the next attempt or the next import.
 
         Args:
+            package_service: The service that listed it
             listing: The package as listed
 
         Returns:
             What the fetch did with it
         """
+        client = self._package_clients[package_service]
         try:
-            read = self._package_client.read_manifest(listing.package_id)
+            read = client.read_manifest(listing.package_id)
         except (KeyError, TypeError, ValueError) as error:
-            return self._fetch_failed(listing, f'its manifest could not be read: {error}')
+            return self._fetch_failed(package_service, listing,
+                                      f'its manifest could not be read: {error}')
         if read is None:
-            return self._fetch_failed(listing, 'the package service did not answer')
+            return self._fetch_failed(package_service, listing,
+                                      'the package service did not answer')
         manifest, served = read
         zip_name = manifest.zip_name
         if Path(zip_name).name != zip_name or not zip_name.endswith('.zip'):
-            return self._fetch_failed(listing, f"its zip is named '{zip_name}', not a plain "
-                                               'zip file name')
+            return self._fetch_failed(package_service, listing,
+                                      f"its zip is named '{zip_name}', not a plain zip file name")
         if manifest.zip_sha256 != listing.sha256:
-            return self._fetch_failed(listing, 'its manifest and the list name different zips')
+            return self._fetch_failed(package_service, listing,
+                                      'its manifest and the list name different zips')
 
         finished = self._paths.finished
         refused = self._paths.refused
         if (finished is not None and (finished / zip_name).exists()
                 and file_sha256(finished / zip_name) == listing.sha256):
             self._package_manifests[zip_name] = manifest
-            return PackageFetch(listing=listing, manifest=manifest,
-                                    outcome=PackageFetchOutcome.ALREADY_HERE)
+            return PackageFetch(package_service=package_service, listing=listing,
+                                manifest=manifest, outcome=PackageFetchOutcome.ALREADY_HERE)
         if refused is not None and (refused / zip_name).exists():
             self._count_package_warning(
                 f'PACKAGE {listing.package_id} NOT FETCHED: its zip lies in {refused} from an '
                 'earlier import — it is not acknowledged until somebody has looked at it')
-            return PackageFetch(listing=listing, manifest=manifest,
-                                    outcome=PackageFetchOutcome.REFUSED_BEFORE,
-                                    detail=f'its zip lies in {refused}')
+            return PackageFetch(package_service=package_service, listing=listing,
+                                manifest=manifest, outcome=PackageFetchOutcome.REFUSED_BEFORE,
+                                detail=f'its zip lies in {refused}')
 
         inbox = create_directory(self._paths.inbox,
                                  holds='the files waiting for their import')
         target = inbox / zip_name
-        if not (target.exists() and file_sha256(target) == listing.sha256):
+        # Recognised by its own name first, then by its hash: a copy under another name is not
+        # this package, and is imported as a zip of its own
+        in_inbox = target.exists() and file_sha256(target) == listing.sha256
+        if not in_inbox:
             part = inbox / f'{zip_name}.part'
             if part.exists() and part.stat().st_size >= listing.size_bytes:
                 if file_sha256(part) != listing.sha256:
                     part.unlink()
             if not part.exists() or part.stat().st_size < listing.size_bytes:
-                if not self._package_client.download_zip(listing.package_id, part):
+                if not client.download_zip(listing.package_id, part):
                     return self._fetch_failed(
-                        listing, 'the download did not finish — what arrived is kept and the '
-                                 'next import resumes it')
+                        package_service, listing,
+                        'the download did not finish — what arrived is kept and the next import '
+                        'resumes it')
             if file_sha256(part) != listing.sha256:
                 part.unlink()
-                return self._fetch_failed(listing, 'what arrived does not match the zip\'s '
-                                                   'hash — removed')
+                return self._fetch_failed(package_service, listing,
+                                          'what arrived does not match the zip\'s hash — removed')
             part.replace(target)
         manifest_companion(target).write_text(json.dumps(served, indent=2), encoding='utf-8')
         self._package_manifests[zip_name] = manifest
-        vLog.info(f'📦 Fetched {listing.package_id}: {zip_name} '
-                  f'({format_size(listing.size_bytes)}), its hash proven')
+        if in_inbox:
+            vLog.info(f'📦 Found {package_service} {listing.package_id} in the inbox: {zip_name} '
+                      f'({format_size(listing.size_bytes)}), its hash proven — not downloaded')
+        else:
+            vLog.info(f'📦 Fetched {package_service} {listing.package_id}: {zip_name} '
+                      f'({format_size(listing.size_bytes)}), its hash proven')
         if manifest.held_for_next:
             vLog.info(f'   {len(manifest.held_for_next)} file(s) reach past its cutoff and come '
                       'with the next package')
         for excluded in manifest.excluded:
             self._count_package_warning(f'PACKAGE {listing.package_id} LEFT OUT {excluded}')
-        return PackageFetch(listing=listing, manifest=manifest,
-                                outcome=PackageFetchOutcome.FETCHED)
+        return PackageFetch(package_service=package_service, listing=listing, manifest=manifest,
+                            outcome=(PackageFetchOutcome.IN_INBOX if in_inbox
+                                     else PackageFetchOutcome.FETCHED))
 
-    def _fetch_failed(self, listing: PackageListing, detail: str) -> PackageFetch:
+    def _fetch_failed(self, package_service: str, listing: PackageListing,
+                      detail: str) -> PackageFetch:
         """
         Count a package the fetch could not bring in.
 
         Args:
+            package_service: The service that listed it
             listing: The package
             detail: Why
 
         Returns:
             Its failed fetch
         """
-        self._count_package_error(f'PACKAGE {listing.package_id} NOT FETCHED: {detail}')
-        return PackageFetch(listing=listing, outcome=PackageFetchOutcome.FAILED,
-                                detail=detail)
+        self._count_package_error(
+            f'PACKAGE {package_service} {listing.package_id} NOT FETCHED: {detail}')
+        return PackageFetch(package_service=package_service, listing=listing,
+                            outcome=PackageFetchOutcome.FAILED, detail=detail)
 
     def _receipts_due(self) -> bool:
         """
         Whether any package may need its receipt once the import is through.
 
         Returns:
-            True when a package was fetched or its zip was found in the finished directory
+            True when a package was fetched, or its zip was found in the inbox or the finished
+            directory
         """
-        return any(fetch.outcome in (PackageFetchOutcome.FETCHED,
-                                     PackageFetchOutcome.ALREADY_HERE)
-                   for fetch in self._package_fetches)
+        return any(fetch.outcome in _ACKNOWLEDGEABLE for fetch in self._package_fetches)
 
     def _manifest_for(self, zip_path: Path) -> Optional[PackageManifest]:
         """
@@ -1110,8 +1186,7 @@ class ImportCoordinator:
         """
         tracker = self._tracker
         due = [fetch for fetch in self._package_fetches
-               if fetch.manifest is not None and fetch.outcome in (
-                   PackageFetchOutcome.FETCHED, PackageFetchOutcome.ALREADY_HERE)]
+               if fetch.manifest is not None and fetch.outcome in _ACKNOWLEDGEABLE]
         tracker.start_step(ImportStepId.PACKAGES_RECEIPT, total=len(due))
         failed = False
         for done, fetch in enumerate(due):
@@ -1130,9 +1205,10 @@ class ImportCoordinator:
                 self._count_package_error(
                     f'PACKAGE {package_id} NOT ACKNOWLEDGED: {held} is not that package\'s zip')
                 continue
-            outcome, words = self._package_client.send_receipt(
+            # The receipt goes to the service the package came from
+            outcome, words = self._package_clients[fetch.package_service].send_receipt(
                 package_id, digest, self._receipt_note(fetch))
-            self._receipts[package_id] = (outcome, words)
+            self._receipts[(fetch.package_service, package_id)] = (outcome, words)
             if outcome in (PackageReceiptOutcome.ACKNOWLEDGED,
                            PackageReceiptOutcome.ALREADY_ACKNOWLEDGED):
                 vLog.info(f'📦 Acknowledged {package_id}')
@@ -1404,15 +1480,19 @@ class ImportCoordinator:
                   f'{format_duration(elapsed)}')
         vLog.info('=' * 80)
         if self._package_fetches:
-            vLog.info(f'📦 Packages: {_fetch_counts(self._package_fetches)}')
-        acknowledged = [package_id for package_id, (outcome, _) in self._receipts.items()
+            vLog.info(f'📦 Packages: {_fetch_counts_by_service(self._package_fetches)}')
+        acknowledged = [package_id for (_, package_id), (outcome, _) in self._receipts.items()
                         if outcome in (PackageReceiptOutcome.ACKNOWLEDGED,
                                        PackageReceiptOutcome.ALREADY_ACKNOWLEDGED)]
         if acknowledged:
             vLog.info(f'✅ Acknowledged: {", ".join(acknowledged)}')
+        if self._by_hand.file_count():
+            vLog.info(_by_hand_line(self._by_hand))
         if self._tick_importer is not None:
+            empty = (f' · {self._tick_importer.empty_files} empty export(s), nothing written'
+                     if self._tick_importer.empty_files else '')
             vLog.info(f'✅ Ticks:   {self._tick_importer.processed_files} file(s) processed · '
-                      f'{self._tick_importer.total_ticks:,} ticks')
+                      f'{self._tick_importer.total_ticks:,} ticks{empty}')
             for broker_type, offset_counts in self._tick_importer.get_applied_offsets().items():
                 counts_str = ' · '.join(
                     f'{offset}h × {count} file(s)'
@@ -1565,6 +1645,54 @@ def _count_or_dash(value: Optional[int]) -> str:
         The text
     """
     return '—' if value is None else f'{value:,}'
+
+
+def _by_hand_line(by_hand: InboxByHand) -> str:
+    """
+    The summary's line on what came by hand.
+
+    Args:
+        by_hand: What the inbox held that no package service delivered now
+
+    Returns:
+        The line, e.g. "✋ By hand: 2 file(s) — 1 loose tick export, 1 zip without a manifest
+        (week45.zip)"
+    """
+    parts = []
+    if by_hand.loose_tick_files:
+        parts.append(f'{by_hand.loose_tick_files} loose tick export(s)')
+    if by_hand.loose_signal_files:
+        parts.append(f'{by_hand.loose_signal_files} loose signal file(s)')
+    if by_hand.zips_without_manifest:
+        parts.append(f'{len(by_hand.zips_without_manifest)} zip(s) without a manifest '
+                     f'({", ".join(by_hand.zips_without_manifest)})')
+    if by_hand.zips_with_manifest:
+        parts.append(f'{len(by_hand.zips_with_manifest)} package zip(s) carried in with their '
+                     f'manifest ({", ".join(by_hand.zips_with_manifest)})')
+    return f'✋ By hand: {by_hand.file_count()} file(s) — {", ".join(parts)}'
+
+
+# The fetches whose package is due its receipt once its zip reaches the finished directory
+_ACKNOWLEDGEABLE = (PackageFetchOutcome.FETCHED, PackageFetchOutcome.IN_INBOX,
+                    PackageFetchOutcome.ALREADY_HERE)
+
+
+def _fetch_counts_by_service(fetches: List[PackageFetch]) -> str:
+    """
+    What the fetch did, per package service, as one phrase.
+
+    Args:
+        fetches: Each listed package's fetch
+
+    Returns:
+        The phrase, e.g. "collector 1 fetched · rag 3 fetched, 1 in inbox", empty when nothing
+        was listed
+    """
+    services = list(dict.fromkeys(fetch.package_service for fetch in fetches))
+    return ' · '.join(
+        f'{service} ' + _fetch_counts([fetch for fetch in fetches
+                                       if fetch.package_service == service]).replace(' · ', ', ')
+        for service in services)
 
 
 def _fetch_counts(fetches: List[PackageFetch]) -> str:

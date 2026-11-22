@@ -599,6 +599,21 @@
             }
         },
         {
+            "name": "📥 Import (fetch packages)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "import",
+                "--fetch"
+            ],
+            "console": "integratedTerminal",
+            "presentation": {
+                "group": "03_import",
+                "order": 6
+            }
+        },
+        {
             "name": "📥 Import (Override)",
             "type": "debugpy",
             "request": "launch",
@@ -610,7 +625,22 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "03_import",
-                "order": 6
+                "order": 7
+            }
+        },
+        {
+            "name": "📥 Package services",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "package-sources",
+                "--check"
+            ],
+            "console": "integratedTerminal",
+            "presentation": {
+                "group": "03_import",
+                "order": 8
             }
         },
         // ====================================================

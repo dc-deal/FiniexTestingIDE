@@ -1,10 +1,11 @@
 """
-Tick Package Fetch Tests (#120)
+Package Fetch Tests (#120)
 
-The import fetches the data collector's packages before it scans the inbox, proves each zip by
-its hash, holds its files to the manifest, imports it like any zip, and acknowledges each package
-whose zip reached the finished directory — with the hash of the zip it holds. Run against a stub
-package service on a local port.
+An import run with --fetch fetches the packages of every switched-on package service before it
+scans the inbox, proves each zip by its hash, holds its files to the manifest, imports it like any
+zip, and acknowledges each package whose zip reached the finished directory — with the hash of the
+zip it holds, to the service the package came from. One service failing fails its own part only.
+What came by hand is named in the summary. Run against stub package services on local ports.
 """
 
 import hashlib
@@ -26,16 +27,20 @@ from python.data_management.importers.package_client import (
     parse_manifest,
 )
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
-from python.framework.types.config_types.data_collector_config_types import (
-    ActivePackageSource,
-    DataCollectorConfig,
-)
+from python.framework.types.config_types.data_collector_config_types import DataCollectorConfig
+from python.framework.types.config_types.package_service_config_types import ActivePackageSource
 from python.framework.types.connection_types import GiveUpAction
 from python.framework.types.import_types.import_progress_types import (
     ImportOutcome,
     ImportPaths,
+    ImportSection,
     ImportStepId,
     ImportStepStatus,
+)
+from python.framework.types.import_types.package_types import (
+    PackageFetchOutcome,
+    PackageServiceResolution,
+    PackageServiceState,
 )
 from tests.data.import_pipeline.conftest import build_minimal_tick_json, write_json_fixture
 
@@ -201,6 +206,15 @@ def service():
     stub.stop()
 
 
+@pytest.fixture
+def second_service():
+    """A second running stub package service, beside the first."""
+    stub = _PackageService()
+    stub.start()
+    yield stub
+    stub.stop()
+
+
 def _paths(root: Path) -> ImportPaths:
     """An import tree under a temporary root."""
     return ImportPaths(
@@ -215,21 +229,56 @@ def _paths(root: Path) -> ImportPaths:
     )
 
 
-def _client(service: _PackageService, token: str = TOKEN) -> PackageClient:
-    """A client of the stub that never waits between attempts, reading small chunks so a
-    break-off in the middle of a zip leaves something to resume from."""
+def _connect(service: _PackageService, token: str = TOKEN, package_service: str = 'collector',
+             delivers: ImportSection = ImportSection.TICKS
+             ) -> Tuple[PackageServiceResolution, PackageClient]:
+    """
+    A switched-on package service over the stub, and its client — one that never waits between
+    attempts and reads small chunks, so a break-off in the middle of a zip leaves something to
+    resume from.
+
+    Args:
+        service: The stub
+        token: The token the client sends
+        package_service: The service's name
+        delivers: The archive its packages feed
+
+    Returns:
+        The service's resolution and its client
+    """
     source = ActivePackageSource(
-        name='test', base_url=service.get_base_url(), credentials_file='unused',
+        package_service=package_service, delivers=delivers, endpoint_name='test',
+        base_url=service.get_base_url(), credentials_file='unused',
         connection=ConnectionPolicy(initial_delay_s=0.0, max_delay_s=0.0, jitter=False,
                                     attempt_budget=3, request_timeout_s=5.0,
                                     on_give_up=GiveUpAction.DEGRADE))
-    return PackageClient(source, read_token=lambda: token, wait=lambda delay: None,
-                             chunk_bytes=256)
+    resolution = PackageServiceResolution(
+        package_service=package_service, delivers=delivers, state=PackageServiceState.ON,
+        endpoint_name='test', address_set=True, credentials_file='unused', source=source)
+    client = PackageClient(source, read_token=lambda: token, wait=lambda delay: None,
+                           chunk_bytes=256)
+    return resolution, client
 
 
-def _run(paths: ImportPaths, client: Optional[PackageClient]) -> ImportCoordinator:
-    """One import over the tree with the given package client, without the screen."""
-    coordinator = ImportCoordinator(paths=paths, show_display=False, package_client=client)
+def _run(paths: ImportPaths, *services: Tuple[PackageServiceResolution, PackageClient],
+         only: Optional[ImportSection] = None) -> ImportCoordinator:
+    """
+    One import over the tree, without the screen — fetching from the given services, or asked
+    not to fetch at all when none is given.
+
+    Args:
+        paths: The import tree
+        services: Each service's resolution and client
+        only: Import one archive only
+
+    Returns:
+        The coordinator after its run
+    """
+    clients = {resolution.package_service: client for resolution, client in services}
+    coordinator = ImportCoordinator(
+        paths=paths, show_display=False, only=only,
+        package_services=[resolution for resolution, _ in services] if services else None,
+        client_factory=lambda source: clients[source.package_service])
     coordinator.run()
     return coordinator
 
@@ -270,7 +319,7 @@ class TestAPackageIsFetchedImportedAndAcknowledged:
         paths = _paths(tmp_path)
         data = service.add('kraken-0001-20261115', _two_exports())
 
-        coordinator = _run(paths, _client(service))
+        coordinator = _run(paths, _connect(service))
 
         assert _outcome(coordinator) == ImportOutcome.COMPLETED
         assert len(_tick_files(paths)) == 2
@@ -287,7 +336,7 @@ class TestAPackageIsFetchedImportedAndAcknowledged:
         service.add('kraken-0001-20261115', _two_exports())
         service.cut_zip_once.add('kraken-0001-20261115')
 
-        coordinator = _run(paths, _client(service))
+        coordinator = _run(paths, _connect(service))
 
         assert _outcome(coordinator) == ImportOutcome.COMPLETED
         zip_requests = [headers for method, path, headers in service.requests
@@ -299,7 +348,7 @@ class TestAPackageIsFetchedImportedAndAcknowledged:
         paths = _paths(tmp_path)
         service.add('kraken-0001-20261115', _two_exports(), state='delivered')
 
-        coordinator = _run(paths, _client(service))
+        coordinator = _run(paths, _connect(service))
 
         assert service.count('GET', '/zip') == 0
         assert _status(coordinator, ImportStepId.PACKAGES_RECEIPT) == ImportStepStatus.SKIPPED
@@ -316,7 +365,7 @@ class TestAPackageIsFetchedImportedAndAcknowledged:
         for package_id, members in packages.items():
             service.add(package_id, members)
 
-        coordinator = _run(paths, _client(service))
+        coordinator = _run(paths, _connect(service))
 
         assert _outcome(coordinator) == ImportOutcome.COMPLETED
         assert len(_tick_files(paths)) == 3
@@ -334,7 +383,7 @@ class TestWhatArrivesIsProven:
         package = service.packages['kraken-0001-20261115']
         package['listing']['sha256'] = package['manifest']['zip']['sha256'] = '0' * 64
 
-        coordinator = _run(paths, _client(service))
+        coordinator = _run(paths, _connect(service))
 
         assert _outcome(coordinator) == ImportOutcome.COMPLETED_WITH_ERRORS
         assert not _tick_files(paths)
@@ -348,7 +397,7 @@ class TestWhatArrivesIsProven:
         service.packages['kraken-0001-20261115']['manifest']['members'].append(
             {'name': _export_name('CCCUSD', '2026.01.15 10:00:00'), 'sha256': '0' * 64})
 
-        coordinator = _run(paths, _client(service))
+        coordinator = _run(paths, _connect(service))
 
         assert _outcome(coordinator) == ImportOutcome.COMPLETED_WITH_ERRORS
         assert (paths.refused / 'kraken-0001-20261115.zip').exists()
@@ -361,7 +410,7 @@ class TestWhatArrivesIsProven:
         service.add('kraken-0001-20261115', _two_exports())
         service.packages['kraken-0001-20261115']['manifest']['members'][0]['sha256'] = '0' * 64
 
-        coordinator = _run(paths, _client(service))
+        coordinator = _run(paths, _connect(service))
 
         assert _status(coordinator, ImportStepId.TICKS_UNPACK) == ImportStepStatus.FAILED
         assert (paths.refused / 'kraken-0001-20261115.zip').exists()
@@ -378,7 +427,7 @@ class TestWhatLiesHereAlready:
         paths.finished.mkdir(parents=True)
         (paths.finished / 'kraken-0001-20261115.zip').write_bytes(data)
 
-        _run(paths, _client(service))
+        _run(paths, _connect(service))
 
         assert service.count('GET', '/zip') == 0
         receipt = service.packages['kraken-0001-20261115']['receipt']
@@ -391,7 +440,7 @@ class TestWhatLiesHereAlready:
         paths.refused.mkdir(parents=True)
         (paths.refused / 'kraken-0001-20261115.zip').write_bytes(data)
 
-        coordinator = _run(paths, _client(service))
+        coordinator = _run(paths, _connect(service))
 
         assert service.count('GET', '/zip') == 0
         assert service.packages['kraken-0001-20261115']['receipt'] is None
@@ -406,7 +455,7 @@ class TestTheReceipt:
         service.add('kraken-0001-20261115', _two_exports())
         service.receipt_status = 409
 
-        coordinator = _run(paths, _client(service))
+        coordinator = _run(paths, _connect(service))
 
         assert _outcome(coordinator) == ImportOutcome.COMPLETED_WITH_ERRORS
         assert _status(coordinator, ImportStepId.PACKAGES_RECEIPT) == ImportStepStatus.FAILED
@@ -417,7 +466,7 @@ class TestTheReceipt:
         service.add('kraken-0001-20261115', _two_exports())
         service.drop_receipt_answer = True
 
-        coordinator = _run(paths, _client(service))
+        coordinator = _run(paths, _connect(service))
 
         assert _outcome(coordinator) == ImportOutcome.COMPLETED
         assert service.count('POST', '/receipt') == 1
@@ -433,7 +482,7 @@ class TestAServiceThatFails:
         write_json_fixture(paths.inbox, _export_name('CCCUSD', '2026.01.15 10:00:00'),
                            build_minimal_tick_json(symbol='CCCUSD'))
 
-        coordinator = _run(paths, _client(service, token='wrong'))
+        coordinator = _run(paths, _connect(service, token='wrong'))
 
         assert _outcome(coordinator) == ImportOutcome.COMPLETED_WITH_ERRORS
         assert _status(coordinator, ImportStepId.PACKAGES_FETCH) == ImportStepStatus.FAILED
@@ -441,38 +490,153 @@ class TestAServiceThatFails:
         assert service.count('GET', '/v1/packages') == 1
         assert len(_tick_files(paths)) == 1
 
-    def test_no_fetch_says_why(self, tmp_path):
+    def test_an_import_not_asked_to_fetch_says_so(self, tmp_path):
+        coordinator = _run(_paths(tmp_path))
+
+        fetch = next(step for step in coordinator._tracker.snapshot().steps
+                     if step.step_id == ImportStepId.PACKAGES_FETCH)
+        assert fetch.status == ImportStepStatus.SKIPPED
+        assert fetch.detail == 'not asked for — an import fetches with --fetch'
+
+
+def _exports(*symbols: str) -> Dict[str, bytes]:
+    """Valid exports of the given symbols, one each."""
+    return {_export_name(symbol, '2026.01.15 10:00:00'): _export_bytes(symbol, '2026.01.15 10:00:00')
+            for symbol in symbols}
+
+
+class TestSeveralServices:
+    """Each service is fetched on its own, acknowledged on its own, and fails on its own."""
+
+    def test_each_receipt_goes_to_the_service_its_package_came_from(
+            self, tmp_path, service, second_service):
         paths = _paths(tmp_path)
-        coordinator = ImportCoordinator(paths=paths, show_display=False,
-                                        no_fetch_reason='skipped by --no-fetch')
+        first = service.add('kraken-0001-20261115', _exports('AAAUSD', 'BBBUSD'))
+        second = second_service.add('krakendev-0001-20261115', _exports('CCCUSD', 'DDDUSD'))
+
+        coordinator = _run(paths, _connect(service),
+                           _connect(second_service, package_service='krakendev'))
+
+        assert _outcome(coordinator) == ImportOutcome.COMPLETED
+        assert service.packages['kraken-0001-20261115']['receipt']['zip_sha256'] == _sha(first)
+        assert (second_service.packages['krakendev-0001-20261115']['receipt']['zip_sha256']
+                == _sha(second))
+        assert service.count('POST', '/receipt') == 1
+        assert second_service.count('POST', '/receipt') == 1
+        assert len(_tick_files(paths)) == 4
+        assert 'Packages: collector 1 fetched · krakendev 1 fetched' in _log(coordinator)
+
+    def test_one_service_failing_leaves_the_others_packages_fetched_and_acknowledged(
+            self, tmp_path, service, second_service):
+        paths = _paths(tmp_path)
+        service.add('kraken-0001-20261115', _exports('AAAUSD'))
+        second_service.add('krakendev-0001-20261115', _exports('CCCUSD'))
+
+        coordinator = _run(paths, _connect(service, token='wrong'),
+                           _connect(second_service, package_service='krakendev'))
+
+        assert _outcome(coordinator) == ImportOutcome.COMPLETED_WITH_ERRORS
+        assert _status(coordinator, ImportStepId.PACKAGES_FETCH) == ImportStepStatus.FAILED
+        assert second_service.packages['krakendev-0001-20261115']['receipt'] is not None
+        assert service.packages['kraken-0001-20261115']['receipt'] is None
+        assert len(_tick_files(paths)) == 1
+        assert 'PACKAGES collector: the package service did not answer' in _log(coordinator)
+
+    def test_an_import_of_the_signals_reaches_the_signal_service_alone(
+            self, tmp_path, service, second_service):
+        coordinator = _run(_paths(tmp_path), _connect(service),
+                           _connect(second_service, package_service='rag',
+                                    delivers=ImportSection.SIGNALS),
+                           only=ImportSection.SIGNALS)
+
+        assert service.count('GET', '/v1/packages') == 0
+        assert second_service.count('GET', '/v1/packages') == 1
+        assert _status(coordinator, ImportStepId.PACKAGES_FETCH) == ImportStepStatus.DONE
+
+    def test_switched_off_services_say_so_on_the_skipped_step(self, tmp_path):
+        off = PackageServiceResolution(
+            package_service='rag', delivers=ImportSection.SIGNALS,
+            state=PackageServiceState.SWITCHED_OFF, endpoint_name='production',
+            address_set=True, credentials_file='unused', source=None)
+        coordinator = ImportCoordinator(paths=_paths(tmp_path), show_display=False,
+                                        package_services=[off])
         coordinator.run()
 
         fetch = next(step for step in coordinator._tracker.snapshot().steps
                      if step.step_id == ImportStepId.PACKAGES_FETCH)
         assert fetch.status == ImportStepStatus.SKIPPED
-        assert fetch.detail == 'skipped by --no-fetch'
+        assert fetch.detail == 'rag: switched off'
+
+
+class TestAPackageAlreadyInTheInbox:
+    """A listed package's zip found in the inbox under its own name and hash is that package."""
+
+    def test_it_is_taken_without_a_download_and_acknowledged(self, tmp_path, service):
+        paths = _paths(tmp_path)
+        data = service.add('kraken-0001-20261115', _exports('AAAUSD'))
+        paths.inbox.mkdir(parents=True)
+        (paths.inbox / 'kraken-0001-20261115.zip').write_bytes(data)
+
+        coordinator = _run(paths, _connect(service))
+
+        assert service.count('GET', '/zip') == 0
+        assert coordinator._package_fetches[0].outcome is PackageFetchOutcome.IN_INBOX
+        assert service.packages['kraken-0001-20261115']['receipt']['zip_sha256'] == _sha(data)
+        assert 'Packages: collector 1 in inbox' in _log(coordinator)
+        assert '✋ By hand' not in _log(coordinator)
+
+
+class TestWhatCameByHand:
+    """The summary names the inbox as a source of its own: what no service delivered now."""
+
+    def test_the_summary_names_the_loose_files_and_the_zips_without_a_manifest(
+            self, tmp_path, service):
+        paths = _paths(tmp_path)
+        service.add('kraken-0001-20261115', _exports('AAAUSD'))
+        write_json_fixture(paths.inbox, _export_name('CCCUSD', '2026.01.15 10:00:00'),
+                           build_minimal_tick_json(symbol='CCCUSD'))
+        (paths.inbox / 'hand.zip').write_bytes(_zip_bytes(_exports('DDDUSD')))
+
+        coordinator = _run(paths, _connect(service))
+
+        log = _log(coordinator)
+        assert ('✋ By hand: 2 file(s) — 1 loose tick export(s), 1 zip(s) without a manifest '
+                '(hand.zip)') in log
+        assert 'Packages: collector 1 fetched' in log
+        assert len(_tick_files(paths)) == 3
+
+    def test_an_import_with_nothing_by_hand_prints_no_such_line(self, tmp_path, service):
+        paths = _paths(tmp_path)
+        service.add('kraken-0001-20261115', _exports('AAAUSD'))
+
+        assert '✋ By hand' not in _log(_run(paths, _connect(service)))
 
 
 class TestTheConfiguration:
-    """The tracked file mirrors the model, and an empty address fetches nothing."""
+    """The tracked file mirrors the model: switched off, with an empty address."""
 
     def test_the_tracked_file_mirrors_the_model(self):
         manager = DataCollectorConfigManager(user_config_path='/nonexistent/override.json')
         assert manager.get_config().model_dump() == DataCollectorConfig().model_dump()
-        assert manager.resolve_package_source() is None
+        resolution = manager.resolve_package_source()
+        assert resolution.state is PackageServiceState.SWITCHED_OFF
+        assert resolution.source is None
 
-    def test_an_address_in_the_workspace_copy_makes_a_source(self, tmp_path, monkeypatch):
+    def test_an_address_and_the_switch_in_the_workspace_copy_make_a_source(
+            self, tmp_path, monkeypatch):
         override = tmp_path / 'data_collector_config.json'
-        override.write_text(json.dumps({'packages': {'endpoints': {'production': {
+        override.write_text(json.dumps({'packages': {'enabled': True, 'endpoints': {'production': {
             'base_url': 'https://collector.example.test/'}}}}), encoding='utf-8')
         monkeypatch.setattr(
             'python.configuration.data_collector_config_manager.is_config_isolation_active',
             lambda: False)
 
-        source = DataCollectorConfigManager(user_config_path=str(override)).resolve_package_source()
+        source = DataCollectorConfigManager(
+            user_config_path=str(override)).resolve_package_source().source
 
         assert source.base_url == 'https://collector.example.test'
         assert source.credentials_file == 'peers/collector_credentials.json'
+        assert (source.package_service, source.delivers) == ('collector', ImportSection.TICKS)
 
 
 class TestTheContractsFields:

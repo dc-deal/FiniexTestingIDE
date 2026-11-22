@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from python.framework.types.config_types.connection_policy_config_types import (
     ConnectionPolicy,
 )
+from python.framework.types.config_types.package_service_config_types import PackageFetchConfig
 from python.framework.types.connection_types import GiveUpAction
 
 
@@ -222,6 +223,9 @@ class SentimentConfig(BaseModel):
     stream: SentimentStreamConfig = Field(default_factory=SentimentStreamConfig)
     health: SentimentHealthConfig = Field(default_factory=SentimentHealthConfig)
     sources: Dict[str, SentimentSourceConfig] = Field(default_factory=dict)
+    # The producer's package service (#120): its signal packages, fetched by the import from the
+    # active producer endpoint's address with its credential — the host and the token stand once
+    packages: PackageFetchConfig = Field(default_factory=PackageFetchConfig)
 
     def get_source(self, pipeline_id: str) -> Optional[SentimentSourceConfig]:
         """

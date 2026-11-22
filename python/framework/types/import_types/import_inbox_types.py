@@ -23,6 +23,8 @@ class InboxImportOutcome(Enum):
     IMPORTED = 'imported'
     # A file of this name is in the archive already, and the import ran without --override
     ALREADY_ARCHIVED = 'already_archived'
+    # The export is valid and holds no tick: nothing to write, counted apart and named
+    EMPTY = 'empty'
     # The validation refused it, before anything was written
     REFUSED = 'refused'
     # An error while converting or writing it
@@ -30,13 +32,14 @@ class InboxImportOutcome(Enum):
 
     def is_taken(self) -> bool:
         """
-        Whether the archive holds the export once its import ended: written now, or already
-        there.
+        Whether the import is through with the export: written now, already there, or valid and
+        empty — each leaves for the finished directory.
 
         Returns:
-            True for IMPORTED and ALREADY_ARCHIVED
+            True for IMPORTED, ALREADY_ARCHIVED and EMPTY
         """
-        return self in (InboxImportOutcome.IMPORTED, InboxImportOutcome.ALREADY_ARCHIVED)
+        return self in (InboxImportOutcome.IMPORTED, InboxImportOutcome.ALREADY_ARCHIVED,
+                        InboxImportOutcome.EMPTY)
 
 
 @dataclass(frozen=True)

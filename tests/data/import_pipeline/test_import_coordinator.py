@@ -111,10 +111,11 @@ class TestBothArchives:
         assert _step(coordinator, ImportStepId.TICKS_UNPACK).detail == 'no tick zip in the inbox'
         assert statuses.pop(ImportStepId.SIGNALS_UNPACK) == ImportStepStatus.SKIPPED
         assert _step(coordinator, ImportStepId.SIGNALS_UNPACK).detail == 'no signal zip in the inbox'
-        # No package source: the package exchange is shown, and skipped
+        # Not asked to fetch: the package exchange is shown, and skipped
         for step_id in (ImportStepId.PACKAGES_FETCH, ImportStepId.PACKAGES_RECEIPT):
             assert statuses.pop(step_id) == ImportStepStatus.SKIPPED
-            assert _step(coordinator, step_id).detail == 'no package source configured'
+            assert (_step(coordinator, step_id).detail
+                    == 'not asked for — an import fetches with --fetch')
         assert all(status == ImportStepStatus.DONE for status in statuses.values()), statuses
 
         log_text = coordinator.get_log_path().read_text(encoding='utf-8')

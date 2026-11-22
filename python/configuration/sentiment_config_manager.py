@@ -15,12 +15,15 @@ from typing import Any, Dict, Optional
 
 from python.configuration.credentials_cascade import resolve_credentials_file
 from python.configuration.data_home import workspace_path
+from python.configuration.package_service_resolution import resolve_package_service
 from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.types.config_types.sentiment_config_types import (
     ActiveProducer,
     ResolvedCredential,
     SentimentConfig,
 )
+from python.framework.types.import_types.import_progress_types import ImportSection
+from python.framework.types.import_types.package_types import PackageServiceResolution
 from python.framework.utils.config_merge_utils import deep_merge, is_config_isolation_active
 
 vLog = get_global_logger()
@@ -32,6 +35,9 @@ class SentimentConfigManager:
 
     Globally available (§28): instantiate where needed, no injection.
     """
+
+    # The RAG engine's name among the package services
+    PACKAGE_SERVICE = 'rag'
 
     def __init__(
         self,
@@ -72,6 +78,25 @@ class SentimentConfigManager:
             name=self._config.producer.active,
             base_url=endpoint.base_url,
             credential=self.resolve_api_credential(endpoint.credentials_file))
+
+    def resolve_package_source(self) -> PackageServiceResolution:
+        """
+        The producer's package service: its signal packages, fetched from the active producer
+        endpoint — the address and the credential file's name, never the token, which the
+        package client reads at each request.
+
+        Returns:
+            The resolution — on, switched off, or without an address
+        """
+        producer = self._config.producer
+        endpoint = producer.get_active_endpoint()
+        return resolve_package_service(
+            package_service=self.PACKAGE_SERVICE,
+            delivers=ImportSection.SIGNALS,
+            config=self._config.packages,
+            endpoint_name=producer.active,
+            base_url=endpoint.base_url,
+            credentials_file=endpoint.credentials_file)
 
     def resolve_api_credential(self, credentials_filename: str) -> ResolvedCredential:
         """

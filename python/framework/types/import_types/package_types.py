@@ -1,13 +1,95 @@
 """
 FiniexTestingIDE - Package Types
-The data collector's weekly tick packages as the import sees them (#120): an entry of the
-service's list, the parts of a manifest the import checks, what the fetch did with a package, and
-how its receipt ended.
+The packages of a package service as the import sees them (#120) — the data collector's tick
+packages, the RAG engine's signal packages: whether a service is switched on, an entry of its
+list, the parts of a manifest the import checks, what the fetch did with a package, and how its
+receipt ended.
 """
 
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional
+
+from python.framework.types.config_types.package_service_config_types import ActivePackageSource
+from python.framework.types.import_types.import_progress_types import ImportSection
+
+
+class PackageServiceState(Enum):
+    """
+    Whether an import may fetch from a package service, as its configuration says.
+    """
+    ON = 'on'
+    # Its block says enabled: false
+    SWITCHED_OFF = 'switched_off'
+    # Switched on, but its active endpoint names no address
+    NO_ADDRESS = 'no_address'
+
+
+@dataclass(frozen=True)
+class PackageServiceResolution:
+    """
+    One package service as its configuration resolves it — the import fetches from the ones that
+    are on, and the status command lists every one.
+
+    Args:
+        package_service: The service's name, e.g. 'collector' or 'rag'
+        delivers: The archive its packages feed
+        state: Whether it is switched on and has an address
+        endpoint_name: The active endpoint's name in its file
+        address_set: Whether the active endpoint names an address, switched on or not
+        credentials_file: The credential file's configured name
+        source: The service to fetch from; None unless the state is ON
+    """
+    package_service: str
+    delivers: ImportSection
+    state: PackageServiceState
+    endpoint_name: str
+    address_set: bool
+    credentials_file: str
+    source: Optional[ActivePackageSource]
+
+    def describe_state(self) -> str:
+        """
+        The state in the words a skipped fetch shows.
+
+        Returns:
+            e.g. 'rag: switched off'
+        """
+        words = {PackageServiceState.ON: 'on',
+                 PackageServiceState.SWITCHED_OFF: 'switched off',
+                 PackageServiceState.NO_ADDRESS: 'no address'}[self.state]
+        return f'{self.package_service}: {words}'
+
+
+@dataclass(frozen=True)
+class PackageServiceStatus:
+    """
+    One package service as the status command shows it: its configuration, and with a check what
+    its list holds.
+
+    Args:
+        package_service: The service's name
+        delivers: The archive its packages feed
+        state: Whether it is switched on and has an address
+        endpoint_name: The active endpoint's name
+        address_set: Whether the active endpoint names an address
+        credential: Which file the credential cascade answered from, and whether its token is
+            empty — never the token
+        waiting: Packages waiting for our receipt; None when the list was not read
+        acknowledged: Packages acknowledged; None when the list was not read
+        newest_package: The newest package listed; None when the list was not read or is empty
+        check_note: Why the list was not read when a check was asked for ('' otherwise)
+    """
+    package_service: str
+    delivers: ImportSection
+    state: PackageServiceState
+    endpoint_name: str
+    address_set: bool
+    credential: str
+    waiting: Optional[int] = None
+    acknowledged: Optional[int] = None
+    newest_package: Optional[str] = None
+    check_note: str = ''
 
 
 class PackageState(Enum):
@@ -78,6 +160,9 @@ class PackageFetchOutcome(Enum):
     """
     # Downloaded and proven by its hash; it now lies in the inbox
     FETCHED = 'fetched'
+    # Its zip lay in the inbox already under its own name and hash — carried in by hand, or left
+    # by an import that stopped before it took it; nothing was downloaded
+    IN_INBOX = 'in_inbox'
     # Its zip lies in the finished directory already: only the receipt is due
     ALREADY_HERE = 'already_here'
     # Its zip lies in the refused directory: not fetched again, not acknowledged
@@ -92,11 +177,13 @@ class PackageFetch:
     One listed package after the fetch.
 
     Args:
+        package_service: The service that listed it, and that its receipt goes to
         listing: The package as listed
         outcome: What the fetch did with it
         manifest: Its manifest, None when it could not be read
         detail: Why it failed or was not fetched, None otherwise
     """
+    package_service: str
     listing: PackageListing
     outcome: PackageFetchOutcome
     manifest: Optional[PackageManifest] = None
