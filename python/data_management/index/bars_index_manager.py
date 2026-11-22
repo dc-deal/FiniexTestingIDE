@@ -25,6 +25,7 @@ from python.framework.store.abstract_store_index import store_index_filename
 from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.data_origin_types import SymbolDataOrigin
 from python.framework.types.store_types import StoreId
+from python.framework.utils.atomic_file_utils import write_file_atomic
 
 vLog = get_global_logger()
 
@@ -536,7 +537,9 @@ class BarsIndexManager:
         table = table.replace_schema_metadata(
             {**table.schema.metadata, **metadata})
 
-        pq.write_table(table, self.index_file)
+        # Replaced whole, so a reader never opens half an index (#632)
+        write_file_atomic(self.index_file, lambda temporary: pq.write_table(table, temporary),
+                          StoreId.BARS)
         self.logger.debug(f'💾 Bar index saved to {self.index_file}')
 
     def _schema_outdated(self) -> bool:

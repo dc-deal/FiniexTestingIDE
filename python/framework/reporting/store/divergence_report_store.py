@@ -18,6 +18,7 @@ from python.framework.constants.divergence_report_constants import (
     DIVERGENCE_SUBDIR,
 )
 from python.framework.types.api.divergence_report_types import AaReport, DivergenceReport
+from python.framework.types.store_types import StoreId
 from python.framework.utils.atomic_file_utils import write_text_atomic
 from python.framework.utils.file_utils import create_directory
 from python.framework.utils.run_id_utils import mint_run_id
@@ -56,8 +57,9 @@ def write_report(report: DivergenceReport, text: str, report_dir: Path) -> None:
         text: The report as the console printed it
         report_dir: The comparison's directory
     """
-    write_text_atomic(report_dir / DIVERGENCE_REPORT_FILE, report.model_dump_json(indent=2))
-    write_text_atomic(report_dir / DIVERGENCE_REPORT_TEXT_FILE, text)
+    write_text_atomic(report_dir / DIVERGENCE_REPORT_FILE, report.model_dump_json(indent=2),
+                      StoreId.DIVERGENCE)
+    write_text_atomic(report_dir / DIVERGENCE_REPORT_TEXT_FILE, text, StoreId.DIVERGENCE)
 
 
 def write_aa_report(report: AaReport, text: str, report_dir: Path) -> None:
@@ -69,5 +71,6 @@ def write_aa_report(report: AaReport, text: str, report_dir: Path) -> None:
         text: The report as the console printed it
         report_dir: The A/A's directory
     """
-    write_text_atomic(report_dir / AA_REPORT_FILE, report.model_dump_json(indent=2))
-    write_text_atomic(report_dir / AA_REPORT_TEXT_FILE, text)
+    write_text_atomic(report_dir / AA_REPORT_FILE, report.model_dump_json(indent=2),
+                      StoreId.DIVERGENCE)
+    write_text_atomic(report_dir / AA_REPORT_TEXT_FILE, text, StoreId.DIVERGENCE)

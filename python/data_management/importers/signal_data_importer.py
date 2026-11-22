@@ -49,6 +49,8 @@ from python.framework.types.signal_data_types import (
     SignalParquetColumn,
     SignalSnapshot,
 )
+from python.framework.types.store_types import StoreId
+from python.framework.utils.atomic_file_utils import write_file_atomic
 from python.framework.utils.file_utils import create_directory
 
 vLog = get_global_logger()
@@ -303,7 +305,8 @@ class SignalDataImporter:
             raise SignalAlreadyImportedError(
                 f'{target_path.name} was already imported for {pipeline_id} — '
                 f'use --override to replace it')
-        df.to_parquet(target_path, index=False)
+        write_file_atomic(target_path, lambda temporary: df.to_parquet(temporary, index=False),
+                          StoreId.SIGNALS)
 
         self.total_rows += len(df)
         symbols = sorted(

@@ -55,6 +55,9 @@ class RunConfigIndex(AbstractStoreIndex):
         'first_seen', 'last_seen', 'param_hash', 'scope_hash', 'run_count',
     ]
     LOGIC_VERSION: int = 1
+    # Which file each version came from, when it was first seen and how often it ran exist only
+    # here (the store's `rebuild_loses`), so a crash of the machine must not empty it (#632)
+    WRITES_DURABLY: bool = True
 
     def __init__(self, root: Path):
         super().__init__(Path(root) / RUN_CONFIG_INDEX_FILE)

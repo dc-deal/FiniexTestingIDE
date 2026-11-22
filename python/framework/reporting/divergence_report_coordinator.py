@@ -126,6 +126,7 @@ from python.framework.types.run_config_types import RunConfigKind
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.scenario_types.recorded_scenario_types import RecordedScenarioInputs
 from python.framework.types.store_member_types import RunEntryMemberId
+from python.framework.types.store_types import StoreId
 from python.framework.types.validation_types import Severity
 from python.framework.utils.atomic_file_utils import write_file_atomic
 from python.framework.utils.git_info_utils import get_git_info
@@ -599,7 +600,8 @@ def keep_warmup_record(source: Optional[Path], report_dir: Path, segment: int) -
     if source is None or not source.exists():
         return ''
     name = DIVERGENCE_WARMUP_RECORD_FILE.format(segment=segment)
-    write_file_atomic(report_dir / name, lambda path: shutil.copyfile(source, path))
+    write_file_atomic(report_dir / name, lambda path: shutil.copyfile(source, path),
+                      StoreId.DIVERGENCE)
     return name
 
 

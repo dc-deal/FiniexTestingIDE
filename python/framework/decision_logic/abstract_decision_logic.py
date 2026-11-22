@@ -598,8 +598,9 @@ class AbstractDecisionLogic(ABC):
         The framework owns where it lands — `strategy_files/` in the run directory, one folder per
         scenario in a backtest — and never reads it. A write that fails is said once on the run's
         channel and answers False; it never ends the run. Write at decision moments, never per
-        tick: one write costs about a fifth of a millisecond on a local disk and about twelve on
-        the development container's bridged mount.
+        tick: the file is part of the run's record and is forced to the disk (#632), so one write
+        costs about two milliseconds on a local disk and about twenty-five on the development
+        container's bridged mount.
 
         Args:
             name: The file's name, such as 'last_setup.json' — no folder, no leading dot

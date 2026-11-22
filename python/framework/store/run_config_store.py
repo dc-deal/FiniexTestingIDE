@@ -23,7 +23,6 @@ lookup plus one `stat` on the known path: 111 ms for all 67 configs, where a sin
 """
 
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -34,6 +33,8 @@ from python.framework.types.run_config_types import (
     RunConfigHistory,
     RunConfigKind,
 )
+from python.framework.types.store_types import StoreId
+from python.framework.utils.atomic_file_utils import write_text_atomic
 from python.framework.utils.config_fingerprint_utils import generate_config_fingerprint
 from python.framework.utils.file_utils import create_directory
 
@@ -291,9 +292,7 @@ class RunConfigStore:
             target: Where the copy belongs
         """
         create_directory(target.parent, holds='the frozen run configurations')
-        tmp = target.with_suffix('.tmp')
-        tmp.write_text(json.dumps(raw, sort_keys=True, indent=1), encoding='utf-8')
-        os.replace(tmp, target)
+        write_text_atomic(target, json.dumps(raw, sort_keys=True, indent=1), StoreId.RUN_CONFIGS)
 
 
 def _param_hash(raw: Dict[str, Any]) -> str:

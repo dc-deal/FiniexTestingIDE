@@ -86,7 +86,7 @@ def copied_records(copy_root: Path, index_out: Path) -> SessionRecords:
     rows = pd.read_parquet(copied_index)
     rows[_RUN_DIR_COLUMN] = [str(_moved(Path(run_dir), copy_root))
                              for run_dir in rows[_RUN_DIR_COLUMN]]
-    write_file_atomic(index_out, lambda path: rows.to_parquet(path))
+    write_file_atomic(index_out, lambda path: rows.to_parquet(path), StoreId.DIVERGENCE)
     ledger_dir = _only_index(copy_root, StoreId.RUN_LEDGER).parent
     return SessionRecords(
         index_path=index_out, run_index=RunIndex(index_out), reader=RunEntryReader(index_out),

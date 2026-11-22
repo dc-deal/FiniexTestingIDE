@@ -30,8 +30,8 @@ class StoreDescriptor:
     What one data store IS, and how it is reached.
 
     Args:
-        store_id: Its registered identity
-        kind: RECORD / CARRY_OVER / ARCHIVE / DERIVED / SPECIAL
+        store_id: Its registered identity — which also says its kind (`STORE_KINDS`, read through
+            the `kind` property)
         purpose: What the store is FOR, in one line — the catalog prints it on the store's row
         doc: The document that explains the store, relative to the project root, with a heading
             anchor where one section covers it — the catalog's help link, held to an existing file
@@ -74,7 +74,6 @@ class StoreDescriptor:
             combinations, which are runs. A walk over this store's entries stops at theirs
     """
     store_id: StoreId
-    kind: StoreKind
     purpose: str
     doc: str
     root: Path
@@ -90,6 +89,17 @@ class StoreDescriptor:
     rebuild_loses: str = ''
     entry_members: Tuple[EntryMember, ...] = ()
     contains_entries_of: Optional[StoreId] = None
+
+    @property
+    def kind(self) -> StoreKind:
+        """
+        What the store IS — RECORD / CARRY_OVER / ARCHIVE / DERIVED / SPECIAL — stated once in
+        `STORE_KINDS`, where the low-level writer reads it too (#632).
+
+        Returns:
+            Its kind
+        """
+        return self.store_id.get_kind()
 
     def build_index(self) -> Optional[AbstractStoreIndex]:
         """

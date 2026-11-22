@@ -35,9 +35,7 @@ lifetime question #535 owns; until it is answered, nothing in this store deletes
 """
 
 import hashlib
-import os
 import re
-import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -46,6 +44,8 @@ from python.framework.exceptions.run_patch_errors import (
     RunPatchHashMismatchError,
 )
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.store_types import StoreId
+from python.framework.utils.atomic_file_utils import write_file_atomic
 from python.framework.utils.file_utils import create_directory
 
 # One entry per distinct patch, named after the hash of its bytes.
@@ -205,23 +205,17 @@ class RunPatchStore:
 
     def _write_atomic(self, target: Path, patch: bytes) -> None:
         """
-        Write one entry through a temporary file and a rename.
+        Write one entry through a temporary file and a rename, durably (#632).
 
-        The temporary name is unique per writer: two runs starting from the same tree at once
-        write the same bytes to the same entry, and a shared temporary file would let one of
-        them rename the other's half-written file into place.
+        The temporary name is unique per writer (the shared atomic writer's): two runs starting
+        from the same tree at once write the same bytes to the same entry, and a shared temporary
+        file would let one of them rename the other's half-written file into place. Readable by
+        its owner only, as before: a patch is uncommitted code.
 
         Args:
             target: The entry's path
             patch: The verified patch bytes
         """
         create_directory(self._root, holds='the run patches')
-        handle, temporary = tempfile.mkstemp(
-            dir=self._root, prefix=f'{target.stem}.', suffix='.tmp')
-        try:
-            with os.fdopen(handle, 'wb') as stream:
-                stream.write(patch)
-            os.replace(temporary, target)
-        except BaseException:
-            Path(temporary).unlink(missing_ok=True)
-            raise
+        write_file_atomic(target, lambda temporary: temporary.write_bytes(patch),
+                          StoreId.RUN_PATCHES, mode=0o600)

@@ -76,7 +76,6 @@ from python.framework.types.store_types import (
     RetrievalForm,
     StoreBackend,
     StoreId,
-    StoreKind,
 )
 from python.scenario.generator.window_set_serializer import PROFILE_OUTPUT_DIR
 
@@ -123,7 +122,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
     return {
         StoreId.RUNS: StoreDescriptor(
             store_id=StoreId.RUNS,
-            kind=StoreKind.RECORD,
             purpose='one folder per run: header, logs, report artifacts',
             doc='docs/architecture/batch_data_flow.md#where-a-runs-logs-land--three-categories-one-source',
             root=runs_root,
@@ -138,7 +136,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.SWEEPS: StoreDescriptor(
             store_id=StoreId.SWEEPS,
-            kind=StoreKind.RECORD,
             purpose='one folder per sweep: its data load and ranking',
             doc='docs/architecture/parameter_optimization_system.md#what-a-sweep-directory-holds',
             root=sweeps_root,
@@ -157,7 +154,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.DIVERGENCE: StoreDescriptor(
             store_id=StoreId.DIVERGENCE,
-            kind=StoreKind.RECORD,
             purpose='one folder per live-against-backtest comparison',
             doc='docs/architecture/data_storage_layout.md#a-divergence-comparison-keeps-its-own-record',
             root=divergence_root(),
@@ -171,7 +167,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.RUN_CONFIGS: StoreDescriptor(
             store_id=StoreId.RUN_CONFIGS,
-            kind=StoreKind.RECORD,
             purpose='the frozen configuration every run started from',
             doc='docs/architecture/data_storage_layout.md#run-configs-are-a-store-and-several-rows-per-file-are-the-point-538',
             root=run_configs_root,
@@ -203,7 +198,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.RUN_PATCHES: StoreDescriptor(
             store_id=StoreId.RUN_PATCHES,
-            kind=StoreKind.RECORD,
             purpose='the uncommitted code a run from a dirty tree ran',
             doc='docs/architecture/data_storage_layout.md#run-patches-keep-the-code-a-dirty-tree-ran-551',
             root=run_patches_root,
@@ -229,7 +223,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.RUN_LEDGER: StoreDescriptor(
             store_id=StoreId.RUN_LEDGER,
-            kind=StoreKind.RECORD,
             purpose='the results table across all runs, one fragment each',
             doc='docs/architecture/parameter_optimization_system.md#the-run-results-ledger-runsledger',
             root=ledger_root,
@@ -243,7 +236,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.FIXTURE_PRODUCTIONS: StoreDescriptor(
             store_id=StoreId.FIXTURE_PRODUCTIONS,
-            kind=StoreKind.RECORD,
             purpose='which runs each fixture-catalog production made',
             doc='docs/architecture/fixture_catalog.md#the-production-record',
             root=runs_root / PRODUCTION_RECORD_FILE,
@@ -258,7 +250,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.CERTIFICATES: StoreDescriptor(
             store_id=StoreId.CERTIFICATES,
-            kind=StoreKind.RECORD,
             purpose='release-gate certificates: benchmark, live, feeds',
             doc='docs/architecture/release_certificates.md',
             root=CERTIFICATES_ROOT,
@@ -271,7 +262,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.GOLDEN_SAMPLES: StoreDescriptor(
             store_id=StoreId.GOLDEN_SAMPLES,
-            kind=StoreKind.RECORD,
             purpose='the frozen aggregates of fixture productions',
             doc='docs/architecture/fixture_catalog.md#golden-samples--a-productions-aggregates-frozen',
             root=GOLDEN_SAMPLES_DIR,
@@ -289,7 +279,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.COLD_START_STATE: StoreDescriptor(
             store_id=StoreId.COLD_START_STATE,
-            kind=StoreKind.CARRY_OVER,
             purpose="what the framework carries into a bot's next session",
             doc='docs/architecture/live_execution_architecture.md#cold-start--rebuilding-the-shadow-at-boot-355--493',
             root=cold_start_path,
@@ -313,7 +302,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.SESSION_STATE: StoreDescriptor(
             store_id=StoreId.SESSION_STATE,
-            kind=StoreKind.CARRY_OVER,
             purpose='what an algo carries into its next session (opt-in)',
             doc='docs/user_guides/algo_state_persistence_guide.md',
             root=state_path,
@@ -325,7 +313,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.TICKS: StoreDescriptor(
             store_id=StoreId.TICKS,
-            kind=StoreKind.ARCHIVE,
             purpose='the imported tick archive, per broker and symbol',
             doc='docs/data_pipeline/data_import_pipeline.md',
             root=processed,
@@ -338,7 +325,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.BARS: StoreDescriptor(
             store_id=StoreId.BARS,
-            kind=StoreKind.DERIVED,
             purpose='bars rendered from the ticks, per timeframe',
             doc='docs/data_pipeline/data_import_pipeline.md#what-the-archive-guarantees-about-a-bar-file',
             root=processed,
@@ -359,7 +345,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.SIGNALS: StoreDescriptor(
             store_id=StoreId.SIGNALS,
-            kind=StoreKind.ARCHIVE,
             purpose='the imported sentiment signal archive',
             doc='docs/data_pipeline/signal_data_source.md#identity--layout',
             root=processed / 'signals',
@@ -373,7 +358,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.DISCOVERY_CACHES: StoreDescriptor(
             store_id=StoreId.DISCOVERY_CACHES,
-            kind=StoreKind.DERIVED,
             purpose='analyses derived from the archive',
             doc='docs/discovery_system.md#cache-system',
             root=discovery_root,
@@ -387,7 +371,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.BROKER_RUNTIME: StoreDescriptor(
             store_id=StoreId.BROKER_RUNTIME,
-            kind=StoreKind.DERIVED,
             purpose='broker specifications fetched from the venue',
             doc='docs/broker_config_guide.md#static-seed--hot-cache-model',
             root=resolve_in_data_home(RUNTIME_CACHE_BASE),
@@ -401,7 +384,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.CONFIG_DIRECTORY: StoreDescriptor(
             store_id=StoreId.CONFIG_DIRECTORY,
-            kind=StoreKind.DERIVED,
             purpose='every configuration that can start a run, cached',
             doc='docs/architecture/data_storage_layout.md#the-config-directory-reads-and-writes-nothing-but-itself-554',
             root=config_directory_root,
@@ -424,7 +406,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.GENERATOR_PROFILES: StoreDescriptor(
             store_id=StoreId.GENERATOR_PROFILES,
-            kind=StoreKind.DERIVED,
             purpose='generated scenario windows the generator reuses',
             doc='docs/generator/generator_block_splitting_architecture.md',
             root=PROFILE_OUTPUT_DIR,
@@ -447,7 +428,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.FINISHED_ARCHIVE: StoreDescriptor(
             store_id=StoreId.FINISHED_ARCHIVE,
-            kind=StoreKind.ARCHIVE,
             purpose='collector files after import, loose or zipped',
             doc='docs/architecture/data_storage_layout.md#why-the-special-stores-stay-special',
             root=Path(ImportConfigManager().get_data_finished_path()),
@@ -468,7 +448,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.EXTERNAL_HISTORY: StoreDescriptor(
             store_id=StoreId.EXTERNAL_HISTORY,
-            kind=StoreKind.ARCHIVE,
             purpose="a venue's published history, kept as downloaded",
             doc='docs/architecture/data_storage_layout.md#the-external-history-store',
             root=Path(ImportConfigManager().get_data_external_path()),
@@ -488,7 +467,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.RAW_INBOX: StoreDescriptor(
             store_id=StoreId.RAW_INBOX,
-            kind=StoreKind.SPECIAL,
             purpose='collector files waiting to be imported',
             doc='docs/architecture/data_storage_layout.md#why-the-special-stores-stay-special',
             root=Path(ImportConfigManager().get_data_raw_path()),
@@ -505,7 +483,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.REFUSED_FILES: StoreDescriptor(
             store_id=StoreId.REFUSED_FILES,
-            kind=StoreKind.SPECIAL,
             purpose='collector files the import refused, kept unchanged',
             doc='docs/architecture/data_storage_layout.md#why-the-special-stores-stay-special',
             root=Path(ImportConfigManager().get_data_refused_path()),
@@ -520,7 +497,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.GLOBAL_LOG: StoreDescriptor(
             store_id=StoreId.GLOBAL_LOG,
-            kind=StoreKind.SPECIAL,
             purpose='the framework-wide log every process appends to',
             doc='docs/architecture/data_storage_layout.md#why-the-special-stores-stay-special',
             root=Path(file_logging.global_log_dir) / GLOBAL_LOG_FILE,
@@ -532,7 +508,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.IMPORT_LOGS: StoreDescriptor(
             store_id=StoreId.IMPORT_LOGS,
-            kind=StoreKind.RECORD,
             purpose='one log file per data import',
             doc='docs/architecture/data_storage_layout.md#an-imports-log-and-its-timings',
             root=Path(file_logging.global_log_dir) / IMPORT_LOG_SUBDIR,
@@ -546,7 +521,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.IMPORT_TIMINGS: StoreDescriptor(
             store_id=StoreId.IMPORT_TIMINGS,
-            kind=StoreKind.DERIVED,
             purpose='measured import step durations, for estimates',
             doc='docs/architecture/data_storage_layout.md#an-imports-log-and-its-timings',
             root=Path(ImportConfigManager().get_import_timings_path()),
@@ -559,7 +533,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.HOST_IDENTITY: StoreDescriptor(
             store_id=StoreId.HOST_IDENTITY,
-            kind=StoreKind.SPECIAL,
             purpose="this installation's id, named in every run header",
             doc='docs/architecture/run_origin_and_code_identity.md#the-origin--who-started-the-run-for-whom-and-where',
             root=workspace_path(HOST_IDENTITY_FILE_NAME),
@@ -576,7 +549,6 @@ def build_registrations() -> Dict[StoreId, StoreDescriptor]:
         ),
         StoreId.ACTIVITIES: StoreDescriptor(
             store_id=StoreId.ACTIVITIES,
-            kind=StoreKind.SPECIAL,
             purpose='what runs on this machine, while it runs',
             doc='docs/architecture/activity_registry.md#how-an-entry-lives-and-dies',
             root=app_config.get_activity_registry_path(),

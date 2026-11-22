@@ -45,7 +45,9 @@ from python.framework.types.import_types.import_inbox_types import (
     InboxImportOutcome,
     InboxImportResult,
 )
+from python.framework.types.store_types import StoreId
 from python.framework.types.validation_types import TickFileValidationResult
+from python.framework.utils.atomic_file_utils import write_file_atomic
 from python.framework.utils.file_utils import create_directory
 from python.framework.utils.market_session_utils import get_session_from_utc_hour
 from python.framework.utils.time_utils import server_clock_to_utc_ms
@@ -719,7 +721,10 @@ class TickDataImporter:
         try:
             table = pa.Table.from_pandas(df)
             table = table.replace_schema_metadata(parquet_metadata)
-            pq.write_table(table, parquet_path, compression='snappy')
+            # Through the shared writer: never half a file, and never an empty one after a crash
+            # of the machine — the archive is the inputs every backtest reads (#632)
+            write_file_atomic(parquet_path, lambda temporary: pq.write_table(
+                table, temporary, compression='snappy'), StoreId.TICKS)
 
             json_size = json_file.stat().st_size
             parquet_size = parquet_path.stat().st_size

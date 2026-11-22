@@ -26,6 +26,7 @@ import pyarrow.parquet as pq
 from python.framework.exceptions.file_lock_errors import FileLockHeldError
 from python.framework.exceptions.store_errors import StoreIndexReplacedError
 from python.framework.types.store_types import StoreId
+from python.framework.utils.atomic_file_utils import sync_file, sync_folder
 from python.framework.utils.file_lock import FileLock
 from python.framework.utils.file_utils import create_directory
 
@@ -133,6 +134,10 @@ class AbstractStoreIndex(ABC):
 
     COLUMNS: List[str] = []
     LOGIC_VERSION: int = 1
+    # An index is derived — deletable and rebuilt from its store — so a crash of the machine costs
+    # it a rebuild, and its writes are not forced to the disk. True only for an index that holds
+    # what nothing else does (a store that declares `rebuild_loses`, #632)
+    WRITES_DURABLY: bool = False
 
     def __init__(self, path: Path):
         self._path = Path(path)
@@ -306,14 +311,20 @@ class AbstractStoreIndex(ABC):
 
         with self.updating():
             create_directory(self._path.parent, holds=f'the index {self._path.name}')
+            # Not the shared atomic writer: its temporary name is unique per writer, and this one's
+            # is shared on purpose — it is how a writer that does not hold the lock is caught below
             tmp_path = self._path.with_suffix(self._path.suffix + '.tmp')
             pq.write_table(table, tmp_path)
+            if self.WRITES_DURABLY:
+                sync_file(tmp_path)
             try:
                 os.replace(tmp_path, self._path)
             except FileNotFoundError as error:
                 # Every writer of this index uses the one temporary name, so a writer that does not
                 # hold the lock and replaced first took this writer's file with it
                 raise StoreIndexReplacedError(self._path, 'replaced') from error
+            if self.WRITES_DURABLY:
+                sync_folder(self._path.parent)
 
     def write_incremental(self, frame: pd.DataFrame) -> None:
         """

@@ -44,6 +44,7 @@ from python.framework.types.activity_registry_types import (
     ActivityState,
 )
 from python.framework.types.run_origin_types import RunChannel, RunOrigin
+from python.framework.types.store_types import StoreId
 from python.framework.utils.atomic_file_utils import write_text_atomic
 from python.framework.utils.file_lock import FileLock
 from python.framework.utils.file_utils import create_directory
@@ -190,7 +191,8 @@ class ActivityRegistry:
                                           if _active_activity_ids else None)),
             )
             json_path = directory / f'{activity_id}.json'
-            write_text_atomic(json_path, json.dumps(entry.to_dict(), indent=2), mode=0o600)
+            write_text_atomic(json_path, json.dumps(entry.to_dict(), indent=2),
+                              StoreId.ACTIVITIES, mode=0o600)
             return _Registration(activity_id=activity_id, lock=lock, json_path=json_path)
         except BaseException as error:
             # A stop (Ctrl+C) between the lock and the entry leaves neither behind: the stop goes

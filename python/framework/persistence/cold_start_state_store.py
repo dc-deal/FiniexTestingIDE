@@ -18,7 +18,6 @@ was its predecessor (§44, #355 §5). The writing run is recorded as PROVENANCE 
 """
 
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -42,6 +41,7 @@ from python.framework.types.persistence_types import (
 )
 from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.store_types import StoreId
+from python.framework.utils.atomic_file_utils import write_text_atomic
 from python.framework.utils.file_utils import create_directory
 
 # Envelope format version for THIS store's documents — independent of the algo store's.
@@ -426,16 +426,14 @@ class ColdStartStateStore:
 
     def _atomic_write(self, payload: str) -> None:
         """
-        Write via temp file + os.replace, so a crash mid-write never leaves half a document.
+        Write the document atomically and durably: a crash of the process never leaves half of
+        it, and a crash of the machine never an empty one — it holds the open position book (#632).
 
         Args:
             payload: Serialized JSON envelope
         """
         create_directory(self._path.parent, holds="the framework's state for the next session")
-        tmp_path = self._path.with_name(self._path.name + '.tmp')
-        with open(tmp_path, 'w', encoding='utf-8') as f:
-            f.write(payload)
-        os.replace(tmp_path, self._path)
+        write_text_atomic(self._path, payload, StoreId.COLD_START_STATE)
 
 
 def _claims_in(snapshot: dict) -> Tuple[int, int]:

@@ -32,6 +32,7 @@ from python.framework.constants.run_layout_constants import (
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.reporting.io.run_stream_reader import read_stream_lines
 from python.framework.types.run_stream_types import DayRecordSummary, StreamTimeWindow
+from python.framework.types.store_types import StoreId
 from python.framework.utils.atomic_file_utils import write_file_atomic
 from python.framework.utils.time_utils import parse_iso_datetime
 
@@ -95,7 +96,7 @@ def seal_stream_day(
     # Durable: the stream's file is replaced with a fresh one right after this, and from then on
     # the day record is the day's only copy
     write_file_atomic(day_path, lambda temporary: pq.write_table(
-        table, temporary, compression='zstd'), durable=True)
+        table, temporary, compression='zstd'), StoreId.RUNS)
     return summary
 
 

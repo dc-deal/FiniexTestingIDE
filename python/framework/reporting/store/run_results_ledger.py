@@ -34,6 +34,7 @@ from python.framework.types.api.report_types import (
     RunSummaryCurrency,
 )
 from python.framework.types.run_results_types import BookingPeriod, RunProvenance
+from python.framework.types.store_types import StoreId
 from python.framework.types.trading_env_types.trading_env_stats_types import EXECUTION_COUNT_FIELDS
 from python.framework.utils.atomic_file_utils import write_file_atomic
 from python.framework.utils.file_utils import create_directory
@@ -358,7 +359,7 @@ class RunResultsLedger:
             path: Where the finished fragment belongs
         """
         write_file_atomic(path, lambda temporary: frame.to_parquet(temporary, index=False),
-                          durable=True)
+                          StoreId.RUN_LEDGER)
 
     def mark_records_pruned(self, run_ids: Iterable[str]) -> int:
         """

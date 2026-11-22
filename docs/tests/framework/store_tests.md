@@ -172,6 +172,20 @@ and no path is joined from a section spec's file name outside the section writer
 code is parsed once per module; the one-time scripts in `python/experiments/` are not scanned, the
 venue probes and the re-import tool are.
 
+## `test_store_durability.py`
+
+**How each store writes, declared once (#632).** Every store has its kind stated once
+(`STORE_KINDS`), and the registry's descriptors read it from there; the kind decides durability —
+RECORD, CARRY-OVER and ARCHIVE yes, DERIVED no — and every SPECIAL store answers for itself, no other
+does. An index writes durably exactly when its store declares that a rebuild loses something. And no
+file is renamed into place by hand outside the shared atomic writer: a source walk counts the file
+renames (`os.replace` / `os.rename`, and a path's own one-argument `.replace` / `.rename`) per module
+in the production code and in the tools that run again (the venue probes, the re-import tool) —
+the one-time scripts in `python/experiments/` aside — and holds them to a list of declared
+exceptions: each module with its count and its reason. A new rename fails, an exempt module's
+second one included, and so does one that went away until its entry is lowered or removed — the
+list may only shrink.
+
 ## `test_run_entry_writer.py`
 
 **One run's files written by member (#621).** A member another pipeline writes and a member of

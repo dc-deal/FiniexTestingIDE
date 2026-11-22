@@ -12,7 +12,6 @@ computes per-symbol validity against the bar index — a different question with
 input, and this index deliberately does not pretend to replace it.
 """
 
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -26,6 +25,7 @@ from python.framework.store.abstract_store_index import (
     store_index_filename,
 )
 from python.framework.types.store_types import StoreId
+from python.framework.utils.atomic_file_utils import write_file_atomic
 from python.framework.utils.config_fingerprint_utils import read_fingerprint_from_parquet
 
 DISCOVERY_INDEX_FILE = store_index_filename(StoreId.DISCOVERY_CACHES)
@@ -111,9 +111,8 @@ class DiscoveryCacheIndex(AbstractStoreIndex):
             table: The cache content, its metadata included
             cache_path: Where the family keeps it
         """
-        tmp_path = cache_path.with_suffix('.parquet.tmp')
-        pq.write_table(table, tmp_path)
-        os.replace(tmp_path, cache_path)
+        write_file_atomic(cache_path, lambda temporary: pq.write_table(table, temporary),
+                          StoreId.DISCOVERY_CACHES)
         self._record_file(cache_path)
 
     def _record_file(self, path: Path) -> None:

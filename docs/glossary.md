@@ -420,6 +420,12 @@ every order validated by the venue and never placed, fills simulated locally. A 
 called a dry run, although the `dry_run` flag reads true for it too. To be renamed *paper* (#304).
 See [AutoTrader Configuration](autotrader/autotrader_configuration.md).
 
+**durable write** — A file written so that a crash of the MACHINE cannot leave it empty: its bytes
+forced to the disk before it is renamed over its target, and the rename after it. Every write is
+atomic — a crash of the process leaves the old file or the new one — but only a store whose kind
+needs it writes durably: a record, a carry-over, an archive, and the SPECIAL stores that say so.
+See [Data Storage Layout](architecture/data_storage_layout.md), *Five kinds*.
+
 **end reason** (`end_reason`) — Why an order ended without filling: the strategy's cancel, the
 order timeout, the resolution ceiling, an *entry hold*, the end of the session or of
 the backtest's data, or the venue's own cancel or expiry. Stands beside *initiator* on the same row

@@ -25,6 +25,7 @@ from python.framework.logging.bootstrap_logger import get_global_logger
 from python.framework.store.abstract_store_index import store_index_filename
 from python.framework.types.signal_data_types import SIGNAL_ENVELOPE_SYMBOL, SignalParquetColumn
 from python.framework.types.store_types import StoreId
+from python.framework.utils.atomic_file_utils import write_file_atomic
 
 vLog = get_global_logger()
 
@@ -476,7 +477,9 @@ class SignalIndexManager:
         }
         table = pa.Table.from_pandas(df)
         table = table.replace_schema_metadata({**table.schema.metadata, **metadata})
-        pq.write_table(table, self.index_file)
+        # Replaced whole, so a reader never opens half an index (#632)
+        write_file_atomic(self.index_file, lambda temporary: pq.write_table(table, temporary),
+                          StoreId.SIGNALS)
         self.logger.debug(f'💾 Signal index saved to {self.index_file}')
 
     def _schema_outdated(self) -> bool:

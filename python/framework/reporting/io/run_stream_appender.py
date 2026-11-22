@@ -33,6 +33,7 @@ from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter, jsonl_line
 from python.framework.reporting.io.run_stream_day_record import seal_stream_day
 from python.framework.types.run_stream_types import DayRecordSummary
+from python.framework.types.store_types import StoreId
 from python.framework.utils.atomic_file_utils import write_text_atomic
 
 
@@ -168,7 +169,7 @@ class RunStreamAppender:
                 return None
             self._trading_day = next_day
             try:
-                write_text_atomic(self._path, jsonl_line(self._header()))
+                write_text_atomic(self._path, jsonl_line(self._header()), StoreId.RUNS)
             except OSError as e:
                 # The file was not replaced and still holds the whole day, so the day record just
                 # written goes again and the day is sealed with the next one, like a day that

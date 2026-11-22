@@ -32,6 +32,7 @@ from python.framework.types.store_member_types import (
     EntryMemberWriteMode,
     RunEntryMemberId,
 )
+from python.framework.types.store_types import StoreId
 from python.framework.utils.atomic_file_utils import write_text_atomic
 from python.framework.utils.csv_table_utils import write_csv_table
 from python.framework.utils.file_utils import create_directory
@@ -107,7 +108,7 @@ class RunEntryWriter:
         member = self._member(member_id, EntryMemberShape.SNAPSHOT)
         path = self._run_dir / member.path_for(**names)
         if member.write_mode is EntryMemberWriteMode.ATOMIC_REPLACE:
-            write_text_atomic(path, text)
+            write_text_atomic(path, text, StoreId.RUNS)
         else:
             create_directory(path.parent, holds=f'the file {path.name}')
             path.write_text(text, encoding='utf-8')
@@ -197,7 +198,7 @@ class RunEntryWriter:
         """
         member = self._member(member_id, EntryMemberShape.STRATEGY_OUTPUT)
         path = self._run_dir / member.path_for(**names)
-        write_text_atomic(path, text)
+        write_text_atomic(path, text, StoreId.RUNS)
         return path
 
     def log_path(self, member_id: RunEntryMemberId, **names: str) -> Path:

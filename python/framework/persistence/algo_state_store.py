@@ -22,7 +22,6 @@ equals the calendar-day count.
 """
 
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -38,6 +37,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 )
 from python.framework.types.persistence_types import CarryOverEnvelope, RestoreContext
 from python.framework.types.store_types import StoreId
+from python.framework.utils.atomic_file_utils import write_text_atomic
 from python.framework.utils.file_utils import create_directory
 from python.framework.utils.market_calendar import MarketCalendar
 from python.framework.utils.time_utils import parse_datetime
@@ -53,7 +53,7 @@ class AlgoStateStore:
     Atomic JSON persistence for algo-internal state, keyed by bot identity.
 
     One state file per running bot (`<bot_id>_<symbol>.json`) in a stable
-    cross-run directory. Writes are atomic (temp file + os.replace) so a crash
+    cross-run directory. Writes are atomic and durable (the shared atomic writer, #632) so a crash
     mid-write never leaves a half-written file. Loading applies a corrupt policy
     (file unreadable) and a staleness policy (file too old), both configurable.
 
@@ -332,14 +332,12 @@ class AlgoStateStore:
 
     def _atomic_write(self, payload: str) -> None:
         """
-        Write payload via temp file + os.replace (atomic, never half-written).
+        Write the document atomically and durably: never half-written, and never empty after a
+        crash of the machine (#632).
 
         Args:
             payload: Serialized JSON envelope
         """
         create_directory(self._path.parent, holds="the algo's state for the next session")
-        tmp_path = self._path.with_name(self._path.name + '.tmp')
-        with open(tmp_path, 'w', encoding='utf-8') as f:
-            f.write(payload)
-        os.replace(tmp_path, self._path)
+        write_text_atomic(self._path, payload, StoreId.SESSION_STATE)
 

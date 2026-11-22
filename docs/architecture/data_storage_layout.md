@@ -488,6 +488,22 @@ rather than serving it.
 | **DERIVED** | mirrors its source | **deletable** | none — *if deleting it loses something, it is misfiled* |
 | **SPECIAL** | — | — | catalogued with a stated reason, nothing else |
 
+**The kind also decides how a store writes (#632).** A crash of the process never leaves half a
+file: every document is written to a temporary file and renamed over its target. A crash of the
+machine can leave an EMPTY one, because a filesystem may commit a rename before the bytes it
+renames. So a RECORD, a CARRY-OVER and an ARCHIVE are written **durably** — the file's bytes forced
+to the disk before the rename, its folder after it — while a DERIVED store is not: it is rebuilt from
+its source, and a sync would buy it nothing. A SPECIAL store states its own answer with its reason
+(the host identity is durable: an identity lost to a crash is a new installation). The kinds are
+stated once, in `STORE_KINDS` (`python/framework/types/store_types.py`), and every write names the
+store it writes into — `write_file_atomic(path, write, store)` asks the store, never a flag at the
+call site — the importers' tick and signal files and the three data indexes too, which used to be
+written in place, so a reader could open half of one. A store index is derived and not synced,
+except one that holds what nothing else does (the run-config index, whose store declares
+`rebuild_loses`); the data indexes follow their store (#583 converges them). On a local disk a durable write of a
+carry-over costs about 2 ms more (measured 2026-11-22: 0.25 → 2.2 ms for 1.1 KB); on this project's
+bridged development mount about 8 ms (18 → 26 ms).
+
 **Deletable and append-only describe the store, not what a run read from it.** A fetch overwrites
 a symbol's entry in the runtime broker cache in place, a re-import with `--override` replaces tick
 files, and every render replaces bar files. So a run never relies on what it read staying as it

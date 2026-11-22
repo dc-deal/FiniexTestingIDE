@@ -22,6 +22,7 @@ from python.framework.types.import_types.import_progress_types import (
     ImportStepId,
     ImportStepRate,
 )
+from python.framework.types.store_types import StoreId
 from python.framework.utils.atomic_file_utils import write_text_atomic
 
 vLog = get_global_logger()
@@ -121,7 +122,8 @@ class ImportTimingsStore:
                 for step_id, rate in sorted(merged.items(), key=lambda item: item[0].value)
             },
         }
-        write_text_atomic(self._path, json.dumps(document, indent=2) + '\n')
+        write_text_atomic(self._path, json.dumps(document, indent=2) + '\n',
+                          StoreId.IMPORT_TIMINGS)
 
 
 def _changed_too_much(stored: float, measured: float) -> bool:

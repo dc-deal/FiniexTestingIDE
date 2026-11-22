@@ -35,6 +35,7 @@ from python.framework.types.import_types.tick_index_types import (
     TickIndexRun,
 )
 from python.framework.types.store_types import StoreId
+from python.framework.utils.atomic_file_utils import write_file_atomic
 from python.framework.utils.tick_deficiency_scan import measure_tick_deficiencies
 
 vLog = get_global_logger()
@@ -685,7 +686,9 @@ class TickIndexManager:
         table = table.replace_schema_metadata(
             {**table.schema.metadata, **metadata})
 
-        pq.write_table(table, self.index_file)
+        # Replaced whole, so a reader never opens half an index (#632)
+        write_file_atomic(self.index_file, lambda temporary: pq.write_table(table, temporary),
+                          StoreId.TICKS)
         self.logger.debug(f'💾 Tick index saved to {self.index_file}')
 
     def _schema_outdated(self) -> bool:

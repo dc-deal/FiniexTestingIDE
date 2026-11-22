@@ -310,7 +310,7 @@ class TestRegisteringNeverEndsTheActivity:
 
     def test_a_stop_between_the_lock_and_the_entry_leaves_nothing_behind(self, registry_dir,
                                                                         monkeypatch):
-        def stopped(path, text, mode=None):
+        def stopped(path, text, store, mode=None):
             raise KeyboardInterrupt
 
         monkeypatch.setattr(activity_registry_module, 'write_text_atomic', stopped)
@@ -321,7 +321,7 @@ class TestRegisteringNeverEndsTheActivity:
 
     def test_a_failed_write_whose_lock_cannot_be_released_never_ends_the_activity(
             self, registry_dir, monkeypatch):
-        def unwritable(path, text, mode=None):
+        def unwritable(path, text, store, mode=None):
             raise OSError(28, 'No space left on device')
 
         def unreleasable(lock):

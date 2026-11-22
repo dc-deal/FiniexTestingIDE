@@ -175,8 +175,10 @@ self.strategy_file('notes.txt').write_text('…')
   are the names a temporary write takes.
 - **A write that fails never ends the run.** A refused name, an unwritable disk or content that
   is no JSON is said once on the run's channel, as an error, and the write answers `False`.
-- **Write at decision moments, never per tick.** One write of a small file cost about 0.2 ms on a
-  local disk and about 12 ms on the development container's bridged mount (measured 2026-10-23).
+- **Write at decision moments, never per tick.** A strategy file is part of the run's record and is
+  written durably (#632): one write of a small file costs about 2 ms on a local disk and about
+  26 ms on the development container's bridged mount (measured 2026-11-22; 0.2 ms and 12 ms before
+  it was synced, 2026-10-23).
 - **The footprint counts them, per member, as a number and a size** instead of listing them; a
   run whose strategy wrote none reads as skipped, never as failed.
 
