@@ -11,12 +11,15 @@ the end survives a session killed before it:
 - `io/algo_state_restored.json` — the algo state the session found at its start, taken or refused:
   the store is overwritten while the session runs, so no later read could say what it started from.
 
-A record that can no longer be written is said once and never ends the session.
+A record that can no longer be written is said once and never ends the session. The trades are part
+of the money record (#632): while their stream cannot be written, its lines wait in memory and the
+session holds its entries until they are on the disk.
 """
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from python.framework.autotrader.run_record.money_record_streams import MoneyRecordStreams
 from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -35,6 +38,7 @@ def open_trade_stream(
     unit_name: str,
     portfolio: PortfolioManager,
     logger: AbstractLogger,
+    money_record: MoneyRecordStreams,
 ) -> Optional[RunStreamAppender]:
     """
     Open the session's trade stream and have the portfolio write every trade record into it.
@@ -46,6 +50,8 @@ def open_trade_stream(
         unit_name: The session's unit, on the header line and on every row
         portfolio: The session's portfolio, which files the trade records
         logger: Where a failed write is said
+        money_record: The session's money record (#632): a failed write keeps its lines and holds
+            the entries until they are written again
 
     Returns:
         The stream, to be closed after the session's last close; None without a run directory
@@ -54,9 +60,10 @@ def open_trade_stream(
         return None
     appender = run_writer.open_stream(
         RunEntryMemberId.TRADES, run_id, logger,
-        stops='The trades this session closes are no longer recorded as they close; the report '
-              'at its end still lists the newest of them',
-        header_fields={'unit_name': unit_name})
+        stops='Entries are held until it is written again',
+        header_fields={'unit_name': unit_name},
+        keeps_unwritten=True, on_failure=money_record.failure_listener('trade'))
+    money_record.add('trade', appender)
     portfolio.add_trade_listener(
         lambda record: appender.write(trade_row(record, unit_name).model_dump(mode='json')))
     return appender

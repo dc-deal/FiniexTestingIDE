@@ -9,6 +9,7 @@ the session has ended, for what is derived from it.
 from pathlib import Path
 from typing import List, Tuple
 
+from python.framework.autotrader.run_record.money_record_streams import MoneyRecordStreams
 from python.framework.autotrader.run_record.session_run_index import write_run_index_for_session
 from python.framework.exceptions.report_artifact_errors import ReportArtifactUnreadableError
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -31,6 +32,7 @@ def open_order_event_stream(
     run_writer: RunEntryWriter,
     run_id: str,
     unit_name: str,
+    money_record: MoneyRecordStreams,
 ) -> OrderEventStreamWriter:
     """
     Open the stream a session writes its order transitions into, as they happen — and what the
@@ -46,6 +48,8 @@ def open_order_event_stream(
         run_writer: The session's run writer, whose stream sealer the stream joins (#476)
         run_id: The run the stream belongs to
         unit_name: The unit every line is filed under — the name the session's reports use
+        money_record: The session's money record (#632): a failed write keeps its lines and holds
+            the entries until they are written again
 
     Returns:
         The open writer; the session closes it at shutdown
@@ -55,7 +59,9 @@ def open_order_event_stream(
     # missing from its start, so the start ends.
     appender = run_writer.open_stream(
         RunEntryMemberId.ORDER_EVENTS, run_id, executor.logger,
-        stops='The stream is incomplete from this event on', required=True)
+        stops='Entries are held until it is written again', required=True,
+        keeps_unwritten=True, on_failure=money_record.failure_listener('order-event'))
+    money_record.add('order-event', appender)
     writer = OrderEventStreamWriter(appender, unit_name)
     executor.add_order_event_listener(writer)
     executor.add_broker_truth_listener(writer.write_broker_truth)

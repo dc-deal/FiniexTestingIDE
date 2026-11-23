@@ -98,7 +98,7 @@ true — a recurrence before the all-clear keeps the episode open.
 | SESSION CRASHED while shutting down — the report may be incomplete | ⛔ |
 | The liveness ping was refused (wrong URL, deleted check) / its fail URL was refused | ⛔ / ⚠️ |
 | Safety circuit breaker — new entries blocked / cleared | ⚠️ / ✅ |
-| Entries held — the start found orders of another owner on the bot's instrument while the account is declared exclusive: the session runs, manages and closes its position and opens nothing new, its resting entries cancelled; and whether it lifts by itself or only at a start with `--attended` / Entries lifted — those orders are gone, or the operator accepted them | ⛔ / ✅ |
+| Entries held — the start found orders of another owner on the bot's instrument while the account is declared exclusive: the session runs, manages and closes its position and opens nothing new, its resting entries cancelled; and whether it lifts by itself or only at a start with `--attended`. Or the money record could not be written: its lines wait in memory and are written again every `storage.stream_sync_interval_s` / Entries lifted — those orders are gone, or the operator accepted them; or the kept lines are on the disk | ⛔ / ✅ |
 | Disk low / recovered — free space on the disk of the session's stores below `storage.warn_free_gb`, naming a folder on it and its stores; recovered once it has stayed above for the all-clear period | ⚠️ / ✅ |
 | Market data stale / fresh again — including no first tick within `market_data_stale_after_s` of the loop's start, a feed that never connected | ⚠️ / ✅ |
 | A signal input stale / fresh again | ⚠️ / ✅ |
@@ -725,9 +725,30 @@ the one refusal:
 
 **While the session runs**, a timer of its timeline reads the free space every
 `storage.check_interval_s`. Below `storage.warn_free_gb` the operator hears it once per filesystem —
-*Disk low*, naming a folder on that disk and its stores — and once more, *Disk recovered*, when the space has stayed above the
-floor for the alerts' all-clear period. The same figures are on the machine view the API serves
-(`/machine-resources`, `disks`).
+*Disk low*, naming a folder on that disk and its stores — and once more, *Disk recovered*, when the
+space has stayed above the floor for the alerts' all-clear period. The same figures are on the
+machine view the API serves (`/machine-resources`, `disks`).
+
+**The money record** — the order events and the trades, which the session's money figures and the
+parity proof rest on — is forced to the disk every `storage.stream_sync_interval_s` when lines were
+written since, so a stop of the machine loses at most that much of it. When one of its streams cannot
+be written, its lines wait in memory in their order and the session holds its entries: it manages and
+closes its position and opens nothing it could not record. At the same cadence the kept lines are
+written again, after the file is cut back to its last forced line — a line half on the disk lies past
+it — and the hold lifts the moment they are on the disk:
+
+```
+❌ The order_events stream …/order_events.jsonl could not be written at seq 412: [Errno 28] No space
+   left on device. Entries are held until it is written again; its lines are kept in memory and
+   written again, and the session continues.
+✅ Entries lifted: the money record is written again — the 37 line(s) it kept in memory are on the disk.
+```
+
+A failed force counts the lines written since the last good one as lost and writes them again with
+the rest, because forcing again can answer success over what the system already dropped. The other
+streams — the state frames, the tick record, the diagnostics rows — stop at their first failure and
+say so once, as before. A session that ends with lines it still could not write says how many are
+lost.
 
 ## After a holding was sold by hand
 

@@ -27,6 +27,7 @@ from python.framework.autotrader.event_loop.autotrader_storage_watch import Auto
 from python.framework.autotrader.event_loop.autotrader_trading_days import AutotraderTradingDays
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.operator_alerts.operator_alerts import OperatorAlerts
+from python.framework.autotrader.run_record.money_record_streams import MoneyRecordStreams
 from python.framework.autotrader.operator_alerts.operator_alerts_setup import (
     disabled_operator_alerts,
 )
@@ -110,6 +111,8 @@ class AutotraderEventLoop:
         run_dir: Session run directory (for log rotation)
         operator_alerts: The out-of-band channels to the operator (#235) — the loop stamps their
             loop progress on every pass and reports its symptoms through them; off by default
+        money_record: The money record's streams (#632), forced to the disk on a timer of the
+            timeline and written again there after a failure; None when the session keeps none
         state_frames: Records what the session holds and decides, moment by moment (#579 part A)
             — asked at the end of every pass; None when the profile records no frames
         indicator_series: Records each drawing worker's value per closed bar (#379) — asked
@@ -155,6 +158,7 @@ class AutotraderEventLoop:
         carried_period_no: int = 0,
         stale_stress_driver: Optional[StaleDataStressDriver] = None,
         operator_alerts: Optional[OperatorAlerts] = None,
+        money_record: Optional[MoneyRecordStreams] = None,
         state_frames: Optional[StateFrameRecorder] = None,
         indicator_series: Optional[IndicatorSeriesRecorder] = None,
         book_sealed_periods: Optional[Callable[[List[BookingPeriod]], None]] = None,
@@ -182,6 +186,7 @@ class AutotraderEventLoop:
         # ping vouches for on every pass, and reports symptoms — the breaker, a hard stop, stale
         # inputs — each once per edge, never per tick.
         self._operator_alerts = operator_alerts or disabled_operator_alerts()
+        self._money_record = money_record
         self._loop_progress = self._operator_alerts.get_loop_progress()
         # One episode per symptom: the opening alert, then the all-clear only once the symptom
         # stayed away this long — a breaker or a feed flapping around its threshold is one
@@ -427,6 +432,11 @@ class AutotraderEventLoop:
                 self._storage_watch.check()
                 self._intake.arm(TimerKind.DISK_READING, self._axis_now_msc() + round(
                     self._storage_watch.get_interval_s() * 1000))
+            if TimerKind.RECORD_SYNC in timers and self._money_record is not None:
+                # #632 — the money record forced to the disk, or written again after a failure
+                self._money_record.sync()
+                self._intake.arm(TimerKind.RECORD_SYNC, self._axis_now_msc() + round(
+                    self._money_record.get_interval_s() * 1000))
 
             # === Position Book Carry-Over (#355, on change) ===
             # A fill can resolve on any instant, so the book can change on any instant
@@ -573,6 +583,9 @@ class AutotraderEventLoop:
                        now + round(self._state_store.get_save_interval_seconds() * 1000))
         intake.arm(TimerKind.DISK_READING,
                    now + round(self._storage_watch.get_interval_s() * 1000))
+        if self._money_record is not None:
+            intake.arm(TimerKind.RECORD_SYNC,
+                       now + round(self._money_record.get_interval_s() * 1000))
         self._intake = intake
         if self._state_frames is not None:
             self._arm_state_frame_slot()

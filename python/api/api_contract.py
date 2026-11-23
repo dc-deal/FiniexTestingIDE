@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 64
+API_CONTRACT_VERSION = 65
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,8 +36,8 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "machine-resources: disks (new) — one row per filesystem that holds a store an AutoTrader session "
-    "writes into, named by those stores (keys: disks → stores), with free_bytes (the room a process that "
-    "is not root may use), total_bytes and free_pct (null when a filesystem reports no size)",
+    "order-history: rejection_reason entries_held (a broadened meaning) — a new entry is also refused "
+    "while the session's own record of its orders and trades cannot be written, until what it kept in "
+    "memory is written; before, only orders of another owner found at the start held the entries",
 ]
 

@@ -17,6 +17,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from python.framework.autotrader.run_record.money_record_streams import MoneyRecordStreams
 from python.framework.autotrader.run_record.order_event_stream_setup import (
     open_order_event_stream,
 )
@@ -181,7 +182,8 @@ class TestASessionWhoseStreamCannotOpen:
 
         with pytest.raises(OSError):
             open_order_event_stream(executor, RunEntryWriter(tmp_path, RUN_TYPE_AUTOTRADER),
-                                    _RUN_ID, 'btc_session')
+                                    _RUN_ID, 'btc_session',
+                                    MoneyRecordStreams(executor, None, executor.logger, 1.0))
 
         assert listeners == [], 'no transition is recorded into a stream that does not exist'
 

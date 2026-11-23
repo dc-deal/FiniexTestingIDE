@@ -338,10 +338,16 @@ class StorageDefaults(StrictConfigModel):
 
     `check_interval_s`
         How often the session reads the free space.
+
+    `stream_sync_interval_s`
+        How often the money record — the order events and the trades — is forced to the disk, when
+        lines were written since; a stop of the machine loses at most this much of it. While the
+        record cannot be written, how often its kept lines are written again.
     """
     min_free_gb_to_start: float = Field(1.0, ge=0.0)
     warn_free_gb: float = Field(2.0, ge=0.0)
     check_interval_s: float = Field(60.0, gt=0.0)
+    stream_sync_interval_s: float = Field(1.0, gt=0.0)
 
 
 class ShutdownDefaults(StrictConfigModel):

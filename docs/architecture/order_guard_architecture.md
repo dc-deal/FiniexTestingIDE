@@ -16,8 +16,9 @@ It denies an order when one of its rules holds, checked in this order:
   never named open or closed by the venue after its resolution ran out. A latch, not a cooldown:
   it ends when the order is accounted for.
 - **Entries held** (`ENTRIES_HELD`) — no new entry while the session holds its entries: a cause it
-  cannot settle by itself stands, today orders of another owner on the bot's instrument at its
-  start while the account is declared exclusive. Each cause declares how a hold of its kind ends
+  cannot settle by itself stands: orders of another owner on the bot's instrument at its start
+  while the account is declared exclusive, or a money record — the order events, the trades — that
+  cannot be written (#632). Each cause declares how a hold of its kind ends
   — the cause measurably gone, or the operator — and never by time. Like the latch above, a
   refusal of our own and no broker's answer, so it feeds no cooldown.
 - **Rejection Cooldown** (`REJECTION_COOLDOWN`) — blocking a direction after N consecutive broker

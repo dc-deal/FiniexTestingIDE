@@ -34,6 +34,10 @@ class EntryHoldReason(StrEnum):
     # ours rested on the very instrument this bot trades: at spot both exposures merge into one
     # balance, so this bot cannot size an order against what is actually its own
     BOOT_PREMISE = 'boot_premise'
+    # #632 — the money record (the order events, the trades) could not be written: a position this
+    # session opens now would exist nowhere but in memory, and the parity proof compares exactly this
+    # record. Its lines wait in memory and are written again at the record's cadence
+    RECORD_UNWRITABLE = 'record_unwritable'
 
     def lift_routes(self) -> FrozenSet[EntryHoldLift]:
         """
@@ -50,6 +54,8 @@ class EntryHoldReason(StrEnum):
 # tests/autotrader/order_guard/test_entry_holds.py
 _LIFT_ROUTES: Dict[EntryHoldReason, FrozenSet[EntryHoldLift]] = {
     EntryHoldReason.BOOT_PREMISE: frozenset({EntryHoldLift.OBSERVED, EntryHoldLift.OPERATOR}),
+    # Lifts when every line it kept is on the disk; an operator frees the disk, not the hold
+    EntryHoldReason.RECORD_UNWRITABLE: frozenset({EntryHoldLift.OBSERVED}),
 }
 
 

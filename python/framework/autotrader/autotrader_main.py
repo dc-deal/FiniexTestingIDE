@@ -56,6 +56,7 @@ from python.framework.autotrader.run_record.autotrader_report_coordinator import
 from python.framework.autotrader.run_record.indicator_series_stream_opener import (
     open_indicator_series_streams,
 )
+from python.framework.autotrader.run_record.money_record_streams import MoneyRecordStreams
 from python.framework.autotrader.run_record.order_event_stream_setup import (
     open_order_event_stream,
     read_back_order_event_stream,
@@ -386,6 +387,8 @@ class AutotraderMain:
         self._indicator_series: Optional[IndicatorSeriesRecorder] = None
         # #476 — every trade the session closes and every diagnostics row, written as they happen
         self._trade_stream: Optional[RunStreamAppender] = None
+        # The money record's streams and the entry hold over them (#632)
+        self._money_record: Optional[MoneyRecordStreams] = None
         self._diagnostics_streams: List[RunStreamAppender] = []
 
         # Loggers (created during run())
@@ -642,9 +645,14 @@ class AutotraderMain:
 
             # === ORDER-EVENT STREAM (#362) ===
             # Before the cold start: an order the boot takes over is the first step a session
-            # records.
+            # records. It and the trade stream are the money record (#632): a write that fails
+            # keeps its lines and holds the entries until they are on the disk.
+            self._money_record = MoneyRecordStreams(
+                self._executor, self._operator_alerts, self._session_logger,
+                self._config.storage.stream_sync_interval_s)
             self._order_event_stream = open_order_event_stream(
-                self._executor, self._run_writer, self._run_id, self._config.get_unit_name())
+                self._executor, self._run_writer, self._run_id, self._config.get_unit_name(),
+                self._money_record)
 
             self._restore_algo_state()
 
@@ -837,7 +845,7 @@ class AutotraderMain:
             # keeps them
             self._trade_stream = open_trade_stream(
                 self._run_writer, self._run_id, self._config.get_unit_name(),
-                self._executor.portfolio, self._session_logger)
+                self._executor.portfolio, self._session_logger, self._money_record)
             self._diagnostics_streams = stream_diagnostics_rows(
                 self._run_writer, self._run_id, self._decision_logic, self._session_logger)
             # === STATE FRAMES (#579 part A) ===
@@ -1372,6 +1380,7 @@ class AutotraderMain:
             # every live-adapter session, so the loop runs exactly as it did before.
             stale_stress_driver=self._stale_stress_driver,
             operator_alerts=self._operator_alerts,
+            money_record=self._money_record,
             display_label_cache=self._display_label_cache,
             drift_auditor=self._drift_auditor,
             decision_event_dispatcher=self._decision_event_dispatcher,

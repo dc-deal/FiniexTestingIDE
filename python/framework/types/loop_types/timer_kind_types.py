@@ -26,3 +26,5 @@ class TimerKind(Enum):
     STATE_FRAME_SLOT = 'state_frame_slot'
     # The free space under the session's records is read (#632)
     DISK_READING = 'disk_reading'
+    # The money record's streams are forced to the disk, or written again after a failure (#632)
+    RECORD_SYNC = 'record_sync'

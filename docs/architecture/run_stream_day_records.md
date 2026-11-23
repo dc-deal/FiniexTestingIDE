@@ -67,6 +67,12 @@ close the file ──► read it, write the day record ──► replace the fil
   record just written is removed again and the stream goes on being written. Only a file replaced
   but not reopened stops that stream, the way a failed write does; everything up to the boundary is
   sealed.
+- **The money record keeps what it could not write** (#632). The order events and the trades do not
+  stop at a failed write: their lines wait in memory and are written again at the cadence that
+  forces them to the disk, and the session holds its entries meanwhile — see
+  [Unattended Operation](../autotrader/unattended_operation.md#the-disk-under-the-records). A
+  boundary that finds such a stream failing does not seal it: its day stays in the file and is
+  sealed with the next one.
 - **A line is filed under the day in which the loop's check found it.** The tick stream is written
   from the socket's own thread, so a line it writes between the boundary and the check that notices
   the boundary is sealed with the day that ended. Its own time says when it happened; a time window

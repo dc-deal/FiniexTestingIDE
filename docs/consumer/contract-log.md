@@ -33,6 +33,19 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 65 — 2026-11-23 (#632)
+
+A session also holds its entries while it cannot write its own record of its orders and trades.
+
+- [Order history](/api/v1/docs/order-history): **`rejection_reason: entries_held`** (a broadened
+  meaning) — a new entry refused while the session held its entries now has a second cause: its
+  record of its orders and trades could not be written, a full disk say, and the session keeps what
+  it could not write in memory until it can. Before, only orders of another owner that its start
+  found on its instrument held the entries. The session manages and closes what it has meanwhile;
+  closing and cancelling are never refused for it.
+
+One value's meaning broadened; nothing added or removed.
+
 ## Version 64 — 2026-11-22 (#632)
 
 The machine view says how much room is left under an AutoTrader session's records.
@@ -102,30 +115,13 @@ cannot.
 
 One error code added; nothing changed or removed.
 
-## Version 60 — 2026-11-20 (#647)
-
-Coverage and the scenario details say whose data was there and whose was read.
-
-- [Market data](/api/v1/docs/market-data): **`origin_classes`** on a symbol's coverage (new) —
-  whose data its bars were rendered from, over every timeframe, comma-joined like every other
-  `origin_classes`: `external` for a venue's published history, `production` and `development` for
-  our own collection; empty where the bars were
-  rendered before the origin was stamped.
-- [Market data](/api/v1/docs/market-data): **`collected_since`** on a symbol's coverage (new) —
-  where our own collection takes over from a venue's published history, ISO-8601 UTC; `null` where
-  the bars hold no external history before collected data.
-- [Scenario details](/api/v1/docs/scenario-details): **`origin_classes`** on each entry of
-  `data_brokers` (new) — whose data that broker's scenarios read, comma-joined, as each scenario
-  row already says it.
-
-Three fields added; nothing changed or removed.
-
-## Versions 59 and earlier
+## Versions 60 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 60** — 2026-11-20 (#647): Coverage and the scenario details say whose data was there and whose was read — `origin_classes` and `collected_since` (new) on a symbol's coverage in [market data](/api/v1/docs/market-data), `origin_classes` (new) on each entry of `data_brokers` in the [scenario details](/api/v1/docs/scenario-details).
 - **Version 59** — 2026-11-19 (#647): What a run read says more — on [sweeps](/api/v1/docs/sweeps) `unstamped_input_files` counts the files no stamp attests (a changed meaning: before, every external file counted), `server_clock_rules` and `external_warmup_timeframes` (new); a mock session reports what its replay read in [warnings and errors](/api/v1/docs/warnings-errors), as a backtest does. A row with `logic_version` 21 or older keeps the old meaning.
 - **Version 58** — 2026-11-16 (#461): An AutoTrader session runs on a timeline — `ts_event` (new) on [order events](/api/v1/docs/order-events), the venue's own stamp of a step where it reports one; every time a session records is when a tick or an answer reached it, no longer the venue's stamp of the tick; a backlog is one slice and a session's `ticks_processed` no longer counts its older ticks; a live `in_flight_ms` ends when the answer is read right after it arrives. A session recorded before it can differ from one of the same data recorded now.
 - **Version 57** — 2026-11-16 (#460): A backtest runs on its timeline — `algo_passes` and `ghost_passes` on [scenario details](/api/v1/docs/scenario-details), the [worker and decision](/api/v1/docs/worker-decision) rows and [profiling](/api/v1/docs/profiling), with the per-pass time beside the per-tick one, several shares and budget figures taken per pass, the `instant_resolution` operation and the `data_arrival_time_offset` [validation check](/api/v1/docs/validation-checks); a backtest recorded before it carries null counts.

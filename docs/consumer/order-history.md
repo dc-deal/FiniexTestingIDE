@@ -205,10 +205,13 @@ Four of them are worth spelling out, because their names do not carry their mean
   unaccounted for: the venue was asked about it as long as the session said it would ask, and
   never named it. **It may still be resting there.** Closing and protecting what is already held
   continue; only new entries stop.
-- **`entries_held`** — a new entry was refused because the session holds its entries: at its start,
-  orders of another owner rested on the bot's own instrument while the account is declared
-  exclusive. The session manages and closes what it has and opens nothing new until those orders
-  are gone or an operator lifts the hold. Closing and cancelling are never refused for it.
+- **`entries_held`** — a new entry was refused because the session holds its entries, for one of
+  two causes. At its start, orders of another owner rested on the bot's own instrument while the
+  account is declared exclusive: the hold lasts until those orders are gone or an operator lifts
+  it. Or, since contract 65, the session's own record of its orders and trades could not be written
+  — a full disk, say: the hold lasts until what it kept in memory is written. The session manages
+  and closes what it has and opens nothing new meanwhile. Closing and cancelling are never refused
+  for it.
 - **`position_not_found`** — a close for a position that is not held. In a backtest the simulated
   venue also refuses a close whose position was closed while the close was on its way.
 

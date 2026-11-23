@@ -31,6 +31,14 @@ simply pass fixed or advanced timestamps instead of patching `datetime.now()`.
 | `TestConfigurableThreshold` | Custom `max_consecutive_rejections`, cooldown duration in message |
 | `TestTheDenialIdsAreReproducible` | A guard numbers its denials `guard_1`, `guard_2`, … and two fresh guards number the same denials the same way — two identical backtests write identical order-event streams (#362) |
 
+`test_money_record_hold.py` — the entry hold over the money record (#632), with a disk the test
+fills:
+
+| Class | What it validates |
+|-------|-------------------|
+| `TestTheHold` | a failed write of the order events or the trades holds the entries at once, as `record_unwritable` on the session's clock, naming the stream and the cause, with one *Entries held* alert; a second failing stream holds nothing twice; the hold stands while the disk stays full |
+| `TestTheLift` | once every kept line is on the disk the hold lifts as observed, with *Entries lifted*; one stream still failing keeps it; a record that writes holds nothing |
+
 `test_entry_holds.py` — the entry holds of a session (#499), the register the guard reads:
 
 | Class | What it validates |

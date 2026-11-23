@@ -433,8 +433,10 @@ or event.
 
 **entry hold** (`entries_held` as a rejection and an end reason; *Entries held* / *Entries lifted*
 alerts) — A session that runs and opens nothing new: it manages and closes its position, and every
-order that would open one is refused at the order path. Today a start holds its entries when orders
-of another owner rest on the bot's own instrument while the account is declared exclusive. A hold
+order that would open one is refused at the order path. A start holds its entries when orders of
+another owner rest on the bot's own instrument while the account is declared exclusive; a running
+session holds them while its money record — the order events and the trades — cannot be written
+(`record_unwritable`), until the lines it kept in memory are on the disk. A hold
 is *lifted* — by its cause measurably gone, or by the operator — and never by time. *Hold* here is
 the verb of withholding: not a *holding*, which is a spot balance, and lifting a hold is not a
 *release* of the software. See [Capital and Safety](autotrader/autotrader_capital_and_safety.md).
