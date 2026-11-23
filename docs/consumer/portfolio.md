@@ -141,6 +141,28 @@ money's — when the inherited curve does not say which kind of run wrote it, an
 told `--new-deployment`. In the first two cases its warnings carry `carried_readings_not_continued`,
 saying which it was; a new deployment the operator asked for is not warned about.
 
+## The five deepest drawdown periods, not only the deepest
+
+One figure cannot tell an account that fell 12 % once from one that fell 11 % five times.
+`account_drawdown_periods` lists the five deepest drawdown periods of the same curve, each from a
+peak until the account was back at that peak — two rows never describe one fall — deepest first by
+their share of the peak, so rank 1 is the period whose depth `account_max_dd_pct` measures. Its rows
+are unique by `rank`, which `account_drawdown_periods_key` declares.
+
+| Field | Meaning |
+|---|---|
+| `rank` | 1 for the deepest |
+| `peak` | the account value the period fell from |
+| `depth` | how far below that peak it went, in the account currency |
+| `depth_pct` | that depth as a share of the peak; **null** where the peak was not above zero |
+| `started_at`, `trough_at` | the first value below the peak and the deepest one, ISO-8601 UTC on the run's own clock; **null** where a session's clock was not running yet |
+| `recovered_at` | the first value back at or above the peak; **null** while the period was still open when the unit ended |
+
+A session that inherits its predecessor's curve inherits its drawdown periods with it, so the five
+span the same stretch the three fields above name. A unit with fewer than five periods lists the ones
+it had; one that never fell below its peak lists none. The aggregate rows have no such list: a
+drawdown period is one account's.
+
 ## What was still open when the run ended
 
 A run no longer flattens its positions at the end. In a live session that flatten never reached

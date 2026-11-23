@@ -216,6 +216,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Spread Estimate Tests](tests/framework/spread_estimate_tests.md) | The spread from trades without a quote, and the measurement checked against recorded quotes |
 | [Normalizer Tests](tests/framework/normalizer_tests.md) | Central rescale/clamp/normalize apparatus |
 | [Account Value Tests](tests/framework/account_value_tests.md) | One account-value definition per account model — the input every circuit-breaker limit sits on, and why spot answers None rather than guessing |
+| [Account Drawdown Period Tests](tests/framework/account_drawdown_periods_tests.md) | The five deepest declines of the account curve: what a period is, the ranking, the hot-path discipline and the carry-over |
 | [Account Leverage Tests](tests/framework/account_leverage_tests.md) | What an algo's `get_leverage()` answers — the account's leverage from the broker configuration, the figure margin divides by |
 | [Round-Trip Fee Tests](tests/framework/round_trip_fees_tests.md) | What one completed trade costs in both account models, the two fee totals a run reports, the rule for a trade that realised nothing, and the excursion a spot trade records |
 | [Spot Entry Capital Tests](tests/framework/spot_entry_capital_tests.md) | How much capital a new entry may commit, per account model — why `free_margin` is not that number at spot, and that the margin answer is unchanged |

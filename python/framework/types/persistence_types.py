@@ -311,6 +311,27 @@ class RiskBaseline(BaseModel):
     exclusivity_violated_at_utc: Optional[str] = None
 
 
+class CarriedDrawdownPeriod(BaseModel):
+    """
+    One drawdown period of the account's curve, carried across a restart (#529) — the fields of
+    `DrawdownPeriod`, which the report describes.
+
+    Args:
+        peak: The account value the period fell from
+        depth: How far below it the deepest sample lay, in account currency
+        depth_pct: That depth as a share of the peak, in percent; None where the peak was not above zero
+        started_at: The first sample below the peak, ISO-8601 UTC; None where the clock was not set
+        trough_at: The deepest sample, ISO-8601 UTC; None where the clock was not set
+        recovered_at: The first sample back at or above the peak; None while still open
+    """
+    peak: float
+    depth: float
+    depth_pct: Optional[float] = None
+    started_at: Optional[str] = None
+    trough_at: Optional[str] = None
+    recovered_at: Optional[str] = None
+
+
 class AccountDrawdownCarryOver(BaseModel):
     """
     The REPORT's drawdown figures, carried across a restart (#497).
@@ -347,6 +368,9 @@ class AccountDrawdownCarryOver(BaseModel):
             reading the handoff stamp understates exactly the period the count exists to
             make visible. Same convention as `BaselineOrigin.RESTORED_CARRY_OVER`: a restart
             does not begin a new curve, so nothing may re-stamp its start
+        drawdown_periods: The deepest closed drawdown periods of the curve so far (#529)
+        open_drawdown_period: The drawdown period still open when the record was written, None
+            when the curve stood at its peak
     """
     max_equity: float
     max_drawdown: float
@@ -354,6 +378,11 @@ class AccountDrawdownCarryOver(BaseModel):
     taken_at_utc: str
     restarts: int = 0
     curve_started_utc: str = ''
+    # #529 — the deepest closed drawdown periods so far, and the one still open: a successor
+    # continues the same curve, so it keeps its five instead of counting from its own start. A
+    # record written before these existed carries none.
+    drawdown_periods: List[CarriedDrawdownPeriod] = []
+    open_drawdown_period: Optional[CarriedDrawdownPeriod] = None
 
 
 class ConfigurationCarryOver(BaseModel):

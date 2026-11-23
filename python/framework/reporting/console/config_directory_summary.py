@@ -20,6 +20,7 @@ from python.framework.types.config_directory_types import (
     ConfigReadStatus,
     ConfigValidationResult,
 )
+from python.framework.utils.time_utils import format_iso_to_the_minute
 
 _RULE = '─' * 118
 _KIND_TITLES = {ConfigKind.SCENARIO_SET: '📙 SCENARIO SETS',
@@ -141,7 +142,7 @@ def _render_row(row: DirectoryRow, file_width: int, indent: str) -> None:
                  if row.kind == ConfigKind.SCENARIO_SET else '1')
     symbols = ', '.join(row.symbols)
     symbols = symbols if len(symbols) <= 22 else symbols[:21] + '…'
-    last_run = row.last_run_at[:16].replace('T', ' ') if row.last_run_at else '—'
+    last_run = format_iso_to_the_minute(row.last_run_at)
     net, trades, outcome = _last_run_cells(row.last_run_figures)
     print(f'{indent}{row.file:<{file_width}} {_where(row)[:24]:<24} {scenarios:>7}  {symbols:<22} '
           f'{row.run_count:>5}  {last_run:<16}  {net:>16}  {trades:>6}  {outcome}')

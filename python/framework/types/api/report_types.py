@@ -679,6 +679,36 @@ class FeeSourceFills(BaseModel):
     fill_fees: float        # the sum of their fee, in the account currency
 
 
+class DrawdownPeriodRow(BaseModel):
+    """
+    One of the deepest drawdown periods of a unit's account curve, from a peak until it was
+    recovered (#529).
+
+    A period opens with the first sample below the running peak and closes with the first sample
+    back at or above it, so two rows never describe one fall. Ranked by `depth_pct`, deepest first:
+    rank 1 is the period whose depth `account_max_dd_pct` measures.
+
+    Args:
+        rank: Its place among the deepest, 1 the deepest
+        peak: The account value it fell from
+        depth: How far below that peak its deepest sample lay, in the account currency
+        depth_pct: That depth as a share of the peak, in percent; None where the peak was not above
+            zero
+        started_at: The first sample below the peak, ISO-8601 UTC; None where the run's clock was not
+            set yet
+        trough_at: The deepest sample, ISO-8601 UTC; None as above
+        recovered_at: The first sample back at or above the peak, ISO-8601 UTC; None while the period
+            was still open when the unit ended
+    """
+    rank: int
+    peak: float
+    depth: float
+    depth_pct: float | None = None
+    started_at: str | None = None
+    trough_at: str | None = None
+    recovered_at: str | None = None
+
+
 class PortfolioUnitRow(BaseModel):
     """Headline P&L of one run unit (sim: a scenario; live: the session)."""
     name: str               # scenario name (sim) / profile/session label (live)
@@ -708,6 +738,10 @@ class PortfolioUnitRow(BaseModel):
     drawdown_carried_from: str = ''
     drawdown_restarts: int = 0
     drawdown_started_at: str = ''   # when the curve began, not when it was last handed over
+    # The five deepest drawdown periods of the same curve, deepest first (#529), the one still open among
+    # them; their row key is `rank`
+    account_drawdown_periods: list[DrawdownPeriodRow] = []
+    account_drawdown_periods_key: list[str] = ['rank']
     # The fees of the trades the unit CLOSED — what every trade row, booking period and trade
     # analytic sums. `fees_charged` is everything the run charged, open positions included;
     # the two differ by the fees of what is still open (contract 18).

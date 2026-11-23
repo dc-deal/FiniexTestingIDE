@@ -33,6 +33,18 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 66 — 2026-11-23 (#529)
+
+The portfolio report lists the five deepest drawdown periods of a unit's account, not only the
+deepest.
+
+- [Portfolio](/api/v1/docs/portfolio): **`account_drawdown_periods`** on a unit row (new) — the five
+  deepest drawdown periods of the account curve, deepest first by their share of the peak: `rank`,
+  `peak`, `depth`, `depth_pct`, `started_at`, `trough_at` and `recovered_at`, null while the period was
+  still open. **`account_drawdown_periods_key`** (new) declares that `rank` makes a row unique.
+
+One list and its key added; nothing changed or removed.
+
 ## Version 65 — 2026-11-23 (#632)
 
 A session also holds its entries while it cannot write its own record of its orders and trades.
@@ -101,26 +113,13 @@ until those orders are gone or an operator lifts the hold.
 
 Two values and two fields added; nothing changed or removed.
 
-## Version 61 — 2026-11-21 (#650)
-
-A request that meets a store index another process is writing waits for it, and says so when it
-cannot.
-
-- [Errors](/api/v1/docs/errors): **`503 store_index_busy`** (new), carrying `Retry-After`. Every
-  route that reads a store index — the run list, deployments, sweeps, the configuration directory
-  and the others — waits a few seconds for another process that is writing it, and answers with
-  this code when the index does not come free in that time. Such a request used to end in a bare
-  `500`, or, while the index was being rebuilt by two requests at once, in one for the slower of
-  them; it now waits for the first one and answers `200`.
-
-One error code added; nothing changed or removed.
-
-## Versions 60 and earlier
+## Versions 61 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 61** — 2026-11-21 (#650): A request that meets a store index another process is writing waits for it — [errors](/api/v1/docs/errors): `503 store_index_busy` (new) with `Retry-After`, on every route that reads a store index, where a bare `500` used to come.
 - **Version 60** — 2026-11-20 (#647): Coverage and the scenario details say whose data was there and whose was read — `origin_classes` and `collected_since` (new) on a symbol's coverage in [market data](/api/v1/docs/market-data), `origin_classes` (new) on each entry of `data_brokers` in the [scenario details](/api/v1/docs/scenario-details).
 - **Version 59** — 2026-11-19 (#647): What a run read says more — on [sweeps](/api/v1/docs/sweeps) `unstamped_input_files` counts the files no stamp attests (a changed meaning: before, every external file counted), `server_clock_rules` and `external_warmup_timeframes` (new); a mock session reports what its replay read in [warnings and errors](/api/v1/docs/warnings-errors), as a backtest does. A row with `logic_version` 21 or older keeps the old meaning.
 - **Version 58** — 2026-11-16 (#461): An AutoTrader session runs on a timeline — `ts_event` (new) on [order events](/api/v1/docs/order-events), the venue's own stamp of a step where it reports one; every time a session records is when a tick or an answer reached it, no longer the venue's stamp of the tick; a backlog is one slice and a session's `ticks_processed` no longer counts its older ticks; a live `in_flight_ms` ends when the answer is read right after it arrives. A session recorded before it can differ from one of the same data recorded now.

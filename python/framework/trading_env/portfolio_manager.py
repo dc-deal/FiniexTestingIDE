@@ -4,7 +4,7 @@ Tracks account balance, equity, open positions, and P&L with full fee tracking
 """
 
 from collections import deque
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -17,14 +17,19 @@ from python.framework.persistence.position_book_projection import (
 from python.framework.trading_env.abstract_trading_fee import AbstractTradingFee
 from python.framework.trading_env.algo_masks.algo_position import AlgoPosition
 from python.framework.trading_env.broker_config import BrokerConfig
+from python.framework.trading_env.drawdown_period_ring import DrawdownPeriodRing
 from python.framework.trading_env.trading_fees import MakerTakerFee, SwapFee
 from python.framework.types.config_types.market_config_types import SwapRolloverConfig
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.persistence_types import (
     AccountDrawdownCarryOver,
+    CarriedDrawdownPeriod,
     PositionCarryOver,
 )
-from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.portfolio_types.portfolio_aggregation_types import (
+    DrawdownPeriod,
+    PortfolioStats,
+)
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
     EntryType,
@@ -56,7 +61,7 @@ from python.framework.types.trading_env_types.trading_env_stats_types import (
     CostBreakdown,
 )
 from python.framework.utils.market_calendar import MarketCalendar
-from python.framework.utils.time_utils import mt5_weekday_to_python
+from python.framework.utils.time_utils import mt5_weekday_to_python, parse_iso_datetime
 from python.framework.utils.trading_math.pnl_math import gross_pnl_from_price_diff
 from python.framework.utils.trading_math.price_trigger import mid_price
 
@@ -202,6 +207,15 @@ class PortfolioManager:
         # reached, and a funded account starting below it would report a drawdown that never
         # happened. Set by the first successful sample, and by a restore.
         self._drawdown_established = False
+        # The deepest drawdown periods of the same curve (#529): the closed ones kept by the ring,
+        # the open one held here as plain fields, because every sample may move it. `_period_depth`
+        # is 0.0 exactly when no period is open.
+        self._drawdown_periods = DrawdownPeriodRing()
+        self._period_depth = 0.0
+        self._period_depth_pct: Optional[float] = None
+        self._period_peak = 0.0
+        self._period_started_at: Optional[datetime] = None
+        self._period_trough_at: Optional[datetime] = None
 
         # Current market state (lazy evaluation)
         self._current_tick: Optional[TickData] = None
@@ -1665,7 +1679,98 @@ class PortfolioManager:
             drawdown_pct = drawdown / self._max_equity * 100.0
             if drawdown_pct > self._account_max_drawdown_pct:
                 self._account_max_drawdown_pct = drawdown_pct
+
+        # The drawdown period this sample belongs to (#529): a sample below the peak opens one or
+        # deepens it, a sample back at or above the peak closes it. Only those read the clock; a
+        # sample that does neither costs the two comparisons and nothing else.
+        if drawdown > 0.0:
+            if drawdown > self._period_depth:
+                self._deepen_drawdown_period(drawdown)
+        elif self._period_depth > 0.0:
+            self._close_drawdown_period()
         return equity
+
+    def _deepen_drawdown_period(self, drawdown: float) -> None:
+        """
+        Open a drawdown period at this sample, or carry the open one to its new depth.
+
+        Args:
+            drawdown: How far this sample lies below the peak, deeper than the period went so far
+        """
+        stamp = self._drawdown_period_stamp()
+        if self._period_depth == 0.0:
+            # The peak cannot move while the period is open: a new peak is what closes it
+            self._period_peak = self._max_equity
+            self._period_started_at = stamp
+        self._period_depth = drawdown
+        self._period_depth_pct = (drawdown / self._max_equity * 100.0
+                                  if self._max_equity > 0 else None)
+        self._period_trough_at = stamp
+
+    def _close_drawdown_period(self) -> None:
+        """
+        Close the open drawdown period at this sample — the curve is back at or above its peak —
+        and hand it to the ring.
+        """
+        self._drawdown_periods.admit(self._drawdown_period_record(self._drawdown_period_stamp()))
+        self._clear_open_drawdown_period()
+
+    def _clear_open_drawdown_period(self) -> None:
+        """Forget the open drawdown period, so the next sample below the peak opens a new one."""
+        self._period_depth = 0.0
+        self._period_depth_pct = None
+        self._period_peak = 0.0
+        self._period_started_at = None
+        self._period_trough_at = None
+
+    def _open_drawdown_period(self) -> Optional[DrawdownPeriod]:
+        """
+        The drawdown period open right now.
+
+        Returns:
+            The period, not yet recovered; None when the curve stands at its peak
+        """
+        if self._period_depth == 0.0:
+            return None
+        return self._drawdown_period_record(None)
+
+    def _drawdown_period_record(self, recovered_at: Optional[datetime]) -> DrawdownPeriod:
+        """
+        The open drawdown period as a record, its instants in ISO-8601. They are converted here,
+        when a period closes or is reported, and kept as the clock's datetime until then: a falling
+        curve deepens its period on every sample, and a conversion there was half of what a
+        deepening sample cost (the cost probe of #529).
+
+        Args:
+            recovered_at: The instant the period recovered, None while it is open
+
+        Returns:
+            The period
+        """
+        started_at, trough_at = self._period_started_at, self._period_trough_at
+        return DrawdownPeriod(
+            peak=self._period_peak, depth=self._period_depth, depth_pct=self._period_depth_pct,
+            started_at=started_at.isoformat() if started_at is not None else None,
+            trough_at=trough_at.isoformat() if trough_at is not None else None,
+            recovered_at=recovered_at.isoformat() if recovered_at is not None else None)
+
+    def _drawdown_period_stamp(self) -> Optional[datetime]:
+        """
+        The instant a drawdown period moves, on the canonical clock.
+
+        A session's run-end sample can move a period against a restored peak before its first pass,
+        when the executor's clock was never set; that instant stays unnamed, the way the curve's
+        own start does. A portfolio built without a clock still raises.
+
+        Returns:
+            The instant, UTC, or None where the clock was not set yet
+        """
+        try:
+            return self._clock_now()
+        except ClockNotInjectedError:
+            if self._clock_fn is None:
+                raise
+            return None
 
     def sample_equity(self, equity: Optional[float] = None) -> Optional[float]:
         """
@@ -1727,6 +1832,20 @@ class PortfolioManager:
         # whose beginning was never recorded.
         self._drawdown_started_at = carried.curve_started_utc
         self._drawdown_established = True
+        # The drawdown periods continue too (#529): the closed ones the predecessor kept, and the one
+        # it left open — it fell from the peak restored above, and recovers against it
+        self._drawdown_periods.restore(
+            [DrawdownPeriod(**period.model_dump()) for period in carried.drawdown_periods])
+        self._clear_open_drawdown_period()
+        open_period = carried.open_drawdown_period
+        if open_period is not None:
+            self._period_peak = open_period.peak
+            self._period_depth = open_period.depth
+            self._period_depth_pct = open_period.depth_pct
+            self._period_started_at = (parse_iso_datetime(open_period.started_at)
+                                       if open_period.started_at else None)
+            self._period_trough_at = (parse_iso_datetime(open_period.trough_at)
+                                      if open_period.trough_at else None)
 
     def is_equity_curve_established(self) -> bool:
         """
@@ -1764,6 +1883,7 @@ class PortfolioManager:
         """
         if not self._drawdown_established:
             return None
+        open_period = self._open_drawdown_period()
         return AccountDrawdownCarryOver(
             max_equity=self._max_equity,
             max_drawdown=self._account_max_drawdown,
@@ -1773,6 +1893,10 @@ class PortfolioManager:
             taken_at_utc=datetime.now(timezone.utc).isoformat(),
             restarts=self._drawdown_restarts,
             curve_started_utc=self._drawdown_started_at,
+            drawdown_periods=[CarriedDrawdownPeriod(**asdict(period))
+                              for period in self._drawdown_periods.get_kept()],
+            open_drawdown_period=(None if open_period is None
+                                  else CarriedDrawdownPeriod(**asdict(open_period))),
         )
 
     def get_total_trades(self) -> int:
@@ -1923,6 +2047,8 @@ class PortfolioManager:
             drawdown_carried_from=self._drawdown_carried_from,
             drawdown_restarts=self._drawdown_restarts,
             drawdown_started_at=self._drawdown_started_at,
+            account_drawdown_periods=self._drawdown_periods.get_deepest(
+                self._open_drawdown_period()),
             win_rate=win_rate,
             profit_factor=profit_factor,
             total_spread_cost=self._cost_tracking.total_spread_cost,
@@ -1975,6 +2101,8 @@ class PortfolioManager:
         self._drawdown_restarts = 0
         self._drawdown_started_at = ''
         self._drawdown_established = False
+        self._drawdown_periods.clear()
+        self._clear_open_drawdown_period()
 
     def _file_trade_record(self, trade_record: TradeRecord) -> None:
         """

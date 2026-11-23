@@ -230,6 +230,20 @@ def format_iso_or_empty(moment: Optional[datetime]) -> str:
     return moment.isoformat() if moment is not None else ''
 
 
+def format_iso_to_the_minute(stamp: Optional[str], absent: str = '—') -> str:
+    """
+    An ISO-8601 instant a record serves, shortened to the minute for a console line.
+
+    Args:
+        stamp: The instant as served, None or '' where it was not recorded
+        absent: What the line shows instead of a missing instant
+
+    Returns:
+        `YYYY-MM-DD HH:MM`, or `absent`
+    """
+    return stamp[:16].replace('T', ' ') if stamp else absent
+
+
 def parse_age_duration(text: str) -> timedelta:
     """
     Parse an operator-written age such as '30d' or '12h' into a duration.

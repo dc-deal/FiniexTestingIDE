@@ -415,6 +415,14 @@ each day's decision, each order, the account values — and a verdict by bounds 
 Each measure ends *passed*, *failed* or *not checked*; "passed" reads "no divergence beyond the
 bounds over the compared days", never "parity proven". Kept under `runs/divergence/<report_id>/`.
 
+**drawdown period** (`account_drawdown_periods` on a portfolio unit) — One stretch of the account's
+equity curve below its running peak, from the first value below that peak until the curve is back at
+or above it; a new peak is the boundary, so two periods never share a fall. Its depth is how far below
+the peak it went, as an amount and as a share of that peak. A unit lists its five deepest, ranked by
+that share. Not a trade's excursion (MAE/MFE), which describes one position, and not a continuous
+losing stretch, which some books call an individual drawdown. Where a document says "the decline",
+it means a depth — the amount — not a period. See [Portfolio](consumer/portfolio.md).
+
 **dry run** — An AutoTrader session on a live adapter whose `dry_run` resolves true: real ticks,
 every order validated by the venue and never placed, fills simulated locally. A mock session is not
 called a dry run, although the `dry_run` flag reads true for it too. To be renamed *paper* (#304).

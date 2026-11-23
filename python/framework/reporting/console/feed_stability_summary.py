@@ -14,7 +14,7 @@ from python.framework.types.api.report_types import (
 )
 from python.framework.types.disturbance_episode_types import DisturbanceDomain, DisturbanceOrigin
 from python.framework.utils.console_renderer import ConsoleRenderer
-from python.framework.utils.time_utils import format_duration
+from python.framework.utils.time_utils import format_duration, format_iso_to_the_minute
 
 
 def format_disturbance_line(summary: RunSummary) -> str:
@@ -106,10 +106,11 @@ class FeedStabilitySummary(AbstractBatchSummarySection):
 
     def _render_episode(self, episode: FeedStabilityEpisodeRow, indent: str) -> None:
         """Render one episode span; an open episode reads as a dead tail, not a recovery."""
-        end = self._stamp(episode.stale_to) if episode.stale_to else 'run end'
+        start = format_iso_to_the_minute(episode.stale_from, absent='')
+        end = format_iso_to_the_minute(episode.stale_to, absent='run end')
         origin = self._format_origin(episode.origin, episode.label)
         unit_tag = f' [{episode.unit}]' if episode.unit else ''
-        print(f'{indent}     stale {self._stamp(episode.stale_from)} → {end}   '
+        print(f'{indent}     stale {start} → {end}   '
               f'({format_duration(episode.duration_seconds)})   {origin}{unit_tag}')
 
     def _counter_line(self, unit: FeedStabilitySourceRow) -> str:
@@ -136,7 +137,3 @@ class FeedStabilitySummary(AbstractBatchSummarySection):
         if not label:
             return '🧪 stress-injected'
         return f'🧪 [STRESS] \"{label}\"'
-
-    def _stamp(self, iso: str) -> str:
-        """Minute-precision timestamp of an ISO string ('' stays empty)."""
-        return iso[:16].replace('T', ' ') if iso else ''

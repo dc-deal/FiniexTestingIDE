@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 65
+API_CONTRACT_VERSION = 66
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,8 +36,8 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "order-history: rejection_reason entries_held (a broadened meaning) — a new entry is also refused "
-    "while the session's own record of its orders and trades cannot be written, until what it kept in "
-    "memory is written; before, only orders of another owner found at the start held the entries",
+    "portfolio: account_drawdown_periods (new) on a unit row — the five deepest drawdown periods "
+    "of the account curve, each from a peak until it was recovered: rank, peak, depth, depth_pct, started_at, "
+    "trough_at, recovered_at (null while still open); keyed by rank (account_drawdown_periods_key)",
 ]
 

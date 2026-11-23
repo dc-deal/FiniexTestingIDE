@@ -22,6 +22,7 @@ from python.framework.types.api.report_types import (
     AggregatedPortfolioCurrency,
     AggregatedPortfolioReport,
     AggregatedPortfolioRow,
+    DrawdownPeriodRow,
     ExecutionStatsReport,
     ExecutionStatsRow,
     OpenPositionRow,
@@ -33,6 +34,7 @@ from python.framework.types.api.report_types import (
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.utils.math_utils import force_negative, force_positive
+from python.framework.utils.time_utils import format_iso_to_the_minute
 
 # A spread total the model leaves None: the unit read data without a quote
 SPREAD_NOT_MEASURED = 'n/a (no quote)'
@@ -166,6 +168,12 @@ class PortfolioSummary(AbstractBatchSummarySection):
             since = unit.drawdown_started_at or 'an unrecorded start'
             print(
                 f'     ↳ in force since {since} · spans {unit.drawdown_restarts + 1} sessions')
+        # The deepest drawdown periods of the same curve (#529): one deep fall and a string of
+        # near-deep ones read alike in the single figure above
+        if unit.account_drawdown_periods:
+            print('     ↳ deepest drawdown periods:')
+            for period in unit.account_drawdown_periods:
+                print(f'       {self._drawdown_period_line(period, unit.currency, renderer)}')
 
         # Spread and swap are SIGNED costs — a price improvement and a swap credit are below
         # zero — so they are negated rather than forced negative, which printed a credit as zero.
@@ -197,6 +205,28 @@ class PortfolioSummary(AbstractBatchSummarySection):
         active = self._active_summary(pending, renderer)
         if active:
             print(f'   {active}')
+
+    @staticmethod
+    def _drawdown_period_line(period: DrawdownPeriodRow, currency: str,
+                              renderer: ConsoleRenderer) -> str:
+        """
+        One of the deepest drawdown periods, as the console prints it (#529).
+
+        Args:
+            period: The served period
+            currency: The unit's account currency
+            renderer: The console renderer
+
+        Returns:
+            The line: rank, share, amount, peak, its span and its recovery
+        """
+        share = f'{-period.depth_pct:.1f}%' if period.depth_pct is not None else '—'
+        recovered = (f'recovered {format_iso_to_the_minute(period.recovered_at)}' if period.recovered_at
+                     else 'still open')
+        return (f'{period.rank}  {share:>7}  {renderer.pnl(force_negative(period.depth), currency)} '
+                f'from {renderer.pnl(force_positive(period.peak), currency)} · '
+                f'{format_iso_to_the_minute(period.started_at)} → {format_iso_to_the_minute(period.trough_at)} · '
+                f'{recovered}')
 
     @staticmethod
     def _fee_source_line(unit: PortfolioUnitRow) -> str:

@@ -355,6 +355,13 @@ Three consequences worth knowing before touching a figure here:
     backtest starts at its own start, and a peak read from outside its inputs would make two
     runs over identical data disagree. Crash-safety between the store's write points is
     #476's subject, not this one.
+  - **The five deepest drawdown periods travel with it** (#529). One figure cannot tell an account
+    that fell 12 % once from one that fell 11 % five times, so the same sample also keeps the
+    curve's drawdown periods: a period opens with the first sample below the running peak and
+    closes with the first sample back at or above it, and the five deepest by share of the peak
+    are kept, the open one among them — `account_drawdown_periods` on the unit. The per-sample
+    cost is two comparisons; the clock is read only when a period opens, deepens or closes. The
+    kept periods and the open one ride the same carry-over as the peak.
   - **An AutoTrader ledger row is therefore CUMULATIVE over its deployment, not session-local**, and
     that decides how to read several of them. Each session writes its own fragment under its
     own run id; the rows are grouped by the deployment identity the run header carries as its

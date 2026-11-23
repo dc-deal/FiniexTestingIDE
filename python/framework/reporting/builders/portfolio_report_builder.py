@@ -9,6 +9,7 @@ The per-currency roll-up is derived from the rows via the shared `aggregate_port
 (one builder for both pipelines; mirrors the console `PortfolioAggregator` formulas).
 """
 
+from dataclasses import asdict
 from typing import Dict, List, Optional
 
 from python.framework.reporting.aggregation.aggregation_fold import fold_keyed
@@ -18,6 +19,7 @@ from python.framework.reporting.aggregation.tables.portfolio_figure_table import
 from python.framework.reporting.builders.report_aggregators import aggregate_portfolio_by_currency
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import (
+    DrawdownPeriodRow,
     FeeSourceFills,
     OpenPositionRow,
     PortfolioReport,
@@ -200,6 +202,9 @@ def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
         drawdown_carried_from=stats.drawdown_carried_from,
         drawdown_restarts=stats.drawdown_restarts,
         drawdown_started_at=stats.drawdown_started_at,
+        account_drawdown_periods=[
+            DrawdownPeriodRow(rank=rank, **asdict(period))
+            for rank, period in enumerate(stats.account_drawdown_periods, start=1)],
         total_fees=stats.total_fees,
         fees_charged=stats.fees_charged,
         data_broker_type=unit.data_broker_type,

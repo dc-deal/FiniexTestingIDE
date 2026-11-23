@@ -9,6 +9,7 @@ from the index-synced SingleScenario, since ProcessResult carries none). The sam
 also covers the RunUnit record extraction. The live builder uses a real AutoTraderResult.
 """
 
+from dataclasses import replace
 from datetime import datetime, timezone
 
 import pytest
@@ -25,7 +26,10 @@ from python.framework.types.api.report_types import PortfolioReport
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.data_deficiency_types import DataDeficiency
-from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
+from python.framework.types.portfolio_types.portfolio_aggregation_types import (
+    DrawdownPeriod,
+    PortfolioStats,
+)
 from python.framework.types.process_data_types import ProcessResult, ProcessEventLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.broker_types import BrokerType, FeeSource
@@ -105,6 +109,36 @@ def _batch(extra_results=None) -> BatchExecutionSummary:
     return BatchExecutionSummary(
         batch_execution_time=0.0, batch_warmup_time=0.0, batch_tickrun_time=0.0,
         process_result_list=results, single_scenario_list=scenarios)
+
+
+class TestTheDrawdownPeriods:
+    """The five deepest declines reach the served unit row, ranked and keyed (#529)."""
+
+    def test_they_are_served_ranked_and_keyed_by_rank(self):
+        periods = [
+            DrawdownPeriod(peak=1_100.0, depth=110.0, depth_pct=10.0,
+                           started_at='2025-10-13T10:00:00+00:00',
+                           trough_at='2025-10-13T11:00:00+00:00',
+                           recovered_at='2025-10-13T12:00:00+00:00'),
+            DrawdownPeriod(peak=1_100.0, depth=55.0, depth_pct=5.0,
+                           started_at='2025-10-13T13:00:00+00:00',
+                           trough_at='2025-10-13T14:00:00+00:00'),
+        ]
+        stats = replace(_stats(), account_drawdown_periods=periods)
+        batch = BatchExecutionSummary(
+            batch_execution_time=0.0, batch_warmup_time=0.0, batch_tickrun_time=0.0,
+            process_result_list=[_process_result('s1', 0, stats, [])],
+            single_scenario_list=[_scenario('s1', 0, 'EURUSD')])
+
+        row = build_portfolio_report(_RUN_ID, run_units_from_batch(batch)).units[0]
+
+        assert [(p.rank, p.depth_pct, p.recovered_at) for p in row.account_drawdown_periods] == [
+            (1, 10.0, '2025-10-13T12:00:00+00:00'), (2, 5.0, None)]
+        assert row.account_drawdown_periods_key == ['rank']
+
+    def test_a_unit_that_never_fell_serves_none(self):
+        row = build_portfolio_report(_RUN_ID, run_units_from_batch(_batch())).units[0]
+        assert row.account_drawdown_periods == []
 
 
 class TestBatch:
