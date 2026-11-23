@@ -361,7 +361,11 @@ Three consequences worth knowing before touching a figure here:
     closes with the first sample back at or above it, and the five deepest by share of the peak
     are kept, the open one among them — `account_drawdown_periods` on the unit. The per-sample
     cost is two comparisons; the clock is read only when a period opens, deepens or closes. The
-    kept periods and the open one ride the same carry-over as the peak.
+    kept periods and the open one ride the same carry-over as the peak. Each period says how long
+    it took to its trough and, once recovered, to its recovery. Every
+    booking period's seal records the five and the curve's start in the ledger, so a deployment's
+    newest session holds its five; a state frame records how far its equity lies below the same
+    peak (`account_drawdown_pct`), which is not the circuit breaker's `safety_drawdown_pct`.
   - **An AutoTrader ledger row is therefore CUMULATIVE over its deployment, not session-local**, and
     that decides how to read several of them. Each session writes its own fragment under its
     own run id; the rows are grouped by the deployment identity the run header carries as its

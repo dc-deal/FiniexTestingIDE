@@ -157,6 +157,8 @@ are unique by `rank`, which `account_drawdown_periods_key` declares.
 | `depth_pct` | that depth as a share of the peak; **null** where the peak was not above zero |
 | `started_at`, `trough_at` | the first value below the peak and the deepest one, ISO-8601 UTC on the run's own clock; **null** where a session's clock was not running yet |
 | `recovered_at` | the first value back at or above the peak; **null** while the period was still open when the unit ended |
+| `to_trough_s` | seconds from `started_at` to `trough_at`; **null** where either is unknown |
+| `duration_s` | seconds from `started_at` to `recovered_at`; **null** while the period is still open, and where an instant is unknown or lies before the start, which a session replaying an earlier stretch of data after a restart can produce |
 
 A session that inherits its predecessor's curve inherits its drawdown periods with it, so the five
 span the same stretch the three fields above name. A unit with fewer than five periods lists the ones

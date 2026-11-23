@@ -93,6 +93,7 @@ ended, into the next session's ledger row.
 | `test_one_off_is_refused_once_the_deployment_exists` | Past the deployment's first start the flag is refused, with the ways out named |
 | `test_new_deployment_begins_a_second_history` | Two deployments over the same three rows |
 | `test_the_document_carries_the_identity_but_no_venue_claim` | A dry run hands on the identity and no venue claim: the limit of the mechanism, pinned rather than discovered at a venue |
+| `test_the_drawdown_periods_belong_to_the_curve_the_successor_continued` | #529 — both sessions' rows carry the deepest drawdown periods their seals read, and the successor's curve keeps its predecessor's start, so its five cover both sessions |
 | `test_an_ordinary_restart_continues_them` · `test_a_new_deployment_starts_them_fresh` | #626 — the drawdown curve and the risk baseline follow the deployment: `second` continues `first`'s, and `--new-deployment` begins its own curve (`restarts` 0) instead of inheriting the first deployment's; the document stamps them as a rehearsal's |
 | `TestTheRowsNameTheCode` | #559 — through real sessions: a session of the deployment records the commit history on its row, the one-off outside it pays for none, and two sessions on one tree name one stand |
 

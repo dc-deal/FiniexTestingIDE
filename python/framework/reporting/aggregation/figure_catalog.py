@@ -158,6 +158,11 @@ LEDGER_FIGURES: Dict[str, FigureDeclaration] = {
     'unrealized_pnl': FigureDeclaration(Reduction.LAST, NullMeaning.UNDEFINED),
     'final_equity': FigureDeclaration(Reduction.LAST, NullMeaning.UNDEFINED),
     'open_position_count': FigureDeclaration(Reduction.LAST, NullMeaning.UNDEFINED),
+    # The five deepest drawdown periods of the curve at the seal and when that curve began
+    # (#529) — cumulative, so the newest row's reading is the answer, as for the stocks above.
+    # Empty before the curve's first valuation and on a row written before the columns existed
+    'account_drawdown_periods': FigureDeclaration(Reduction.LAST, NullMeaning.UNMEASURED),
+    'drawdown_started_at': FigureDeclaration(Reduction.LAST, NullMeaning.UNMEASURED),
 
     # --- rates, means, quotients: NOT combinable. A difference or an average of two of these
     # is not one of these — they are re-derived over the records of the wider window

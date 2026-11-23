@@ -88,6 +88,15 @@ worker and of the decision; and the memory the session's process held.
   the latest could not — and `last_price` and `equity` before the first price.
 - `process_memory` is on every frame of a live session; a replayed session records it now and then.
 
+**Two drawdowns, two questions.** `account_drawdown_pct` is how far `equity` lies below the
+account's running peak, in percent of that peak — the same curve and the same peak the
+[portfolio](/api/v1/docs/portfolio)'s drawdown periods are measured against, the peak being raised by
+every tick, so a chart's underwater curve drawn from the frames agrees with them. A frame written at a
+new high before the session sampled it reads 0, and it is null where `equity` is, and before the
+account's first valuation. `safety_drawdown_pct` is the circuit breaker's reading: the decline against
+the baseline its configuration names, which can be a fixed starting value rather than the peak; null
+on a session without a breaker. The two differ by design and are never subtracted.
+
 ## How current it is — `age_s` and `recording`
 
 `age_s` is how many seconds ago the latest frame was written; null when the frame's time lies in

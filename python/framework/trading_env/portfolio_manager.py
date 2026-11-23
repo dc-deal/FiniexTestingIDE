@@ -1741,6 +1741,10 @@ class PortfolioManager:
         curve deepens its period on every sample, and a conversion there was half of what a
         deepening sample cost (the cost probe of #529).
 
+        A period still open has no duration yet: it would run to the instant its figures were
+        taken, which no field of the record names — at a seal after a gap, the event that crossed
+        the boundary, a weekend later — so the figure could not be derived again from its record.
+
         Args:
             recovered_at: The instant the period recovered, None while it is open
 
@@ -1752,7 +1756,29 @@ class PortfolioManager:
             peak=self._period_peak, depth=self._period_depth, depth_pct=self._period_depth_pct,
             started_at=started_at.isoformat() if started_at is not None else None,
             trough_at=trough_at.isoformat() if trough_at is not None else None,
-            recovered_at=recovered_at.isoformat() if recovered_at is not None else None)
+            recovered_at=recovered_at.isoformat() if recovered_at is not None else None,
+            to_trough_s=self._seconds_since(started_at, trough_at),
+            duration_s=self._seconds_since(started_at, recovered_at))
+
+    @staticmethod
+    def _seconds_since(start: Optional[datetime], end: Optional[datetime]) -> Optional[float]:
+        """
+        The seconds a drawdown period took between two of its instants, on the run's own clock.
+
+        An instant is None where the clock was not set yet. An end before the start comes from a
+        carried period whose successor replays an earlier window — a mock session restarted over
+        the same data — and measures nothing.
+
+        Args:
+            start: The earlier instant
+            end: The later instant
+
+        Returns:
+            The seconds between them, or None where either is unknown or the end lies before the start
+        """
+        if start is None or end is None or end < start:
+            return None
+        return (end - start).total_seconds()
 
     def _drawdown_period_stamp(self) -> Optional[datetime]:
         """
@@ -1859,6 +1885,28 @@ class PortfolioManager:
             True once the curve's figures are measured or inherited
         """
         return self._drawdown_established
+
+    def get_account_drawdown_pct(self, equity: Optional[float]) -> Optional[float]:
+        """
+        How far an account value lies below the curve's running peak, in percent of that peak (#529).
+
+        The peak is the one every equity sample raises and the drawdown periods are measured
+        against, so a state frame's reading and the periods describe one curve. A value read
+        between two samples can stand above that peak — a frame written at a new high before the
+        pass samples it, the run's last frame before the run-end sample — and then lies nothing
+        below it. Reading it never samples: a frame records the curve and does not move it.
+
+        Args:
+            equity: The account value, as `get_account_value` returned it; None where it was not
+                valued
+
+        Returns:
+            The share below the peak, 0.0 at or above it; None without a value, before the curve's
+            first valuation, or where the peak is not above zero
+        """
+        if equity is None or not self._drawdown_established or self._max_equity <= 0:
+            return None
+        return max(self._max_equity - equity, 0.0) / self._max_equity * 100.0
 
     def get_account_drawdown_carry_over(self) -> Optional[AccountDrawdownCarryOver]:
         """

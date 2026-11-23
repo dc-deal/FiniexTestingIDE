@@ -102,6 +102,10 @@ DEPLOYMENT_SUMMARY_TABLE = FoldTable(
         'changed': "a copy: whether the deployment's advisory or code summary exists",
         'configuration_changed': "a copy: whether the deployment's advisory exists",
         'code_summary': "a copy: the deployment's code summary",
+        'account_drawdown_periods': (
+            "a pick: the newest session's reading of the curve, not a fold of the sessions (#529)"),
+        'account_drawdown_periods_key': 'the row key of the list above, a constant',
+        'drawdown_started_at': 'a pick: the start of the curve those periods belong to',
     },
 )
 

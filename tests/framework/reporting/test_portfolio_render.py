@@ -371,19 +371,23 @@ class TestTheDeepestDrawdownPeriods:
         periods = [
             DrawdownPeriodRow(rank=1, peak=10_388.10, depth=1_184.20, depth_pct=11.4,
                               started_at='2026-12-03T14:02:11+00:00',
-                              trough_at='2026-12-04T09:41:03+00:00'),
+                              trough_at='2026-12-04T09:41:03+00:00',
+                              to_trough_s=70_732.0),
             DrawdownPeriodRow(rank=2, peak=10_290.00, depth=1_121.50, depth_pct=10.9,
                               started_at='2026-12-11T08:15:00+00:00',
                               trough_at='2026-12-11T16:30:00+00:00',
-                              recovered_at='2026-12-14T10:05:00+00:00'),
+                              recovered_at='2026-12-14T10:05:00+00:00',
+                              to_trough_s=29_700.0, duration_s=265_800.0),
         ]
         lines = _lines(_render_unit(_unit(spot_mode, account_drawdown_periods=periods)))
 
         start = lines.index('↳ deepest drawdown periods:')
         assert lines[start + 1] == ('1   -11.4%  -$1,184.20 from +$10,388.10 · '
-                                    '2026-12-03 14:02 → 2026-12-04 09:41 · still open')
+                                    '2026-12-03 14:02 → 2026-12-04 09:41 (19h 38m) · '
+                                    'still open')
         assert lines[start + 2] == ('2   -10.9%  -$1,121.50 from +$10,290.00 · '
-                                    '2026-12-11 08:15 → 2026-12-11 16:30 · recovered 2026-12-14 10:05')
+                                    '2026-12-11 08:15 → 2026-12-11 16:30 (8h 15m) · '
+                                    'recovered 2026-12-14 10:05 (73h 50m)')
 
     def test_an_instant_nobody_recorded_prints_a_dash(self):
         period = DrawdownPeriodRow(rank=1, peak=100.0, depth=5.0, depth_pct=5.0,

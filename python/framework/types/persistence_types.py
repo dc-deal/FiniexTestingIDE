@@ -323,6 +323,8 @@ class CarriedDrawdownPeriod(BaseModel):
         started_at: The first sample below the peak, ISO-8601 UTC; None where the clock was not set
         trough_at: The deepest sample, ISO-8601 UTC; None where the clock was not set
         recovered_at: The first sample back at or above the peak; None while still open
+        to_trough_s: Seconds from the start to the trough; None where an instant is unknown
+        duration_s: Seconds from the start to the recovery; None while the period is open
     """
     peak: float
     depth: float
@@ -330,6 +332,8 @@ class CarriedDrawdownPeriod(BaseModel):
     started_at: Optional[str] = None
     trough_at: Optional[str] = None
     recovered_at: Optional[str] = None
+    to_trough_s: Optional[float] = None
+    duration_s: Optional[float] = None
 
 
 class AccountDrawdownCarryOver(BaseModel):

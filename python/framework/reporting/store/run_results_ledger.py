@@ -17,6 +17,7 @@ for ranking is `param_hash`; filter by any column.
 
 import json
 import math
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple, get_args
@@ -204,6 +205,12 @@ LEDGER_COLUMNS: List[str] = [
     # Excursion, holding time and streaks — what a period looks like beyond its net result.
     'avg_mae_winners', 'avg_mae_losers', 'avg_mfe_losers', 'largest_mae', 'largest_mfe',
     'avg_trade_duration_s', 'max_consecutive_wins', 'max_consecutive_losses',
+    # The five deepest drawdown periods of the account's curve at the seal, and when that curve
+    # began (#529) — JSON like `code_stand`, CUMULATIVE like the drawdown trio, so the newest row of
+    # a deployment holds its five and the span they cover. Written on period rows only: the
+    # run-summary row of a backtest spans several accounts, where a reading of one account has no
+    # value. Appended, so older fragments read back None: not recorded.
+    'account_drawdown_periods', 'drawdown_started_at',
 ]
 
 
@@ -484,6 +491,8 @@ class RunResultsLedger:
         if sweep_params is not None:
             data['sweep_params'] = sweep_params
         data['code_stand'] = _json_or(record.get('code_stand'), None, run_id, 'code_stand')
+        data['account_drawdown_periods'] = _json_or(
+            record.get('account_drawdown_periods'), None, run_id, 'account_drawdown_periods')
         row = RunResultRow(**data)
         # The row of a run that measured nothing reads every figure as None: the writer leaves
         # those cells empty on purpose, and the writer before it stored a literal zero there
@@ -633,6 +642,7 @@ class RunResultsLedger:
             'status': p.status,
             'error': p.error,
             **period_ledger_fields(period),
+            **_drawdown_period_columns(period),
             # Run-level and therefore identical on every period of this run: the data quality
             # the whole run saw, and the market time it covered, are not properties of one day.
             'signal_fresh_ratio': run_summary.signal_fresh_ratio,
@@ -653,7 +663,8 @@ class RunResultsLedger:
         Returns:
             The row as a column → value mapping, every run-end column empty
         """
-        row = {**self._provenance_fields(p), **period_ledger_fields(period)}
+        row = {**self._provenance_fields(p), **period_ledger_fields(period),
+               **_drawdown_period_columns(period)}
         for column in RUN_END_COLUMNS:
             row[column] = None
         return row
@@ -764,6 +775,31 @@ def period_ledger_fields(period: BookingPeriod) -> Dict[str, Any]:
         **{field_name: (getattr(period.execution, field_name)
                         if period.execution is not None else None)
            for field_name in EXECUTION_COUNT_FIELDS},
+    }
+
+
+def _drawdown_period_columns(period: BookingPeriod) -> Dict[str, Any]:
+    """
+    The five deepest drawdown periods a sealed period read, and when their curve began (#529), as
+    ledger columns.
+
+    Beside `period_ledger_fields` rather than in it: that mapping also builds the typed rows the
+    booking-periods report folds, and those need neither the five nor a JSON text in their place.
+
+    Args:
+        period: The sealed period
+
+    Returns:
+        The two columns; the periods as JSON with their rank, None where the seal read no curve —
+        an empty list is a reading, the curve never fell
+    """
+    periods = period.account_drawdown_periods
+    return {
+        'account_drawdown_periods': (
+            json.dumps([{'rank': rank, **asdict(drawdown)}
+                        for rank, drawdown in enumerate(periods, start=1)], sort_keys=True)
+            if periods is not None else None),
+        'drawdown_started_at': period.drawdown_started_at,
     }
 
 

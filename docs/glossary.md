@@ -415,13 +415,23 @@ each day's decision, each order, the account values — and a verdict by bounds 
 Each measure ends *passed*, *failed* or *not checked*; "passed" reads "no divergence beyond the
 bounds over the compared days", never "parity proven". Kept under `runs/divergence/<report_id>/`.
 
-**drawdown period** (`account_drawdown_periods` on a portfolio unit) — One stretch of the account's
-equity curve below its running peak, from the first value below that peak until the curve is back at
-or above it; a new peak is the boundary, so two periods never share a fall. Its depth is how far below
-the peak it went, as an amount and as a share of that peak. A unit lists its five deepest, ranked by
-that share. Not a trade's excursion (MAE/MFE), which describes one position, and not a continuous
-losing stretch, which some books call an individual drawdown. Where a document says "the decline",
-it means a depth — the amount — not a period. See [Portfolio](consumer/portfolio.md).
+**drawdown** — Never alone: three readings carry the word, each against its own reference. The
+*account drawdown* is the fall of the account's equity curve below its running peak, the peak raised
+by every tick — `account_max_drawdown` and `account_max_dd_pct` on a portfolio unit, the
+*drawdown periods*, and `account_drawdown_pct` on a state frame. The *safety drawdown* is the circuit
+breaker's reading against the baseline its configuration names, which can be a fixed starting value
+— `safety_drawdown_pct`. The *period drawdown* is a booking period's own deepest fall against its own
+peak — `period_max_drawdown`. See [State frames](consumer/state-frames.md).
+
+**drawdown period** (`account_drawdown_periods` on a portfolio unit and a deployment's session row)
+— One stretch of the account's equity curve below its running peak, from the first value below that
+peak until the curve is back at or above it; a new peak is the boundary, so two periods never share
+a fall. Its depth is how far below the peak it went, as an amount and as a share of that peak; how
+long it took, as `to_trough_s` to its deepest value and `duration_s` to its recovery, which a period
+still open does not have yet. A unit lists its five deepest, ranked by that share.
+Not a trade's excursion (MAE/MFE), which describes one position, and not a continuous losing
+stretch, which some books call an individual drawdown. Where a document says "the decline", it
+means a depth — the amount — not a period. See [Portfolio](consumer/portfolio.md).
 
 **dry run** — An AutoTrader session on a live adapter whose `dry_run` resolves true: real ticks,
 every order validated by the venue and never placed, fills simulated locally. A mock session is not

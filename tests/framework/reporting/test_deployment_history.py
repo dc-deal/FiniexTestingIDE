@@ -26,6 +26,7 @@ from python.framework.reporting.builders.deployment_history_builder import (
     build_deployment_histories,
     deployment_code_summary,
     deployment_comparability_advisory,
+    newest_drawdown_periods,
     summarize_deployments,
     unbooked_runs,
 )
@@ -39,6 +40,7 @@ from python.framework.types.api.report_types import (
     DeploymentListResponse,
     DeploymentSessionRow,
     DeploymentSummary,
+    DrawdownPeriodRow,
     ParentKind,
     RunInfo,
     RunResultRow,
@@ -1532,3 +1534,89 @@ class TestADeploymentIsListedFromItsFirstSession:
         printed = self._run('', [], [], capsys)
         assert 'no session in the run index and no ledger row names one' in printed
         assert 'deploy_unknown' in self._run('deploy_unknown', [], [], capsys)
+
+
+def _drawdown(rank: int, depth: float, recovered_at=None) -> DrawdownPeriodRow:
+    """One drawdown period as a session's last seal read it."""
+    return DrawdownPeriodRow(rank=rank, peak=10_000.0, depth=depth, depth_pct=depth / 100.0,
+                             started_at='2026-09-01T08:00:00+00:00',
+                             trough_at='2026-09-01T09:00:00+00:00', recovered_at=recovered_at,
+                             to_trough_s=3_600.0, duration_s=7_200.0)
+
+
+class TestTheDeepestDrawdownPeriodsOfADeployment:
+    """#529: the five the curve's newest reading holds, since the curve began."""
+
+    def test_each_session_carries_its_last_reading(self):
+        sessions = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00', account_drawdown_periods=[_drawdown(1, 120.0)],
+                drawdown_started_at='2026-09-01T06:00:00+00:00'),
+        ])[DEPLOYMENT]
+
+        (session,) = sessions
+        assert [p.depth for p in session.account_drawdown_periods] == [120.0]
+        assert session.account_drawdown_periods_key == ['rank']
+        assert session.drawdown_started_at == '2026-09-01T06:00:00+00:00'
+
+    def test_the_deployment_s_five_are_its_newest_session_s_per_currency(self):
+        sessions = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00', account_drawdown_periods=[_drawdown(1, 120.0)]),
+            row('r2', '2026-09-02T06:00:00+00:00',
+                account_drawdown_periods=[_drawdown(1, 450.0), _drawdown(2, 120.0)]),
+            row('r3', '2026-09-03T06:00:00+00:00'),     # nothing recorded: an older row
+            row('e1', '2026-09-02T07:00:00+00:00', currency='EUR',
+                account_drawdown_periods=[_drawdown(1, 90.0)]),
+        ])[DEPLOYMENT]
+
+        newest = newest_drawdown_periods(sessions)
+        assert [(s.currency, s.run_id) for s in newest] == [('EUR', 'e1'), ('USD', 'r2')]
+
+    def test_the_list_row_serves_the_newest_session_s_five_per_currency(self):
+        """Chosen once on the server, so no reader repeats the choice and none names another session."""
+        histories = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00', account_drawdown_periods=[_drawdown(1, 120.0)],
+                drawdown_started_at='2026-09-01T06:00:00+00:00'),
+            row('r2', '2026-09-02T06:00:00+00:00',
+                account_drawdown_periods=[_drawdown(1, 450.0), _drawdown(2, 120.0)],
+                drawdown_started_at='2026-09-01T06:00:00+00:00'),
+            row('r3', '2026-09-03T06:00:00+00:00'),
+            row('e1', '2026-09-02T07:00:00+00:00', currency='EUR',
+                account_drawdown_periods=[_drawdown(1, 90.0)]),
+        ])
+        by_currency = {summary.currency: summary
+                       for summary in summarize_deployments(histories, {}, {})}
+
+        usd = by_currency['USD']
+        assert [p.depth for p in usd.account_drawdown_periods] == [450.0, 120.0]
+        assert (usd.account_drawdown_periods_key, usd.drawdown_started_at) == (
+            ['rank'], '2026-09-01T06:00:00+00:00')
+        assert [p.depth for p in by_currency['EUR'].account_drawdown_periods] == [90.0]
+
+    def test_a_deployment_nobody_recorded_them_for_has_none(self):
+        histories = build_deployment_histories([row('r1', '2026-09-01T06:00:00+00:00')])
+        sessions = histories[DEPLOYMENT]
+        assert sessions[0].account_drawdown_periods is None
+        assert newest_drawdown_periods(sessions) == []
+        (summary,) = summarize_deployments(histories, {}, {})
+        assert summary.account_drawdown_periods is None
+
+    def test_the_console_prints_them_under_the_table(self, capsys):
+        sessions = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00',
+                account_drawdown_periods=[_drawdown(1, 450.0, recovered_at='2026-09-01T10:00:00+00:00')],
+                drawdown_started_at='2026-09-01T06:00:00+00:00'),
+        ])[DEPLOYMENT]
+        render_deployment_history(DEPLOYMENT, sessions)
+
+        printed = capsys.readouterr().out
+        assert 'Deepest drawdown periods — USD, of the curve since 2026-09-01 06:00 (as r1 read them):' in printed
+        assert ('1    -4.5%      -450.00 from 10,000.00 · 2026-09-01 08:00 → 2026-09-01 09:00 (1h) · '
+                'recovered 2026-09-01 10:00 (2h)') in printed
+
+    def test_a_curve_that_never_fell_says_so(self, capsys):
+        sessions = build_deployment_histories([
+            row('r1', '2026-09-01T06:00:00+00:00', account_drawdown_periods=[]),
+        ])[DEPLOYMENT]
+        render_deployment_history(DEPLOYMENT, sessions)
+
+        assert 'none — the curve never fell below its peak' in capsys.readouterr().out

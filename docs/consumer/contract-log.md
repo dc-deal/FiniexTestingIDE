@@ -33,6 +33,29 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 67 — 2026-11-23 (#529)
+
+How long each of the five deepest drawdown periods took, the five over a deployment, and the
+account's drawdown on every state frame.
+
+- [Portfolio](/api/v1/docs/portfolio): **`to_trough_s`** and **`duration_s`** on each entry of
+  `account_drawdown_periods` (new) — seconds from its start to its trough and to its recovery;
+  `duration_s` is null while the period is still open, both are null where an instant is unknown.
+- [Deployments](/api/v1/docs/deployments): **`account_drawdown_periods`** (new, keyed by `rank` in
+  `account_drawdown_periods_key`) and **`drawdown_started_at`** (new) on a row of the list — the
+  deployment's five deepest drawdown periods in that currency, those of its newest session that
+  recorded them, and when their curve began — and on a session row of the detail, that session's
+  own reading at its last seal. Null where nothing recorded them.
+- [State frames](/api/v1/docs/state-frames) and the [recorded streams](/api/v1/docs/recorded-streams):
+  **`account_drawdown_pct`** (new) — how far the frame's equity lies below the account's running
+  peak, in percent of that peak. Not `safety_drawdown_pct`, the circuit breaker's reading against its
+  own baseline.
+
+**A row recorded before this contract** carries `logic_version` 23 or older and no drawdown periods
+on its session; a frame recorded before it carries no `account_drawdown_pct`.
+
+Nine fields added, two of them row keys; nothing changed or removed.
+
 ## Version 66 — 2026-11-23 (#529)
 
 The portfolio report lists the five deepest drawdown periods of a unit's account, not only the
@@ -89,36 +112,13 @@ was down — can now end: a start declared so books it as closed.
 
 Two fields, one count and one value added; one count narrowed; nothing removed.
 
-## Version 62 — 2026-11-21 (#499)
-
-A session whose start found orders of another owner on its own instrument, on an account declared
-exclusive, starts and holds its entries: it manages and closes its position and opens nothing new
-until those orders are gone or an operator lifts the hold.
-
-- [Order history](/api/v1/docs/order-history): **`rejection_reason: entries_held`** (new value) — a
-  new entry refused while the session held its entries. Closing the position and cancelling its
-  orders are never refused for it.
-- [Order history](/api/v1/docs/order-history) and [order events](/api/v1/docs/order-events):
-  **`end_reason: entries_held`** (new value), with `initiator: framework` — a resting entry
-  cancelled when the hold began, because the venue filling it would have been new risk.
-- [Deployments](/api/v1/docs/deployments): **`exclusivity_violated_at`** on a session row (new) —
-  when its start found the declared exclusivity false, its start in ISO-8601 UTC: it held its
-  entries, or an operator had accepted those orders at an earlier start. Its money figures stand,
-  but their denominator is not provably the bot's own; null where the start found nothing.
-- [Sweeps](/api/v1/docs/sweeps): **`exclusivity_violated_at`** on a combination (new) — null on
-  every backtest, which meets no venue at its start.
-
-**A row recorded before this contract** carries `logic_version` 22 or older and null in
-`exclusivity_violated_at`: not recorded, never a clean start.
-
-Two values and two fields added; nothing changed or removed.
-
-## Versions 61 and earlier
+## Versions 62 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 62** — 2026-11-21 (#499): A session whose start found orders of another owner on its own instrument, on an account declared exclusive, starts and holds its entries — `rejection_reason: entries_held` and `end_reason: entries_held` (new values) on [order history](/api/v1/docs/order-history) and [order events](/api/v1/docs/order-events), `exclusivity_violated_at` (new) on a session row of [deployments](/api/v1/docs/deployments) and on a [sweep](/api/v1/docs/sweeps) combination; a row with `logic_version` 22 or older reads it null.
 - **Version 61** — 2026-11-21 (#650): A request that meets a store index another process is writing waits for it — [errors](/api/v1/docs/errors): `503 store_index_busy` (new) with `Retry-After`, on every route that reads a store index, where a bare `500` used to come.
 - **Version 60** — 2026-11-20 (#647): Coverage and the scenario details say whose data was there and whose was read — `origin_classes` and `collected_since` (new) on a symbol's coverage in [market data](/api/v1/docs/market-data), `origin_classes` (new) on each entry of `data_brokers` in the [scenario details](/api/v1/docs/scenario-details).
 - **Version 59** — 2026-11-19 (#647): What a run read says more — on [sweeps](/api/v1/docs/sweeps) `unstamped_input_files` counts the files no stamp attests (a changed meaning: before, every external file counted), `server_clock_rules` and `external_warmup_timeframes` (new); a mock session reports what its replay read in [warnings and errors](/api/v1/docs/warnings-errors), as a backtest does. A row with `logic_version` 21 or older keeps the old meaning.

@@ -43,6 +43,7 @@ from python.framework.reporting.builders.trade_history_report_builder import (
     build_trade_history_report,
 )
 from python.framework.types.api.report_types import RunSummaryCurrency, TradeHistoryRow
+from python.framework.types.portfolio_types.portfolio_aggregation_types import DrawdownPeriod
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
@@ -81,6 +82,9 @@ class PeriodSnapshot:
             observed — stamped by the recorder, which saw it
         execution: The orders the period handled, taken from the executor's period counts at the
             seal (#476); None where no executor counted them
+        account_drawdown_periods: The five deepest drawdown periods of the curve at the seal
+            (#529), cumulative like the trio; None before the curve's first valuation
+        drawdown_started_at: When that curve began, None on the same terms
     """
     currency: str
     final_equity: Optional[float] = None
@@ -94,6 +98,8 @@ class PeriodSnapshot:
     period_max_drawdown: Optional[float] = 0.0
     period_opening_equity: Optional[float] = None
     execution: Optional[ExecutionStats] = None
+    account_drawdown_periods: Optional[List[DrawdownPeriod]] = None
+    drawdown_started_at: Optional[str] = None
 
 
 def derive_booking_period(
@@ -152,6 +158,8 @@ def derive_booking_period(
         tick_count=tick_count,
         trading_day=trading_day,
         execution=snapshot.execution,
+        account_drawdown_periods=snapshot.account_drawdown_periods,
+        drawdown_started_at=snapshot.drawdown_started_at,
     )
 
 

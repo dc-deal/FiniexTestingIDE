@@ -14,6 +14,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from python.framework.types.api.report_types import RunSummaryCurrency
+from python.framework.types.portfolio_types.portfolio_aggregation_types import DrawdownPeriod
 from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_origin_types import CodeStand
 from python.framework.types.run_outcome_types import RunOutcome
@@ -267,6 +268,11 @@ class BookingPeriod:
             status they ended with — counted inside the period where the executor counts them,
             so a run's periods add up to its execution statistics (#476). None where nothing
             counted them: a period built without an executor
+        account_drawdown_periods: The five deepest drawdown periods of the account's curve at the
+            seal (#529) — CUMULATIVE like the drawdown trio in `figures`, so the newest row of a
+            deployment holds its five; None before the curve's first valuation
+        drawdown_started_at: When the curve those periods belong to began, ISO-8601 UTC — the span
+            they cover; None on the same terms
     """
     period_no: int
     unit_name: str
@@ -286,3 +292,5 @@ class BookingPeriod:
     tick_count: int = 0
     trading_day: Optional[date] = None
     execution: Optional[ExecutionStats] = None
+    account_drawdown_periods: Optional[List[DrawdownPeriod]] = None
+    drawdown_started_at: Optional[str] = None

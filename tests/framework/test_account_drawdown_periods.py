@@ -170,6 +170,79 @@ class TestTheClock:
             _walk(portfolio, 10_000, 9_500)
 
 
+class TestTheirDurations:
+    """How long a period took to reach its trough, and to recover or to the instant it was reported."""
+
+    def test_a_recovered_period_runs_from_its_start_to_its_trough_and_its_recovery(self):
+        portfolio = _portfolio(clock_fn=_Clock())
+        # The clock moves a minute at every read: the curve's start, the open, the deepening, the close
+        _walk(portfolio, 10_000, 9_800, 9_500, 9_700, 10_000)
+
+        (period,) = _periods(portfolio)
+        assert (period.to_trough_s, period.duration_s) == (60.0, 120.0)
+
+    def test_an_open_period_has_no_duration_yet(self):
+        """It would run to an instant no field of the record names, so it could not be derived again."""
+        portfolio = _portfolio(clock_fn=_Clock())
+        _walk(portfolio, 10_000, 9_800, 9_700)
+
+        (period,) = _periods(portfolio)
+        assert (period.to_trough_s, period.duration_s, period.recovered_at) == (60.0, None, None)
+
+    def test_a_clock_never_set_leaves_them_unmeasured(self):
+        def unset() -> datetime:
+            raise ClockNotInjectedError('the executor has not started')
+        portfolio = _portfolio(clock_fn=unset)
+        _walk(portfolio, 10_000, 9_500, 10_000)
+
+        (period,) = _periods(portfolio)
+        assert (period.to_trough_s, period.duration_s) == (None, None)
+
+    def test_a_successor_replaying_an_earlier_window_measures_no_duration(self):
+        """A mock session restarted over the same data recovers the carried period before its start."""
+        first = _portfolio(clock_fn=_Clock())
+        _walk(first, _BALANCE, _BALANCE - 600)
+        carried = first.get_account_drawdown_carry_over()
+
+        earlier = _portfolio(clock_fn=lambda: _T0 - timedelta(days=1))
+        earlier.restore_drawdown_state(carried)
+        _walk(earlier, _BALANCE)
+
+        (period,) = _periods(earlier)
+        assert period.recovered_at < period.started_at and period.duration_s is None
+
+
+class TestTheReadingAStateFrameTakes:
+    """`get_account_drawdown_pct`: a value against the peak the periods are measured from."""
+
+    def test_the_share_below_the_running_peak(self):
+        portfolio = _portfolio(clock_fn=_Clock())
+        _walk(portfolio, 10_000, 12_000, 11_400)
+
+        assert portfolio.get_account_drawdown_pct(11_400) == pytest.approx(5.0)
+
+    def test_a_value_above_the_peak_lies_nothing_below_it(self):
+        """A frame written at a new high before the pass samples it."""
+        portfolio = _portfolio(clock_fn=_Clock())
+        _walk(portfolio, 10_000)
+
+        assert portfolio.get_account_drawdown_pct(10_250) == 0.0
+
+    def test_reading_it_moves_nothing(self):
+        portfolio = _portfolio(clock_fn=_Clock())
+        _walk(portfolio, 10_000)
+        portfolio.get_account_drawdown_pct(15_000)
+
+        assert portfolio.get_account_drawdown_pct(10_000) == 0.0
+        assert _periods(portfolio) == []
+
+    def test_no_value_or_no_curve_yet_reads_none(self):
+        portfolio = _portfolio(clock_fn=_Clock())
+        assert portfolio.get_account_drawdown_pct(9_000) is None, 'before the first valuation'
+        _walk(portfolio, 10_000)
+        assert portfolio.get_account_drawdown_pct(None) is None
+
+
 @pytest.mark.parametrize('spot_mode', [False, True])
 def test_both_account_models_feed_it_the_same_way(spot_mode):
     """A margin position and a spot holding move the account value; the periods follow it."""
@@ -186,6 +259,9 @@ def test_both_account_models_feed_it_the_same_way(spot_mode):
     deepest, open_one = _periods(portfolio)
     assert deepest.recovered_at is not None and open_one.recovered_at is None
     assert deepest.depth_pct > open_one.depth_pct
+    assert None not in (deepest.to_trough_s, deepest.duration_s, open_one.to_trough_s), (
+        'both account models measure how long a period took')
+    assert open_one.duration_s is None
 
 
 def test_a_close_can_recover_a_period():
@@ -231,6 +307,9 @@ class TestTheyContinueAcrossARestart:
 
         depths = [(period.depth, period.recovered_at is None) for period in _periods(second)]
         assert depths == [(800, False), (600, True), (300, False)]
+        assert all(period.duration_s is not None
+                   for period in _periods(second) if period.recovered_at is not None), (
+            'a closed period keeps the durations it was carried with')
 
     def test_the_open_one_recovers_against_the_restored_peak(self):
         carried = self._first_session().get_account_drawdown_carry_over()

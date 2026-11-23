@@ -457,4 +457,8 @@ def snapshot_from_executor(executor):
         max_equity=stats.max_equity if curve else None,
         account_max_dd_pct=stats.account_max_drawdown_pct if curve else None,
         execution=executor.take_period_execution_stats(),
+        # The five deepest drawdown periods and the start of the curve they belong to (#529),
+        # cumulative and gated like the trio above
+        account_drawdown_periods=list(stats.account_drawdown_periods) if curve else None,
+        drawdown_started_at=(stats.drawdown_started_at or None) if curve else None,
     )

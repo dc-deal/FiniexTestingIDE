@@ -137,6 +137,8 @@ money's, so the session rows' `max_drawdown` restarts where the kind of run chan
 | `strategy_changed` / `operation_changed` / `orders_to_changed` | what differed from the session before |
 | `exclusivity_violated_at` | when its start found orders of another owner on the bot's instrument while the account is declared exclusive — it held its entries, or an operator had accepted those orders at an earlier start — its start; its money figures stand, but their denominator is not provably the bot's own. Null where the start found nothing, and on a session recorded before the field existed |
 | `code_changes` | which repositories' code differed from the session before, and how far; see [which code the sessions started on](#which-code-the-sessions-started-on) |
+| `account_drawdown_periods` | the five deepest drawdown periods of the account's curve as this session read them at its last seal, keyed by `rank` in `account_drawdown_periods_key`; the deployment's own five stand on its list row — see [the deepest drawdown periods of a deployment](#the-deepest-drawdown-periods-of-a-deployment) |
+| `drawdown_started_at` | when the curve those periods belong to began, ISO-8601 UTC |
 | `bot` / `bot_id` | which bot ran it; `bot_id` is empty until the session has booked a day |
 | `currency` | the row's account currency; null when it has no booked figures |
 | `booking_state` | whether its figures exist: `booked`; `failed`, it failed before it measured anything; `not_booked_yet`, its first seal has not come |
@@ -147,6 +149,29 @@ money's, so the session rows' `max_drawdown` restarts where the kind of run chan
 session's own decline. It is why the list's figure is the largest of these rather than their sum,
 and it means `max_drawdown` and `max_drawdown_pct` are the two figures on the row that are not
 about that session alone.
+
+## The deepest drawdown periods of a deployment
+
+**A row of the list serves the deployment's five deepest** in its currency:
+`account_drawdown_periods`, keyed by `rank` in `account_drawdown_periods_key`, and
+`drawdown_started_at`, from when the curve they belong to runs. They are the rows the
+[portfolio](/api/v1/docs/portfolio) serves for a unit, chosen on the server, so a reader never has
+to choose them.
+
+A session continues its predecessor's equity curve across a restart, and its drawdown periods with
+it, so the five are those of the **newest session of the currency that recorded them** — a newer
+session that has recorded none yet, because it has not sealed a day or measured its curve, is
+passed over. A session that began a curve of its own — a new deployment's first, or one whose start
+could not continue the curve — starts that span anew: `drawdown_started_at` moves, and the
+deployment's deepest decline over all its sessions, `max_drawdown`, can then lie in an earlier one
+than the five describe.
+
+**A session row of the detail carries its own reading** — the five as that session read them at its
+last seal, and its curve's start — so the curve's history across the sessions can be followed.
+
+`account_drawdown_periods` and `drawdown_started_at` are null where nothing recorded them: before a
+curve's first valuation, on a session without booked figures, and on a session recorded before
+contract 67. An empty list is a reading — the curve never fell below its peak.
 
 ## Each currency is its own series
 

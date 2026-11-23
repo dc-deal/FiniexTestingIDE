@@ -699,6 +699,9 @@ class DrawdownPeriodRow(BaseModel):
         trough_at: The deepest sample, ISO-8601 UTC; None as above
         recovered_at: The first sample back at or above the peak, ISO-8601 UTC; None while the period
             was still open when the unit ended
+        to_trough_s: Seconds from `started_at` to `trough_at`; None where either is unknown
+        duration_s: Seconds from `started_at` to `recovered_at`; None while the period is open, and
+            where an instant is unknown or lies before the start
     """
     rank: int
     peak: float
@@ -707,6 +710,8 @@ class DrawdownPeriodRow(BaseModel):
     started_at: str | None = None
     trough_at: str | None = None
     recovered_at: str | None = None
+    to_trough_s: float | None = None
+    duration_s: float | None = None
 
 
 class PortfolioUnitRow(BaseModel):
@@ -2041,6 +2046,13 @@ class RunResultRow(BaseModel):
     # row stand, but their denominator is not provably the bot's own. None where the start found
     # nothing, on every backtest, and on a row of `logic_version` 22 or older: not recorded.
     exclusivity_violated_at: str | None = None
+    # The five deepest drawdown periods of the account's curve at the seal, and when that curve
+    # began (#529) — on period rows, read back for the deployment history. Not served on this row:
+    # the sweep detail serves run-summary rows, which span accounts and hold none. None on a
+    # run-summary row, before the curve's first valuation and on a row of `logic_version` 23 or
+    # older: not recorded
+    account_drawdown_periods: list[DrawdownPeriodRow] | None = Field(default=None, exclude=True)
+    drawdown_started_at: str | None = Field(default=None, exclude=True)
     # What the run ran with (#547, on every row since #476): the run-config store ids of its
     # rendered configuration and of its frozen broker configuration — comma-joined where a
     # backtest traded under several. '' on a fragment written before the columns existed, and
@@ -2417,6 +2429,14 @@ class DeploymentSessionRow(BaseModel):
             that did. Empty when nothing moved, on the first session of a series, and on a session
             recorded before the field existed, which is no change: the sessions on either side of
             it are compared with each other
+        account_drawdown_periods: The five deepest drawdown periods of the account's curve as the
+            session read them at its last seal (#529), deepest first. The curve is carried across
+            a restart, so the newest session of a currency holds the deployment's five since
+            `drawdown_started_at`. None where the session recorded none: before its curve's first
+            valuation, without booked figures, or recorded before the field existed
+        drawdown_started_at: When that curve began, ISO-8601 UTC — the span the five cover. A
+            session that started a curve of its own begins it anew, and the deployment's deepest
+            drawdown over all its sessions can then lie in an earlier one. None on the same terms
     """
     index: int
     run_id: str
@@ -2438,6 +2458,9 @@ class DeploymentSessionRow(BaseModel):
     orders_to_changed: bool = False
     exclusivity_violated_at: Optional[str] = None
     code_changes: list[DeploymentCodeChange] = []
+    account_drawdown_periods: Optional[list[DrawdownPeriodRow]] = None
+    account_drawdown_periods_key: list[str] = ['rank']
+    drawdown_started_at: Optional[str] = None
 
 
 class DeploymentCaption(BaseModel):
@@ -2555,6 +2578,12 @@ class DeploymentSummary(BaseModel):
         orders_to: Where its sessions' orders went, each value once — `["venue"]` is a
             real-money deployment, `["simulated"]` a rehearsal, both a deployment that mixes the
             two (then `changed` is true as well). Empty when no session recorded it
+        account_drawdown_periods: The deployment's five deepest drawdown periods in this
+            currency (#529) — those of its newest session that recorded them, deepest first,
+            derived here once so no reader repeats the choice. None where no session recorded them
+        drawdown_started_at: When the curve those periods belong to began — the span they cover.
+            A session that began a curve of its own begins it anew, and `max_drawdown`, taken over
+            all sessions, can then lie in an earlier one
     """
     deployment_id: str
     sessions: int
@@ -2573,6 +2602,9 @@ class DeploymentSummary(BaseModel):
     configuration_changed: bool = False
     code_summary: Optional[DeploymentCodeSummary] = None
     orders_to: list[OrdersTo] = []
+    account_drawdown_periods: Optional[list[DrawdownPeriodRow]] = None
+    account_drawdown_periods_key: list[str] = ['rank']
+    drawdown_started_at: Optional[str] = None
 
 
 class DeploymentListResponse(BaseModel):

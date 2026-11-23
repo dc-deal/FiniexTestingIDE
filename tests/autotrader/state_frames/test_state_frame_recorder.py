@@ -44,7 +44,10 @@ class _Session:
             portfolio=SimpleNamespace(
                 ensure_positions_updated=self._remark, balance=248.10,
                 get_balances=lambda: {'USD': 248.10, 'ETH': 0.1},
-                get_account_value=self._value),
+                get_account_value=self._value,
+                # Below a peak of 500.00: what the portfolio's own reading would answer for 489.35
+                get_account_drawdown_pct=lambda equity: (
+                    None if equity is None else (500.0 - equity) / 500.0 * 100.0)),
             get_current_price=self._price,
             get_open_positions=lambda: [],
             get_active_orders_snapshot=lambda: ActiveOrdersSnapshot(),
@@ -220,6 +223,8 @@ class TestWhatAFrameHolds:
         assert frame['last_price'] == 2412.5
         assert frame['balances'] == {'USD': 248.10, 'ETH': 0.1}
         assert frame['equity'] == 489.35
+        assert frame['account_drawdown_pct'] == pytest.approx(2.13), (
+            'the portfolio reads that same value against its peak')
         assert frame['written_at'] == '2026-11-03T10:01:00Z'
 
     def test_before_a_tick_the_account_is_unvalued_never_guessed(self, tmp_path):
@@ -360,6 +365,7 @@ class TestABacktestFrameChangesNothing:
         assert (session.remarks, session.valuations) == (0, 0)
         frames = _frames(path)
         assert frames and frames[0].get('equity') is None
+        assert frames[0].get('account_drawdown_pct') is None, 'no value, so nothing below the peak'
 
     def test_a_backtest_s_last_frame_is_valued(self, tmp_path):
         session = _Session()

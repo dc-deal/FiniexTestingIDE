@@ -71,6 +71,10 @@ class StateFrame(BaseModel):
     balance: float                              # the account currency's balance
     balances: Optional[Dict[str, float]] = None  # every currency held — spot only
     equity: Optional[float] = None              # the account value every risk measure reads
+    # How far that value lies below the account's running peak, in percent of the peak — the per-tick
+    # peak the drawdown periods are measured against (#529). Not `safety_drawdown_pct`, which is the
+    # circuit breaker's reading against its own baseline
+    account_drawdown_pct: Optional[float] = None
     unrealized_pnl: float = 0.0
     open_positions: List[OpenPositionRow] = []
     active_orders: List[ActiveOrderRow] = []

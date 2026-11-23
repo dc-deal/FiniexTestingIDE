@@ -170,7 +170,10 @@ class RunLedgerIndex(AbstractStoreIndex):
     # 22 → 23 (contract 62, #499): `exclusivity_violated_at` appended — when a session's start found
     # its account's declared exclusivity false on its own instrument (held over, or accepted). An
     # older fragment reads it back None: not recorded, never a clean start.
-    LOGIC_VERSION: int = 23
+    # 23 → 24 (contract 67, #529): `account_drawdown_periods` and `drawdown_started_at` appended —
+    # the five deepest drawdown periods of the account's curve at each seal, as JSON, and when that
+    # curve began. Written on period rows; an older fragment reads them back None: not recorded.
+    LOGIC_VERSION: int = 24
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)

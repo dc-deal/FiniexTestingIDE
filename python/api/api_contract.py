@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 66
+API_CONTRACT_VERSION = 67
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,8 +36,13 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    "portfolio: account_drawdown_periods (new) on a unit row — the five deepest drawdown periods "
-    "of the account curve, each from a peak until it was recovered: rank, peak, depth, depth_pct, started_at, "
-    "trough_at, recovered_at (null while still open); keyed by rank (account_drawdown_periods_key)",
+    "portfolio: to_trough_s and duration_s (new) on each drawdown period — seconds from its start to "
+    "its trough and to its recovery; duration_s null while the period is open, both null where an "
+    "instant is unknown",
+    "deployments: account_drawdown_periods (new, keyed by rank) and drawdown_started_at (new) on a "
+    "list row — the deployment's five deepest drawdown periods in that currency and when their curve "
+    "began — and on a session row of the detail, that session's own reading at its last seal",
+    "state frames: account_drawdown_pct (new) — how far the frame's equity lies below the account's "
+    "running peak, in percent of it; not safety_drawdown_pct, the circuit breaker's reading",
 ]
 

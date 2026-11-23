@@ -17,7 +17,11 @@ collapsed into a verdict (#527 owns the richer surface; this is the console floo
 
 from typing import List, Optional
 
-from python.framework.reporting.builders.deployment_history_builder import deployment_caption
+from python.framework.reporting.builders.deployment_history_builder import (
+    deployment_caption,
+    newest_drawdown_periods,
+)
+from python.framework.reporting.console.portfolio_summary import format_drawdown_period_span
 from python.framework.types.api.report_types import (
     CodeChangeDirection,
     DeploymentCodeChange,
@@ -26,10 +30,12 @@ from python.framework.types.api.report_types import (
     DeploymentListResponse,
     DeploymentSessionRow,
     DeploymentSummary,
+    DrawdownPeriodRow,
     SessionBookingState,
 )
 from python.framework.types.run_origin_types import FRAMEWORK_REPOSITORY
 from python.framework.utils.math_utils import negated_magnitude
+from python.framework.utils.time_utils import format_iso_to_the_minute
 
 
 def render_deployment_list(listing: DeploymentListResponse) -> None:
@@ -208,6 +214,7 @@ def render_deployment_history(
         if session.code_changes:
             _print_code_changes(session.code_changes)
 
+    _print_drawdown_periods(sessions)
     print('─' * 104)
     amounts = ', '.join(caption.currencies) or '—'
     print(f'Amounts in {amounts}. Newest first within each series. `ran` is measured from the '
@@ -223,6 +230,41 @@ def render_deployment_history(
     print('Descend into one session: runs/autotrader/<profile>/<run id>/ — its summary, session log and '
           'events.csv each answer a different question '
           '(docs/autotrader/autotrader_observability.md).')
+
+
+def _print_drawdown_periods(sessions: List[DeploymentSessionRow]) -> None:
+    """
+    The deployment's five deepest drawdown periods per currency, as its newest session that
+    recorded them read them (#529) — under the table, because they belong to the curve the sessions
+    share and not to one row of it.
+
+    Args:
+        sessions: The deployment's sessions, ordered
+    """
+    for session in newest_drawdown_periods(sessions):
+        print('─' * 104)
+        since = format_iso_to_the_minute(session.drawdown_started_at)
+        print(f'Deepest drawdown periods — {session.currency}, of the curve since {since} '
+              f'(as {session.run_id} read them):')
+        if not session.account_drawdown_periods:
+            print('  none — the curve never fell below its peak')
+        for period in session.account_drawdown_periods:
+            print(f'  {_drawdown_period_line(period)}')
+
+
+def _drawdown_period_line(period: DrawdownPeriodRow) -> str:
+    """
+    One of a deployment's deepest drawdown periods, in the table's plain amounts.
+
+    Args:
+        period: The served period
+
+    Returns:
+        The line: rank, share, amount, peak, its span and its recovery
+    """
+    share = f'{-period.depth_pct:.1f}%' if period.depth_pct is not None else '—'
+    return (f'{period.rank}  {share:>7}  {negated_magnitude(period.depth):>11.2f} from '
+            f'{period.peak:,.2f} · {format_drawdown_period_span(period)}')
 
 
 def _list_mark(summary: DeploymentSummary) -> str:

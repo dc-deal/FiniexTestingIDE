@@ -242,6 +242,23 @@ class TestTheReadingsFollowTheDeployment:
     def test_an_ordinary_restart_continues_them(self, chain):
         assert chain['second']._readings_verdict is ReadingsVerdict.CONTINUED
 
+    def test_the_drawdown_periods_belong_to_the_curve_the_successor_continued(self, chain):
+        """
+        #529: each session's rows carry the deepest drawdown periods its seals read and the start
+        of their curve. A continued curve keeps its start, so the successor's five cover both
+        sessions and the deployment reads them from the newest one.
+        """
+        run_ids = {chain['first']._run_id, chain['second']._run_id}
+        ledger_rows = [row for row in
+                       RunResultsLedger(Path(AppConfigManager().get_run_ledger_path())).read_rows()
+                       if row.run_id in run_ids]
+        first, second = build_deployment_histories(ledger_rows)[chain['first']._deployment_id]
+
+        assert first.account_drawdown_periods is not None and second.account_drawdown_periods is not None
+        assert first.drawdown_started_at is not None
+        assert second.drawdown_started_at == first.drawdown_started_at, (
+            'the successor began a curve of its own instead of continuing its predecessor\'s')
+
     def test_a_new_deployment_starts_them_fresh(self, chain):
         assert chain['fresh']._readings_verdict is ReadingsVerdict.NEW_DEPLOYMENT
         carry_over = Path(chain['first']._config.cold_start.path)

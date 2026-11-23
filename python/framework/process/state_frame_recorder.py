@@ -382,6 +382,7 @@ class StateFrameRecorder:
             pass
         positions = self._executor.get_open_positions()
         orders = self._executor.get_active_orders_snapshot()
+        equity = portfolio.get_account_value() if valued else None
         return StateFrame(
             frame_time=frame_time,
             written_at=self._wall_clock(),
@@ -393,7 +394,8 @@ class StateFrameRecorder:
             last_price=last_price,
             balance=portfolio.balance,
             balances=dict(portfolio.get_balances()) if self._spot else None,
-            equity=portfolio.get_account_value() if valued else None,
+            equity=equity,
+            account_drawdown_pct=portfolio.get_account_drawdown_pct(equity),
             unrealized_pnl=sum(position.unrealized_pnl for position in positions),
             open_positions=open_position_rows(positions, last_price or 0.0),
             active_orders=active_order_rows(

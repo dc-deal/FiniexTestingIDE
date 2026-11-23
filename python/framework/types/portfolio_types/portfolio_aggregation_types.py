@@ -31,6 +31,10 @@ class DrawdownPeriod:
         trough_at: The deepest sample, ISO-8601 UTC
         recovered_at: The first sample back at or above the peak, ISO-8601 UTC; None while the
             period is still open
+        to_trough_s: Seconds from the first sample below the peak to the deepest one, on the run's
+            own clock; None where either instant is unknown
+        duration_s: Seconds from the first sample below the peak to the recovery; None while the
+            period is open, and where an instant is unknown or lies before the start
     """
     peak: float
     depth: float
@@ -38,6 +42,8 @@ class DrawdownPeriod:
     started_at: Optional[str]
     trough_at: Optional[str]
     recovered_at: Optional[str] = None
+    to_trough_s: Optional[float] = None
+    duration_s: Optional[float] = None
 
 
 @dataclass

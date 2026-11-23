@@ -34,7 +34,7 @@ from python.framework.types.api.report_types import (
 from python.framework.types.trading_env_types.broker_types import FeeSource
 from python.framework.utils.console_renderer import ConsoleRenderer
 from python.framework.utils.math_utils import force_negative, force_positive
-from python.framework.utils.time_utils import format_iso_to_the_minute
+from python.framework.utils.time_utils import format_duration, format_iso_to_the_minute
 
 # A spread total the model leaves None: the unit read data without a quote
 SPREAD_NOT_MEASURED = 'n/a (no quote)'
@@ -218,15 +218,12 @@ class PortfolioSummary(AbstractBatchSummarySection):
             renderer: The console renderer
 
         Returns:
-            The line: rank, share, amount, peak, its span and its recovery
+            The line: rank, share, amount, peak, its span and its recovery, each with how long it took
         """
         share = f'{-period.depth_pct:.1f}%' if period.depth_pct is not None else '—'
-        recovered = (f'recovered {format_iso_to_the_minute(period.recovered_at)}' if period.recovered_at
-                     else 'still open')
         return (f'{period.rank}  {share:>7}  {renderer.pnl(force_negative(period.depth), currency)} '
                 f'from {renderer.pnl(force_positive(period.peak), currency)} · '
-                f'{format_iso_to_the_minute(period.started_at)} → {format_iso_to_the_minute(period.trough_at)} · '
-                f'{recovered}')
+                f'{format_drawdown_period_span(period)}')
 
     @staticmethod
     def _fee_source_line(unit: PortfolioUnitRow) -> str:
@@ -622,3 +619,34 @@ class PortfolioSummary(AbstractBatchSummarySection):
         if active_parts:
             print(renderer.cyan(
                 f"      Active Orders: {' | '.join(active_parts)}"))
+
+
+def format_drawdown_period_span(period: DrawdownPeriodRow) -> str:
+    """
+    When a drawdown period ran and how long it took, as every console line about one prints it
+    (#529).
+
+    Args:
+        period: The served period
+
+    Returns:
+        `start → trough (took) · recovered at (took)`, or `still open (took)`
+    """
+    recovered = (f'recovered {format_iso_to_the_minute(period.recovered_at)}' if period.recovered_at
+                 else 'still open')
+    return (f'{format_iso_to_the_minute(period.started_at)} → '
+            f'{format_iso_to_the_minute(period.trough_at)}{_took(period.to_trough_s)} · '
+            f'{recovered}{_took(period.duration_s)}')
+
+
+def _took(seconds: Optional[float]) -> str:
+    """
+    How long a stretch of a drawdown period took, for its console line.
+
+    Args:
+        seconds: The duration, None where it could not be measured
+
+    Returns:
+        ` (3h 12m)`, or nothing where it is unknown
+    """
+    return f' ({format_duration(seconds)})' if seconds is not None else ''

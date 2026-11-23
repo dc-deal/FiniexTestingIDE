@@ -33,6 +33,7 @@ from python.framework.types.api.report_types import RunResultRow, RunSummary
 from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_origin_types import CodeStand, RepositoryStand
 from python.framework.types.run_outcome_types import RunOutcome
+from python.framework.types.portfolio_types.portfolio_aggregation_types import DrawdownPeriod
 from python.framework.types.run_results_types import PeriodCloseReason
 from python.framework.types.trading_env_types.trading_env_stats_types import (
     EXECUTION_COUNT_FIELDS,
@@ -973,3 +974,85 @@ def test_a_sealed_day_carries_the_code_stand(tmp_path, make_provenance):
     ledger.write_sealed_periods(make_provenance(run_id='live', code_stand=_CODE_STAND), [_day(1)])
 
     assert ledger.read_rows()[0].code_stand == _CODE_STAND
+
+
+# --- The five deepest drawdown periods a seal read, and when their curve began (#529)
+
+_PERIODS = [
+    DrawdownPeriod(peak=1_050.0, depth=80.0, depth_pct=80 / 10.5, started_at='2026-09-21T10:00:00+00:00',
+                   trough_at='2026-09-21T12:00:00+00:00', recovered_at='2026-09-22T09:00:00+00:00',
+                   to_trough_s=7_200.0, duration_s=82_800.0),
+    DrawdownPeriod(peak=1_100.0, depth=30.0, depth_pct=30 / 11.0, started_at='2026-09-23T08:00:00+00:00',
+                   trough_at='2026-09-23T08:30:00+00:00', to_trough_s=1_800.0),
+]
+
+
+def _day_with_periods(no: int, periods, started_at: Optional[str] = '2026-09-21T00:05:00+00:00'):
+    """A trading day whose seal read the curve's deepest drawdown periods."""
+    return derive_booking_period(
+        'session', no, _MON + timedelta(days=no - 1), _MON + timedelta(days=no),
+        PeriodCloseReason.ANCHOR, [],
+        PeriodSnapshot(currency='USD', final_equity=1_000.0, account_max_drawdown=80.0,
+                       max_equity=1_100.0, account_max_dd_pct=80 / 10.5,
+                       account_drawdown_periods=periods, drawdown_started_at=started_at),
+        tick_count=10)
+
+
+class TestASealCarriesTheDeepestDrawdownPeriods:
+
+    def test_they_read_back_ranked_with_their_curve_start(self, tmp_path, make_provenance):
+        ledger = RunResultsLedger(tmp_path / 'sealed')
+        ledger.write_sealed_periods(make_provenance(run_id='live'), [_day_with_periods(1, _PERIODS)])
+
+        (row,) = ledger.read_rows()
+        assert [(p.rank, p.depth, p.duration_s) for p in row.account_drawdown_periods] == [
+            (1, 80.0, 82_800.0), (2, 30.0, None)]
+        assert row.drawdown_started_at == '2026-09-21T00:05:00+00:00'
+
+    def test_a_curve_that_never_fell_is_a_reading_and_none_is_not(self, tmp_path, make_provenance):
+        ledger = RunResultsLedger(tmp_path / 'sealed')
+        ledger.write_sealed_periods(make_provenance(run_id='live'), [
+            _day_with_periods(1, []), _day_with_periods(2, None, started_at=None)])
+
+        by_day = {row.period_no: row for row in ledger.read_rows()}
+        assert by_day[1].account_drawdown_periods == []
+        assert by_day[2].account_drawdown_periods is None
+
+    def test_a_session_folds_to_its_newest_reading(self, tmp_path, make_provenance):
+        ledger = RunResultsLedger(tmp_path / 'sealed')
+        ledger.write_sealed_periods(make_provenance(run_id='live'), [
+            _day_with_periods(1, _PERIODS[:1]), _day_with_periods(2, _PERIODS),
+            _day_with_periods(3, None, started_at=None)])
+
+        (session,) = aggregate_ledger_rows(ledger.read_rows(), by=('run_id', 'currency'))
+        assert len(session.account_drawdown_periods) == 2, (
+            'the newest day that read the curve, past a day that read none')
+
+    def test_they_are_not_served_on_a_row(self, tmp_path, make_provenance):
+        """A sweep serves run-summary rows, which span accounts and hold none."""
+        ledger = RunResultsLedger(tmp_path / 'sealed')
+        ledger.write_sealed_periods(make_provenance(run_id='live'), [_day_with_periods(1, _PERIODS)])
+
+        served = ledger.read_rows()[0].model_dump()
+        assert 'account_drawdown_periods' not in served and 'drawdown_started_at' not in served
+
+    def test_a_fragment_written_before_the_columns_reads_none(self, tmp_path, make_provenance):
+        ledger_dir = tmp_path / 'sealed'
+        ledger = RunResultsLedger(ledger_dir)
+        ledger.write_sealed_periods(make_provenance(run_id='live'), [_day_with_periods(1, _PERIODS)])
+        (fragment,) = list(ledger_dir.glob('*.parquet'))
+        frame = pd.read_parquet(fragment)
+        frame.drop(columns=['account_drawdown_periods', 'drawdown_started_at']).to_parquet(
+            fragment, index=False)
+        ledger._index.rebuild()
+
+        (row,) = ledger.read_rows()
+        assert (row.account_drawdown_periods, row.drawdown_started_at) == (None, None)
+
+    def test_a_row_without_them_reads_none(self, tmp_path, make_provenance):
+        """A seal that read no curve writes empty cells, as an older fragment has none at all."""
+        ledger = RunResultsLedger(tmp_path / 'sealed')
+        ledger.write_sealed_periods(make_provenance(run_id='live'), [_day(1)])
+
+        (row,) = ledger.read_rows()
+        assert (row.account_drawdown_periods, row.drawdown_started_at) == (None, None)

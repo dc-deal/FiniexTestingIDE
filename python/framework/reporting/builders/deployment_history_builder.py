@@ -140,6 +140,27 @@ def compose_deployment_detail(
     )
 
 
+def newest_drawdown_periods(sessions: List[DeploymentSessionRow]) -> List[DeploymentSessionRow]:
+    """
+    The session whose drawdown periods are a deployment's five, per currency (#529).
+
+    The curve is carried across a restart, so the newest session that recorded them holds the five
+    since the curve began. A session that started a curve of its own begins that span anew, which
+    its `drawdown_started_at` names.
+
+    Args:
+        sessions: One deployment's sessions, oldest first within each currency
+
+    Returns:
+        One session per currency that recorded them, by currency
+    """
+    newest: Dict[str, DeploymentSessionRow] = {}
+    for session in sessions:
+        if session.currency is not None and session.account_drawdown_periods is not None:
+            newest[session.currency] = session
+    return [newest[currency] for currency in sorted(newest)]
+
+
 def compose_deployment_booking_periods(
     deployment_id: str,
     rows: List[RunResultRow],
@@ -250,6 +271,9 @@ def _summarize_one(
     (figures,) = fold_rows(sessions, DEPLOYMENT_SUMMARY_TABLE)
     advisory = advisories.get(deployment)
     code_summary = code_summaries.get(deployment)
+    # The deployment's five deepest drawdown periods: its newest session's reading, chosen here
+    # and nowhere else, so the console and every API reader name the same session (#529)
+    newest = newest_drawdown_periods(sessions)
     return DeploymentSummary(
         deployment_id=deployment,
         sessions_without_figures=sessions_without_figures,
@@ -257,6 +281,8 @@ def _summarize_one(
         changed=advisory is not None or code_summary is not None,
         configuration_changed=advisory is not None,
         code_summary=code_summary,
+        account_drawdown_periods=newest[0].account_drawdown_periods if newest else None,
+        drawdown_started_at=newest[0].drawdown_started_at if newest else None,
         **figures,
     )
 
@@ -452,6 +478,10 @@ def build_deployment_histories(rows: List[RunResultRow]) -> Dict[str, List[Deplo
                     previous and previous.orders_to is not None and row.orders_to is not None
                     and previous.orders_to != row.orders_to),
                 exclusivity_violated_at=row.exclusivity_violated_at,
+                # The session's own reading at its last seal: its rows fold by the declared
+                # reduction, the newest seal's five (#529)
+                account_drawdown_periods=row.account_drawdown_periods,
+                drawdown_started_at=row.drawdown_started_at,
                 # Only between two sessions that both recorded it: an older row has no stand, no
                 # line and is never a change, and it does not hide what moved across it. A start
                 # that failed has no currency, and its series adds nothing up a line could split.
