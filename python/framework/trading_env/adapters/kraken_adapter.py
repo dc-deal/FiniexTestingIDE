@@ -49,6 +49,7 @@ from python.framework.types.trading_env_types.broker_types import (
 from python.framework.types.trading_env_types.order_types import (
     FeeReport,
     IcebergOrder,
+    LimitFillEvidence,
     LimitOrder,
     MarketOrder,
     OrderCapabilities,
@@ -56,6 +57,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderSide,
     OrderType,
     StopLimitOrder,
+    StopTriggerBasis,
 )
 from python.framework.utils.http_attempt import send_classified
 
@@ -158,7 +160,9 @@ class KrakenAdapter(AbstractAdapter):
         # refs remain queryable even if dry_run is toggled off mid-run.
         # Tier-3 transport layers route to it when self._dry_run is True
         # or when the broker_ref carries the DRYRUN-* prefix.
-        self._dry_run_simulator: DryRunOrderSimulator = DryRunOrderSimulator()
+        capabilities = self.get_order_capabilities()
+        self._dry_run_simulator: DryRunOrderSimulator = DryRunOrderSimulator(
+            stop_trigger_basis=capabilities.stop_trigger_basis, limit_fill_evidence=capabilities.limit_fill_evidence)
 
     # ============================================
     # Configuration
@@ -237,6 +241,15 @@ class KrakenAdapter(AbstractAdapter):
             # describes the venue, and a session caches it before it knows whether it is a
             # dry run. The executor tells a dry run's answers apart by where they come from.
             fee_report=FeeReport.STATUS_ANSWER,
+            # From Kraken's own documentation, read 2026-11-24 (#605). A stop-loss triggers on the
+            # last traded price: AddOrder's `trigger` is `index` or `last`, "Default: last"
+            # (docs.kraken.com/api/docs/rest-api/add-order), and this adapter sends none. Its
+            # matching engine is a central limit order book with one queue per price, matched by
+            # price and time (kraken.com/legal/exchangetradingrules) — so a public trade THROUGH a
+            # resting limit's price proves it was met; one only at the price fills the front of
+            # that queue.
+            stop_trigger_basis=StopTriggerBasis.LAST,
+            limit_fill_evidence=LimitFillEvidence.PUBLIC_TRADE,
             # Its API takes no stop or target for a position: no level on an order, no bracket,
             # no one-cancels-other, on REST, WebSocket or FIX (its API team, 2026-10-27, #625).
             offered_order_features=frozenset(),

@@ -309,6 +309,35 @@ class FeeReport(Enum):
     NOT_REPORTED = 'not_reported'
 
 
+class StopTriggerBasis(Enum):
+    """
+    Which price a venue watches to trigger a stop (#605) — declared per venue, never inferred
+    from its market type.
+
+    LAST: the last traded price. Kraken spot triggers a stop-loss on it by default. On a tick
+        without a traded price the quote answers instead
+    BID_ASK: the quote — a sell stop on the bid, a buy stop on the ask. A quote-driven venue has
+        no traded price, so there the quote is the only evidence
+    """
+    LAST = 'last'
+    BID_ASK = 'bid_ask'
+
+
+class LimitFillEvidence(Enum):
+    """
+    What a venue counts as evidence that a resting limit order filled (#605).
+
+    PUBLIC_TRADE: a public trade THROUGH the limit price — a print below a buy limit, above a sell
+        limit — proves the order was met, while the quote may still stand away from it. The rule
+        of a central order book with price-time priority, Kraken's. The quote crossing the limit
+        fills it too
+    QUOTE: only the quote crossing the limit fills it — a buy limit when the ask falls to it, a
+        sell limit when the bid rises to it
+    """
+    PUBLIC_TRADE = 'public_trade'
+    QUOTE = 'quote'
+
+
 # ============================================
 # Order Capability System
 # ============================================
@@ -360,6 +389,14 @@ class OrderCapabilities:
     # fill is booked: a venue that reports it in the status answer and whose answer comes
     # without one is booked from the estimate, and that is said in the session's log.
     fee_report: FeeReport = FeeReport.NOT_REPORTED
+
+    # Resting orders (#605)
+    # stop_trigger_basis / limit_fill_evidence: which price fires a stop, and what fills a resting limit — see
+    # StopTriggerBasis and LimitFillEvidence. The simulation and a dry run decide by them, so a backtest
+    # fills where the venue would. The defaults are the quote's rule, which is also what applies
+    # on any tick that carries no traded price.
+    stop_trigger_basis: StopTriggerBasis = StopTriggerBasis.BID_ASK
+    limit_fill_evidence: LimitFillEvidence = LimitFillEvidence.QUOTE
 
     # Order features (#625)
     # offered_order_features: what the venue's API holds for a position. Required, so an adapter

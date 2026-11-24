@@ -79,7 +79,8 @@ checks the closing side of the book against the level — closing a long sells, 
 
 ```
 tick n     bid 50,000 / ask 50,001    on_tick → _check_sl_tp_triggers
-                                      is_stop_reached(sell, 49,000, bid, ask)  → bid ≤ 49,000?  no
+                                      is_stop_reached(sell, 49,000, bid, ask,
+                                                      last, venue's basis)     → bid ≤ 49,000?  no
 
 tick n+1   bid 48,900 / ask 48,901    the market jumps over the stop
                                       is_stop_reached(...)                     → yes

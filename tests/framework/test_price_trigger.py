@@ -30,7 +30,11 @@ from datetime import datetime, timezone
 import pytest
 
 from python.framework.types.market_types.market_data_types import TickData
-from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.trading_env_types.order_types import (
+    LimitFillEvidence,
+    OrderDirection,
+    StopTriggerBasis,
+)
 from python.framework.utils.trading_math.price_trigger import (
     is_limit_reached,
     is_stop_reached,
@@ -51,7 +55,7 @@ class TestALimitWaitsForABetterPrice:
         (3900.0, False),   # 100 below the ask — waits
     ])
     def test_a_buy_limit_reads_the_ask(self, limit, reached):
-        assert is_limit_reached(OrderDirection.LONG, limit, _BID, _ASK) is reached
+        assert is_limit_reached(OrderDirection.LONG, limit, _BID, _ASK, None, LimitFillEvidence.QUOTE) is reached
 
     @pytest.mark.parametrize('limit, reached', [
         (3900.0, True),    # the bid is already above the limit
@@ -59,7 +63,7 @@ class TestALimitWaitsForABetterPrice:
         (4100.0, False),   # 100 above the bid — waits
     ])
     def test_a_sell_limit_reads_the_bid(self, limit, reached):
-        assert is_limit_reached(OrderDirection.SHORT, limit, _BID, _ASK) is reached
+        assert is_limit_reached(OrderDirection.SHORT, limit, _BID, _ASK, None, LimitFillEvidence.QUOTE) is reached
 
     def test_a_limit_INSIDE_the_spread_is_reached_by_neither_side(self):
         """
@@ -70,17 +74,17 @@ class TestALimitWaitsForABetterPrice:
         """
         inside = 4000.0
 
-        assert is_limit_reached(OrderDirection.LONG, inside, _BID, _ASK) is False
-        assert is_limit_reached(OrderDirection.SHORT, inside, _BID, _ASK) is False
+        assert is_limit_reached(OrderDirection.LONG, inside, _BID, _ASK, None, LimitFillEvidence.QUOTE) is False
+        assert is_limit_reached(OrderDirection.SHORT, inside, _BID, _ASK, None, LimitFillEvidence.QUOTE) is False
 
     def test_outside_the_spread_the_two_directions_diverge(self):
         """A direction handled backwards is the defect this module prevents being written twice."""
         below, above = 3900.0, 4100.0
 
-        assert is_limit_reached(OrderDirection.LONG, below, _BID, _ASK) is False
-        assert is_limit_reached(OrderDirection.SHORT, below, _BID, _ASK) is True
-        assert is_limit_reached(OrderDirection.LONG, above, _BID, _ASK) is True
-        assert is_limit_reached(OrderDirection.SHORT, above, _BID, _ASK) is False
+        assert is_limit_reached(OrderDirection.LONG, below, _BID, _ASK, None, LimitFillEvidence.QUOTE) is False
+        assert is_limit_reached(OrderDirection.SHORT, below, _BID, _ASK, None, LimitFillEvidence.QUOTE) is True
+        assert is_limit_reached(OrderDirection.LONG, above, _BID, _ASK, None, LimitFillEvidence.QUOTE) is True
+        assert is_limit_reached(OrderDirection.SHORT, above, _BID, _ASK, None, LimitFillEvidence.QUOTE) is False
 
 
 class TestAStopWaitsForAWorsePrice:
@@ -92,7 +96,7 @@ class TestAStopWaitsForAWorsePrice:
         (4100.0, False),   # 100 above — not yet
     ])
     def test_a_buy_stop_reads_the_ask(self, trigger, reached):
-        assert is_stop_reached(OrderDirection.LONG, trigger, _BID, _ASK) is reached
+        assert is_stop_reached(OrderDirection.LONG, trigger, _BID, _ASK, None, StopTriggerBasis.BID_ASK) is reached
 
     @pytest.mark.parametrize('trigger, reached', [
         (4100.0, True),    # the bid is already through it
@@ -100,7 +104,7 @@ class TestAStopWaitsForAWorsePrice:
         (3900.0, False),   # 100 below — not yet
     ])
     def test_a_sell_stop_reads_the_bid(self, trigger, reached):
-        assert is_stop_reached(OrderDirection.SHORT, trigger, _BID, _ASK) is reached
+        assert is_stop_reached(OrderDirection.SHORT, trigger, _BID, _ASK, None, StopTriggerBasis.BID_ASK) is reached
 
     def test_a_stop_and_a_limit_of_one_direction_are_opposites(self):
         """
@@ -109,12 +113,12 @@ class TestAStopWaitsForAWorsePrice:
         functions instead of one flag.
         """
         for price in (3900.0, 4100.0):
-            assert (is_limit_reached(OrderDirection.LONG, price, _BID, _ASK)
-                    is not is_stop_reached(OrderDirection.LONG, price, _BID, _ASK))
+            assert (is_limit_reached(OrderDirection.LONG, price, _BID, _ASK, None, LimitFillEvidence.QUOTE)
+                    is not is_stop_reached(OrderDirection.LONG, price, _BID, _ASK, None, StopTriggerBasis.BID_ASK))
 
         at_the_ask = _ASK
-        assert is_limit_reached(OrderDirection.LONG, at_the_ask, _BID, _ASK) is True
-        assert is_stop_reached(OrderDirection.LONG, at_the_ask, _BID, _ASK) is True
+        assert is_limit_reached(OrderDirection.LONG, at_the_ask, _BID, _ASK, None, LimitFillEvidence.QUOTE) is True
+        assert is_stop_reached(OrderDirection.LONG, at_the_ask, _BID, _ASK, None, StopTriggerBasis.BID_ASK) is True
 
 
 class TestTheSideOfTheBookADirectionTradesAt:
@@ -151,15 +155,97 @@ class TestAZeroSpreadQuoteIsAnswerable:
     def test_both_predicates_still_decide(self):
         flat = 4000.0
 
-        assert is_limit_reached(OrderDirection.LONG, flat, flat, flat) is True
-        assert is_stop_reached(OrderDirection.SHORT, flat, flat, flat) is True
-        assert is_limit_reached(OrderDirection.LONG, flat - 1, flat, flat) is False
+        assert is_limit_reached(OrderDirection.LONG, flat, flat, flat, None, LimitFillEvidence.QUOTE) is True
+        assert is_stop_reached(OrderDirection.SHORT, flat, flat, flat, None, StopTriggerBasis.BID_ASK) is True
+        assert is_limit_reached(OrderDirection.LONG, flat - 1, flat, flat, None, LimitFillEvidence.QUOTE) is False
 
     def test_and_a_round_trip_then_costs_nothing(self):
         flat = 4000.0
 
         assert (taken_price(OrderDirection.LONG, flat, flat)
                 == taken_price(OrderDirection.SHORT, flat, flat))
+
+
+class TestAVenueThatTradesDecidesOnItsTrades:
+    """
+    #605: Kraken triggers a stop on its last traded price and fills a resting limit when a trade
+    prints at its price, while the quote may still stand away from it. Since collector format 1.6.0
+    a tick carries both, and the venue's declared rule says which one decides.
+
+        quote 3,999 / 4,001 · last trade 4,000
+        sell stop 3,999.5   on the bid: triggered · on the last: not yet
+        buy limit 3,999.0   on the ask: not filled · a trade at 3,999: not yet · one at 3,998.9: filled
+
+    A trade only AT the limit fills the front of the queue there, which on a large-tick market an
+    order that joins it is not — so the evidence is a trade THROUGH the price.
+    """
+
+    def test_a_sell_stop_waits_for_the_trade_not_the_bid(self):
+        stop = 3999.5   # the bid is already below it, the last trade is not
+
+        assert is_stop_reached(OrderDirection.SHORT, stop, _BID, _ASK, 4000.0, StopTriggerBasis.BID_ASK)
+        assert not is_stop_reached(OrderDirection.SHORT, stop, _BID, _ASK, 4000.0, StopTriggerBasis.LAST)
+        assert is_stop_reached(OrderDirection.SHORT, stop, _BID, _ASK, 3999.5, StopTriggerBasis.LAST)
+
+    def test_a_buy_stop_waits_for_the_trade_not_the_ask(self):
+        stop = 4000.5
+
+        assert is_stop_reached(OrderDirection.LONG, stop, _BID, _ASK, 4000.0, StopTriggerBasis.BID_ASK)
+        assert not is_stop_reached(OrderDirection.LONG, stop, _BID, _ASK, 4000.0, StopTriggerBasis.LAST)
+        assert is_stop_reached(OrderDirection.LONG, stop, _BID, _ASK, 4000.5, StopTriggerBasis.LAST)
+
+    def test_a_trade_through_a_buy_limit_fills_it_while_the_ask_stands_above(self):
+        limit = 3999.0
+        trade = LimitFillEvidence.PUBLIC_TRADE
+
+        assert not is_limit_reached(OrderDirection.LONG, limit, _BID, _ASK, 3998.9, LimitFillEvidence.QUOTE)
+        assert is_limit_reached(OrderDirection.LONG, limit, _BID, _ASK, 3998.9, trade)
+        assert not is_limit_reached(OrderDirection.LONG, limit, _BID, _ASK, 3999.0, trade), (
+            'a trade only at the limit fills the queue ahead of the order')
+
+    def test_a_trade_through_a_sell_limit_fills_it_while_the_bid_stands_below(self):
+        limit = 4001.0
+        trade = LimitFillEvidence.PUBLIC_TRADE
+
+        assert not is_limit_reached(OrderDirection.SHORT, limit, _BID, _ASK, 4001.1, LimitFillEvidence.QUOTE)
+        assert is_limit_reached(OrderDirection.SHORT, limit, _BID, _ASK, 4001.1, trade)
+        assert not is_limit_reached(OrderDirection.SHORT, limit, _BID, _ASK, 4001.0, trade), (
+            'a trade only at the limit fills the queue ahead of the order')
+
+    def test_the_quote_crossing_the_limit_still_fills_it(self):
+        """A book that crosses the order would have matched it, whatever the last trade was."""
+        assert is_limit_reached(OrderDirection.LONG, _ASK, _BID, _ASK, 4005.0, LimitFillEvidence.PUBLIC_TRADE)
+        assert is_limit_reached(OrderDirection.SHORT, _BID, _BID, _ASK, 3995.0, LimitFillEvidence.PUBLIC_TRADE)
+
+    @pytest.mark.parametrize('direction', [OrderDirection.LONG, OrderDirection.SHORT])
+    def test_without_a_traded_price_the_quote_decides_whatever_is_declared(self, direction):
+        """A quote-driven venue prints no trade."""
+        for price in (3998.0, 3999.0, 3999.5, 4000.0, 4000.5, 4001.0, 4002.0):
+            assert (is_stop_reached(direction, price, _BID, _ASK, None, StopTriggerBasis.LAST)
+                    is is_stop_reached(direction, price, _BID, _ASK, None, StopTriggerBasis.BID_ASK))
+            assert (is_limit_reached(direction, price, _BID, _ASK, None, LimitFillEvidence.PUBLIC_TRADE)
+                    is is_limit_reached(direction, price, _BID, _ASK, None, LimitFillEvidence.QUOTE))
+
+    @pytest.mark.parametrize('direction', [OrderDirection.LONG, OrderDirection.SHORT])
+    def test_a_stop_on_a_tick_whose_quote_is_its_trade_fires_alike(self, direction):
+        """A Kraken tick recorded before the quote was kept, with no quote modelled for it."""
+        flat = 4000.0
+        for price in (3999.0, 4000.0, 4001.0):
+            assert (is_stop_reached(direction, price, flat, flat, flat, StopTriggerBasis.LAST)
+                    is is_stop_reached(direction, price, flat, flat, flat, StopTriggerBasis.BID_ASK))
+
+    def test_on_a_tick_whose_quote_is_its_trade_only_a_trade_through_fills_a_limit(self):
+        """
+        There the quote reaching a limit is a trade AT it, which fills the queue ahead; a venue that
+        decides on its trades waits for one through it, as on every other tick.
+        """
+        flat = 4000.0
+        trade = LimitFillEvidence.PUBLIC_TRADE
+        assert is_limit_reached(OrderDirection.LONG, flat, flat, flat, flat, LimitFillEvidence.QUOTE) is True
+        assert is_limit_reached(OrderDirection.LONG, flat, flat, flat, flat, trade) is False
+        assert is_limit_reached(OrderDirection.LONG, flat + 1.0, flat, flat, flat, trade) is True
+        assert is_limit_reached(OrderDirection.SHORT, flat, flat, flat, flat, trade) is False
+        assert is_limit_reached(OrderDirection.SHORT, flat - 1.0, flat, flat, flat, trade) is True
 
 
 class TestTheMidpointOfAQuote:

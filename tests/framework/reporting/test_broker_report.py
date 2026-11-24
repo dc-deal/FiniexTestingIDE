@@ -30,7 +30,12 @@ from python.framework.types.trading_env_types.broker_types import (
     SwapMode,
     SymbolSpecification,
 )
-from python.framework.types.trading_env_types.order_types import FeeReport, OrderCapabilities
+from python.framework.types.trading_env_types.order_types import (
+    FeeReport,
+    LimitFillEvidence,
+    OrderCapabilities,
+    StopTriggerBasis,
+)
 from python.framework.utils.console_renderer import ConsoleRenderer
 
 # Every report artifact names its run (#475); the value is opaque to these tests.
@@ -72,8 +77,11 @@ class _FakeBrokerConfig:
         self._frozen_config_id = frozen_config_id
 
     def get_order_capabilities(self) -> OrderCapabilities:
-        # Kraken reports a fill's fee in the answer that says the order filled
-        return OrderCapabilities(fee_report=FeeReport.STATUS_ANSWER, offered_order_features=frozenset())
+        # Kraken reports a fill's fee in the answer that says the order filled, and decides its
+        # resting orders on its trades (#605)
+        return OrderCapabilities(fee_report=FeeReport.STATUS_ANSWER, offered_order_features=frozenset(),
+                                 stop_trigger_basis=StopTriggerBasis.LAST,
+                                 limit_fill_evidence=LimitFillEvidence.PUBLIC_TRADE)
 
     def get_frozen_config_id(self) -> str:
         return self._frozen_config_id
@@ -178,6 +186,24 @@ class TestWhoseFigureAFillsFeeIs:
         served = row.model_dump(mode='json')
         assert served['fee_report'] == 'status_answer'
         assert served['venue_fee_expected'] is False
+
+
+class TestHowTheVenueDecidesItsRestingOrders:
+    """#605: the row says which price fires a stop and what proves a resting limit filled."""
+
+    def test_a_backtest_and_a_session_state_the_venues_rule(self):
+        backtest = build_broker_report_from_batch(_RUN_ID, _batch(['BTCUSD'], ['btc_run'])).units[0]
+        session = build_broker_report_from_session(
+            _RUN_ID, _fake_config(['BTCUSD']), 'BTCUSD', venue_fee_expected=False).units[0]
+        for row in (backtest, session):
+            assert (row.stop_trigger_basis, row.limit_fill_evidence) == (
+                StopTriggerBasis.LAST, LimitFillEvidence.PUBLIC_TRADE)
+
+    def test_they_are_served_as_their_values(self):
+        row = build_broker_report_from_session(
+            _RUN_ID, _fake_config(['BTCUSD']), 'BTCUSD', venue_fee_expected=False).units[0]
+        served = row.model_dump(mode='json')
+        assert (served['stop_trigger_basis'], served['limit_fill_evidence']) == ('last', 'public_trade')
 
 
 class TestRender:

@@ -356,8 +356,12 @@ Called once before any live execution. Loads credentials, stores config, instant
 def __init__(self, broker_config):
     super().__init__(broker_config)
     ...
-    # Always instantiated so DRYRUN-* refs stay queryable even if dry_run toggles
-    self._dry_run_simulator: DryRunOrderSimulator = DryRunOrderSimulator()
+    # Always instantiated so DRYRUN-* refs stay queryable even if dry_run toggles. It fires and
+    # fills resting orders by the venue's own declared rule, as the backtest does
+    capabilities = self.get_order_capabilities()
+    self._dry_run_simulator: DryRunOrderSimulator = DryRunOrderSimulator(
+        stop_trigger_basis=capabilities.stop_trigger_basis,
+        limit_fill_evidence=capabilities.limit_fill_evidence)
 
 def enable_live(
     self,

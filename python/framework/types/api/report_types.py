@@ -43,6 +43,7 @@ from python.framework.types.trading_env_types.order_event_types import (
 from python.framework.types.trading_env_types.order_types import (
     CloseType,
     FeeReport,
+    LimitFillEvidence,
     OrderAction,
     OrderDirection,
     OrderEndReason,
@@ -51,6 +52,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderStatus,
     OrderType,
     RejectionReason,
+    StopTriggerBasis,
 )
 from python.framework.utils.trading_math.order_math import execution_rate_pct
 
@@ -3363,6 +3365,12 @@ class BrokerInfoRow(BaseModel):
     # session — false in a dry run, whose fills are simulated — and false in a backtest, which
     # has no venue. Null on an older record, and where a session never built its executor
     venue_fee_expected: Optional[bool] = None
+    # How the venue decides its resting orders, as the broker's adapter declares it (#605): the
+    # price that fires a stop, and what proves a resting limit filled. The backtest and a dry run
+    # fill by it, so it is what a backtest's stops and limits were simulated on. Null on a record
+    # from before contract 68
+    stop_trigger_basis: Optional[StopTriggerBasis] = None
+    limit_fill_evidence: Optional[LimitFillEvidence] = None
 
     @computed_field
     @property

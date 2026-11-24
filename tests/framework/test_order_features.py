@@ -1003,4 +1003,5 @@ class TestASessionCannotDeclareIt:
 
 def _adapter_shell() -> Any:
     """What the adapters' get_order_capabilities reads of themselves, without a connection."""
-    return SimpleNamespace(_hedging_allowed=False, _charges_fee_per_fill=lambda: False)
+    return SimpleNamespace(_hedging_allowed=False, _charges_fee_per_fill=lambda: False,
+                           _broker_type=BrokerType.KRAKEN_SPOT)

@@ -682,6 +682,12 @@ the pending orders; and a *drawing layer* is one switchable set of drawings on a
 framework's, the algo's (its decision logic's own drawings) or one worker instance's (#379) — the
 sense of the viewer's Layers panel.
 
+**limit fill evidence** (`limit_fill_evidence` on a broker row and on `OrderCapabilities`) — What
+a venue counts as proof that a resting limit order filled: `public_trade`, a *public trade* through
+its price (a print below a buy limit, above a sell limit), or `quote`, only the quote crossing it.
+The quote crossing a limit fills it under both. A venue's declaration, which the backtest and a dry
+run fill by; a tick with no traded price is judged on the quote. See [Market model](architecture/market_model.md).
+
 **live** — Never used alone for a kind of run. In code identifiers — `LiveTradeExecutor`,
 `ExecutorMode.LIVE`, `live_types/` — it names the live execution stack that every AutoTrader
 session runs, mock sessions included. For the kinds of run say *AutoTrader session*, *live-adapter
@@ -1150,6 +1156,11 @@ that time, so the operator declares it; the wait for the orders on their way, th
 venue's last read then take what is left after a reserve for the records, which is time and not
 funds. Undeclared, no budget applies. See
 [Unattended operation](autotrader/unattended_operation.md#a-stop--what-it-waits-for-and-the-kill-it-has-to-fit-under).
+
+**stop trigger basis** (`stop_trigger_basis` on a broker row and on `OrderCapabilities`) — Which
+price a venue watches to fire a stop: `last`, its last traded price, or `bid_ask`, the quote. A
+venue's declaration, which the backtest and a dry run fire by; a tick with no traded price is
+judged on the quote. Not the *stop trigger*, the price itself. See [Market model](architecture/market_model.md).
 
 **stop trigger** (`trigger_price` on an order event, `stop_price` on a venue order) — The price at
 which a stop order activates. A triggered stop fills at the market, not at its trigger — the

@@ -21,7 +21,7 @@ from python.framework.trading_env.algo_masks.algo_position import AlgoPosition
 from python.framework.trading_env.algo_masks.algo_tick import AlgoTick
 from python.framework.trading_env.decision_trading_api import DecisionTradingApi
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
-from python.framework.types.trading_env_types.order_types import OrderDirection
+from python.framework.types.trading_env_types.order_types import LimitFillEvidence, OrderDirection, StopTriggerBasis
 from python.framework.types.trading_env_types.own_exit_types import OwnExit, PositionExitLevels
 from python.framework.utils.trading_math.price_trigger import is_limit_reached, is_stop_reached
 
@@ -150,6 +150,10 @@ class OwnExitLevels:
         Gives a position without levels its seed levels first, and drops the levels of a
         position of this symbol seen before and gone now.
 
+        Decided on the quote, whatever the venue declares for its own resting orders (#605): these
+        are levels the strategy keeps itself and closes at market, so they are its own reading of
+        the price, never an order the venue holds and fires on its last trade.
+
         Args:
             symbol: The quote's symbol
             positions: The open positions of that symbol
@@ -171,9 +175,12 @@ class OwnExitLevels:
             # Closing a long sells, closing a short buys — the levels are the closing order's
             closing = (OrderDirection.SHORT if position.direction == OrderDirection.LONG
                        else OrderDirection.LONG)
-            if levels.stop is not None and is_stop_reached(closing, levels.stop, bid, ask):
+            # On the quote, whatever the venue declares (#605) — see the docstring
+            if levels.stop is not None and is_stop_reached(
+                    closing, levels.stop, bid, ask, None, StopTriggerBasis.BID_ASK):
                 exits.append((position_id, OwnExit(CloseReason.SL_TRIGGERED, levels.stop)))
-            elif levels.target is not None and is_limit_reached(closing, levels.target, bid, ask):
+            elif levels.target is not None and is_limit_reached(
+                    closing, levels.target, bid, ask, None, LimitFillEvidence.QUOTE):
                 exits.append((position_id, OwnExit(CloseReason.TP_TRIGGERED, levels.target)))
         for seen_id, seen_symbol in list(self._seen_open.items()):
             if seen_symbol == symbol and seen_id not in open_ids:

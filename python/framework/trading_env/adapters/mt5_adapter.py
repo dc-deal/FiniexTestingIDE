@@ -30,6 +30,7 @@ from python.framework.types.trading_env_types.broker_types import (
 )
 from python.framework.types.trading_env_types.order_types import (
     FeeReport,
+    LimitFillEvidence,
     LimitOrder,
     MarketOrder,
     OrderCapabilities,
@@ -37,6 +38,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderFeature,
     StopLimitOrder,
     StopOrder,
+    StopTriggerBasis,
 )
 
 from .abstract_adapter import AbstractAdapter
@@ -116,6 +118,14 @@ class Mt5Adapter(AbstractAdapter):
             # carries the deal's ticket and no fee. #209 measures where and when it appears
             # before it declares — on the documentation alone, EXECUTIONS (#508, 2026-10-11).
             fee_report=FeeReport.NOT_REPORTED,
+            # Provisional, from MetaQuotes' own documentation ("Basic Principles" of the trading
+            # platform's help, read 2026-11-24, #605): for forex and CFD symbols a pending order
+            # and a stop loss fire on Bid and Ask — a buy limit when the Ask reaches it, a sell stop
+            # when the Bid does. Its forex ticks carry no traded price, so the quote is the only
+            # evidence anyway. Exchange-traded symbols trigger on the last price there; #209
+            # measures on a demo account before this is confirmed.
+            stop_trigger_basis=StopTriggerBasis.BID_ASK,
+            limit_fill_evidence=LimitFillEvidence.QUOTE,
             # MT5 holds both levels on the position itself (#209, #625).
             offered_order_features=frozenset({OrderFeature.STOP_LOSS, OrderFeature.TAKE_PROFIT}),
         )

@@ -43,6 +43,7 @@ from python.framework.types.trading_env_types.order_event_types import OrderEven
 from python.framework.types.trading_env_types.order_types import (
     RESTING_ORDER_TYPES,
     FillType,
+    LimitFillEvidence,
     ModificationRejectionReason,
     ModificationResult,
     ModificationStatus,
@@ -55,6 +56,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderResult,
     OrderStatus,
     OrderType,
+    StopTriggerBasis,
     RejectionReason,
 )
 from python.framework.types.trading_env_types.stress_test_types import (
@@ -136,6 +138,12 @@ class TradeSimulator(AbstractTradeExecutor):
             initial_balances=initial_balances,
             portfolio_cache=portfolio_cache,
         )
+
+        # The venue's rule for its resting orders (#605), read once: which price fires a stop and
+        # what fills a resting limit. Every check below hands it over with the tick's traded price
+        capabilities = self.broker.adapter.get_order_capabilities()
+        self._stop_trigger_basis: StopTriggerBasis = capabilities.stop_trigger_basis
+        self._limit_fill_evidence: LimitFillEvidence = capabilities.limit_fill_evidence
 
         # Order latency simulator with deterministic ms-based delays
         seeds = seeds or {}
@@ -321,7 +329,8 @@ class TradeSimulator(AbstractTradeExecutor):
             closing = (OrderDirection.SHORT if position.direction == OrderDirection.LONG
                        else OrderDirection.LONG)
             if (position.stop_loss is not None
-                    and is_stop_reached(closing, position.stop_loss, tick.bid, tick.ask)):
+                    and is_stop_reached(closing, position.stop_loss, tick.bid, tick.ask,
+                                        tick.last, self._stop_trigger_basis)):
                 self.logger.info(
                     f'🛑 SL triggered: {position.position_id} '
                     f'{position.direction.value} @ SL={position.stop_loss:.5f} '
@@ -331,7 +340,8 @@ class TradeSimulator(AbstractTradeExecutor):
                 # price skipped (#629)
                 self._close_on_breach(position, None, CloseReason.SL_TRIGGERED)
             elif (position.take_profit is not None
-                    and is_limit_reached(closing, position.take_profit, tick.bid, tick.ask)):
+                    and is_limit_reached(closing, position.take_profit, tick.bid, tick.ask,
+                                         tick.last, self._limit_fill_evidence)):
                 self.logger.info(
                     f'🎯 TP triggered: {position.position_id} '
                     f'{position.direction.value} @ TP={position.take_profit:.5f} '
@@ -410,7 +420,7 @@ class TradeSimulator(AbstractTradeExecutor):
                     remaining.append(pending)
                     continue
 
-                if self._is_limit_price_reached(pending):
+                if self._is_limit_price_reached(pending, resting=True):
                     self._record_overtaken_operation(pending)
                     # Determine entry type: STOP_LIMIT if converted from stop, else LIMIT
                     is_from_stop = pending.order_kwargs.get(
@@ -492,7 +502,7 @@ class TradeSimulator(AbstractTradeExecutor):
 
                     # Limit orders: check immediate fill or queue for price monitoring
                     if pending_order.order_type == OrderType.LIMIT:
-                        if self._is_limit_price_reached(pending_order):
+                        if self._is_limit_price_reached(pending_order, resting=False):
                             # Price already past limit → fill immediately
                             self._fill_open_order(
                                 pending_order,
@@ -832,7 +842,7 @@ class TradeSimulator(AbstractTradeExecutor):
     # Limit Order Helpers
     # ============================================
 
-    def _is_limit_price_reached(self, pending: PendingOrder) -> bool:
+    def _is_limit_price_reached(self, pending: PendingOrder, resting: bool) -> bool:
         """
         Check if current tick price has reached the limit price.
 
@@ -840,8 +850,13 @@ class TradeSimulator(AbstractTradeExecutor):
         disagreed with the backtest about when an order fills would predict nothing. What stays
         here is the executor's own bookkeeping: no tick yet, or a tick for another symbol.
 
+        A public trade counts as evidence only for a limit that already rests (#605). On its
+        arrival the trade the tick carries printed before the order stood in the book, so only
+        the quote decides there, as at a stop-limit's conversion.
+
         Args:
             pending: Limit order with entry_price = limit price
+            resting: True for a limit that stood in the book before this tick, False on arrival
 
         Returns:
             True if limit price is reached (order should fill)
@@ -849,9 +864,13 @@ class TradeSimulator(AbstractTradeExecutor):
         if not self._current_tick or pending.symbol != self._current_tick.symbol:
             return False
 
+        if not resting:
+            return is_limit_reached(
+                pending.direction, pending.entry_price,
+                self._current_tick.bid, self._current_tick.ask, None, LimitFillEvidence.QUOTE)
         return is_limit_reached(
             pending.direction, pending.entry_price,
-            self._current_tick.bid, self._current_tick.ask)
+            self._current_tick.bid, self._current_tick.ask, self._current_tick.last, self._limit_fill_evidence)
 
     def _is_stop_price_reached(self, pending: PendingOrder) -> bool:
         """
@@ -872,7 +891,7 @@ class TradeSimulator(AbstractTradeExecutor):
 
         return is_stop_reached(
             pending.direction, pending.entry_price,
-            self._current_tick.bid, self._current_tick.ask)
+            self._current_tick.bid, self._current_tick.ask, self._current_tick.last, self._stop_trigger_basis)
 
     def _convert_stop_limit_to_limit(self, pending: PendingOrder) -> None:
         """
@@ -887,8 +906,11 @@ class TradeSimulator(AbstractTradeExecutor):
         """
         limit_price = pending.order_kwargs.get('limit_price', 0)
         # Decided before the order changes, so the events below still carry the stop price
+        # The quote alone at the conversion (#605): a limit the book already crosses fills now, as a
+        # taker. A public trade counts only from the next tick on, for a limit that actually rests
         fills_now = is_limit_reached(
-            pending.direction, limit_price, self._current_tick.bid, self._current_tick.ask)
+            pending.direction, limit_price, self._current_tick.bid, self._current_tick.ask,
+            None, LimitFillEvidence.QUOTE)
         if fills_now:
             # The limit fills in this pass: the market overtook a request on its way
             self._record_overtaken_operation(pending)

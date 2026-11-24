@@ -21,30 +21,47 @@ Pure offline — the simulator is constructed directly. No credentials, no HTTP,
 """
 
 from datetime import datetime, timezone
+from typing import Optional
 
 import pytest
 
 from python.framework.trading_env.adapters.dry_run_simulator import DryRunOrderSimulator
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
 from python.framework.types.market_types.market_data_types import TickData
-from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
+from python.framework.types.trading_env_types.order_types import (
+    LimitFillEvidence,
+    OrderDirection,
+    OrderType,
+    StopTriggerBasis,
+)
 
 _TS = datetime(2026, 9, 9, 12, 0, tzinfo=timezone.utc)
 _SYMBOL = 'ETHUSD'
 
 
-def _market(bid: float, ask: float) -> TickData:
+def _market(bid: float, ask: float, last: Optional[float] = None) -> TickData:
     """
     One market observation.
 
     Args:
         bid: Bid price
         ask: Ask price
+        last: The traded price, None for a tick that carries none
 
     Returns:
         A TickData carrying that quote
     """
-    return TickData(timestamp=_TS, symbol=_SYMBOL, bid=bid, ask=ask)
+    return TickData(timestamp=_TS, symbol=_SYMBOL, bid=bid, ask=ask, last=last)
+
+
+def _quote_rule_simulator() -> DryRunOrderSimulator:
+    """A dry-run simulator of a venue whose resting orders read the quote — the rule these cases pin."""
+    return DryRunOrderSimulator(stop_trigger_basis=StopTriggerBasis.BID_ASK, limit_fill_evidence=LimitFillEvidence.QUOTE)
+
+
+def _trade_rule_simulator() -> DryRunOrderSimulator:
+    """A dry-run simulator of a venue that decides on its trades, as Kraken declares (#605)."""
+    return DryRunOrderSimulator(stop_trigger_basis=StopTriggerBasis.LAST, limit_fill_evidence=LimitFillEvidence.PUBLIC_TRADE)
 
 
 def _submit(sim, order_type, direction=OrderDirection.LONG, *,
@@ -95,7 +112,7 @@ class TestAMarketOrderFillsAtARealPrice:
     """The case that produced `0.0` — a fill price nobody chose."""
 
     def test_a_buy_fills_at_the_ask(self):
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
         submit = _submit(sim, OrderType.MARKET)
 
         response = _poll(sim, submit.broker_ref, _market(bid=3999.0, ask=4001.0), times=2)
@@ -104,7 +121,7 @@ class TestAMarketOrderFillsAtARealPrice:
         assert response.fill_price == pytest.approx(4001.0), 'a buy pays the ask'
 
     def test_a_sell_fills_at_the_bid(self):
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
         submit = _submit(sim, OrderType.MARKET, OrderDirection.SHORT)
 
         response = _poll(sim, submit.broker_ref, _market(bid=3999.0, ask=4001.0), times=2)
@@ -122,7 +139,7 @@ class TestAMarketOrderFillsAtARealPrice:
         construction — with `poll_interval_ms = 5000` there are seconds between the two, which
         on crypto is a real distance.
         """
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
         submit = _submit(sim, OrderType.MARKET)
         _poll(sim, submit.broker_ref, _market(bid=3999.0, ask=4001.0), times=1)
 
@@ -138,7 +155,7 @@ class TestARestingOrderWaitsForItsPrice:
     """
 
     def test_a_buy_limit_the_market_never_reaches_never_fills(self):
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
         submit = _submit(sim, OrderType.LIMIT, limit_price=3900.0)
 
         response = _poll(sim, submit.broker_ref, _market(bid=3999.0, ask=4001.0), times=20)
@@ -147,7 +164,7 @@ class TestARestingOrderWaitsForItsPrice:
             'twenty polls is ~100 s of event loop — a limit 100 below the ask must still wait')
 
     def test_a_buy_limit_fills_once_the_ask_comes_down_to_it(self):
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
         submit = _submit(sim, OrderType.LIMIT, limit_price=3900.0)
         _poll(sim, submit.broker_ref, _market(bid=3999.0, ask=4001.0), times=5)
 
@@ -157,7 +174,7 @@ class TestARestingOrderWaitsForItsPrice:
         assert response.fill_price == pytest.approx(3900.0), 'a limit fills at its own price'
 
     def test_a_sell_stop_whose_trigger_is_never_crossed_never_fills(self):
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
         submit = _submit(sim, OrderType.STOP, OrderDirection.SHORT, trigger_price=3500.0)
 
         response = _poll(sim, submit.broker_ref, _market(bid=3999.0, ask=4001.0), times=20)
@@ -175,7 +192,7 @@ class TestARestingOrderWaitsForItsPrice:
         (`trade_simulator.py:228-238`). Filling at the trigger flattered every stop by exactly
         the distance the market had moved through it — on a gap, by the whole gap.
         """
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
         submit = _submit(sim, OrderType.STOP, OrderDirection.SHORT, trigger_price=3500.0)
         _poll(sim, submit.broker_ref, _market(bid=3999.0, ask=4001.0), times=5)
 
@@ -196,7 +213,7 @@ class TestARestingOrderWaitsForItsPrice:
         A SELL limit fills when the bid is at or ABOVE it (selling higher than your limit is
         welcome), so the window that waits is a bid BELOW the limit.
         """
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
         submit = _submit(sim, OrderType.STOP_LIMIT, OrderDirection.SHORT,
                          trigger_price=3500.0, limit_price=3450.0)
         _poll(sim, submit.broker_ref, _market(bid=3999.0, ask=4001.0), times=3)
@@ -209,7 +226,7 @@ class TestARestingOrderWaitsForItsPrice:
             'a stop-limit and the thing a rehearsal must not hide')
 
     def test_a_stop_limit_fills_at_its_limit_once_triggered(self):
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
         submit = _submit(sim, OrderType.STOP_LIMIT, OrderDirection.SHORT,
                          trigger_price=3500.0, limit_price=3450.0)
         _poll(sim, submit.broker_ref, _market(bid=3999.0, ask=4001.0), times=3)
@@ -228,7 +245,7 @@ class TestWhatItCannotDecideItRefuses:
     """
 
     def test_no_market_price_means_no_fill(self):
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
         submit = _submit(sim, OrderType.MARKET)
 
         response = _poll(sim, submit.broker_ref, None, times=10)
@@ -237,7 +254,7 @@ class TestWhatItCannotDecideItRefuses:
         assert response.fill_price is None, 'never invent a price'
 
     def test_the_refusal_carries_its_reason(self):
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
         submit = _submit(sim, OrderType.MARKET)
 
         response = _poll(sim, submit.broker_ref, None, times=2)
@@ -249,7 +266,7 @@ class TestWhatItCannotDecideItRefuses:
         Nothing in this project models a trailing stop's venue-side behaviour. Inventing one
         here would be a second, unvalidated answer.
         """
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
         submit = _submit(sim, OrderType.TRAILING_STOP, OrderDirection.SHORT,
                          trigger_price=3500.0)
 
@@ -264,7 +281,7 @@ class TestWhatItCannotDecideItRefuses:
         boot adoption (#355) puts a DRYRUN-* ref from a previous session into the shadow book,
         and the old code answered any unknown ref FILLED — with no price, and it got booked.
         """
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
 
         response = sim.query('DRYRUN-424242', _TS, market=_market(3999.0, 4001.0))
 
@@ -276,7 +293,7 @@ class TestTheLifecycleShapeIsUnchanged:
     """What already worked and must keep working — the reason this class exists at all."""
 
     def test_a_submit_is_pending_with_a_synthetic_ref(self):
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
 
         response = _submit(sim, OrderType.MARKET)
 
@@ -284,13 +301,13 @@ class TestTheLifecycleShapeIsUnchanged:
         assert response.broker_ref.startswith('DRYRUN-')
 
     def test_refs_do_not_collide(self):
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
         refs = {_submit(sim, OrderType.MARKET).broker_ref for _ in range(5)}
 
         assert len(refs) == 5
 
     def test_cancel_is_idempotent(self):
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
         submit = _submit(sim, OrderType.LIMIT, limit_price=3900.0)
 
         first = sim.cancel(submit.broker_ref, _TS)
@@ -301,7 +318,7 @@ class TestTheLifecycleShapeIsUnchanged:
 
     def test_an_amend_keeps_the_same_ref_and_moves_the_limit(self):
         """Kraken AmendOrder is in-place — the ref survives, which the executor relies on."""
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
         submit = _submit(sim, OrderType.LIMIT, limit_price=3900.0)
 
         amended = sim.modify(submit.broker_ref, _TS, new_limit_price=4001.0)
@@ -317,7 +334,7 @@ class TestTheLifecycleShapeIsUnchanged:
         the trigger, and an amended trigger never arrived at all — so a rehearsal kept
         watching the old level while our books showed the new one.
         """
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
         submit = _submit(sim, OrderType.STOP_LIMIT, OrderDirection.SHORT,
                          trigger_price=3500.0, limit_price=3450.0)
 
@@ -337,7 +354,7 @@ class TestTheLifecycleShapeIsUnchanged:
         legacy behaviour callers depend on. It applies to a ref we ISSUED and filled, never
         to one we have never seen.
         """
-        sim = DryRunOrderSimulator()
+        sim = _quote_rule_simulator()
         submit = _submit(sim, OrderType.MARKET)
         _poll(sim, submit.broker_ref, _market(3999.0, 4001.0), times=2)
 
@@ -345,3 +362,68 @@ class TestTheLifecycleShapeIsUnchanged:
 
         assert again.status == BrokerOrderStatus.FILLED
         assert again.undecided_reason is None
+
+
+class TestAVenueThatTradesIsRehearsedOnItsTrades:
+    """
+    #605: a dry run of a venue that decides on its trades fires and fills where the backtest does —
+    the rehearsal and the backtest read one predicate with one declared rule.
+    """
+
+    def test_a_resting_buy_limit_fills_on_a_trade_through_its_price(self):
+        sim = _trade_rule_simulator()
+        submit = _submit(sim, OrderType.LIMIT, limit_price=3999.0)
+
+        at_it = _poll(sim, submit.broker_ref, _market(bid=3998.0, ask=4001.0, last=3999.0), times=3)
+        through = _poll(sim, submit.broker_ref, _market(bid=3998.0, ask=4001.0, last=3998.5), times=3)
+
+        assert at_it.status == BrokerOrderStatus.PENDING, 'a trade at the limit fills the queue ahead'
+        assert through.status == BrokerOrderStatus.FILLED, 'a seller sold below the limit'
+        assert through.fill_price == pytest.approx(3999.0), 'a limit fills at its own price'
+
+    def test_the_same_tick_leaves_it_resting_on_the_quote_rule(self):
+        sim = _quote_rule_simulator()
+        submit = _submit(sim, OrderType.LIMIT, limit_price=3999.0)
+
+        response = _poll(sim, submit.broker_ref, _market(bid=3998.0, ask=4001.0, last=3998.5), times=3)
+
+        assert response.status == BrokerOrderStatus.PENDING, 'the ask never came down to it'
+
+    def test_a_sell_stop_waits_for_the_trade_while_the_bid_is_below_it(self):
+        sim = _trade_rule_simulator()
+        submit = _submit(sim, OrderType.STOP, OrderDirection.SHORT, trigger_price=3999.5)
+
+        waiting = _poll(sim, submit.broker_ref, _market(bid=3999.0, ask=4001.0, last=4000.0), times=3)
+        fired = _poll(sim, submit.broker_ref, _market(bid=3998.0, ask=4000.0, last=3999.5), times=3)
+
+        assert waiting.status == BrokerOrderStatus.PENDING, 'the last trade is above the stop'
+        assert fired.status == BrokerOrderStatus.FILLED
+        assert fired.fill_price == pytest.approx(3998.0), 'a triggered stop sells at the bid'
+
+    def test_a_limit_is_decided_on_the_quote_on_the_poll_it_arrives(self):
+        """The trade that poll sees printed before the limit stood in the book, as in the backtest."""
+        sim = _trade_rule_simulator()
+        submit = _submit(sim, OrderType.LIMIT, limit_price=3999.0)
+        through = _market(bid=3998.0, ask=4001.0, last=3998.5)
+
+        arriving = _poll(sim, submit.broker_ref, through, times=2)
+        resting = _poll(sim, submit.broker_ref, through)
+
+        assert arriving.status == BrokerOrderStatus.PENDING, 'only the quote decides on arrival'
+        assert resting.status == BrokerOrderStatus.FILLED, 'from the next poll on the trade counts'
+        assert resting.fill_price == pytest.approx(3999.0)
+
+    def test_a_stop_limits_limit_is_decided_on_the_quote_on_the_poll_its_stop_fires(self):
+        sim = _trade_rule_simulator()
+        submit = _submit(sim, OrderType.STOP_LIMIT, OrderDirection.SHORT,
+                         trigger_price=3999.5, limit_price=3999.0)
+        _poll(sim, submit.broker_ref, _market(bid=3999.0, ask=4001.0, last=4000.0), times=2)
+        # A trade at 3999.5 fires the stop, and lies above the sell limit placed by it
+        fires = _market(bid=3998.0, ask=4000.0, last=3999.5)
+
+        fired = _poll(sim, submit.broker_ref, fires)
+        resting = _poll(sim, submit.broker_ref, fires)
+
+        assert fired.status == BrokerOrderStatus.PENDING, 'the limit is placed now: the quote decides'
+        assert resting.status == BrokerOrderStatus.FILLED
+        assert resting.fill_price == pytest.approx(3999.0), 'a limit fills at its own price'

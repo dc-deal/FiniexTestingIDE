@@ -84,6 +84,47 @@ Two prices exist once a venue has a spread, and the difference is not cosmetic.
 | **Valuation** — equity, drawdown, the circuit breaker, the mark price | `tick.mid` | Marking a position to the last print is one-sided by construction — the print is the ask on a buy — and it is the easiest number on an exchange to push. Every venue and every risk system marks to the midpoint |
 | **Slippage baseline** — what a fill is measured against | `tick.mid` | A benchmark has to be neutral between the two sides |
 | **Fills** | `bid` / `ask` | A buy pays the ask and a sell receives the bid, unchanged |
+| **Resting orders** — when a stop fires, when a resting limit is met | the venue's declared rule | A venue that prints trades decides on them; one that does not, on the quote. See below |
+
+### When a stop fires and a resting limit is met
+
+The venue decides, and it declares how on its adapter's `OrderCapabilities`: `stop_trigger_basis`
+(`last` or `bid_ask`) and `limit_fill_evidence` (`public_trade` or `quote`). The simulation executor
+and the dry-run simulator read the declaration once and hand it to the one predicate module,
+`utils/trading_math/price_trigger.py`, with every tick's traded price — so a backtest and a
+rehearsal fire and fill where the venue would.
+
+```
+quote 49,994 / 49,996 · last trade 50,000
+a long's stop loss 49,995    bid_ask: fires — the bid 49,994 is below it
+                             last:    not yet — fires once a trade prints at or below 49,995
+resting buy limit 49,990     quote:        filled once the ask falls to 49,990
+                             public_trade: also filled once a trade prints below 49,990
+```
+
+- **Kraken declares `last` and `public_trade`**, from its own documentation (read 2026-11-24): its
+  stop's `trigger` defaults to the last price, and its central limit order book matches by price and
+  time. A trade only AT a limit's price fills the orders queued before it, and on a market whose
+  spread is one tick most of the time — Kraken BTCUSD's is on 92 % of its ticks — that queue is long.
+  So only a trade THROUGH the price proves the order was met, and the backtest errs the cautious way.
+- **MT5 declares `bid_ask` and `quote`**, provisionally from MetaQuotes' own documentation (read
+  2026-11-24); #209 measures it on a demo account. Its forex ticks carry no traded price at all.
+- **Without a traded price the quote decides, whatever is declared.** That is every MT5 tick.
+- **A Kraken tick recorded before collector format 1.6.0 carries its trade as its quote** (bid = ask
+  = the trade), so there the trade decides, as on every other Kraken tick: its quote at a limit is
+  a trade AT it, which fills the queue ahead, and the limit waits for a trade through it. Where that
+  quote is modelled around the trade (the modelled quote, on by default), the same holds: a stop
+  fires once a trade reaches it, half a modelled spread after the modelled bid or ask would have,
+  and a limit fills on a trade through it before the modelled quote reaches it. A backtest of that
+  history therefore moves with the venue's rule, the way Kraken would have filled.
+- **The quote crossing a limit fills it under both rules** — a book that crosses the order would
+  have matched it. A limit arriving at the venue, and a stop-limit's limit at the instant its stop
+  fires, are judged on the quote alone, as a taker: the trade that tick carries printed before the
+  order stood in the book. A public trade counts from the next tick, for a limit that actually
+  rests. The dry run does the same, poll by poll.
+- **A triggered stop fills at the market either way**, on the quote.
+- **What a strategy keeps itself** — `own_exit_levels`, a level it closes at market — reads the
+  quote: that is the strategy's reading of the price, not an order the venue holds.
 
 **The fill row IS the cost model for a quote-driven venue, and that connection has to be stated
 here or it gets made twice.** A dealer's revenue is the spread; crossing it on entry and again on

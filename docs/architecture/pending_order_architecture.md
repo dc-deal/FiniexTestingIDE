@@ -141,6 +141,13 @@ the last tick (#460). See
 **Trigger logic (checked against every tick, `_monitor_price_triggers`):**
 - LONG: `ask <= limit_price` — price dropped to limit, favorable entry
 - SHORT: `bid >= limit_price` — price rose to limit, favorable entry
+- And on a venue whose `limit_fill_evidence` is `public_trade` (Kraken): a public trade THROUGH the
+  limit fills it too — LONG `last < limit_price`, SHORT `last > limit_price` — while the quote may
+  still stand away. A trade only at the limit does not. A tick with no traded price is judged on the
+  quote, a tick whose quote is its trade (bid = ask) on the trade alone. The trade counts only for a
+  limit already resting: the check on arrival and a stop-limit's
+  conversion read the quote alone. The venue's rule:
+  [market model](market_model.md#when-a-stop-fires-and-a-resting-limit-is-met)
 
 **Fill behavior:**
 - Fill at `limit_price` (not current tick — guaranteed fill at requested price)
@@ -171,6 +178,9 @@ price. Shadow state correctness depends on #151 (Reconciliation).
 **Trigger logic (checked against every tick, after the limits, `_monitor_price_triggers`):**
 - LONG: `ask >= stop_price` — breakout upward, enter long
 - SHORT: `bid <= stop_price` — breakout downward, enter short
+- On a venue whose `stop_trigger_basis` is `last` (Kraken) the last traded price decides instead —
+  LONG `last >= stop_price`, SHORT `last <= stop_price` — wherever the tick carries one. A triggered
+  STOP_LIMIT's limit is judged on the quote at the instant it is placed, as a taker
 
 **Fill behavior by order type:**
 

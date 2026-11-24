@@ -103,6 +103,10 @@ kraken_spot, so a dry run reported a stop that had fired at zero.
 | `TestARestingOrderWaitsForItsPrice` | a limit or stop the market never reaches never fills, twenty polls or not; a triggered stop fills at the MARKET rather than at its trigger; and a stop-limit the market gapped past never fills at all, which is the real risk of one |
 | `TestWhatItCannotDecideItRefuses` | no quote, an order type nothing models, or a reference it never issued → PENDING plus a reason, never an invented price |
 | `TestTheLifecycleShapeIsUnchanged` | the ref format, non-colliding refs, idempotent cancel, in-place amend, and a re-query after the fill still reading FILLED |
+| `TestAVenueThatTradesIsRehearsedOnItsTrades` (#605) | on Kraken's declared rule a resting buy limit fills on a trade THROUGH its price and not on one at it, the same tick leaves it resting on the quote's rule, and a sell stop waits for a trade at it while the bid is already below; on the poll a limit arrives, and on the poll a stop-limit's stop fires, only the quote decides its limit, and from the next poll on the trade counts |
+
+The simulator is built with its venue's rule (`stop_trigger_basis`, `limit_fill_evidence`) — the
+Kraken adapter hands it its own declaration — and the cases above build it on the quote's rule.
 
 Neither the comparison nor the book side is duplicated here: both live in
 `utils/trading_math/price_trigger.py`, the same module the backtest uses, so a dry run and a

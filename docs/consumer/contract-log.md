@@ -33,6 +33,24 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 68 — 2026-11-24 (#605)
+
+A broker row says how its venue decides a resting order — the price that fires a stop, and what
+proves a resting limit filled — because the backtest and a dry run now simulate stops and limits
+that way.
+
+- [Broker](/api/v1/docs/broker): **`stop_trigger_basis`** (new) — `last`, the last traded price
+  (Kraken), or `bid_ask`, the quote: a sell stop on the bid, a buy stop on the ask (MT5).
+- [Broker](/api/v1/docs/broker): **`limit_fill_evidence`** (new) — `public_trade`, a public trade
+  through the limit's price, or `quote`, only the quote crossing it. The quote crossing a limit
+  fills it under both.
+
+**A row recorded before this contract** carries neither: null. Kraken data recorded before the
+collector kept the quote (before format 1.6.0) carries the trade as its quote; there stops and limits
+now follow the trade, as Kraken's do, so a backtest of that data can move.
+
+Two fields added; nothing changed or removed.
+
 ## Version 67 — 2026-11-23 (#529)
 
 How long each of the five deepest drawdown periods took, the five over a deployment, and the
@@ -93,31 +111,13 @@ The machine view says how much room is left under an AutoTrader session's record
 
 One field and its key added; nothing changed or removed.
 
-## Version 63 — 2026-11-22 (#627)
-
-A spot position whose holding an operator sold outside the bot — by hand at the venue while the bot
-was down — can now end: a start declared so books it as closed.
-
-- [Trade history](/api/v1/docs/trade-history): **`close_reason: closed_externally`** (new value) —
-  such a close. It is booked at the entry price, so its gross P&L is zero and its net P&L the entry
-  fee; the sale itself happened outside every record of the bot.
-- [Trade history](/api/v1/docs/trade-history): **`exit_observed`** on a trade row (new) — false for
-  such a close, whose exit price and P&L are therefore not measured; true on every other trade and
-  on every row recorded before this contract.
-- [Trade history](/api/v1/docs/trade-history): **`external_closes`** in the trade totals (new) —
-  how many trades were closed that way. `manual_closes` no longer counts them.
-- [Runs](/api/v1/docs/runs): **`origin.book_closed_externally`** in the run header (new) — the
-  position notes the start was told were closed outside the bot, as typed; empty when none. The
-  start books only what the venue confirms, so a name here is not proof that it booked anything.
-
-Two fields, one count and one value added; one count narrowed; nothing removed.
-
-## Versions 62 and earlier
+## Versions 63 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 63** — 2026-11-22 (#627): A spot position whose holding an operator sold outside the bot can end, booked as closed — `close_reason: closed_externally` (new value) and `exit_observed` (new) on [trade history](/api/v1/docs/trade-history), `external_closes` in its trade totals (with `manual_closes` no longer counting them), `origin.book_closed_externally` in the [run](/api/v1/docs/runs) header.
 - **Version 62** — 2026-11-21 (#499): A session whose start found orders of another owner on its own instrument, on an account declared exclusive, starts and holds its entries — `rejection_reason: entries_held` and `end_reason: entries_held` (new values) on [order history](/api/v1/docs/order-history) and [order events](/api/v1/docs/order-events), `exclusivity_violated_at` (new) on a session row of [deployments](/api/v1/docs/deployments) and on a [sweep](/api/v1/docs/sweeps) combination; a row with `logic_version` 22 or older reads it null.
 - **Version 61** — 2026-11-21 (#650): A request that meets a store index another process is writing waits for it — [errors](/api/v1/docs/errors): `503 store_index_busy` (new) with `Retry-After`, on every route that reads a store index, where a bare `500` used to come.
 - **Version 60** — 2026-11-20 (#647): Coverage and the scenario details say whose data was there and whose was read — `origin_classes` and `collected_since` (new) on a symbol's coverage in [market data](/api/v1/docs/market-data), `origin_classes` (new) on each entry of `data_brokers` in the [scenario details](/api/v1/docs/scenario-details).

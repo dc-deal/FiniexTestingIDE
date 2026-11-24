@@ -235,6 +235,8 @@ export_github_issues.sh
 _audits/
 # Internal documents kept for the record.
 _internal_archive/
+# Each issue's cut and what its check found, and the ledger of what every part measured.
+_issue_briefs/
 # Foreign trading strategies kept for study — not project code.
 _external_algos/
 

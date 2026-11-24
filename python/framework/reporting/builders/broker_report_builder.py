@@ -88,6 +88,7 @@ def _to_broker_row(
     """
     spec = broker_config.get_broker_specification()
     broker_type = broker_config.broker_type.value
+    capabilities = broker_config.get_order_capabilities()
     return BrokerInfoRow(
         broker_type=broker_type,
         market_type=market_config.get_market_type(broker_type).value,
@@ -103,8 +104,10 @@ def _to_broker_row(
         broker_config_id=broker_config.get_frozen_config_id(),
         scenarios=scenarios,
         symbols=[_to_symbol_row(broker_config.get_symbol_specification(s)) for s in symbols],
-        fee_report=broker_config.get_order_capabilities().fee_report,
+        fee_report=capabilities.fee_report,
         venue_fee_expected=venue_fee_expected,
+        stop_trigger_basis=capabilities.stop_trigger_basis,
+        limit_fill_evidence=capabilities.limit_fill_evidence,
     )
 
 

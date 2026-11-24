@@ -44,12 +44,14 @@ from python.framework.types.trading_env_types.broker_types import (
 )
 from python.framework.types.trading_env_types.order_types import (
     FeeReport,
+    LimitFillEvidence,
     LimitOrder,
     MarketOrder,
     OrderCapabilities,
     OrderDirection,
     OrderSide,
     OrderType,
+    StopTriggerBasis,
 )
 from python.framework.utils.trading_math.price_trigger import taken_price
 
@@ -260,6 +262,15 @@ class MockBrokerAdapter(AbstractAdapter):
             # fee model charges one per fill at all; a spread broker's does not (#508).
             fee_report=(FeeReport.STATUS_ANSWER if self._charges_fee_per_fill()
                         else FeeReport.NOT_REPORTED),
+            # The rule of the venue it stands in for (#605) — Kraken's for a kraken_spot profile,
+            # held equal to KrakenAdapter's by a test — so what a mock session's broker report
+            # says matches the venue it rehearses. It carries market orders only, so no fill on
+            # it reads the rule.
+            stop_trigger_basis=(StopTriggerBasis.LAST if self._broker_type is BrokerType.KRAKEN_SPOT
+                                else StopTriggerBasis.BID_ASK),
+            limit_fill_evidence=(LimitFillEvidence.PUBLIC_TRADE
+                                 if self._broker_type is BrokerType.KRAKEN_SPOT
+                                 else LimitFillEvidence.QUOTE),
             # It stands in for Kraken, whose API holds no level for a position (#625).
             offered_order_features=frozenset(),
         )
