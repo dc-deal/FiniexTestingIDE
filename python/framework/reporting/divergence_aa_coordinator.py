@@ -14,10 +14,6 @@ and each run's header says which code ran. The record lies in the divergence sto
 """
 
 import json
-import os
-import re
-import subprocess
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -71,18 +67,13 @@ from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.scenario_types.recorded_scenario_types import RecordedScenarioInputs
 from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.git_info_utils import get_framework_root, get_git_info
+from python.framework.utils.tree_backtest_utils import (
+    RAN_EXIT_CODES,
+    STRATEGY_RUNNER,
+    error_lines,
+    run_backtest_in_tree,
+)
 from python.framework.validators.divergence_aa_validator import judge_aa_window
-
-# The backtest command each stand runs, relative to its tree
-_STRATEGY_RUNNER = Path('python') / 'cli' / 'strategy_runner_cli.py'
-# A backtest that finished with logged errors still computed its events (exit 3); any other
-# non-zero exit means it did not run
-_RAN_EXIT_CODES = (0, 3)
-# The console's colour codes, removed from a failed run's lines before they are quoted
-_ANSI = re.compile(r'\x1b\[[0-9;]*m')
-# How many of a failed run's error lines a refusal quotes
-_ERROR_LINES_QUOTED = 3
-
 
 class DivergenceAaCoordinator:
     """
@@ -229,16 +220,11 @@ class DivergenceAaCoordinator:
         Returns:
             (the stand as it ran, (its scenario's order events, its trades))
         """
-        tree = Path(run.tree)
-        environment = {**os.environ, 'FINIEX_DATA_HOME': str(home),
-                       'PYTHONPATH': f'{tree}{os.pathsep}{home}'}
-        completed = subprocess.run(
-            [sys.executable, str(_STRATEGY_RUNNER), 'run', str(set_path)],
-            cwd=tree, env=environment, capture_output=True, text=True, check=False)
-        if completed.returncode not in _RAN_EXIT_CODES:
+        completed = run_backtest_in_tree(Path(run.tree), home, set_path)
+        if completed.returncode not in RAN_EXIT_CODES:
             return run.model_copy(update={'failed_because': (
                 f'its backtest ended with exit code {completed.returncode}: '
-                f'{_error_lines(completed.stdout + completed.stderr)}')}), ([], [])
+                f'{error_lines(completed.stdout + completed.stderr)}')}), ([], [])
         run_id = newest_run_named(run.scenario_set_name)
         if run_id is None:
             return run.model_copy(update={
@@ -351,8 +337,8 @@ def aa_refusal(home: Optional[Path], release_tree: Path, commits: List[str],
     if (home / 'python').exists():
         return (f'the data home {home} holds a python/ directory: on the release\'s import path '
                 f'its modules would mix into the release\'s own — use a data home without code')
-    if not (release_tree / _STRATEGY_RUNNER).is_file():
-        return f'the release tree {release_tree} holds no {_STRATEGY_RUNNER}'
+    if not (release_tree / STRATEGY_RUNNER).is_file():
+        return f'the release tree {release_tree} holds no {STRATEGY_RUNNER}'
     if get_framework_root() is None:
         return 'the current tree is no repository, so nobody can say which code it is'
     if len(commits) != 1:
@@ -363,19 +349,3 @@ def aa_refusal(home: Optional[Path], release_tree: Path, commits: List[str],
         return 'the deployment has no segment to take its strategy and account from'
     return ''
 
-
-def _error_lines(output: str) -> str:
-    """
-    The lines a failed backtest named its errors in, to quote in its refusal.
-
-    Args:
-        output: What the backtest printed
-
-    Returns:
-        Its last lines naming an error — the batch's summary names the cause last — or its last
-        lines where none does
-    """
-    lines = [' '.join(_ANSI.sub('', line).split()) for line in output.splitlines()]
-    lines = [line for line in lines if line]
-    errors = [line for line in lines if line.startswith('Error:')]
-    return ' · '.join((errors or lines)[-_ERROR_LINES_QUOTED:])

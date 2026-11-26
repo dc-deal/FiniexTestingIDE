@@ -988,6 +988,32 @@ Kept beside the comparisons as `aa_report.json` and `aa_report.txt`.
 
 Exit codes: `0` every window identical · `2` refused, or a window not checked · `3` a window differs.
 
+### 🔀 Behaviour Comparison — one fixed backtest on two code stands
+
+| | |
+|---|---|
+| **VS Code** | `🔀 Behaviour Comparison: compare (prompt)` |
+| **CLI** | `python python/cli/behaviour_comparison_cli.py compare --scenario-set <path> --old-framework <rev> --new-framework <rev>` |
+| **Purpose** | Run the same scenario set on the code that runs now and on the code to be deployed, each from a throwaway tree and a scratch data home, and say whether both ran on their own code (#641) |
+
+What it does and what it does not do yet:
+[Comparing Two Code Stands Before a Deploy](user_guides/behaviour_comparison_guide.md).
+
+| Option | Meaning |
+|---|---|
+| `--scenario-set <path>` | The scenario set both stands run, as a file path |
+| `--old-framework <rev>` · `--new-framework <rev>` | The framework revisions: a branch, a tag or an abbreviation |
+| `--framework-repo <dir>` | The framework repository; this tree's when omitted |
+| `--strategy-repo <dir>` | The strategy repository, below the data home; with it, `--old-strategy` and `--new-strategy` |
+
+A change to the framework's documents and tests only ends the comparison before it builds anything;
+every change of a strategy repository runs, because its layout is its author's. Nothing of the data
+home it runs on is written; each stand's folder is removed when the comparison ends.
+
+Exit codes: `0` ended as intended (nothing executable changed, or both stands ran on their own
+code) · `2` refused, or a stand could not be built, ran no backtest or loaded other code · `1` an
+error · `130` interrupted.
+
 ---
 
 ## G) Technical Tools (Advanced)
@@ -1149,6 +1175,7 @@ logged the moment it finishes.
 | **Profile Run (directory)** | `🔬 Generator-Profile Run: volatility_split/ folder` | `strategy_runner_cli.py run <config>.json --generator-profile <dir>` |
 | **Live against backtest** | `🔀 Divergence Report: compare (prompt)` | `divergence_report_cli.py compare --deployment <id> --decision-timeframe D1 [--records <copy>]` |
 | **Release against this tree** | `🔀 Divergence Report: aa (prompt)` | `divergence_report_cli.py aa --deployment <id> --release-tree <dir> --window <start>,<end>` |
+| **Two code stands** | `🔀 Behaviour Comparison: compare (prompt)` | `behaviour_comparison_cli.py compare --scenario-set <path> --old-framework <rev> --new-framework <rev>` |
 
 ---
 

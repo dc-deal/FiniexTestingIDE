@@ -156,6 +156,14 @@ run's units failed: `success`, `partial`, `failed`. A description of two counts,
 how the run ended is its *run outcome*, which also weighs logged errors. See
 [Warnings & Errors](architecture/warnings_errors_tiers.md).
 
+**behaviour comparison** (`behaviour_comparison_cli.py compare`) — One fixed backtest run on two
+code stands — the code that runs now and the code that is to be deployed, a framework commit and a
+strategy commit each — from throwaway trees against scratch data homes, to see whether what a
+strategy does changed, not only its code. Not the *code stand* comparison of a deployment's
+sessions, which says where the code moved and not whether it mattered, and not the divergence
+report's A/A, which holds a deployment's own window on its release and on this tree. See
+[Comparing Two Code Stands Before a Deploy](user_guides/behaviour_comparison_guide.md).
+
 **booking period** — One sealed period of one run unit, bounded by the market's trading day and
 numbered from 1; the ledger holds one row per booking period, in its account's currency. Every
 trading day of the market calendar has one, a day without a tick included (`tick_count` 0). In code

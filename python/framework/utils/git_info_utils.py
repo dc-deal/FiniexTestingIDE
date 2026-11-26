@@ -55,6 +55,11 @@ _LITERAL_PATHSPECS = '--literal-pathspecs'
 # on this mount, so a loaded machine still has room
 _ARCHIVE_TIMEOUT_S = 120
 
+# How long a clone or its checkout may take before it counts as hanging — a guard, not an estimate:
+# on this mount a checkout of the framework took 13–29 s alone and exceeded two minutes under the
+# load of a full suite, because it reads each loose object of the source as a file
+_CLONE_TIMEOUT_S = 600
+
 # Environment variables that are dropped before every call, for the same reason the settings are
 # pinned: `GIT_DIFF_OPTS` and `GIT_EXTERNAL_DIFF` override the rendering (measured: zero context, a
 # patch that no longer applies); `GIT_DIR`, `GIT_WORK_TREE` and their kin — set inside a git hook —
@@ -266,6 +271,97 @@ def changed_paths_since(commit: str) -> Optional[List[str]]:
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
         return None
     return [line for line in output.splitlines() if line]
+
+
+def resolve_commit(root: str, revision: str) -> Optional[str]:
+    """
+    The full hash a revision names in a repository — a branch, a tag or an abbreviation.
+
+    Args:
+        root: The repository's top-level directory
+        revision: What the caller wrote
+
+    Returns:
+        The commit's full hash; None when git is unavailable or the revision names no commit there
+    """
+    try:
+        return _checked(root, ['rev-parse', '--verify', '--quiet',
+                               f'{revision}^{{commit}}']) or None
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+
+
+def changed_paths_between(root: str, old: str, new: str) -> Optional[List[str]]:
+    """
+    The paths that differ between two commits of a repository, by name — a rename names both its
+    old and its new path, so neither side of it is lost to a classification of the paths.
+
+    Args:
+        root: The repository's top-level directory
+        old: The commit compared from
+        new: The commit compared to
+
+    Returns:
+        The repository-relative paths, empty when nothing differs; None when git is unavailable or
+        either commit is not in the repository's history
+    """
+    try:
+        output = _checked(root, ['diff', '--name-only', '--no-renames', old, new])
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    return [line for line in output.splitlines() if line]
+
+
+def clone_at_commit(source_root: str, commit: str, target: Path) -> str:
+    """
+    A checkout of one commit, made as a clone that borrows the source repository's objects.
+
+    `--shared` points the clone at the source's object store instead of copying it, so the source's
+    `.git` is never written — unlike a worktree, which registers itself there (measured 2026-11-24:
+    every file of the source's `.git` the same before and after). The clone stays readable only
+    while the source keeps the commit's objects: a commit amended away can be pruned by the
+    source's gc while a clone uses it, which is why a clone of this kind is kept for one
+    comparison and no longer.
+
+    Args:
+        source_root: The repository to clone from
+        commit: The commit to check out, detached — a full hash, as resolve_commit gives it
+        target: Where the clone is made; it must not exist yet
+
+    Returns:
+        '' when the clone stands at the commit; otherwise why it does not, in a sentence — git
+        unavailable, a step that took longer than the guard, or git's own last line of complaint
+    """
+    step = 'the clone'
+    try:
+        cloned = _git(source_root, ['clone', '--quiet', '--shared', '--no-checkout', source_root,
+                                    str(target)], timeout_s=_CLONE_TIMEOUT_S)
+        if cloned.returncode != 0:
+            return f'the clone failed: {_last_line(cloned.stderr)}'
+        step = 'the checkout'
+        checked_out = _git(str(target), ['checkout', '--quiet', '--detach', commit],
+                           timeout_s=_CLONE_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        return f'{step} took longer than {_CLONE_TIMEOUT_S} s'
+    except FileNotFoundError:
+        return 'git is not available'
+    if checked_out.returncode != 0:
+        return f'the checkout failed: {_last_line(checked_out.stderr)}'
+    return ''
+
+
+def _last_line(stderr: Optional[str]) -> str:
+    """
+    The last line git wrote to stderr, which is where it says what went wrong.
+
+    Args:
+        stderr: What git wrote; None or empty where it wrote nothing
+
+    Returns:
+        That line, stripped; 'no message' where there is none
+    """
+    lines = [line.strip() for line in (stderr or '').splitlines() if line.strip()]
+    return lines[-1] if lines else 'no message'
 
 
 def read_tree_at_commit(root: str, commit: str, directory: str,

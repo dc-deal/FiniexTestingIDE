@@ -151,6 +151,10 @@ tests/
 │   ├── static_analysis/   unit — undefined-name gate (pyflakes) over python/ + tests/; the ruff/vulture backlog tier is measured, not gated
 │   ├── cache_transparency/ unit + integration — nothing an algo sees depends on the portfolio's lazy marking: the observer
 │   │                      probe's record with the cache on and off, a session read at its tick, the read-only algo mask (#653)
+│   ├── behaviour_comparison/ unit + integration — one fixed backtest on two code stands (#641): the rule of what a run
+│   │                      does not execute held to what shipped sets load; a clone at a commit that leaves its source
+│   │                      untouched; the scratch home — caches copied, archive and workspace linked; whether each stand
+│   │                      ran on its own code; one comparison of two real commits end to end, nothing left behind
 │   ├── divergence_report/ unit + integration — a live session against a backtest of its window: the backtest built from the session's
 │   │                      record — rendered profile, frozen broker document, recorded warmup — every block declared; the live
 │   │                      side's segments, windows and trading days, each day compared or excluded with every cause; the
