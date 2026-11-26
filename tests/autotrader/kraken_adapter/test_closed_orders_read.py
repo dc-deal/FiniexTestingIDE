@@ -149,3 +149,68 @@ class TestDryRun:
         raw = adapter._do_request_closedorders(
             adapter._build_closedorders_payload(_START, _END))
         assert adapter._parse_closedorders_response(raw) == []
+
+
+class TestTheBootRead:
+    """
+    The boot read's question (#652): every order that CLOSED inside a range, to the end of the range.
+
+    Kraken filters on the open and the close time by default, so an order sent before the range and
+    filled inside it is missing; and it pages its answer, 50 orders at a time, naming the next page
+    with `cursor.next` (its reference, read 2026-11-26).
+    """
+
+    def test_the_read_filters_on_the_close_time_and_asks_for_a_cursor(self, adapter):
+        payload = adapter._build_closedorders_payload(_START, _END, close_time_only=True)
+        assert (payload['closetime'], payload['with_cursor']) == ('close', 'true')
+        assert 'ofs' not in payload, 'the offset is deprecated and must be absent with a cursor'
+
+    def test_the_resolution_read_keeps_the_default_filter(self, adapter):
+        payload = adapter._build_closedorders_payload(_START, _END, 'p5669_1')
+        assert 'closetime' not in payload and 'with_cursor' not in payload
+
+    def test_the_next_page_is_asked_for_by_its_cursor(self, adapter):
+        payload = adapter._build_closedorders_payload(_START, _END, close_time_only=True,
+                                                      cursor='abc123')
+        assert payload['cursor'] == 'abc123'
+
+    def test_the_read_follows_the_cursor_to_the_last_page(self, adapter, monkeypatch):
+        pages = [
+            {'closed': {'OA': _entry('closed', vol_exec='0.01')}, 'count': 0,
+             'cursor': {'next': 'page2'}},
+            {'closed': {'OB': _entry('closed', vol_exec='0.01', key='p5669_2')}, 'count': 0},
+        ]
+        sent = []
+        monkeypatch.setattr(adapter, '_do_request_closedorders',
+                            lambda payload: (sent.append(payload), pages[len(sent) - 1])[1])
+
+        answer = adapter.read_closed_orders(_START, _END)
+
+        assert (answer.complete, answer.pages) == (True, 2)
+        assert [order.broker_ref for order in answer.orders] == ['OA', 'OB']
+        assert 'cursor' not in sent[0] and sent[1]['cursor'] == 'page2'
+
+    def test_a_read_that_reaches_its_page_cap_is_incomplete(self, adapter, monkeypatch):
+        endless = {'closed': {'OA': _entry('closed', vol_exec='0.01')}, 'count': 0,
+                   'cursor': {'next': 'again'}}
+        monkeypatch.setattr(adapter, '_do_request_closedorders', lambda payload: endless)
+
+        answer = adapter.read_closed_orders(_START, _END)
+
+        assert answer.complete is False, 'a capped read must never read as "the range held no more"'
+        assert answer.pages > 1
+
+    def test_a_closed_order_carries_the_instant_the_venue_closed_it(self, adapter):
+        body = _entry('closed', vol_exec='0.01')
+        body['closetm'] = 1764100800.5
+        (order,) = adapter._parse_closedorders_response({'closed': {'OA': body}})
+        assert order.ts_event == datetime.fromtimestamp(1764100800.5, tz=timezone.utc)
+
+    def test_an_order_without_a_close_time_carries_none(self, adapter):
+        (order,) = adapter._parse_closedorders_response({'closed': {'OA': _entry('closed')}})
+        assert order.ts_event is None
+
+    def test_a_dry_run_read_is_one_empty_complete_page(self, adapter):
+        adapter._dry_run = True
+        answer = adapter.read_closed_orders(_START, _END)
+        assert (answer.orders, answer.complete, answer.pages) == ([], True, 1)

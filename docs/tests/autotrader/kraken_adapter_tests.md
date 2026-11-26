@@ -13,7 +13,7 @@ rarely to be the only guard on how our payloads reach the venue.
 | `test_conditional_order_payloads.py` | stop / stop-limit price semantics, both directions (#500) |
 | `test_venue_fee_report.py` | the fee in the status answer, the fee currency on every order, the declared capability (#508) |
 | `test_venue_close_time.py` | the venue's own time of a closed order in the status answer, beside our receipt (#461) |
-| `test_cancel_response_parsing.py` · `test_closed_orders_read.py` | what a cancel answer and a closed-orders read actually say (#487) |
+| `test_cancel_response_parsing.py` · `test_closed_orders_read.py` | what a cancel answer and a closed-orders read actually say (#487), and the start's paged read of everything closed since the carry-over (#652) |
 | `test_kraken_error_codes.py` | the venue's documented "not now" inside an answer is transient, every other code its answer (#598) |
 
 ## Nonce — `test_nonce.py`
@@ -140,6 +140,7 @@ our key without a txid, so for an unresolved submit — the case where no txid e
 | `TestThePayload` | the range goes out as unix seconds, an absent key sends no field, a key narrows the range, and a long key is truncated to the venue's 18 characters |
 | `TestTheAnswer` | a filled order is visible where the open pull is blind, a cancelled one is not a filled one, TWO orders can answer to one key, and an unmappable status becomes UNKNOWN rather than "still working" |
 | `TestDryRun` | in a dry run the query reaches no venue and answers nothing, rather than something |
+| `TestTheBootRead` | the start's read of everything closed since the carry-over (#652): it filters on the close time alone (`closetime=close`) and asks for a cursor, never the deprecated offset, while #487's resolution keeps the default filter; it follows `cursor.next` to the last page and reads one that reaches the page cap as incomplete; a closed order carries the instant the venue closed it (`closetm`), and a dry run is one empty, complete page |
 
 ## The fee in the status answer — `test_venue_fee_report.py`
 

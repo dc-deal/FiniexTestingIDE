@@ -73,6 +73,7 @@ from python.framework.autotrader.run_record.session_records import (
 )
 from python.framework.autotrader.run_record.state_frame_stream_opener import open_state_frame_stream
 from python.framework.autotrader.safety.boot_entry_hold import hold_entries_at_boot
+from python.framework.autotrader.safety.unbooked_fill_hold import hold_entries_over_unbooked_fills
 from python.framework.autotrader.safety.boot_premise_lifter import BootPremiseLifter
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.shutdown_status_holder import ShutdownStatusHolder
@@ -148,6 +149,7 @@ from python.framework.types.persistence_types import (
     AcceptedForeignOrders,
     AccountDrawdownCarryOver,
     BaselineKind,
+    BootReadHoldCarryOver,
     CarryOverLoad,
     ColdStartPayload,
     ConfigurationCarryOver,
@@ -358,6 +360,9 @@ class AutotraderMain:
         # #499 — what an attended start accepted when it lifted the entry hold, for the boot's
         # carry-over write; and what lifts the hold once its orders are gone
         self._accepted_foreign_orders: Optional[AcceptedForeignOrders] = None
+        # #652 — the boot read's finding that holds the entries, for every carry-over write while the
+        # hold stands; None when the start holds nothing over a fill
+        self._boot_read_hold: Optional[BootReadHoldCarryOver] = None
         # When this session's start found the declared exclusivity false — its start, ISO-8601 UTC —
         # for the risk baseline and the ledger rows; None when it found nothing
         self._exclusivity_violated_at: Optional[str] = None
@@ -742,6 +747,9 @@ class AutotraderMain:
             # exclusive: the session starts and holds its entries. Before the first carry-over write
             # below, which records what an attended start accepted.
             self._hold_entries_at_boot(attended)
+            # #652 — a fill of ours the book does not hold: the session holds its entries rather
+            # than buy it a second time. Before the first carry-over write, which records the hold
+            self._hold_entries_over_unbooked_fills(attended)
 
             # === RISK BASELINE (#356) ===
             # Built BEFORE the first carry-over write below, which now carries the record.
@@ -1145,6 +1153,26 @@ class AutotraderMain:
                 and self._executor.get_entry_holds().is_held(EntryHoldReason.BOOT_PREMISE)):
             self._boot_premise_lifter = BootPremiseLifter(
                 violation, self._executor, self._operator_alerts, self._session_logger)
+
+    def _hold_entries_over_unbooked_fills(self, attended: bool) -> None:
+        """
+        Hold the session's entries over a fill the start found that the book does not hold (#652).
+
+        Args:
+            attended: Whether a human declared they are watching this start, with a terminal
+        """
+        boot_read = self._cold_start.boot_read
+        if (boot_read is None or not boot_read.holds_entries()
+                or not isinstance(self._executor, LiveTradeExecutor)):
+            return
+        held = hold_entries_over_unbooked_fills(
+            boot_read, self._executor, attended,
+            operator_alerts=self._operator_alerts, logger=self._session_logger)
+        self._boot_read_hold = BootReadHoldCarryOver(
+            written_at_utc=boot_read.written_at.isoformat(),
+            read_from_utc=boot_read.read_from.isoformat(),
+            client_order_ids=[fill.client_order_id for fill in boot_read.get_holding_fills()],
+        ) if held else None
 
     def _check_stop_budget(self, attended: bool) -> None:
         """
@@ -2338,6 +2366,14 @@ class AutotraderMain:
                 # #499 — the orders of another owner an attended start accepted, so the next start
                 # holds nothing over them. None leaves what an earlier start accepted
                 accepted_foreign_orders=self._accepted_foreign_orders,
+                # #652 — the orders open at this write, so the next start reads back to the oldest
+                # of them; and while a hold over a fill stands, the write it was measured against.
+                # Claims about the venue, spot only, like the book
+                open_orders_at_write=(
+                    self._executor.get_open_orders_at_write()
+                    if venue and portfolio.is_spot_mode() else None),
+                write_boot_read_hold=venue,
+                boot_read_hold=self._boot_read_hold,
                 refresh_index=refresh_index,
             )
             self._replace_readings_pending = False
@@ -2423,6 +2459,11 @@ class AutotraderMain:
                                   if readings else None),
                 readings_orders_to=self._readings_stamp if readings else None,
                 replace_readings=replace,
+                # #652 — the orders still open at the end, gated as the book above is
+                open_orders_at_write=(
+                    self._executor.get_open_orders_at_write()
+                    if self._cold_start.persist_venue_claims and portfolio.is_spot_mode()
+                    else None),
             )
             self._replace_readings_pending = False
         except Exception as e:

@@ -12,6 +12,7 @@ is skipped.
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -78,6 +79,9 @@ class BrokerOrder:
             order size, not the unfilled remainder — Kraken reports `vol` and `vol_exec`
             separately — so without this a partially filled resting order looks untouched, and
             boot adoption (#355) would rebuild it at full size
+        ts_event: When the venue closed the order — its close instant for an order in a terminal
+            state (Kraken's `closetm`), named as the order-status answer names it. None for a
+            working order, and where the venue reports none
         raw: Untouched broker payload for forensic inspection
     """
     broker_ref: str
@@ -92,7 +96,27 @@ class BrokerOrder:
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     client_order_id: Optional[str] = None
+    ts_event: Optional[datetime] = None
     raw: Optional[Dict[str, Any]] = None
+
+
+@dataclass
+class ClosedOrdersRead:
+    """
+    The venue's orders that closed over a time range, read to the end of the range or not.
+
+    A venue pages this answer, and a read that stopped before the end of the range is not an
+    answer that the range held nothing more: the boot read (#652) holds its entries on it.
+
+    Args:
+        orders: The terminal orders the read returned, every page together
+        complete: True when the read reached the end of the range; False when it stopped at its
+            page cap
+        pages: How many pages the read took
+    """
+    orders: List[BrokerOrder]
+    complete: bool
+    pages: int = 1
 
 
 class ReconcileState(Enum):

@@ -248,6 +248,9 @@ class ColdStartDefaults(StrictConfigModel):
     path: str = 'data/runtime/cold_start_state'
     adoption_mode: Literal['operator_confirm', 'auto'] = 'operator_confirm'
     book_drift_interval_ticks: int = 500
+    # #652 — the margin, in seconds, around the carry-over's write that absorbs the skew between our
+    # wall clock and the venue's: a fill closed within it that nothing else explains is unclear
+    boot_read_skew_s: float = Field(5.0, ge=0.0)
 
 
 class CapitalDefaults(StrictConfigModel):

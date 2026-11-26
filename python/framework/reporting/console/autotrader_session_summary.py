@@ -129,6 +129,15 @@ class AutotraderSessionSummary:
             print(renderer.red(
                 f'  ⚠ Book shortfall: {report.book_shortfall} — the account held less than '
                 f'the restored book claimed'))
+        if report.boot_read_done:
+            # #652 — what the venue finished under our keys since the book was written
+            state = ('complete' if report.boot_read_complete
+                     else renderer.red(f'INCOMPLETE — {report.boot_read_incomplete_reason}'))
+            print(f'  Closed orders:   read from {report.boot_read_from} ({state}), '
+                  f'{report.boot_fill_count} fill(s) of ours')
+            for row in report.boot_fills:
+                print(f"    {row.fill_class}  {row.direction} {row.filled_lots} {row.symbol}  "
+                      f"ref={row.broker_ref}  closed {row.closed_at or '—'}  ({row.reason})")
         if report.skipped:
             print(f'  Left alone:      {report.skipped_count} '
                   f'({", ".join(report.skipped_reasons)})')

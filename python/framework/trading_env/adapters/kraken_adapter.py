@@ -37,7 +37,11 @@ from python.framework.exceptions.live_execution_errors import UnreadableVenueAns
 from python.framework.trading_env.adapters.kraken_error_codes import raise_for_kraken_errors
 from python.framework.types.config_types.market_config_types import BrokerTransportConfig
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
-from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
+from python.framework.types.live_types.reconciliation_types import (
+    BrokerOrder,
+    BrokerPosition,
+    ClosedOrdersRead,
+)
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import (
@@ -67,6 +71,11 @@ from .dry_run_simulator import DryRunOrderSimulator
 
 # Kraken's limit for a client order id, verified against their API docs (#355).
 _CL_ORD_ID_MAX_LEN: int = 18
+
+# How many ClosedOrders pages the boot read follows before it calls its evidence incomplete
+# (#652). A page holds up to 50 orders, so this reaches 1,000 orders closed since the last
+# carry-over write — a shared account's foreign orders count toward it.
+_CLOSED_ORDERS_PAGE_CAP: int = 20
 
 
 class KrakenAdapter(AbstractAdapter):
@@ -1208,9 +1217,7 @@ class KrakenAdapter(AbstractAdapter):
         # When the venue closed the order — Kraken's `closetm`, epoch seconds, documented on
         # QueryOrders for an order it reports closed, cancelled or expired; an open order
         # carries none (#461). The venue's time of the state, beside our receipt
-        close_seconds = float(order_info.get('closetm') or 0.0)
-        ts_event = (datetime.fromtimestamp(close_seconds, tz=timezone.utc)
-                    if close_seconds > 0.0 else None)
+        ts_event = self._close_instant(order_info)
 
         return BrokerResponse(
             broker_ref=broker_ref,
@@ -1392,6 +1399,8 @@ class KrakenAdapter(AbstractAdapter):
         start: datetime,
         end: datetime,
         client_order_id: Optional[str] = None,
+        close_time_only: bool = False,
+        cursor: Optional[str] = None,
     ) -> Dict[str, str]:
         """
         Build Kraken ClosedOrders payload. Pure.
@@ -1400,10 +1409,18 @@ class KrakenAdapter(AbstractAdapter):
         is measured to work here without a txid (2026-09-13) — which QueryOrders does NOT
         do, and that asymmetry is the reason this route exists at all.
 
+        The range filters on the open AND the close time by default (`closetime=both`:
+        start < opentm and closetm <= end), so an order sent before `start` and filled after
+        it is not in the answer. The boot read asks with `close_time_only`, which filters on
+        the close time alone (start < closetm <= end), and pages with a cursor, the way
+        Kraken's reference documents both (2026-11-26).
+
         Args:
-            start: Range start (UTC, inclusive)
+            start: Range start (UTC, exclusive)
             end: Range end (UTC, inclusive)
             client_order_id: Our wire key, when the question is about one order
+            close_time_only: Filter on the close time alone, and page with a cursor
+            cursor: The cursor the previous page answered with, for the next page
 
         Returns:
             POST data dict
@@ -1414,7 +1431,55 @@ class KrakenAdapter(AbstractAdapter):
         }
         if client_order_id:
             payload['cl_ord_id'] = str(client_order_id)[:_CL_ORD_ID_MAX_LEN]
+        if close_time_only:
+            payload['closetime'] = 'close'
+            payload['with_cursor'] = 'true'
+        if cursor:
+            payload['cursor'] = cursor
         return payload
+
+    def read_closed_orders(self, start: datetime, end: datetime) -> ClosedOrdersRead:
+        """
+        Read every order of the account that closed inside a range, page by page.
+
+        Kraken answers 50 orders a page and names the next page with `cursor.next`; the read
+        follows it until it is absent, up to a cap of pages. The whole read is one call of the
+        caller's ladder, so a page that fails fails the read, and a retry starts over — a read
+        changes nothing at the venue.
+
+        Args:
+            start: Range start (UTC, exclusive)
+            end: Range end (UTC, inclusive)
+
+        Returns:
+            The orders that closed inside the range, and whether the read reached its end
+        """
+        orders: List[BrokerOrder] = []
+        cursor: Optional[str] = None
+        for page in range(1, _CLOSED_ORDERS_PAGE_CAP + 1):
+            raw = self._do_request_closedorders(self._build_closedorders_payload(
+                start, end, close_time_only=True, cursor=cursor))
+            orders.extend(self._parse_closedorders_response(raw))
+            cursor = self._next_closedorders_cursor(raw)
+            if cursor is None:
+                return ClosedOrdersRead(orders=orders, complete=True, pages=page)
+        return ClosedOrdersRead(orders=orders, complete=False, pages=_CLOSED_ORDERS_PAGE_CAP)
+
+    def _next_closedorders_cursor(self, raw: Dict[str, Any]) -> Optional[str]:
+        """
+        The cursor of the next ClosedOrders page, when the answer names one. Pure.
+
+        Args:
+            raw: Raw Kraken result dict of one page
+
+        Returns:
+            The cursor, or None on the last page and in a dry run
+        """
+        if raw.get(self._DRY_RUN_SENTINEL) is not None:
+            return None
+        cursor_block = raw.get('cursor') or {}
+        next_cursor = cursor_block.get('next') if isinstance(cursor_block, dict) else None
+        return str(next_cursor) if next_cursor else None
 
     def _build_balance_payload(self) -> Dict[str, str]:
         """
@@ -1599,8 +1664,24 @@ class KrakenAdapter(AbstractAdapter):
             # #473 — read our own key back. Without it a resting order we placed and a
             # resting order somebody else placed are the same unknown row.
             client_order_id=info.get('cl_ord_id') or None,
+            ts_event=self._close_instant(info),
             raw=info,
         )
+
+    @staticmethod
+    def _close_instant(info: Dict[str, Any]) -> Optional[datetime]:
+        """
+        When the venue closed an order: Kraken's `closetm`, epoch seconds. Pure.
+
+        Args:
+            info: One order entry as the venue reported it
+
+        Returns:
+            The close instant in UTC, or None for an order that carries none (a working one)
+        """
+        close_seconds = float(info.get('closetm') or 0.0)
+        return (datetime.fromtimestamp(close_seconds, tz=timezone.utc)
+                if close_seconds > 0.0 else None)
 
     def _parse_closedorders_response(self, raw: Dict[str, Any]) -> List[BrokerOrder]:
         """

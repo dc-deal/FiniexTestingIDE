@@ -98,7 +98,7 @@ true — a recurrence before the all-clear keeps the episode open.
 | SESSION CRASHED while shutting down — the report may be incomplete | ⛔ |
 | The liveness ping was refused (wrong URL, deleted check) / its fail URL was refused | ⛔ / ⚠️ |
 | Safety circuit breaker — new entries blocked / cleared | ⚠️ / ✅ |
-| Entries held — the start found orders of another owner on the bot's instrument while the account is declared exclusive: the session runs, manages and closes its position and opens nothing new, its resting entries cancelled; and whether it lifts by itself or only at a start with `--attended`. Or the money record could not be written: its lines wait in memory and are written again every `storage.stream_sync_interval_s` / Entries lifted — those orders are gone, or the operator accepted them; or the kept lines are on the disk | ⛔ / ✅ |
+| Entries held — the start found orders of another owner on the bot's instrument while the account is declared exclusive: the session runs, manages and closes its position and opens nothing new, its resting entries cancelled; and whether it lifts by itself or only at a start with `--attended`. Or the money record could not be written: its lines wait in memory and are written again every `storage.stream_sync_interval_s`. Or the start found a fill of its own the book does not hold, or could not finish reading the venue's closed orders — only a start with `--attended` lifts it (*A fill the book does not hold*) / Entries lifted — those orders are gone, or the operator accepted them; or the kept lines are on the disk; or the operator lifted the hold over a fill | ⛔ / ✅ |
 | Disk low / recovered — free space on the disk of the session's stores below `storage.warn_free_gb`, naming a folder on it and its stores; recovered once it has stayed above for the all-clear period | ⚠️ / ✅ |
 | Market data stale / fresh again — including no first tick within `market_data_stale_after_s` of the loop's start, a feed that never connected | ⚠️ / ✅ |
 | A signal input stale / fresh again | ⚠️ / ✅ |
@@ -749,6 +749,43 @@ the rest, because forcing again can answer success over what the system already 
 streams — the state frames, the tick record, the diagnostics rows — stop at their first failure and
 say so once, as before. A session that ends with lines it still could not write says how many are
 lost.
+
+## A fill the book does not hold
+
+A session stopped between sending an order and its fill — killed, crashed, or a stop whose wait ran out
+— leaves the coins at the venue and nothing in its book. The supervisor starts the next session, and
+before it would have bought again: it read only the venue's open orders, and a filled order is closed.
+
+So a start on a real venue, at spot, reads the venue's closed orders since its carry-over was last
+written — the *boot read* — and files every fill of its own against the book that carry-over holds:
+
+```
+🧬 Cold start: the venue's closed orders read from 2026-12-03 23:59:53 UTC — 1 fill(s) of ours, 1 the book does not hold
+❌ Entries held: the venue filled 1 order(s) of ours that the book written at 2026-12-03 23:59:58 UTC does
+   not hold: BUY 0.001 BTCUSD (order OQX3…, closed 2026-12-03 23:59:59 UTC, unbooked_entry: it opens a
+   position the book does not hold). The session manages and closes what is its own and opens nothing new.
+```
+
+The carry-over is written after every change of the book, and it keeps the orders open at each write,
+so the read reaches back to the oldest of them: an order whose answer had not arrived, or a resting
+order the poll had not read yet, can have filled just before the write. A margin of a few seconds
+around the write (`autotrader.cold_start.boot_read_skew_s`) absorbs the difference between our clock
+and the venue's; a fill inside it that nothing else explains is filed *unclear*, and holds like an
+unbooked one. So does a read that could not finish, and so does a market order of its own the venue
+still works at the start (*in flight*): its fill may come yet. Whatever the start cannot account for,
+it never buys a second time.
+
+The session starts and holds its entries (`unbooked_fill`): it manages and closes what is its own,
+cancels its resting entries, and opens nothing new. Nothing books the fill yet, so the hold does not
+lift by itself, and a restart does not lift it either — the next start measures against the same
+write and finds the same fill. To end it:
+
+1. Read the fill in the start's cold-start record and in the venue's own order history.
+2. Reconcile the account by hand — the coins are there, the book does not know them.
+3. Start once with `--attended` and answer yes when the start asks to lift the hold.
+
+A dry run reads nothing at the venue, and a margin session does not read: its positions come back
+from the venue itself.
 
 ## After a holding was sold by hand
 

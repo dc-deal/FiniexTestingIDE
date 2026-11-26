@@ -27,6 +27,7 @@ from python.framework.trading_env.live.live_trade_executor import LiveTradeExecu
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.cold_start_types import (
     BootPremiseViolation,
+    BootRead,
     ColdStartSituation,
     ColdStartVerdict,
     CurrentConfiguration,
@@ -83,6 +84,8 @@ class ColdStartSetup:
             account's exclusivity is still false
         closed_externally_finding: What booking notes closed outside the bot (#627) leaves on the
             run's record; None when the start closed none
+        boot_read: What the read of the venue's closed orders since the carry-over found (#652);
+            None where the start read none
     """
     proceed: bool = True
     store: Optional[ColdStartStateStore] = None
@@ -97,6 +100,7 @@ class ColdStartSetup:
     boot_premise_violation: Optional[BootPremiseViolation] = None
     accepted_foreign_refs: List[str] = field(default_factory=list)
     closed_externally_finding: Optional[ValidationFinding] = None
+    boot_read: Optional[BootRead] = None
 
 
 def setup_cold_start(
@@ -217,6 +221,7 @@ def setup_cold_start(
         boot_premise_violation=adopter.get_boot_premise_violation(),
         accepted_foreign_refs=adopter.get_accepted_foreign_refs(),
         closed_externally_finding=adopter.get_closed_externally_finding(),
+        boot_read=adopter.get_boot_read(),
     )
 
 

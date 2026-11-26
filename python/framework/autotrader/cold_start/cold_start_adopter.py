@@ -18,15 +18,20 @@ a boot step, not a reconcile cycle, and tying it to `reconciliation.enabled` wou
 disappear exactly where it is cheapest to exercise — a mock session.
 """
 
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
+from python.framework.autotrader.cold_start.boot_fill_reader import BootFillReader
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.persistence.cold_start_state_store import ColdStartStateStore
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.autotrader_types.cold_start_types import (
     AdoptedOrder,
+    BootFill,
+    BootFillClass,
     BootPremiseViolation,
+    BootRead,
     ColdStartSituation,
     ColdStartVerdict,
     ConfigurationComparison,
@@ -39,6 +44,7 @@ from python.framework.types.live_types.reconciliation_types import BrokerOrder
 from python.framework.types.persistence_types import (
     AcceptedForeignOrders,
     ColdStartPayload,
+    OpenOrderCarryOver,
     PositionCarryOver,
 )
 from python.framework.types.trading_env_types.order_types import (
@@ -178,6 +184,9 @@ class ColdStartAdopter:
         # #627: the notes this start declares closed outside the bot, and those it took out
         self._book_closed_externally = list(book_closed_externally or [])
         self._closed_externally: List[PositionCarryOver] = []
+        # #652: what the read of the venue's closed orders since the carry-over found; None where
+        # the start read none
+        self._boot_read: Optional[BootRead] = None
         self._closed_externally_finding: Optional[ValidationFinding] = None
         # #499: orders of another owner on this bot's instrument an operator accepted at an
         # earlier start and that still rest — they hold nothing, and the premise is still false
@@ -210,6 +219,15 @@ class ColdStartAdopter:
             The notice; '' when no change was accepted
         """
         return self._acceptance_notice
+
+    def get_boot_read(self) -> Optional[BootRead]:
+        """
+        What the read of the venue's closed orders since the carry-over found (#652).
+
+        Returns:
+            The read; None where the start read none — a dry run, a margin session, a first start
+        """
+        return self._boot_read
 
     def get_boot_premise_violation(self) -> Optional[BootPremiseViolation]:
         """
@@ -342,12 +360,17 @@ class ColdStartAdopter:
         # not have yet.
         book = self._restorable_book(payload.open_positions)
 
+        # #652: what the venue finished under our keys since the book was written. Read before the
+        # balances, because a fill found here is the one reason to read them with an empty book
+        self._boot_read = self._read_closed_since_write(payload, book, known_keys)
+        found_fill = self._boot_read is not None and bool(self._boot_read.get_holding_fills())
+
         # Only asked when there is a book to hold against it. The ladder may be configured
         # to ABORT on a give-up (§43), so an unnecessary read is not merely a wasted REST
         # call — it is a way to end a boot over a number nobody needed.
         shortfall = 0.0
         balances: Optional[Dict[str, float]] = None
-        if book:
+        if book or found_fill:
             balances = self._pull_broker_balances()
             if balances is None:
                 self._logger.error(
@@ -359,11 +382,14 @@ class ColdStartAdopter:
         # #627: before the cross-check, the situation and the configuration check, so all three
         # speak about the book that remains
         book = self._take_out_closed_externally(book, balances)
-        if book and balances is not None:
+        if (book or found_fill) and balances is not None:
             shortfall = self._cross_check_book(book, balances)
 
         ours, skipped = self._split(broker_orders, known_keys)
         self._report_unattributable(skipped)
+        # #652 — a market order of ours still working at the venue: its fill may come yet, so it holds
+        # the entries beside the fills the book does not hold, and the session never buys it twice
+        self._hold_over_in_flight(skipped)
 
         self._situation = self._build_situation(ours, skipped, book, shortfall)
         verdict = self._consult_algo(self._situation)
@@ -472,6 +498,7 @@ class ColdStartAdopter:
             adoption_mode=self._config.adoption_mode,
             attended=self._interactive,
             book_shortfall=shortfall,
+            boot_read=self._boot_read,
         )
 
     def _consult_algo(self, situation: ColdStartSituation) -> Optional[ColdStartVerdict]:
@@ -764,9 +791,6 @@ class ColdStartAdopter:
             How much the book's LONG positions claim beyond what the account holds, in base
             units; 0.0 when the account covers it
         """
-        if not book:
-            return 0.0
-
         base, held, booked = self._holding_against_book(book, balances)
 
         if booked - held > _BOOK_DUST:
@@ -789,10 +813,105 @@ class ColdStartAdopter:
 
         self._logger.info(
             f'🧬 Cold start: book {booked} {base} against {held} held at the venue — covered'
-            + (f' ({held - booked} beyond the book, not this bot\'s to use)'
+            + (f' ({held - booked} beyond the book: untraded capital, or a fill of ours the book '
+               f'does not hold — {self._found_fills_phrase()})'
                if held - booked > _BOOK_DUST else '')
         )
         return 0.0
+
+    def _found_fills_phrase(self) -> str:
+        """
+        What the read of the venue's closed orders said about fills of ours, for the balance line (#652).
+
+        Returns:
+            A few words: how many it found, that it found none, or that it did not read
+        """
+        if self._boot_read is None:
+            return 'the venue\'s closed orders were not read'
+        holding = len(self._boot_read.get_holding_fills())
+        if holding:
+            return f'the closed-orders read found {holding} such fill(s)'
+        return ('the closed-orders read found none' if self._boot_read.complete
+                else 'the closed-orders read did not complete')
+
+    def _hold_over_in_flight(self, skipped: List[SkippedOrder]) -> None:
+        """
+        File every market order of ours still in flight at the start into the boot read (#652).
+
+        Args:
+            skipped: Everything the split left alone, each with its reason
+        """
+        if self._boot_read is None:
+            return
+        for order in skipped:
+            if order.reason != SkipReason.IN_FLIGHT or not order.key_is_ours:
+                continue
+            self._boot_read.fills.append(BootFill(
+                client_order_id=order.client_order_id or '',
+                broker_ref=order.broker_ref,
+                symbol=order.symbol,
+                direction=order.direction,
+                lots=order.lots,
+                filled_lots=0.0,
+                closed_at=None,
+                fill_class=BootFillClass.IN_FLIGHT,
+                reason='still working at the venue at the start — its fill may come yet',
+            ))
+
+    def _read_closed_since_write(
+        self,
+        payload: ColdStartPayload,
+        book: List[PositionCarryOver],
+        known_keys: Set[str],
+    ) -> Optional[BootRead]:
+        """
+        Read which orders of ours the venue finished since the book was written, and file each fill (#652).
+
+        Not read on a first start (no carry-over was written, so no order can be ours) and not at
+        margin, whose positions come back from the venue itself (#209). While a hold of this kind
+        stands from an earlier start, the read measures against the write that start measured
+        against, so a restart cannot step past the fill that holds the entries.
+
+        Args:
+            payload: The carry-over as read
+            book: The notes this start restores
+            known_keys: The session keys whose orders are ours
+
+        Returns:
+            The read; None where the start reads none
+        """
+        saved_at = self._store.get_saved_at()
+        if saved_at is None or not known_keys:
+            return None
+        if not self._executor.portfolio.is_spot_mode():
+            self._logger.info(
+                '🧬 Cold start: the venue\'s closed orders are not read at margin — positions come '
+                'back from the venue itself there (#209).')
+            return None
+        # While a hold of this kind stands, its fills count as open at the write it was measured
+        # against, from where that read began: the held session's own writes have replaced the open
+        # orders since, and without this the same fill would now read as answered before the write
+        hold = payload.boot_read_hold
+        written_at = datetime.fromisoformat(hold.written_at_utc if hold is not None else saved_at)
+        open_orders = list(payload.open_orders_at_write) + (
+            [OpenOrderCarryOver(client_order_id=key, submitted_at_utc=hold.read_from_utc)
+             for key in hold.client_order_ids] if hold is not None else [])
+        reader = BootFillReader(
+            self._executor.broker.adapter,
+            self._executor.get_rest_ladder(),
+            timedelta(seconds=self._config.boot_read_skew_s),
+            _BOOK_DUST,
+        )
+        # The end of the range is the wall-clock now: the venue's close instants are on its own
+        # wall clock, and the canonical clock has not begun at boot
+        boot_read = reader.read(written_at, open_orders, book, known_keys, datetime.now(timezone.utc))
+        holding = boot_read.get_holding_fills()
+        self._logger.info(
+            f'🧬 Cold start: the venue\'s closed orders read from '
+            f"{boot_read.read_from.strftime('%Y-%m-%d %H:%M:%S UTC')} — "
+            f'{len(boot_read.fills)} fill(s) of ours, {len(holding)} the book does not hold'
+            + ('' if boot_read.complete else f'; incomplete: {boot_read.incomplete_reason}'))
+        return boot_read
 
     def _split(
         self,

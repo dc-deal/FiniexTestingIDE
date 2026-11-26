@@ -38,6 +38,10 @@ class EntryHoldReason(StrEnum):
     # session opens now would exist nowhere but in memory, and the parity proof compares exactly this
     # record. Its lines wait in memory and are written again at the record's cadence
     RECORD_UNWRITABLE = 'record_unwritable'
+    # #652 — the start read the venue's closed orders and found a fill of ours that the book the
+    # carry-over wrote does not hold, or could not finish the read: a session killed between a
+    # submit and its fill left the coins at the venue, and opening now could buy them twice
+    UNBOOKED_FILL = 'unbooked_fill'
 
     def lift_routes(self) -> FrozenSet[EntryHoldLift]:
         """
@@ -56,6 +60,9 @@ _LIFT_ROUTES: Dict[EntryHoldReason, FrozenSet[EntryHoldLift]] = {
     EntryHoldReason.BOOT_PREMISE: frozenset({EntryHoldLift.OBSERVED, EntryHoldLift.OPERATOR}),
     # Lifts when every line it kept is on the disk; an operator frees the disk, not the hold
     EntryHoldReason.RECORD_UNWRITABLE: frozenset({EntryHoldLift.OBSERVED}),
+    # Only a person lifts it, at a start they watch: nothing in the session books the fill yet, so
+    # nothing could observe the cause go away
+    EntryHoldReason.UNBOOKED_FILL: frozenset({EntryHoldLift.OPERATOR}),
 }
 
 

@@ -3470,6 +3470,32 @@ class ColdStartPositionRow(BaseModel):
     status: str = ''
 
 
+class ColdStartBootFillRow(BaseModel):
+    """
+    One closed order of ours with a fill that the start's boot read found, and how it was filed (#652).
+
+    Args:
+        client_order_id: The wire key it was sent under
+        broker_ref: The venue's reference
+        symbol: Its instrument
+        direction: LONG (a buy) / SHORT (a sell)
+        lots: The size it was sent with
+        filled_lots: What of it the venue executed
+        closed_at: When the venue closed it, ISO-8601 UTC; '' where the venue reported none
+        fill_class: accounted_for / unbooked_entry / unbooked_close / unclear
+        reason: Why it was filed so, in a few words
+    """
+    client_order_id: str = ''
+    broker_ref: str = ''
+    symbol: str = ''
+    direction: str = ''
+    lots: float = 0.0
+    filled_lots: float = 0.0
+    closed_at: str = ''
+    fill_class: str = ''
+    reason: str = ''
+
+
 class ColdStartReport(RunScopedReport):
     """
     What the session found at boot, and what was decided about it (#355 / #493).
@@ -3501,6 +3527,14 @@ class ColdStartReport(RunScopedReport):
         decision_logic_accounted_for: What it answered; None when it was not asked or answered
             wrongly
         decision_logic_note: Its reason, in its own words
+        boot_read_done: Whether the start read the venue's closed orders since the carry-over (#652)
+            — False for a first start and at margin
+        boot_read_written_at: The write its book was measured against, ISO-8601 UTC; '' unread
+        boot_read_from: Where the read began, ISO-8601 UTC; '' unread
+        boot_read_to: Where it ended, ISO-8601 UTC; '' unread
+        boot_read_complete: Whether it reached the end of its range; None unread
+        boot_read_incomplete_reason: Why not, in a few words; '' when it did or was not made
+        boot_fills: Every closed order of ours with a fill inside the range, each filed
     """
     symbol: str = ''
     applied: bool = False
@@ -3516,6 +3550,13 @@ class ColdStartReport(RunScopedReport):
     decision_logic_class: str = ''
     decision_logic_accounted_for: Optional[bool] = None
     decision_logic_note: str = ''
+    boot_read_done: bool = False
+    boot_read_written_at: str = ''
+    boot_read_from: str = ''
+    boot_read_to: str = ''
+    boot_read_complete: Optional[bool] = None
+    boot_read_incomplete_reason: str = ''
+    boot_fills: list[ColdStartBootFillRow] = []
 
     @computed_field
     @property
@@ -3527,6 +3568,17 @@ class ColdStartReport(RunScopedReport):
             The number of adopted rows
         """
         return len(self.adopted)
+
+    @computed_field
+    @property
+    def boot_fill_count(self) -> int:
+        """
+        How many closed orders of ours with a fill the boot read found (#652).
+
+        Returns:
+            The number of boot fill rows
+        """
+        return len(self.boot_fills)
 
     @computed_field
     @property

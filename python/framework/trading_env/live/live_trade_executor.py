@@ -74,7 +74,7 @@ from python.framework.types.live_types.reconciliation_types import (
     ReconciliationResult,
 )
 from python.framework.types.market_types.market_data_types import TickData
-from python.framework.types.persistence_types import PositionCarryOver
+from python.framework.types.persistence_types import OpenOrderCarryOver, PositionCarryOver
 from python.framework.types.portfolio_types.portfolio_trade_record_types import (
     CloseReason,
     EntryType,
@@ -238,6 +238,10 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         # standing condition — the next poll produces the same non-answer — and also said once.
         self._reported_undecided: Set[str] = set()
         self._session_key = session_key
+        # #652 — when this start adopted each resting order of an earlier session, by its internal
+        # id. Its submit instant is not known here, and the carry-over needs a lower bound for its
+        # close: it was still open when this start adopted it
+        self._adopted_at: Dict[str, datetime] = {}
         # #473 — one ladder for the broker's REST endpoint, shared with the Reconciler so
         # both classify a 502 the same way. A transport fault must never reach the trading
         # logic wearing the face of a venue rejection.
@@ -640,6 +644,31 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         )
         return in_flight
 
+    def get_open_orders_at_write(self) -> List[OpenOrderCarryOver]:
+        """
+        Every order this session holds open, for the carry-over it is about to write (#652).
+
+        Both worlds: what the processor still waits on (an answer not yet arrived), and every
+        resting order, whether its reference came back or not — a resting order can fill at the
+        venue in the seconds before the poll reads it, so being acknowledged does not make its
+        fill booked. Each carries when it was sent, or for an order a start adopted, when that
+        start adopted it: the next start's boot read begins at the oldest of these.
+
+        Returns:
+            One entry per open order sent under a key of ours. Orders sent under no key are
+            absent: no boot read could attribute them anyway
+        """
+        open_orders: List[OpenOrderCarryOver] = []
+        for pending in (self._request_processor.get_pending_orders()
+                        + self._active_limit_orders + self._active_stop_orders):
+            if not pending.client_order_id:
+                continue
+            sent = pending.timing.submitted_at or self._adopted_at.get(pending.pending_order_id)
+            open_orders.append(OpenOrderCarryOver(
+                client_order_id=pending.client_order_id,
+                submitted_at_utc=sent.isoformat() if sent is not None else None))
+        return open_orders
+
     def book_closed_externally(self, notes: List[PositionCarryOver]) -> None:
         """
         Take position notes a start declared closed outside the bot, to book at the first instant (#627).
@@ -719,6 +748,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             # Counted as adopted (#362): the execution rate divides by submitted and adopted
             # together, so a fill cannot raise it above 100 %.
             self._record_adoption(pending)
+            # #652 — a point in time, not an event stamp: the order was still open now, so its
+            # fill cannot have closed before it
+            self._adopted_at[order_id] = datetime.now(timezone.utc)
             self.logger.info(
                 f'🧬 Adopted resting {broker_order.order_type.value} order {order_id} from '
                 f'broker truth (client_order_id={broker_order.client_order_id}, '

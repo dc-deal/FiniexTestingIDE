@@ -33,6 +33,21 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
+## Version 69 — 2026-11-26 (#652)
+
+A session also holds its entries when its start finds an order of its own that the venue filled while no
+session was there to book it.
+
+- [Order history](/api/v1/docs/order-history): **`rejection_reason: entries_held`** (a broadened
+  meaning) — a third cause: the session's start read the venue's closed orders since its record was last
+  written and found a fill of its own the record does not hold — a session stopped between sending an
+  order and its fill leaves the coins at the venue — or could not finish that read. Opening anything
+  then could buy the same position twice. The hold lasts until an operator lifts it at a start they
+  watch; the session manages and closes what it has meanwhile, and closing and cancelling are never
+  refused for it.
+
+One value's meaning broadened; nothing added or removed.
+
 ## Version 68 — 2026-11-24 (#605)
 
 A broker row says how its venue decides a resting order — the price that fires a stop, and what
@@ -99,24 +114,13 @@ A session also holds its entries while it cannot write its own record of its ord
 
 One value's meaning broadened; nothing added or removed.
 
-## Version 64 — 2026-11-22 (#632)
-
-The machine view says how much room is left under an AutoTrader session's records.
-
-- [Server](/api/v1/docs/server): **`disks`** on `/machine-resources` (new) — one row per filesystem
-  that holds a store an AutoTrader session writes into, where the store catalog places it, named by
-  those stores and never by a path: `stores`, `free_bytes` (the room a process that is not root may
-  still use), `total_bytes` and `free_pct` (null for a filesystem that reports no size). **`keys`**
-  (new) declares that `stores` makes a disk row unique.
-
-One field and its key added; nothing changed or removed.
-
-## Versions 63 and earlier
+## Versions 64 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 64** — 2026-11-22 (#632): The machine view says how much room is left under an AutoTrader session's records — `disks` (new) on `/machine-resources` in [server](/api/v1/docs/server), one row per filesystem that holds a store the session writes into, with `keys` (new) naming what makes a row unique.
 - **Version 63** — 2026-11-22 (#627): A spot position whose holding an operator sold outside the bot can end, booked as closed — `close_reason: closed_externally` (new value) and `exit_observed` (new) on [trade history](/api/v1/docs/trade-history), `external_closes` in its trade totals (with `manual_closes` no longer counting them), `origin.book_closed_externally` in the [run](/api/v1/docs/runs) header.
 - **Version 62** — 2026-11-21 (#499): A session whose start found orders of another owner on its own instrument, on an account declared exclusive, starts and holds its entries — `rejection_reason: entries_held` and `end_reason: entries_held` (new values) on [order history](/api/v1/docs/order-history) and [order events](/api/v1/docs/order-events), `exclusivity_violated_at` (new) on a session row of [deployments](/api/v1/docs/deployments) and on a [sweep](/api/v1/docs/sweeps) combination; a row with `logic_version` 22 or older reads it null.
 - **Version 61** — 2026-11-21 (#650): A request that meets a store index another process is writing waits for it — [errors](/api/v1/docs/errors): `503 store_index_busy` (new) with `Retry-After`, on every route that reads a store index, where a bare `500` used to come.

@@ -214,6 +214,8 @@ class MockBrokerAdapter(AbstractAdapter):
         # tests via set_broker_* — independent of the local shadow side.
         self._divergence_mode: MockDivergenceMode = MockDivergenceMode.NONE
         self._broker_orders: List[BrokerOrder] = []
+        # #652 — the orders the venue finished, read by the boot read and by #487's resolution
+        self._closed_broker_orders: List[BrokerOrder] = []
         self._broker_positions: List[BrokerPosition] = []
         self._broker_balances: Dict[str, float] = {}
 
@@ -1030,6 +1032,18 @@ class MockBrokerAdapter(AbstractAdapter):
         """
         self._broker_orders = list(orders)
 
+    def set_closed_broker_orders(self, orders: List[BrokerOrder]) -> None:
+        """
+        Seed the orders the venue finished, returned by the closed-orders reads.
+
+        An order whose fill arrived after its session was killed is seeded here, with its
+        `ts_event` as the instant the venue closed it (#652).
+
+        Args:
+            orders: Broker closed-order truth
+        """
+        self._closed_broker_orders = list(orders)
+
     def set_broker_positions(self, positions: List[BrokerPosition]) -> None:
         """
         Seed the broker-side positions returned by get_broker_positions.
@@ -1076,21 +1090,25 @@ class MockBrokerAdapter(AbstractAdapter):
         client_order_id: Optional[str] = None,
     ) -> List[BrokerOrder]:
         """
-        The mock venue keeps no history of closed orders, so it answers with none.
+        The orders the venue finished, as seeded, narrowed the way a venue narrows them.
 
-        The resolution that reads them (#487) is tested with an adapter double of its own, which
-        holds the closed orders each test needs: `tests/autotrader/live_executor/conftest.py`.
+        A seeded order with a close instant is in the answer when it closed inside the range
+        (start exclusive, end inclusive, the close time alone); one seeded without a close
+        instant is always in it. The resolution that reads them (#487) is tested with an adapter
+        double of its own: `tests/autotrader/live_executor/conftest.py`.
 
         Args:
-            start: Range start (accepted, unused)
-            end: Range end (accepted, unused)
-            client_order_id: The key a venue narrows to (accepted, unused)
+            start: Range start (exclusive)
+            end: Range end (inclusive)
+            client_order_id: Narrow the answer to one wire key
 
         Returns:
-            An empty list
+            The seeded closed orders inside the range (empty when none was seeded)
         """
         self._raise_injected_fault('closedorders')
-        return []
+        return [order for order in self._closed_broker_orders
+                if (client_order_id is None or order.client_order_id == client_order_id)
+                and (order.ts_event is None or start < order.ts_event <= end)]
 
     def get_broker_balances(self) -> Dict[str, float]:
         """

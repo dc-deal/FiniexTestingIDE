@@ -434,6 +434,46 @@ class AcceptedForeignOrders(BaseModel):
     accepted_at_utc: str = ''
 
 
+class OpenOrderCarryOver(BaseModel):
+    """
+    An order the session held open at a carry-over write (#652): sent and not yet answered, or
+    resting at the venue.
+
+    The written book holds every fill the session had booked at the write. An order open at the
+    write may still have filled before it, unseen — an answer not yet arrived, a resting fill the
+    poll had not read yet — so the next start reads the venue's closed orders from the oldest of
+    these, and counts a fill of one of them as missing from the book whatever its close time.
+
+    Args:
+        client_order_id: The wire key it was sent under
+        submitted_at_utc: When it was sent, or for an order a start adopted, when that start
+            adopted it — ISO-8601 UTC, wall clock. A decision input: the next start's venue read
+            begins at the oldest of these. None when neither is known
+    """
+    client_order_id: str
+    submitted_at_utc: Optional[str] = None
+
+
+class BootReadHoldCarryOver(BaseModel):
+    """
+    A start's finding that holds this bot's entries over a fill the book does not hold (#652), kept while
+    the hold stands.
+
+    The held session writes its carry-over again, and every write replaces the orders open at it with the
+    session's own — so the next start could no longer tell the fill was missing. This keeps what it needs
+    to read the same stretch and file the same fills the same way: the write they were measured against,
+    where the read began, and their keys, which the next start counts as open at the write.
+
+    Args:
+        written_at_utc: The write the finding was measured against, ISO-8601 UTC
+        read_from_utc: Where that read began, ISO-8601 UTC
+        client_order_ids: The wire keys of the fills that held the entries
+    """
+    written_at_utc: str
+    read_from_utc: str
+    client_order_ids: List[str] = Field(default_factory=list)
+
+
 class ColdStartPayload(BaseModel):
     """
     The framework's own carry-over: what the NEXT session needs to recognise its predecessor
@@ -484,6 +524,12 @@ class ColdStartPayload(BaseModel):
         accepted_foreign_orders: Orders of another owner the operator accepted on this bot's
             instrument (#499). None means none was accepted — a start holds its entries over
             every such order it finds
+        open_orders_at_write: The orders open at the time of writing (#652, spot only) — what the
+            next start's boot read reaches back for
+        boot_read_hold: The finding of a boot read that holds this bot's entries (#652). While it
+            is set, the next start measures against the same write and reads the same stretch, so a
+            restart cannot step past the fill that held them; an operator's lift clears it. None
+            means no such hold stands
     """
     session_keys: List[str] = Field(default_factory=list)
     highest_position_counter: int = 0
@@ -499,6 +545,8 @@ class ColdStartPayload(BaseModel):
     venue_claims_configuration: Optional[ConfigurationCarryOver] = None
     deployment_id: Optional[str] = None
     accepted_foreign_orders: Optional[AcceptedForeignOrders] = None
+    open_orders_at_write: List[OpenOrderCarryOver] = Field(default_factory=list)
+    boot_read_hold: Optional[BootReadHoldCarryOver] = None
 
 
 class ReadingsVerdict(StrEnum):

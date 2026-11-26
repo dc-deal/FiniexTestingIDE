@@ -20,7 +20,7 @@ Exercised through `__new__`: the method needs three attributes, and building a r
 would drag in a broker, a tick source and a decision logic without testing any of them.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import List, Optional, Set
 from unittest.mock import MagicMock
@@ -39,22 +39,32 @@ from python.framework.testing.mock_broker_adapter import MockExecutionMode
 from python.framework.testing.mock_order_execution import MockOrderExecution
 from python.framework.persistence.cold_start_state_store import ColdStartStateStore
 from python.framework.persistence.position_book_watcher import PositionBookWatcher
-from python.framework.types.autotrader_types.cold_start_types import BootPremiseViolation
+from python.framework.types.autotrader_types.cold_start_types import (
+    BootFill,
+    BootFillClass,
+    BootPremiseViolation,
+    BootRead,
+)
 from python.framework.types.config_types.autotrader_defaults_config_types import SafetyConfig
+from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
+from python.framework.types.live_types.reconciliation_types import BrokerOrder
 from python.framework.types.persistence_types import (
     AcceptedForeignOrders,
     AccountDrawdownCarryOver,
     BaselineKind,
+    BootReadHoldCarryOver,
     BaselineOrigin,
     CarryOverLoadOutcome,
     ColdStartPayload,
     ConfigurationCarryOver,
+    OpenOrderCarryOver,
     PositionCarryOver,
     ReadingsVerdict,
     RiskBaseline,
 )
 from python.framework.types.run_kind_types import OrdersTo, TicksFrom
 from python.framework.types.trading_env_types.entry_hold_types import EntryHoldReason
+from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 from tests.autotrader.cold_start.conftest import RecordingLogger, make_broker_order
 
 _CLOCK = datetime(2026, 9, 14, 8, 0, tzinfo=timezone.utc)
@@ -78,6 +88,9 @@ class SpyStore:
              venue_claims_configuration: Optional[ConfigurationCarryOver] = None,
              deployment_id: Optional[str] = None,
              accepted_foreign_orders: Optional[AcceptedForeignOrders] = None,
+             open_orders_at_write: Optional[List[OpenOrderCarryOver]] = None,
+             write_boot_read_hold: bool = False,
+             boot_read_hold: Optional[BootReadHoldCarryOver] = None,
              refresh_index: bool = True) -> None:
         if self._fail:
             raise OSError('disk full')
@@ -94,6 +107,9 @@ class SpyStore:
             'venue_claims_configuration': venue_claims_configuration,
             'deployment_id': deployment_id,
             'accepted_foreign_orders': accepted_foreign_orders,
+            'open_orders_at_write': open_orders_at_write,
+            'write_boot_read_hold': write_boot_read_hold,
+            'boot_read_hold': boot_read_hold,
             'refresh_index': refresh_index,
         })
 
@@ -171,6 +187,8 @@ def _main(executor, store, persist: bool, keys_in_use=None,
     main._event_loop = None
     # #499 — nothing an attended start accepted, the case of every test here
     main._accepted_foreign_orders = None
+    # #652 — no hold over a fill the book does not hold, the case of every test here
+    main._boot_read_hold = None
     main._cold_start = ColdStartSetup(
         proceed=True,
         store=store,
@@ -305,6 +323,32 @@ class TestWhatIsWritten:
         _main(spot_executor, store, persist=True)._persist_cold_start_carry_over()
 
         assert store.saves[0]['open_positions'] == []
+
+    def test_the_orders_open_at_the_write_and_the_held_finding_reach_the_store(self, spot_executor):
+        # #652 — the next start reads back to the oldest open order, and a held finding rides along
+        store = SpyStore()
+        spot_executor.adopt_resting_orders([('pos_btcusd_5', BrokerOrder(
+            broker_ref='ORST', symbol='BTCUSD', direction=OrderDirection.LONG,
+            order_type=OrderType.LIMIT, lots=0.001, status=BrokerOrderStatus.PENDING,
+            price=60000.0, client_order_id='p8b3f_5'))])
+        main = _main(spot_executor, store, persist=True)
+        main._boot_read_hold = BootReadHoldCarryOver(
+            written_at_utc='2026-09-14T07:59:58+00:00', read_from_utc='2026-09-14T07:59:53+00:00',
+            client_order_ids=['p8b3f_8'])
+
+        main._persist_cold_start_carry_over()
+
+        written = store.saves[0]
+        assert [o.client_order_id for o in written['open_orders_at_write']] == ['p8b3f_5']
+        assert (written['write_boot_read_hold'], written['boot_read_hold']) == (
+            True, main._boot_read_hold)
+
+    def test_a_margin_session_writes_no_open_orders(self, executor):
+        store = SpyStore()
+
+        _main(executor, store, persist=True)._persist_cold_start_carry_over()
+
+        assert store.saves[0]['open_orders_at_write'] is None
 
 
 class TestTheReportedDrawdownReachesTheStore:
@@ -595,6 +639,8 @@ class TestTheHoldAtTheStart:
         main._session_logger = RecordingLogger()
         main._exclusivity_violated_at = None
         main._accepted_foreign_orders = None
+        # #652 — no hold over a fill the book does not hold, the case of every test here
+        main._boot_read_hold = None
         main._boot_premise_lifter = None
         return main
 
@@ -633,6 +679,35 @@ class TestTheHoldAtTheStart:
 
         assert main._exclusivity_violated_at is None
         assert not executor.get_entry_holds().get_all()
+
+    def test_a_fill_the_book_does_not_hold_holds_and_is_carried(self, spot_executor):
+        # #652 — the boot read found an entry of ours the book does not hold
+        written = datetime(2026, 9, 14, 7, 59, 58, tzinfo=timezone.utc)
+        boot_read = BootRead(
+            written_at=written, read_from=written - timedelta(seconds=5), read_to=_CLOCK,
+            complete=True, fills=[BootFill(
+                client_order_id='p8b3f_8', broker_ref='OQX3', symbol='BTCUSD',
+                direction=OrderDirection.LONG, lots=0.001, filled_lots=0.001,
+                closed_at=written + timedelta(seconds=1), fill_class=BootFillClass.UNBOOKED_ENTRY,
+                reason='it opens a position the book does not hold')])
+        main = self._main(spot_executor, ColdStartSetup(boot_read=boot_read))
+
+        main._hold_entries_over_unbooked_fills(attended=False)
+
+        assert spot_executor.get_entry_holds().is_held(EntryHoldReason.UNBOOKED_FILL)
+        assert main._boot_read_hold == BootReadHoldCarryOver(
+            written_at_utc=written.isoformat(),
+            read_from_utc=(written - timedelta(seconds=5)).isoformat(),
+            client_order_ids=['p8b3f_8'])
+
+    def test_a_clean_boot_read_holds_nothing(self, spot_executor):
+        boot_read = BootRead(written_at=_CLOCK, read_from=_CLOCK, read_to=_CLOCK, complete=True)
+        main = self._main(spot_executor, ColdStartSetup(boot_read=boot_read))
+
+        main._hold_entries_over_unbooked_fills(attended=False)
+
+        assert not spot_executor.get_entry_holds().get_all()
+        assert main._boot_read_hold is None
 
 
 class TestBothReadsHonourADeclaredContinuation:

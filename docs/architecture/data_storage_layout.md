@@ -830,7 +830,17 @@ write     STRUCTURAL change → at once      which positions exist, how much is 
           DRIFT             → tick cadence exit levels, excursion extrema
 restore   at BOOT, no tick needed: every field was known when the position was opened
 check     the restored book against the venue's balance — and only REPORT
+read      at BOOT, the venue's closed orders since the write: a fill of ours the book does not
+          hold holds the entries (#652)
 ```
+
+Each write also keeps the orders the session held open at it, and while a hold over such a fill
+stands, the finding that holds it: the write it was measured against, where that read began, and
+the fills' keys — the held session's own writes replace the open orders, so without them the next
+start would read the same fill as booked. A fill is missing from the written book only
+when its order closed after the write, or was open at it and filled unseen just before; the start
+reads the venue from the oldest of those orders, so it finds both (*A fill the book does not hold*
+in [Unattended Operation](../autotrader/unattended_operation.md)).
 
 The split is a measurement, not a preference. One carry-over write costs **11 ms** on this project's
 tree, and the store's index rebuild another **26-40 ms** (`/tmp` says 2 ms; on this bridged mount

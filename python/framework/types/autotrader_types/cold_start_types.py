@@ -12,6 +12,7 @@ own resting orders, and the reconciler reports the rest to the log, not to the a
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum, StrEnum
 from typing import Any, Dict, List, Optional
 
@@ -122,6 +123,132 @@ class BootPremiseViolation:
     accepted_refs: List[str] = field(default_factory=list)
 
 
+class BootFillClass(StrEnum):
+    """
+    How the boot read files one fill of ours against the book the carry-over wrote (#652).
+    """
+    # The book holds it: the order closed before the write and was answered before it, or it is
+    # the entry of a position the book restored
+    ACCOUNTED_FOR = 'accounted_for'
+    # It opened a position the book does not hold: a buy, or at spot a sell, that no restored position
+    # of the other side could take
+    UNBOOKED_ENTRY = 'unbooked_entry'
+    # It closed a position the book still holds: a sell a restored long can take, a buy a restored short
+    UNBOOKED_CLOSE = 'unbooked_close'
+    # The evidence names no single answer: a partial fill, a close instant inside the clock-skew band
+    # around the write, or none at all
+    UNCLEAR = 'unclear'
+    # A market order of ours still working at the venue at the start: its fill may come yet, and a
+    # session that opened meanwhile would buy the same position twice
+    IN_FLIGHT = 'in_flight'
+
+    def holds_entries(self) -> bool:
+        """
+        Whether a fill of this class keeps the session from opening anything new.
+
+        Returns:
+            True for every class but a fill the book already holds
+        """
+        return self != BootFillClass.ACCOUNTED_FOR
+
+
+@dataclass(frozen=True)
+class BootFill:
+    """
+    One order of ours the venue reported closed with a fill, as the boot read filed it (#652).
+
+    Args:
+        client_order_id: The wire key it was sent under
+        broker_ref: The venue's reference
+        symbol: Its instrument
+        direction: Its side — LONG a buy, SHORT a sell
+        lots: The size it was sent with
+        filled_lots: What of it the venue executed
+        closed_at: When the venue closed it; None where the venue reported no close instant
+        fill_class: How it stands against the book
+        reason: Why it was filed so, in a few words for the operator
+    """
+    client_order_id: str
+    broker_ref: str
+    symbol: str
+    direction: OrderDirection
+    lots: float
+    filled_lots: float
+    closed_at: Optional[datetime]
+    fill_class: BootFillClass
+    reason: str
+
+
+@dataclass
+class BootRead:
+    """
+    What a start read of the venue's closed orders since the carry-over was written (#652).
+
+    A session killed between a market submit and its fill leaves the coins at the venue and nothing
+    in its book; the next start reads which orders of ours the venue finished, and holds its entries
+    over a fill the book does not hold, so it does not buy again.
+
+    Args:
+        written_at: The write the book was measured against: the carry-over's write, or while a
+            hold of this kind stands, the write it was first measured against
+        read_from: Where the read began: the earliest of that write and the oldest order open at
+            it, minus the clock-skew margin
+        read_to: Where it ended, the wall-clock now of the start
+        complete: Whether the read reached the end of its range and gave an answer at all
+        incomplete_reason: Why it did not, in a few words; '' when it did
+        fills: Every closed order of ours with a fill inside the range, each filed
+    """
+    written_at: datetime
+    read_from: datetime
+    read_to: datetime
+    complete: bool
+    incomplete_reason: str = ''
+    fills: List[BootFill] = field(default_factory=list)
+
+    def holds_entries(self) -> bool:
+        """
+        Whether the session must start without opening anything new.
+
+        Returns:
+            True when the read did not complete, or found a fill the book does not account for
+        """
+        return not self.complete or any(fill.fill_class.holds_entries() for fill in self.fills)
+
+    def get_holding_fills(self) -> List[BootFill]:
+        """
+        The fills the book does not account for, and the orders of ours still in flight at the start.
+
+        Returns:
+            Every entry whose class holds entries, in the order read
+        """
+        return [fill for fill in self.fills if fill.fill_class.holds_entries()]
+
+    def describe(self) -> str:
+        """
+        The sentence a hold, its alert and its record carry.
+
+        Returns:
+            What the read found that the book does not hold, or why it could not tell
+        """
+        written = self.written_at.strftime('%Y-%m-%d %H:%M:%S UTC')
+        parts: List[str] = []
+        holding = self.get_holding_fills()
+        if holding:
+            listed = '; '.join(
+                f"{'BUY' if fill.direction == OrderDirection.LONG else 'SELL'} {fill.filled_lots} "
+                f'{fill.symbol} (order {fill.broker_ref}, '
+                + (f"closed {fill.closed_at.strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                   if fill.closed_at is not None else 'no close instant')
+                + f', {fill.fill_class.value}: {fill.reason})'
+                for fill in holding)
+            parts.append(f'{len(holding)} order(s) of ours that the book written at {written} does not '
+                         f'hold — filled since, or still in flight at the venue: {listed}')
+        if not self.complete:
+            parts.append(f'the read of the venue\'s closed orders since {written} is incomplete: '
+                         f'{self.incomplete_reason}')
+        return '; and '.join(parts)
+
+
 @dataclass
 class ColdStartSituation:
     """
@@ -151,6 +278,8 @@ class ColdStartSituation:
             decision is still open, and False forever on a boot that refused — the lists then
             describe what WOULD have been adopted and restored, and a record that does not say
             so claims things that never happened
+        boot_read: What the read of the venue's closed orders since the carry-over found (#652);
+            None where the start read none — a dry run, a margin session, a first start
     """
     symbol: str
     adopted: List[AdoptedOrder] = field(default_factory=list)
@@ -162,6 +291,7 @@ class ColdStartSituation:
     attended: bool = False
     book_shortfall: float = 0.0
     applied: bool = False
+    boot_read: Optional[BootRead] = None
 
     def is_empty(self) -> bool:
         """
@@ -179,6 +309,9 @@ class ColdStartSituation:
             and not self.skipped
             and not self.restored_positions
             and self.book_shortfall == 0.0
+            # #652: a read that found a fill of ours, or could not finish, is a finding
+            and (self.boot_read is None
+                 or (self.boot_read.complete and not self.boot_read.fills))
         )
 
     def is_clean(self) -> bool:
@@ -198,6 +331,8 @@ class ColdStartSituation:
             and not self.restored_positions
             and self.book_shortfall == 0.0
             and not any(o.reason == SkipReason.UNKNOWN_SESSION for o in self.skipped)
+            # #652: a fill of ours the book does not hold is the algo's to answer for
+            and (self.boot_read is None or not self.boot_read.holds_entries())
         )
 
 

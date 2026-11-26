@@ -31,11 +31,13 @@ from python.framework.store.abstract_store_index import SESSION_INDEX_LOCK_WAIT_
 from python.framework.types.persistence_types import (
     AcceptedForeignOrders,
     AccountDrawdownCarryOver,
+    BootReadHoldCarryOver,
     CarryOverEnvelope,
     CarryOverLoad,
     CarryOverLoadOutcome,
     ColdStartPayload,
     ConfigurationCarryOver,
+    OpenOrderCarryOver,
     PositionCarryOver,
     RiskBaseline,
 )
@@ -257,6 +259,9 @@ class ColdStartStateStore:
         venue_claims_configuration: Optional[ConfigurationCarryOver] = None,
         deployment_id: Optional[str] = None,
         accepted_foreign_orders: Optional[AcceptedForeignOrders] = None,
+        open_orders_at_write: Optional[List[OpenOrderCarryOver]] = None,
+        write_boot_read_hold: bool = False,
+        boot_read_hold: Optional[BootReadHoldCarryOver] = None,
         refresh_index: bool = True,
     ) -> None:
         """
@@ -312,6 +317,12 @@ class ColdStartStateStore:
             accepted_foreign_orders: The orders of another owner an operator accepted on this
                 bot's instrument (#499). Same None convention: a write that accepted nothing
                 leaves what an earlier start accepted
+            open_orders_at_write: The orders open at this moment (#652). The book's convention:
+                None leaves the stored list untouched, an empty list says none is open
+            write_boot_read_hold: Whether this write states the held boot-read finding below
+                (#652) — None then CLEARS it. A write that does not leaves the stored one alone
+            boot_read_hold: The boot read's finding that holds the entries, or None when no such
+                hold stands; read only with `write_boot_read_hold`
             refresh_index: Whether to rebuild the store index afterwards. False for the
                 writes that happen DURING a session: the rebuild reads every bot's document
                 and costs 26-40 ms on this project's tree (§42), which has no business inside
@@ -374,14 +385,21 @@ class ColdStartStateStore:
             payload.deployment_id = deployment_id
         if accepted_foreign_orders is not None:
             payload.accepted_foreign_orders = accepted_foreign_orders
+        if open_orders_at_write is not None:
+            payload.open_orders_at_write = list(open_orders_at_write)
+        if write_boot_read_hold:
+            payload.boot_read_hold = boot_read_hold
 
         envelope = CarryOverEnvelope(
             schema_version=_SCHEMA_VERSION,
             store_id=StoreId.COLD_START_STATE,
-            # Wall-clock, and legitimately so (§9): this stamps when WE wrote the file — an
-            # observation of our own act, not an event time, and nothing decides on it. The
-            # store deliberately has no staleness policy: a resting order does not expire
-            # because a week passed.
+            # Wall clock: when WE wrote the file, an observation of our own act and not an event
+            # time. Since #652 a decision hangs on it, so it is no longer mere provenance: the
+            # next start reads the venue's closed orders from this instant, because a fill that
+            # closed after it cannot be in the book written here. It is compared only against the
+            # venue's own wall-clock close times, widened by a skew margin, never against the
+            # canonical clock. The store deliberately has no staleness policy: a resting order
+            # does not expire because a week passed.
             saved_at_utc=datetime.now(timezone.utc).isoformat(),
             written_by_run_id=self._run_id,
             profile=self._profile,

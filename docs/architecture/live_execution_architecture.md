@@ -452,13 +452,19 @@ a written, reasoned decline, because the MACD state that set its stop levels is 
 
 ```json
 "cold_start": { "enabled": true, "path": "data/runtime/cold_start_state",
-                "adoption_mode": "operator_confirm", "book_drift_interval_ticks": 500 }
+                "adoption_mode": "operator_confirm", "book_drift_interval_ticks": 500,
+                "boot_read_skew_s": 5.0 }
 ```
 
 `operator_confirm` asks only where a human DECLARED themselves present
 (`autotrader_cli.py --attended`) — presence is never inferred from a TTY, because this
 project's own container sets `tty: true` and the prompt would block forever in exactly the
 unattended case it guards. Unattended running is a conscious `"auto"`.
+
+`boot_read_skew_s` is the margin around the carry-over's write that the start's read of the venue's
+closed orders allows for the skew between our clock and the venue's (#652): a fill closed within it
+that nothing else explains is filed unclear and holds the entries — *A fill the book does not hold*
+in [Unattended Operation](../autotrader/unattended_operation.md).
 
 ---
 

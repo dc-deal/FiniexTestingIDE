@@ -175,6 +175,14 @@ no figure; `not_booked_yet`, its first booking period has not closed. Not the st
 period. In code `SessionBookingState`. See the served document on deployments
 (`docs/consumer/deployments.md`).
 
+**boot read** — What an AutoTrader start reads of the venue's closed orders since its carry-over was last
+written: which orders of its own the venue finished while no session was there, each filed against the
+book the carry-over holds — *accounted for*, an unbooked entry or close, or unclear — and a market
+order of its own still working at the venue is filed *in flight*. A fill the book does not hold, an
+order in flight, or a read that could not finish, holds the session's entries (`unbooked_fill`). Not a
+*reconciliation*, which runs during a session; the boot read runs once, before the first order. See
+[Unattended Operation](autotrader/unattended_operation.md).
+
 **broker** (`broker_type`) — Our configuration entry for one venue and product in
 `market_config.json` (`kraken_spot`, `mt5`). Not the same as the venue. The broker whose ticks a
 unit read is its *data broker*. See [Broker Config](broker_config_guide.md).
@@ -462,7 +470,9 @@ alerts) — A session that runs and opens nothing new: it manages and closes its
 order that would open one is refused at the order path. A start holds its entries when orders of
 another owner rest on the bot's own instrument while the account is declared exclusive; a running
 session holds them while its money record — the order events and the trades — cannot be written
-(`record_unwritable`), until the lines it kept in memory are on the disk. A hold
+(`record_unwritable`), until the lines it kept in memory are on the disk; and a start holds them when
+its *boot read* finds a fill of its own the book does not hold, or cannot finish (`unbooked_fill`),
+until an operator lifts it at a start they watch. A hold
 is *lifted* — by its cause measurably gone, or by the operator — and never by time. *Hold* here is
 the verb of withholding: not a *holding*, which is a spot balance, and lifting a hold is not a
 *release* of the software. See [Capital and Safety](autotrader/autotrader_capital_and_safety.md).
