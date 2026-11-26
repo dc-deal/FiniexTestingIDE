@@ -177,7 +177,7 @@ and the date it was read are in `kraken_error_codes.py`.
 | Test class | Asserts |
 |---|---|
 | `TestWhatTheCodesMean` | each not-now code, with or without a numeric suffix, is TRANSIENT · an order refusal, a refused key, a lockout and a cancel-only market stay TERMINAL · an answer beside a not-now keeps the whole answer terminal · an empty list passes · the reader's label stays in the message |
-| `TestTheAdapterAppliesThem` | the adapter's one private-call method raises a deadline on an order as transient — asked about, never refused — and insufficient funds as the venue's answer |
+| `TestTheAdapterAppliesThem` | the adapter's one private-call method raises a deadline on an order as transient — asked about, never refused — and insufficient funds as the venue's answer; a body that is not JSON, or JSON that is no object, raises `UnreadableVenueAnswerError`, neither a refusal nor a transport fault (#669) |
 
 ## Run
 

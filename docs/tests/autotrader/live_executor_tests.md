@@ -1086,6 +1086,25 @@ nothing, its operation stays in flight, and the resolution decides.
 |---|---|
 | `TestAFullCloseReachesTheLogic` | a full close emits `PositionClosedEvent` once, a partial close only `PartialCloseEvent`, and the simulation emits it too |
 
+## test_crashed_worker_job.py — the request worker survives a job that raises (#669)
+
+One worker thread sends every write and read to the venue. A job that raised outside its dispatcher's
+`try` ended it without a word, and every later order waited unsent; an answer we could not read, after
+the venue executed, was booked as the venue's refusal. Against the real `LiveTradeExecutor` on
+`AcknowledgingVenueMock` (which executes first and can fail while its answer is read), the fill cases in
+both account models; the read and position-modify cases against the processor alone.
+
+| Class | What it pins |
+|---|---|
+| `TestAWriteThatRaisesAfterTheVenueExecuted` | an answer that cannot be parsed, an answer object that fails as it is built, and an unreadable body the call raises are each kept `UNRESOLVED`, resolved by asking and the fill booked, with no rejection; one ERROR names the crash; the worker sends the next order |
+| `TestOnlyTheVenuesRefusalIsARefusal` | a refusal the venue call raises stays `REJECTED` and leaves no pending |
+| `TestAnAmendOrCancelThatCrashes` | a crashed amend leaves the order at its old price with the modify in flight and the resolution armed; a crashed cancel keeps the order and arms the resolution; an unreadable answer to the synchronous cancel (fill timeout, session end) is `UNRESOLVED`, not a refusal |
+| `TestTheLoopsOwnCallsToTheVenue` | at the fill timeout, a cancel answer and a status answer that cannot be read hand the order to the resolution instead of ending the heartbeat with an exception, in both account models; the synchronous cancel and modify answer an unreadable answer `UNRESOLVED` |
+| `TestAPositionModifyThatCrashes` | on a venue holding a position's levels (margin), an answer that cannot be read leaves the levels unapplied, says so at ERROR, and drops the tracker so the next change is taken — nothing can ask about a position |
+| `TestAWriteThatWasNeverSent` | a cancel whose request cannot be built is answered `REJECTED`, "not sent", and nothing reaches the venue |
+| `TestAReadThatRaises` | a trades query whose parse raises is one failed read with no trades list; a resolve whose answer fails as it is built is answered once, as a failed read; a status query that crashes is one `UNRESOLVED` answer and the next read is still sent |
+| `TestAPositionModifyWithNoAdapterBehindIt` | refused as not supported before anything is sent, with one ERROR |
+
 ## test_active_order_snapshot.py — what the ORDERS panel's partial-fill row reads (#586)
 
 The row needs what an order asked for and what has executed of it. Both fields were declared on

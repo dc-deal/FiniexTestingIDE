@@ -1267,7 +1267,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                 pending.execution_state.in_flight_operation = PendingOperation.PENDING_CANCEL
                 operation = OrderOperation.CANCEL
                 why = ('UNKNOWN — the venue answered and named nothing it carried out'
-                       if cancel.is_unknown else 'UNRESOLVED — the broker did not answer')
+                       if cancel.is_unknown else 'UNRESOLVED — no usable answer from the broker')
             if cancel.status == BrokerOrderStatus.CANCELLED or cancel.is_rejected:
                 # Cancelled, or refused because nothing is left to cancel — a venue answers a
                 # filled order's cancel with a refusal. Either way the order has ended, and
@@ -1670,7 +1670,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             pending.execution_state.in_flight_operation = PendingOperation.PENDING_SUBMIT
             self._record_unresolved(pending, OrderOperation.SUBMIT, response.rejection_reason)
             self.logger.error(
-                f'📡 {order_label} order {order_id} UNRESOLVED — the broker did not answer '
+                f'📡 {order_label} order {order_id} UNRESOLVED — no usable answer from the broker '
                 f'({response.rejection_reason}). Kept in flight for resolution by query (#487).'
             )
             return
@@ -2069,8 +2069,9 @@ class LiveTradeExecutor(AbstractTradeExecutor):
             return
 
         if response.is_rejected:
+            # Refused by the venue, or not sent at all — the reason says which (#669)
             self.logger.warning(
-                f"Broker rejected position modify for {position_id}: "
+                f"Position modify for {position_id} refused, the levels are not applied: "
                 f"{response.rejection_reason or 'unknown'}"
             )
             return
@@ -2501,7 +2502,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
         if now is not None:
             self._arm_resolution(pending, now)
         what = ('UNKNOWN — the venue answered and named nothing it carried out'
-                if answered else 'UNRESOLVED — the broker did not answer')
+                if answered else 'UNRESOLVED — no usable answer from the broker')
         self._record_unresolved(pending, operation, what)
         self.logger.error(
             f'📡 {operation.value.capitalize()} of {pending.pending_order_id} {what}. '
@@ -4300,7 +4301,7 @@ class LiveTradeExecutor(AbstractTradeExecutor):
                     self._record_unresolved(
                         pending, OrderOperation.CANCEL,
                         'UNKNOWN — the venue answered and named nothing it carried out'
-                        if response.is_unknown else 'UNRESOLVED — the broker did not answer')
+                        if response.is_unknown else 'UNRESOLVED — no usable answer from the broker')
                 if response.status != BrokerOrderStatus.CANCELLED:
                     reason = response.rejection_reason or response.status.value
                     if not self._has_stop_time_for_venue_call():

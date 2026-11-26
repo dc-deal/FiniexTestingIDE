@@ -34,14 +34,19 @@ Modes:
   on the next tick and routes it to the executor hooks
 - modify_order_sync / cancel_order_sync / query_order_sync: synchronous
   orchestrators over the corresponding Tier-3 operation triples
+
+The worker thread survives every job (#669): a job that raises is logged at ERROR and answered
+as unknown — a write UNRESOLVED, for the resolution to ask about, a read as a failed read — and
+the worker takes the next job.
 """
 
 import queue
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
+from python.framework.exceptions.live_execution_errors import UnreadableVenueAnswerError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
 from python.framework.trading_env.adapters.abstract_adapter import AbstractAdapter
@@ -86,6 +91,14 @@ from python.framework.types.trading_env_types.order_types import (
 )
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.connection_ladder import ConnectionLadder
+
+
+# The adapter calls a position modify is made of; no adapter implements them yet (#209)
+_POSITION_MODIFY_METHODS = (
+    'build_position_modify_payload',
+    'do_request_position_modify',
+    'parse_position_modify_response',
+)
 
 
 class LiveRequestProcessor(AbstractPendingOrderManager):
@@ -233,7 +246,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 parameter; it now raises (#500)
 
         Returns:
-            BrokerResponse from the adapter (REJECTED on transport error)
+            BrokerResponse from the adapter — UNRESOLVED on a transport fault or an answer
+            that could not be read, REJECTED on the venue's refusal
         """
         payload = adapter.build_submit_payload(
             symbol=symbol,
@@ -243,18 +257,13 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             **kwargs,
         )
 
-        try:
-            raw = adapter.do_request_submit(payload)
-        except Exception as e:
-            return self._failure_response(
-                e, broker_ref='', ts_init=datetime.now(timezone.utc),
-                operation='submit')
-
-        return adapter.parse_submit_response(
-            raw,
-            ts_init=datetime.now(timezone.utc),
-            direction=direction,
-            order_type=order_type,
+        # The payload above is built before the call, so a build fault still raises into the
+        # caller (#500); the call and the reading of its answer are told apart (#669)
+        return self._write_answer(
+            'submit', '',
+            call=lambda _: adapter.do_request_submit(payload),
+            parse=lambda raw, received: adapter.parse_submit_response(
+                raw, ts_init=received, direction=direction, order_type=order_type),
         )
 
     def submit_close_order(
@@ -280,7 +289,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             **kwargs: comment, expected_price, etc.
 
         Returns:
-            BrokerResponse from the adapter (REJECTED on transport error)
+            BrokerResponse from the adapter — UNRESOLVED on a transport fault or an answer
+            that could not be read, REJECTED on the venue's refusal
         """
         payload = adapter.build_submit_payload(
             symbol=symbol,
@@ -290,18 +300,12 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             **kwargs,
         )
 
-        try:
-            raw = adapter.do_request_submit(payload)
-        except Exception as e:
-            return self._failure_response(
-                e, broker_ref='', ts_init=datetime.now(timezone.utc),
-                operation='submit')
-
-        return adapter.parse_submit_response(
-            raw,
-            ts_init=datetime.now(timezone.utc),
-            direction=close_direction,
-            order_type=OrderType.MARKET,
+        # As the open: the build raises into the caller, the call and its answer are told apart
+        return self._write_answer(
+            'submit', '',
+            call=lambda _: adapter.do_request_submit(payload),
+            parse=lambda raw, received: adapter.parse_submit_response(
+                raw, ts_init=received, direction=close_direction, order_type=OrderType.MARKET),
         )
 
     # ============================================
@@ -955,6 +959,12 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
 
         The short get() timeout keeps shutdown latency bounded (max one
         timeout interval after stop_worker).
+
+        No exception a job raises ends this thread (#669): every order after it would wait in
+        the outbox, unsent, while the processor still believed its worker ran. A SystemExit or
+        a KeyboardInterrupt still ends it, as it should. A job that raises
+        is answered by `_answer_crashed_job` and the loop takes the next one; the thread ends
+        only through `stop_worker()`.
         """
         while self._worker_running:
             try:
@@ -962,24 +972,209 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             except queue.Empty:
                 continue
 
-            if isinstance(job, SubmitJob):
-                self._dispatch_submit_job(job)
-            elif isinstance(job, EditJob):
-                self._dispatch_edit_job(job)
-            elif isinstance(job, CancelJob):
-                self._dispatch_cancel_job(job)
-            elif isinstance(job, PositionModifyJob):
-                self._dispatch_position_modify_job(job)
-            elif isinstance(job, TradesQueryJob):
-                self._dispatch_trades_query_job(job)
-            elif isinstance(job, QueryJob):
-                self._dispatch_query_job(job)
-            elif isinstance(job, OrderResolveJob):
-                self._dispatch_order_resolve_job(job)
-            else:
-                self.logger.warning(
-                    f'Unknown job type in outbox: {type(job).__name__}'
+            try:
+                self._dispatch(job)
+            except Exception as error:  # noqa: BLE001 — a crashed job costs its answer, never the worker
+                self._answer_crashed_job(job, error)
+
+    def _dispatch(self, job: object) -> None:
+        """
+        Hand one outbox job to its dispatcher.
+
+        Args:
+            job: The job taken from the outbox
+        """
+        if isinstance(job, SubmitJob):
+            self._dispatch_submit_job(job)
+        elif isinstance(job, EditJob):
+            self._dispatch_edit_job(job)
+        elif isinstance(job, CancelJob):
+            self._dispatch_cancel_job(job)
+        elif isinstance(job, PositionModifyJob):
+            self._dispatch_position_modify_job(job)
+        elif isinstance(job, TradesQueryJob):
+            self._dispatch_trades_query_job(job)
+        elif isinstance(job, QueryJob):
+            self._dispatch_query_job(job)
+        elif isinstance(job, OrderResolveJob):
+            self._dispatch_order_resolve_job(job)
+        else:
+            self.logger.warning(
+                f'Unknown job type in outbox: {type(job).__name__}'
+            )
+
+    def _answer_crashed_job(self, job: object, error: BaseException) -> None:
+        """
+        Answer a job whose dispatcher raised, so its order is not left waiting (#669).
+
+        Every dispatcher puts its answer once, as its last step, so a dispatcher that raised
+        has put nothing and this answer is never a second one. A write is answered UNRESOLVED
+        — never through `_failure_response`, which reads an exception as the venue's refusal
+        and would drop an order the venue may already hold — so the resolution asks the venue.
+        A read is answered as a failed read. Should even that answer fail to build, the job
+        stays unanswered and the worker still goes on.
+
+        Args:
+            job: The job whose dispatcher raised
+            error: What it raised
+        """
+        subject = getattr(job, 'order_id', None) or getattr(job, 'position_id', None) or '?'
+        self.logger.error(
+            f'📡 The request worker crashed on a {type(job).__name__} for {subject} '
+            f'({type(error).__name__}: {error}). The worker goes on with the next job; this '
+            f'one is answered as unknown, so a write is resolved by asking the venue and a '
+            f'read is asked again.')
+        try:
+            answer = self._crashed_answer(job, f'{type(error).__name__}: {error}')
+        except Exception as second:  # noqa: BLE001 — the worker survives its own answer too
+            self.logger.error(
+                f'📡 The answer to the crashed {type(job).__name__} for {subject} could not be '
+                f'built either ({type(second).__name__}: {second}); it stays unanswered.')
+            return
+        if answer is not None:
+            self._put_inbox(answer)
+
+    def _crashed_answer(self, job: object, reason: str) -> Optional[object]:
+        """
+        The answer a crashed job gets, by its kind.
+
+        Args:
+            job: The job whose dispatcher raised
+            reason: What it raised, for the answer's record
+
+        Returns:
+            The inbox item to put, or None for a job kind this worker does not know
+        """
+        now = datetime.now(timezone.utc)
+        reason = f'the request worker crashed on this job: {reason}'
+        if isinstance(job, SubmitJob):
+            return SubmitResponse(
+                order_id=job.order_id, action=job.action, order_type=job.order_type,
+                broker_response=self._unknown_outcome(broker_ref='', reason=reason, ts_init=now))
+        if isinstance(job, EditJob):
+            return EditResponse(order_id=job.order_id, broker_response=self._unknown_outcome(
+                broker_ref=job.broker_ref, reason=reason, ts_init=now))
+        if isinstance(job, CancelJob):
+            return CancelResponse(order_id=job.order_id, broker_response=self._unknown_outcome(
+                broker_ref=job.broker_ref, reason=reason, ts_init=now))
+        if isinstance(job, PositionModifyJob):
+            return PositionModifyResponse(
+                position_id=job.position_id, broker_response=self._unknown_outcome(
+                    broker_ref=job.position_id, reason=reason, ts_init=now))
+        if isinstance(job, TradesQueryJob):
+            return TradesQueryResponse(
+                order_id=job.order_id, broker_ref=job.broker_ref, success=False,
+                error_message=reason)
+        if isinstance(job, QueryJob):
+            return QueryResponse(order_id=job.order_id, broker_response=self._unknown_outcome(
+                broker_ref=job.broker_ref, reason=reason, ts_init=now))
+        if isinstance(job, OrderResolveJob):
+            return OrderResolveResponse(order_id=job.order_id, success=False, error_message=reason)
+        return None
+
+    @staticmethod
+    def _unknown_outcome(broker_ref: str, reason: str, ts_init: datetime) -> BrokerResponse:
+        """
+        An UNRESOLVED answer: the venue's state of this order is not known.
+
+        Args:
+            broker_ref: The reference the request was about ('' for a submit that never got one)
+            reason: Why it is not known, for the answer's record
+            ts_init: When this process gave the answer (UTC)
+
+        Returns:
+            A BrokerResponse carrying UNRESOLVED
+        """
+        return BrokerResponse(
+            broker_ref=broker_ref,
+            status=BrokerOrderStatus.UNRESOLVED,
+            rejection_reason=reason,
+            ts_init=ts_init,
+        )
+
+    def _write_answer(
+        self,
+        operation: str,
+        broker_ref: str,
+        call: Callable[[Any], Any],
+        parse: Callable[[Any, datetime], BrokerResponse],
+        build: Optional[Callable[[], Any]] = None,
+    ) -> BrokerResponse:
+        """
+        A write's answer, with its three stages told apart (#669).
+
+        Only what the VENUE refused is a refusal, so where an exception raised decides:
+            build  nothing was sent — REJECTED, said as "not sent"
+            call   the ladder decides, as since #473: a transport fault is UNRESOLVED, anything
+                   else is the venue's refusal — except an answer the adapter could not read,
+                   which is UNRESOLVED
+            parse  the call returned, so the venue may hold the order — UNRESOLVED
+        An UNRESOLVED write is resolved by asking the venue (#487), never by sending it again.
+
+        Args:
+            operation: What is attempted, for the line the operator reads
+            broker_ref: The reference the write is about ('' for a submit)
+            call: The adapter's request, given the built payload
+            parse: The adapter's parse, given the raw answer and its receipt
+            build: The adapter's payload builder, or None where the payload is already built
+
+        Returns:
+            The BrokerResponse the dispatcher puts
+        """
+        payload = None
+        if build is not None:
+            try:
+                payload = build()
+            except Exception as error:  # noqa: BLE001 — nothing was sent, said below
+                self.logger.error(
+                    f'📡 The {operation} for {broker_ref or "a new order"} was not sent: its '
+                    f'request could not be built ({type(error).__name__}: {error}). Nothing '
+                    f'reached the venue, so it is answered as refused.')
+                return BrokerResponse(
+                    broker_ref=broker_ref,
+                    status=BrokerOrderStatus.REJECTED,
+                    rejection_reason=f'not sent: {error}',
+                    ts_init=datetime.now(timezone.utc),
                 )
+        try:
+            raw = call(payload)
+        except Exception as error:  # noqa: BLE001 — classified by _failure_response
+            return self._failure_response(
+                error, broker_ref=broker_ref, ts_init=datetime.now(timezone.utc),
+                operation=operation)
+        # The answer's receipt, read as it comes back — never the moment the request left
+        received = datetime.now(timezone.utc)
+        try:
+            return parse(raw, received)
+        except Exception as error:  # noqa: BLE001 — the venue answered, said below
+            return self._unreadable_answer(error, broker_ref, operation, received)
+
+    def _unreadable_answer(
+        self,
+        error: BaseException,
+        broker_ref: str,
+        operation: str,
+        ts_init: datetime,
+    ) -> BrokerResponse:
+        """
+        The answer to a write the venue answered and we could not read (#669).
+
+        Args:
+            error: What reading the answer raised
+            broker_ref: The reference the write is about ('' for a submit)
+            operation: What was attempted, for the line the operator reads
+            ts_init: When this process received the answer (UTC)
+
+        Returns:
+            A BrokerResponse carrying UNRESOLVED
+        """
+        self.logger.error(
+            f'📡 The venue answered the {operation} for {broker_ref or "a new order"}, and '
+            f'the answer could not be read ({type(error).__name__}: {error}). The venue may '
+            f'hold the order, so it is not treated as refused: UNRESOLVED, and the resolution '
+            f'asks the venue.')
+        return self._unknown_outcome(
+            broker_ref=broker_ref, reason=f'answer unreadable: {error}', ts_init=ts_init)
 
     def _failure_response(
         self,
@@ -1015,6 +1210,10 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         ladder decides only the level: a transient fault is a warning, anything else an
         error, said once per order because the poll asks again every cycle.
 
+        An answer the adapter could not read (`UnreadableVenueAnswerError`) is no refusal
+        either: the venue answered, so a write it carried may have been executed. It is
+        UNRESOLVED on every write path, the synchronous ones included (#669).
+
         Args:
             error: What the call raised
             broker_ref: The reference the call was about ('' for a submit that never got one)
@@ -1028,6 +1227,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Returns:
             A BrokerResponse carrying UNRESOLVED or REJECTED
         """
+        if isinstance(error, UnreadableVenueAnswerError) and not is_read:
+            return self._unreadable_answer(error, broker_ref, operation, ts_init)
         transient = self._rest_ladder.classify(error) is ConnectionOutcome.TRANSIENT
         if is_read and not transient:
             if broker_ref not in self._terminal_read_failures_reported:
@@ -1065,21 +1266,20 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
 
         Performs the broker transport via the adapter's Tier-3 layers,
         wraps the result in a SubmitResponse, and pushes it to the inbox.
-        A transport fault surfaces as UNRESOLVED, a venue answer as REJECTED (#473).
+        A transport fault or an answer that could not be read surfaces as UNRESOLVED, the
+        venue's refusal as REJECTED (#473, #669). The payload is built on the caller's thread,
+        so a submit has no build stage here.
 
         Args:
             job: The SubmitJob enqueued by submit_open_order_async or
                  submit_close_order_async
         """
-        try:
-            raw = job.adapter.do_request_submit(job.payload)
-            # The answer's receipt, read as it comes back — never the moment the request left
-            received = datetime.now(timezone.utc)
-            response = job.adapter.parse_submit_response(
-                raw, ts_init=received, direction=job.direction, order_type=job.order_type)
-        except Exception as e:
-            response = self._failure_response(
-                e, broker_ref='', ts_init=datetime.now(timezone.utc), operation='submit')
+        response = self._write_answer(
+            'submit', '',
+            call=lambda _: job.adapter.do_request_submit(job.payload),
+            parse=lambda raw, received: job.adapter.parse_submit_response(
+                raw, ts_init=received, direction=job.direction, order_type=job.order_type),
+        )
 
         self._put_inbox(SubmitResponse(
             order_id=job.order_id,
@@ -1095,15 +1295,17 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         Composes adapter Tier-3 modify layer:
             build_modify_payload → do_request_modify → parse_modify_response
 
-        Transport errors are surfaced as REJECTED BrokerResponse. The main
-        thread's drain_inbox routes the EditResponse to the executor via
+        A transport fault or an answer that could not be read surfaces as UNRESOLVED, the
+        venue's refusal and a request that could not be built as REJECTED (#473, #669). The
+        main thread's drain_inbox routes the EditResponse to the executor via
         _modify_response_hook for state application.
 
         Args:
             job: EditJob enqueued by submit_modify_order_async
         """
-        try:
-            payload = job.adapter.build_modify_payload(
+        response = self._write_answer(
+            'modify', job.broker_ref,
+            build=lambda: job.adapter.build_modify_payload(
                 broker_ref=job.broker_ref,
                 symbol=job.symbol,
                 order_type=job.order_type,
@@ -1111,16 +1313,12 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 new_limit_price=job.new_limit_price,
                 new_stop_loss=job.new_stop_loss,
                 new_take_profit=job.new_take_profit,
-            )
-            raw = job.adapter.do_request_modify(payload)
-            received = datetime.now(timezone.utc)
-            response = job.adapter.parse_modify_response(
+            ),
+            call=job.adapter.do_request_modify,
+            parse=lambda raw, received: job.adapter.parse_modify_response(
                 raw, original_broker_ref=job.broker_ref, ts_init=received,
-            )
-        except Exception as e:
-            response = self._failure_response(
-                e, broker_ref=job.broker_ref, ts_init=datetime.now(timezone.utc),
-                operation='modify')
+            ),
+        )
 
         self._put_inbox(EditResponse(
             order_id=job.order_id,
@@ -1133,18 +1331,16 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
 
         Composes adapter Tier-3 cancel layer:
             build_cancel_payload → do_request_cancel → parse_cancel_response
+        Its stages are told apart as a modify's are (#669).
         """
-        try:
-            payload = job.adapter.build_cancel_payload(job.broker_ref)
-            raw = job.adapter.do_request_cancel(payload)
-            received = datetime.now(timezone.utc)
-            response = job.adapter.parse_cancel_response(
+        response = self._write_answer(
+            'cancel', job.broker_ref,
+            build=lambda: job.adapter.build_cancel_payload(job.broker_ref),
+            call=job.adapter.do_request_cancel,
+            parse=lambda raw, received: job.adapter.parse_cancel_response(
                 raw, job.broker_ref, received,
-            )
-        except Exception as e:
-            response = self._failure_response(
-                e, broker_ref=job.broker_ref, ts_init=datetime.now(timezone.utc),
-                operation='cancel')
+            ),
+        )
 
         self._put_inbox(CancelResponse(
             order_id=job.order_id,
@@ -1164,23 +1360,37 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         into the existing modify operation (#209 design decision) should
         override this dispatch method or expose the same triple names as
         thin aliases.
+
+        No adapter implements the triple yet, so before anything is sent the job is refused
+        as not supported — a call the adapter does not have is not a venue refusal (#669).
         """
-        try:
-            payload = job.adapter.build_position_modify_payload(
-                position_id=job.position_id,
-                symbol=job.symbol,
-                new_stop_loss=job.new_stop_loss,
-                new_take_profit=job.new_take_profit,
+        missing = [name for name in _POSITION_MODIFY_METHODS if not hasattr(job.adapter, name)]
+        if missing:
+            self.logger.error(
+                f'📡 Position modify for {job.position_id} refused: '
+                f'{type(job.adapter).__name__} implements no position modify '
+                f'({", ".join(missing)} missing). Nothing was sent.')
+            response = BrokerResponse(
+                broker_ref=job.position_id,
+                status=BrokerOrderStatus.REJECTED,
+                rejection_reason=(f'not supported: {type(job.adapter).__name__} implements no '
+                                  f'position modify — nothing was sent'),
+                ts_init=datetime.now(timezone.utc),
             )
-            raw = job.adapter.do_request_position_modify(payload)
-            received = datetime.now(timezone.utc)
-            response = job.adapter.parse_position_modify_response(
-                raw, position_id=job.position_id, ts_init=received,
+        else:
+            response = self._write_answer(
+                'position modify', job.position_id,
+                build=lambda: job.adapter.build_position_modify_payload(
+                    position_id=job.position_id,
+                    symbol=job.symbol,
+                    new_stop_loss=job.new_stop_loss,
+                    new_take_profit=job.new_take_profit,
+                ),
+                call=job.adapter.do_request_position_modify,
+                parse=lambda raw, received: job.adapter.parse_position_modify_response(
+                    raw, position_id=job.position_id, ts_init=received,
+                ),
             )
-        except Exception as e:
-            response = self._failure_response(
-                e, broker_ref=job.position_id, ts_init=datetime.now(timezone.utc),
-                operation='position modify')
 
         self._put_inbox(PositionModifyResponse(
             position_id=job.position_id,
@@ -1235,64 +1445,75 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             job: The OrderResolveJob enqueued by the executor's resolution scheduler
         """
         try:
-            if job.broker_ref:
-                payload = job.adapter.build_query_payload(job.broker_ref)
-                raw = job.adapter.do_request_query(payload)
-                parsed = job.adapter.parse_query_response(
-                    raw, job.broker_ref, datetime.now(timezone.utc))
-                self._put_inbox(OrderResolveResponse(
-                    order_id=job.order_id,
-                    status=None if parsed.status == BrokerOrderStatus.UNKNOWN
-                    else parsed.status,
-                    broker_ref=job.broker_ref,
-                    filled_lots=parsed.filled_lots or 0.0,
-                ))
-                return
-
-            if not job.client_order_id:
-                # Sent under no key and no reference came back: there is nothing to ask
-                # about. Reported as a FAILED read rather than as an empty answer, because
-                # an empty answer is evidence and this is the absence of a question.
-                self._put_inbox(OrderResolveResponse(
-                    order_id=job.order_id,
-                    success=False,
-                    error_message='no client order id and no broker reference to ask with',
-                ))
-                return
-
-            matches = self._orders_with_client_key(
-                job.adapter.get_broker_orders(), job.client_order_id)
-            if not matches:
-                matches = self._orders_with_client_key(
-                    job.adapter.get_closed_broker_orders(
-                        job.range_start, job.range_end, job.client_order_id),
-                    job.client_order_id)
-            if len(matches) > 1:
-                # Several orders carry our key. Picking one would be a guess about which, and
-                # answering "none" would read as "the venue never took it" — a verdict that
-                # books the order undelivered. A FAILED read
-                # is what this is: the resolution asks again, and its ceiling ends the question.
-                self._put_inbox(OrderResolveResponse(
-                    order_id=job.order_id,
-                    success=False,
-                    error_message=(f'{len(matches)} orders at the venue carry client order id '
-                                   f'{job.client_order_id} — not guessing which'),
-                ))
-                return
-            match = matches[0] if matches else None
-
-            self._put_inbox(OrderResolveResponse(
-                order_id=job.order_id,
-                status=match.status if match is not None else None,
-                broker_ref=match.broker_ref if match is not None else None,
-                filled_lots=match.filled_lots if match is not None else 0.0,
-            ))
+            answer = self._resolve_answer(job)
         except Exception as e:                           # noqa: BLE001 — reported below
-            self._put_inbox(OrderResolveResponse(
+            answer = OrderResolveResponse(
                 order_id=job.order_id,
                 success=False,
                 error_message=str(e),
-            ))
+            )
+        # Put once, after the read: a later fault can no longer add a second answer (#669)
+        self._put_inbox(answer)
+
+    def _resolve_answer(self, job: OrderResolveJob) -> OrderResolveResponse:
+        """
+        Ask the venue what became of a write, by the route its lost answer left.
+
+        Args:
+            job: The OrderResolveJob
+
+        Returns:
+            The answer to put — the venue's, or a failed read where no question can be asked
+        """
+        if job.broker_ref:
+            payload = job.adapter.build_query_payload(job.broker_ref)
+            raw = job.adapter.do_request_query(payload)
+            parsed = job.adapter.parse_query_response(
+                raw, job.broker_ref, datetime.now(timezone.utc))
+            return OrderResolveResponse(
+                order_id=job.order_id,
+                status=None if parsed.status == BrokerOrderStatus.UNKNOWN
+                else parsed.status,
+                broker_ref=job.broker_ref,
+                filled_lots=parsed.filled_lots,
+            )
+
+        if not job.client_order_id:
+            # Sent under no key and no reference came back: there is nothing to ask
+            # about. Reported as a FAILED read rather than as an empty answer, because
+            # an empty answer is evidence and this is the absence of a question.
+            return OrderResolveResponse(
+                order_id=job.order_id,
+                success=False,
+                error_message='no client order id and no broker reference to ask with',
+            )
+
+        matches = self._orders_with_client_key(
+            job.adapter.get_broker_orders(), job.client_order_id)
+        if not matches:
+            matches = self._orders_with_client_key(
+                job.adapter.get_closed_broker_orders(
+                    job.range_start, job.range_end, job.client_order_id),
+                job.client_order_id)
+        if len(matches) > 1:
+            # Several orders carry our key. Picking one would be a guess about which, and
+            # answering "none" would read as "the venue never took it" — a verdict that
+            # books the order undelivered. A FAILED read
+            # is what this is: the resolution asks again, and its ceiling ends the question.
+            return OrderResolveResponse(
+                order_id=job.order_id,
+                success=False,
+                error_message=(f'{len(matches)} orders at the venue carry client order id '
+                               f'{job.client_order_id} — not guessing which'),
+            )
+        match = matches[0] if matches else None
+
+        return OrderResolveResponse(
+            order_id=job.order_id,
+            status=match.status if match is not None else None,
+            broker_ref=match.broker_ref if match is not None else None,
+            filled_lots=match.filled_lots if match is not None else None,
+        )
 
     @staticmethod
     def _orders_with_client_key(
@@ -1327,8 +1548,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             → parse_trades_query_response
 
         Transport errors are surfaced as a TradesQueryResponse with success=False
-        and an empty trades list — the main thread's drain handler decides how
-        to react (typically: leave the pending in place, retry on next poll).
+        and no trades list — the read found nothing out — and the main thread's drain handler
+        decides how to react (typically: leave the pending in place, retry on next poll).
         """
         try:
             payload = job.adapter.build_trades_query_payload(job.broker_ref)
@@ -1336,20 +1557,21 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             trades = job.adapter.parse_trades_query_response(
                 raw, broker_ref=job.broker_ref, order_id=job.order_id,
             )
-            self._put_inbox(TradesQueryResponse(
+            answer = TradesQueryResponse(
                 order_id=job.order_id,
                 broker_ref=job.broker_ref,
                 trades=trades,
                 success=True,
-            ))
+            )
         except Exception as e:
-            self._put_inbox(TradesQueryResponse(
+            answer = TradesQueryResponse(
                 order_id=job.order_id,
                 broker_ref=job.broker_ref,
-                trades=[],
                 success=False,
                 error_message=str(e),
-            ))
+            )
+        # Put once, after the read: a later fault can no longer add a second answer (#669)
+        self._put_inbox(answer)
 
     def flush_outbox(self, timeout: float = 2.0) -> bool:
         """
@@ -1469,7 +1691,7 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
                 self._unresolved_hook(
                     pending, OrderOperation.SUBMIT, response.rejection_reason)
             self.logger.error(
-                f'📡 Order {item.order_id} UNRESOLVED — the broker did not answer '
+                f'📡 Order {item.order_id} UNRESOLVED — no usable answer from the broker '
                 f'({response.rejection_reason}). Keeping it in flight; the venue may hold '
                 f'it. Resolution comes from the next query, not from re-sending (#487).'
             )
@@ -1968,7 +2190,8 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             new_limit_price: New limit price of a STOP_LIMIT (None=no change)
 
         Returns:
-            BrokerResponse (REJECTED on transport error, PENDING on success,
+            BrokerResponse (UNRESOLVED on a transport fault or an unreadable answer, REJECTED
+            on the venue's refusal, PENDING on success,
             with a new broker_ref only from a venue that re-mints it)
         """
         payload = adapter.build_modify_payload(
@@ -1980,14 +2203,13 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             new_stop_loss=new_stop_loss,
             new_take_profit=new_take_profit,
         )
-        try:
-            raw = adapter.do_request_modify(payload)
-        except Exception as e:
-            return self._failure_response(
-                e, broker_ref=broker_ref, ts_init=datetime.now(timezone.utc),
-                operation='modify')
-        return adapter.parse_modify_response(
-            raw, original_broker_ref=broker_ref, ts_init=datetime.now(timezone.utc))
+        # The call and the reading of its answer are told apart (#669)
+        return self._write_answer(
+            'modify', broker_ref,
+            call=lambda _: adapter.do_request_modify(payload),
+            parse=lambda raw, received: adapter.parse_modify_response(
+                raw, original_broker_ref=broker_ref, ts_init=received),
+        )
 
     def query_order_sync(
         self,
@@ -2017,12 +2239,14 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
         payload = adapter.build_query_payload(broker_ref)
         try:
             raw = adapter.do_request_query(payload)
+            # Read inside the guard: an answer that cannot be read is a failed read, never an
+            # exception in the caller's pass — the fill timeout asks through here (#669)
+            return adapter.parse_query_response(
+                raw, broker_ref, datetime.now(timezone.utc), market=market)
         except Exception as e:
             return self._failure_response(
                 e, broker_ref=broker_ref, ts_init=datetime.now(timezone.utc),
                 operation='status query', self_healing=True, is_read=True)
-        return adapter.parse_query_response(
-            raw, broker_ref, datetime.now(timezone.utc), market=market)
 
     def cancel_order_sync(
         self,
@@ -2042,13 +2266,14 @@ class LiveRequestProcessor(AbstractPendingOrderManager):
             adapter: Live-capable adapter
 
         Returns:
-            BrokerResponse (REJECTED on transport error, CANCELLED on success)
+            BrokerResponse (UNRESOLVED on a transport fault or an unreadable answer, REJECTED
+            on the venue's refusal, CANCELLED on success)
         """
         payload = adapter.build_cancel_payload(broker_ref)
-        try:
-            raw = adapter.do_request_cancel(payload)
-        except Exception as e:
-            return self._failure_response(
-                e, broker_ref=broker_ref, ts_init=datetime.now(timezone.utc),
-                operation='cancel')
-        return adapter.parse_cancel_response(raw, broker_ref, datetime.now(timezone.utc))
+        # The call and the reading of its answer are told apart (#669): the fill timeout and a
+        # stop's give-up cancel through here, on the loop's own thread
+        return self._write_answer(
+            'cancel', broker_ref,
+            call=lambda _: adapter.do_request_cancel(payload),
+            parse=lambda raw, received: adapter.parse_cancel_response(raw, broker_ref, received),
+        )

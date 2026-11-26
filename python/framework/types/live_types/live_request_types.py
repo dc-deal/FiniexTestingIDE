@@ -31,7 +31,7 @@ Response types (inbox, worker → main):
     OrderResolveResponse   result of an OrderResolveJob (#487)
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -368,13 +368,14 @@ class TradesQueryResponse:
     Args:
         order_id: Internal order identifier (matches TradesQueryJob.order_id)
         broker_ref: Parent order's broker_ref at query time — what a consumer matches it by
-        trades: List of BrokerTrade records (empty on broker error / no data)
+        trades: List of BrokerTrade records — empty where the venue named none; None on a failed
+            read, which found nothing out (#669)
         success: True if query succeeded; False on broker rejection or transport error
         error_message: Non-empty if success=False
     """
     order_id: str
     broker_ref: str
-    trades: List[BrokerTrade] = field(default_factory=list)
+    trades: Optional[List[BrokerTrade]] = None
     success: bool = True
     error_message: Optional[str] = None
 
@@ -434,13 +435,14 @@ class OrderResolveResponse:
         status: What the venue says this order IS, or None when it named nothing
         broker_ref: The reference the venue gave it — the handle a lost submit answer
             never delivered, and what puts the order back into the ordinary poll path
-        filled_lots: How much of it the venue has executed (0.0 when none / unknown)
+        filled_lots: How much of it the venue has executed — None where it named nothing, did
+            not say, or the read failed (#669)
         success: False when the read itself failed; `status` then says nothing
         error_message: Non-empty when success is False
     """
     order_id: str
     status: Optional[BrokerOrderStatus] = None
     broker_ref: Optional[str] = None
-    filled_lots: float = 0.0
+    filled_lots: Optional[float] = None
     success: bool = True
     error_message: Optional[str] = None

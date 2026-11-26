@@ -55,14 +55,38 @@ Live-specific pending order manager. Adds broker reference tracking, timeout det
 
 **Internal state:** `_broker_ref_index: Dict[str, str]` maps broker_ref → order_id for O(1) lookup when broker responds.
 
-**Live-specific methods:**
-- `submit_order(order_id, symbol, direction, lots, broker_ref, order_kwargs=None)` — Creates PendingOrder with `submitted_at`, `broker_ref` and a fill-timeout deadline on the monotonic clock. Indexes by broker_ref.
-- `submit_close_order(position_id, broker_ref, close_lots)` — Same pattern for close orders
-- `mark_filled(broker_ref, fill_price, filled_lots)` — Removes from pending, returns PendingOrder for fill processing
-- `mark_rejected(broker_ref, reason)` — Removes from pending, returns PendingOrder for rejection recording
-- `check_timeouts()` — Returns orders past their `order_timeout_deadline_monotonic` (does not remove — caller decides)
-- `get_by_broker_ref(broker_ref)` — O(1) lookup via broker reference index
-- `clear_pending()` — Override: clears both pending orders and broker_ref index
+**What it adds** — the methods themselves stand in `live_request_processor.py`; these are the roles:
+- **The pending book by broker reference:** an order is registered when it is sent (`register_pending_open`,
+  `register_pending_close`), indexed by the reference the venue gives it, and leaves when the venue's answer
+  ends it (`mark_filled`, `mark_rejected`); `check_timeouts()` returns orders past their fill-timeout deadline on
+  the monotonic clock without removing them — the caller decides.
+- **The request worker:** every write and read to the venue — submit, modify, cancel, position modify, status
+  query, the resolution's read, the trades query — goes into an outbox as a job (`submit_*_async`), runs on one
+  worker thread, and its answer comes back through an inbox the main thread drains on each pass
+  (`drain_inbox`), so a slow venue never blocks the loop.
+
+**The worker survives every job (#669).** A job whose dispatcher raises is logged at ERROR — it reaches the
+session's error pot, so the run grades `FINISHED_WITH_ERRORS` — and is answered as unknown: a write `UNRESOLVED`,
+which the resolution of a lost answer (#487) takes over by asking the venue, a read as a failed read, asked
+again. The worker takes the next job; it ends only through `stop_worker()`. Each dispatcher puts its answer once,
+as its last step, so a crashed job is never answered twice.
+
+**Only what the venue refused is a refusal.** A write's answer depends on where it failed:
+
+| Stage | Raised | Answer |
+|---|---|---|
+| building the request | nothing was sent | `REJECTED`, "not sent", ERROR |
+| the venue call | a transport fault | `UNRESOLVED` (#473) |
+| the venue call | the venue's refusal (Kraken raises it in its call layer) | `REJECTED` |
+| the venue call | `UnreadableVenueAnswerError` — the venue answered and its body could not be read | `UNRESOLVED`, ERROR — on the synchronous write paths too |
+| reading the answer (`parse_*`) | the call returned, so the venue may hold the order | `UNRESOLVED`, ERROR |
+
+A submit's request is built on the caller's thread, so a submit starts at the call. A position modify is refused
+as not supported, before anything is sent, while no adapter implements it.
+
+The calls the loop makes on its own thread — the fill timeout's status read and cancel, a stop's give-up — answer
+the same way: an answer that cannot be read is a failed read or an `UNRESOLVED` write, and the order goes to the
+resolution. It never ends the loop's pass with an exception, which in a live session would end the session.
 
 ---
 
@@ -164,6 +188,9 @@ Error handling follows the same patterns as simulation, using the shared infrast
 ```
 
 The advantage: Error-handling logic is tested in the simulator first (stress test: "reject every 3rd trade"), then runs identically in a live-adapter session with real broker errors.
+
+What only live has — a venue that executed an order whose answer then failed, or a job that crashed the request
+worker — is answered as unknown and resolved by asking the venue: see *LiveRequestProcessor* above.
 
 ---
 

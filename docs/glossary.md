@@ -1011,8 +1011,9 @@ with a *passage*, the unit the documentation search returns. See
 
 **resolved · unresolved** — Two meanings, told apart by where they stand. On an order event,
 `unresolved` is a request whose answer was lost or named nothing, and `resolved` the asking that
-settled it — the request is in `lost_request`. On a broker answer, `UNRESOLVED` is a transport
-fault: the venue could not be reached, so the answer says nothing about the order.
+settled it — the request is in `lost_request`. On a broker answer, `UNRESOLVED` means the request
+got no usable answer — the venue could not be reached, its answer could not be read, or the request
+worker crashed on the job — so the answer says nothing about the order, which the venue may hold.
 
 **resting** — A pending order the venue (or the trade simulator) has accepted and that waits for its
 price: a resting limit, a resting stop. See [Pending Orders](architecture/pending_order_architecture.md).

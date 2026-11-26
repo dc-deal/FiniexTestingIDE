@@ -33,6 +33,7 @@ from python.configuration.credentials_cascade import (
     tracked_credentials_path,
     workspace_credentials_path,
 )
+from python.framework.exceptions.live_execution_errors import UnreadableVenueAnswerError
 from python.framework.trading_env.adapters.kraken_error_codes import raise_for_kraken_errors
 from python.framework.types.config_types.market_config_types import BrokerTransportConfig
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
@@ -1801,7 +1802,18 @@ class KrakenAdapter(AbstractAdapter):
                 endpoint,
             )
 
-        result = response.json()
+        try:
+            result = response.json()
+        except ValueError as error:
+            # The venue answered and the body is no JSON: a write it carried may have been
+            # executed, so this is neither a transport fault nor a refusal (#669)
+            raise UnreadableVenueAnswerError(
+                f'{endpoint} answered HTTP {response.status_code} with a body that is not '
+                f'JSON ({error})') from error
+        if not isinstance(result, dict):
+            raise UnreadableVenueAnswerError(
+                f'{endpoint} answered HTTP {response.status_code} with JSON that is no object '
+                f'({type(result).__name__})')
         # A Kraken-level error is the VENUE speaking, not a transport fault — it stays a
         # plain ConnectionError and therefore classifies TERMINAL. Retrying "Insufficient
         # funds" forever would report their outage for our order. The exceptions are the codes

@@ -13,6 +13,7 @@ import pytest
 import requests
 
 from python.framework.exceptions.connection_errors import ConnectionAttemptFailedError
+from python.framework.exceptions.live_execution_errors import UnreadableVenueAnswerError
 from python.framework.trading_env.adapters.kraken_adapter import KrakenAdapter
 from python.framework.trading_env.adapters.kraken_error_codes import raise_for_kraken_errors
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
@@ -89,4 +90,22 @@ class TestTheAdapterAppliesThem:
     def test_insufficient_funds_stays_the_venues_answer(self, adapter, monkeypatch):
         self._answering(monkeypatch, {'error': ['EOrder:Insufficient funds'], 'result': {}})
         with pytest.raises(ConnectionError, match='EOrder:Insufficient funds'):
+            adapter._do_fetch_private('/0/private/AddOrder', {'pair': 'XBTUSD'})
+
+    def test_an_answer_that_is_not_json_is_unreadable_not_a_refusal(self, adapter, monkeypatch):
+        # The venue answered, so an order it carried may have been executed: neither the
+        # venue's refusal nor a transport fault (#669)
+        def post(url, headers=None, data=None, timeout=None):
+            response = requests.Response()
+            response.status_code = 200
+            response._content = b'<html>upstream answered</html>'
+            return response
+
+        monkeypatch.setattr(requests, 'post', post)
+        with pytest.raises(UnreadableVenueAnswerError, match='AddOrder answered HTTP 200'):
+            adapter._do_fetch_private('/0/private/AddOrder', {'pair': 'XBTUSD'})
+
+    def test_json_that_is_no_object_is_unreadable_not_a_refusal(self, adapter, monkeypatch):
+        self._answering(monkeypatch, ['not', 'an', 'answer'])
+        with pytest.raises(UnreadableVenueAnswerError, match='JSON that is no object'):
             adapter._do_fetch_private('/0/private/AddOrder', {'pair': 'XBTUSD'})

@@ -20,6 +20,20 @@ class StartupRefusedError(FiniexError):
     pass
 
 
+class UnreadableVenueAnswerError(FiniexError):
+    """
+    The venue answered a request, and its answer could not be read (#669).
+
+    Not a transport fault and not the venue's refusal: the request reached the venue and an
+    answer came back, so a write it carried may have been executed. The request processor
+    answers such a write UNRESOLVED, so the resolution asks the venue what became of it,
+    instead of booking it as refused while the venue holds it. Raised by an adapter where it
+    decodes an answer inside its call layer; an answer `parse_*` cannot read is told apart by
+    where it raised, so it needs no type of its own.
+    """
+    pass
+
+
 class DryRunConflictError(FiniexError):
     """
     A profile tried to enable real orders that the broker's global setting forbids.
