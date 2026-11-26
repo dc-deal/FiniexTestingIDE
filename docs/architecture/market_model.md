@@ -151,6 +151,31 @@ traded price must arrive as **nothing**, never as a zero. A zero is a price to e
 downstream, and it would render an entire quote-driven archive at zero without any check
 noticing — comparing a high against a low is satisfied by `0 >= 0`.
 
+### Why the traded price, and where the midpoint stands in
+
+A print and a midquote are different quantities. The traded price is where an order met the book;
+the midquote lies halfway between the best bid and ask at that moment, and the two differ by the
+liquidity premium the trader paid (Harris, *Trading and Exchanges*, 2003, §21.3.1.1, printed
+p. 425). Prints also bounce between the bid and the ask from one trade to the next, which gives
+their changes a negative serial correlation the midquote does not have (Roll's model, the same
+book, §20.3, printed p. 416). So an order-driven market's bars are built from what traded — the
+number the venue's own chart and its OHLC endpoint show.
+
+For a quote-driven market, where nothing prints centrally, the midpoint is **this project's chosen
+basis, not settled practice**. MetaTrader 5 charts forex from the bid, other platforms let the user
+pick bid, ask or midpoint, and NautilusTrader declares each bar type's basis as one of BID, ASK, MID
+or LAST (its data concepts page, read 2026-11-24). Midpoint bars set beside a venue's own bid bars
+differ by half a spread.
+
+The tick reader derives the price once for every consumer. The two that build from it — the bar
+import and the backtest's data preparation — refuse a file holding a tick whose price no bar may be
+built from: a price that is not above zero, or a midpoint of a quote with a side at zero, which is
+positive and still wrong. A backtest then refuses every scenario of that symbol and runs the others;
+a bar import renders that symbol from none of its files and keeps the bars it had. The reader
+itself refuses nothing, so a caller that reads the quote as data — the divergence report skips a
+tick without a bid on its own terms — still gets the file as it is. Measured over the whole
+archive when the check was added (2026-11-24), no file failed it.
+
 ## Where the declaration is checked
 
 A declaration that nothing verifies is a comment. `price_formation` is read where it can be

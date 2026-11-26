@@ -144,6 +144,11 @@ VALIDATION_CHECKS: Tuple[ValidationCheckInfo, ...] = (
         'signal_data_load', 'Signal data unavailable',
         'The signal data the scenario binds could not be loaded.'),
     ValidationCheckInfo(
+        'tick_data_unusable', 'Tick data unusable',
+        "The scenario's symbol reads a tick file whose prices no bar may be built from — a price "
+        'that is not above zero, or a midpoint of a quote with a side at zero; every scenario of '
+        'that symbol is refused, the others run.'),
+    ValidationCheckInfo(
         'modelled_spread_unavailable', 'Spread of the ticks without a quote unavailable',
         'The scenario reads ticks that recorded no quote and models their spread, but the day '
         'estimates it is priced from could not be built; the scenario is refused rather than '

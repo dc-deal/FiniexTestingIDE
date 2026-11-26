@@ -54,6 +54,7 @@ restore passing state.
 |------|------|
 | `tests/shared/parity_fixtures.py` | Synthetic and flat-price tick generators for all symbols, `flag_clipped_ticks()` |
 | `tests/shared/parity_comparators.py` | `assert_bars_equal()`, `assert_trades_equal()`, `assert_portfolio_equal()` |
+| `tests/shared/parity_runners.py` | `run_simulation_bars()` and `run_autotrader_bars()` — each pipeline's event loop over a tick list, every collaborator but the bar renderer stubbed; the bar parity tests and the [tick-route parity test](tick_route_parity_tests.md) run on them |
 
 ## Phase 3 — Trade Parity
 

@@ -31,11 +31,15 @@ from python.framework.data_preparation.modelled_quote import (
     usable_days,
 )
 from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
+from python.framework.data_preparation.tick_price_check import refuse_unusable_price
 from python.framework.discoveries.spread_estimate.spread_estimate_cache import (
     SpreadEstimateCache,
 )
 from python.framework.discoveries.spread_estimate.spread_estimator import ESTIMATOR_VERSION
-from python.framework.exceptions.data_quality_errors import TradedPriceMissingException
+from python.framework.exceptions.data_quality_errors import (
+    TickPriceUnusableError,
+    TradedPriceMissingException,
+)
 from python.framework.exceptions.signal_data_errors import SignalDataUnavailableError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.signal_data.signal_jsonl_loader import load_signal_series
@@ -189,6 +193,17 @@ class SharedDataPreparator:
 
         for idx, scenario in enumerate(scenarios):
             scenario_index = scenario.scenario_index
+            # Ticks no bar or price may be built on: refused as a data error, the other
+            # scenarios run on
+            tick_failure = self.get_tick_data_failure(scenario.name)
+            if tick_failure is not None:
+                self._logger.error(f'❌ {scenario.name}: {tick_failure}')
+                scenario.validation_result.append(ValidationResult(
+                    scenario.name, [ValidationFinding(
+                        severity=Severity.ERROR, check='tick_data_unusable',
+                        domain=ValidationDomain.DATA,
+                        message=tick_failure, scope=scenario.name)]))
+                continue
             # Ticks without a quote that were to be modelled but could not be: refused as a data
             # error (§33) rather than run silently without a spread
             spread_failure = self.get_modelled_spread_failure(scenario.name)
@@ -795,6 +810,8 @@ class SharedDataPreparator:
         # scenarios whose day estimates could not be had — read by prepare_scenario_packages
         self._modelled_spread_summaries: Dict[str, ModelledSpreadSummary] = {}
         self._modelled_spread_failures: Dict[str, str] = {}
+        # The scenarios whose symbol's ticks could not be built on, and why
+        self._tick_data_failures: Dict[str, str] = {}
 
         # === STEP 1: Group requirements by (broker_type, symbol) ===
         # All scenarios for the same symbol share one Parquet load.
@@ -859,25 +876,36 @@ class SharedDataPreparator:
             # none, so the tick falls back to its event time everywhere: the order, the due times
             # and the processing budget.
             untrusted_arrival_paths = self._untrusted_arrival_paths(broker_type, symbol)
-            dfs = []
-            for file_path in relevant_files:
-                df = read_tick_parquet(file_path)
-                if 'timestamp' in df.columns:
-                    df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
-                if 'collected_msc' in df.columns and str(Path(file_path)) in untrusted_arrival_paths:
-                    df['collected_msc'] = 0
-                if no_quote_paths:
-                    df[_WITHOUT_QUOTE] = str(Path(file_path)) in no_quote_paths
-                dfs.append(df)
-            # Stable, fine-grained order: 'timestamp' is second-resolution with many
-            # duplicates, so a non-stable sort on it alone scrambles the sub-second order
-            # (time_msc / collected_msc) → negative inter-tick intervals + spurious clipping.
-            # Break ties by the millisecond time_msc to keep the tick stream chronological.
-            # see also #385
-            full_df = pd.concat(dfs).sort_values(
-                ['timestamp', 'time_msc']).reset_index(drop=True)
+            # A file whose prices no bar may be built from is a data error: it refuses every
+            # scenario of the symbol, and the scenarios of the other symbols run on. A mount
+            # without any traded price is not caught here: the import refuses such a file, so
+            # it means this pipeline lost the column, and that fault ends the batch
+            try:
+                dfs = []
+                for file_path in relevant_files:
+                    df = read_tick_parquet(file_path)
+                    refuse_unusable_price(file_path, df)
+                    if 'timestamp' in df.columns:
+                        df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+                    if 'collected_msc' in df.columns and str(Path(file_path)) in untrusted_arrival_paths:
+                        df['collected_msc'] = 0
+                    if no_quote_paths:
+                        df[_WITHOUT_QUOTE] = str(Path(file_path)) in no_quote_paths
+                    dfs.append(df)
+                # Stable, fine-grained order: 'timestamp' is second-resolution with many
+                # duplicates, so a non-stable sort on it alone scrambles the sub-second order
+                # (time_msc / collected_msc) → negative inter-tick intervals + spurious clipping.
+                # Break ties by the millisecond time_msc to keep the tick stream chronological.
+                # see also #385
+                full_df = pd.concat(dfs).sort_values(
+                    ['timestamp', 'time_msc']).reset_index(drop=True)
 
-            self._assert_traded_price_present(broker_type, symbol, full_df)
+                self._assert_traded_price_present(broker_type, symbol, full_df)
+            except TickPriceUnusableError as error:
+                self._logger.error(f'❌ {broker_type}/{symbol}: {error}')
+                for req in reqs:
+                    self._tick_data_failures[req.scenario_name] = str(error)
+                continue
 
             self._logger.info(
                 f'  ✅ {len(full_df):,} ticks in RAM from {len(relevant_files)} file(s) '
@@ -957,6 +985,18 @@ class SharedDataPreparator:
             The summary; None when the scenario read no file without a quote
         """
         return self._modelled_spread_summaries.get(scenario_name)
+
+    def get_tick_data_failure(self, scenario_name: str) -> Optional[str]:
+        """
+        Why the last `prepare_ticks` refused the ticks of a scenario's symbol.
+
+        Args:
+            scenario_name: The scenario
+
+        Returns:
+            The reason, naming the file; None when its ticks were loaded
+        """
+        return self._tick_data_failures.get(scenario_name)
 
     def get_modelled_spread_failure(self, scenario_name: str) -> Optional[str]:
         """

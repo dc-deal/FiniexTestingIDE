@@ -81,6 +81,24 @@ class TradedPriceMissingException(DataQualityException):
     pass
 
 
+class TickPriceUnusableError(DataQualityException):
+    """
+    Raised when a tick file holds a tick whose price no bar may be built from
+
+    The price is what traded where the venue prints trades, else the book midpoint. It
+    is unusable when it is not a finite number above zero, and when it is a midpoint of a
+    quote with a side at zero or below: half the other side is positive and still wrong,
+    so a check on the price alone would pass it. A bar renders such a tick as it stands,
+    which is why the file is refused where the price is consumed: in the bar import and
+    in the backtest's data preparation.
+
+    Deliberately not a ValueError: the backtest catches it by name to refuse the scenarios
+    of the file's symbol, and a ValueError would also be caught by handlers meant for other
+    faults — the spread estimate's, for one.
+    """
+    pass
+
+
 class InboxZipUnpackException(DataQualityException):
     """
     Raised when a member of a zip in the import inbox cannot be unpacked

@@ -148,6 +148,7 @@ Each test suite has its own documentation in [`tests/`](tests/).
 | [Test Runner](tests/tests_runner_docs.md) | Unified runner, configuration, fail-fast |
 | [Benchmark Baseline History](tests/simulation/benchmark_baseline_history.md) | Why the throughput baseline is what it is — what a re-registration has to carry, and the evidence behind each change |
 | [Bar Parity Tests](tests/parity/bar_parity_tests.md) | Cross-pipeline parity: simulation vs. AutoTrader bar identity |
+| [Tick-Route Parity](tests/parity/tick_route_parity_tests.md) | Each pipeline's ticks obtained the way it really does — the live parser against the collector's file through the importer — compared tick by tick and bar by bar |
 | [Heartbeat Ghost-Pass Parity](tests/parity/heartbeat_ghost_tests.md) | Sim ghost-pass between ticks + weekend-gap gate (#360 Stage 2) |
 | [Close-in-Flight Parity](tests/parity/close_in_flight_parity_tests.md) | A second close for a position joins the close already in flight, in both pipelines |
 | [Booking Period Parity](tests/parity/booking_period_parity_tests.md) | A trading day's booking period holds its own closing value, in both pipelines and both account models |
