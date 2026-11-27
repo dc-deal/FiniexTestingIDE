@@ -95,6 +95,8 @@ Professional tick data collector for MetaTrader 5 with tiered error tracking and
 input string ExportPath = "";                    // Empty = MQL5 default folder
 input bool CollectTicks = true;                  // Enable/disable collection
 input int MaxTicksPerFile = 50000;               // Ticks per file (rotation)
+input int FlushIntervalSeconds = 5;              // Seconds between pushes of the open file to disk
+input bool CloseAtUtcMidnight = true;            // Close the open file at 00:00 UTC
 input bool IncludeRealVolume = true;             // Collect real volume
 input bool IncludeTickFlags = true;              // Collect tick flags
 ```
@@ -132,6 +134,14 @@ with normal market hours. It is not part of `TickCollector`: `WebRequest` blocks
 collector reads only the latest tick per `OnTick`, so a ping inside it would lose the ticks arriving
 meanwhile. One keepalive serves the whole terminal, however many symbols it collects.
 
+A terminal can be alive while nothing collects in it — a collector that was never started after a
+restart, or one removed from its chart. So each `TickCollector` sets an alive stamp every second: a
+terminal global variable, `FiniexTickCollector.<symbol>`, holding the computer's UTC time. It costs no
+network call and changes nothing in the files. The keepalive pings only while the alive stamp of every
+symbol named in its `Collectors` input is younger than `CollectorStaleSeconds` (default 180). The UTC
+time is the computer's and not the server's, because the server time stands still while the market is
+closed and a weekend must not look like a dead collector.
+
 **Setting it up:**
 
 1. Create a check: period 10 minutes, grace 30 minutes, simple schedule, e-mail on down. An alarm then
@@ -142,23 +152,31 @@ meanwhile. One keepalive serves the whole terminal, however many symbols it coll
 4. Drag it onto a chart of its own and paste the check's ping address into `PingUrl`. The address is a
    credential, because whoever holds it can report the terminal healthy: it stays in the chart's
    settings on that machine, and the expert never prints it.
+5. Name the collected symbols in `Collectors`, comma-separated and spelled as their charts name them,
+   e.g. `EURUSD,GBPUSD,USDJPY`. Left empty, the keepalive vouches for the terminal only — right for a
+   terminal that collects nothing, wrong for one that does. A collector added later is added here too.
 
-**What the chart says:** the counters `sent`, `withheld` and `failed`, and the last ping's time.
-`withheld` means the terminal is not healthy, `failed` that the path to the check is broken. The log
-gets one line only when that state changes.
+**What the chart says:** the counters `sent`, `withheld` and `failed`, the last ping's time, how many
+collectors it watches and which of them are not running. `withheld` means the terminal is not healthy,
+`failed` that the path to the check is broken. The log gets one line when the state or its reason
+changes, and only then.
 
 | It reports | The check sees |
 |---|---|
 | machine, terminal or the expert gone | silence, then the e-mail |
+| a named `TickCollector` not started, removed from its chart, or hanging | pings withheld, then the e-mail |
 | broker connection lost during an open session | pings withheld, then the e-mail |
 | broker connection lost while the market is closed | pings go on: brokers run maintenance then |
-| market closed, connected | pings go on: the timer needs no ticks |
+| market closed, connected | pings go on: neither timer needs ticks |
 
-**What it does not see:** a `TickCollector` removed from its chart, or one that hangs. The expert reads
-nothing of the collectors. It says that the terminal is alive, not that every symbol is collecting.
+**What it does not see:** a collector that runs while no ticks reach it during an open session — its
+symbol gone from the Market Watch, say. The alive stamp says that the collector runs, not that its
+symbol is quoted. And a symbol left out of `Collectors` is not watched at all.
 
-**To test it:** take it off the chart. The check has to go down and send its e-mail about 40 minutes
-after the last ping.
+**To test it:** take one `TickCollector` off its chart. Within `CollectorStaleSeconds` the keepalive's
+chart names it under *not running* and counts pings as withheld; about 40 minutes after the last ping
+the check sends its e-mail. Put the collector back, and the pings go out again with the next timer
+event. Taking the keepalive itself off the chart tests the silence the same way.
 
 ---
 
@@ -192,7 +210,7 @@ From data format **1.7.0** every exported file carries an `origin` block:
   "instance_id": "dc0db6a25f15",
   "collected_on": "LAPTOP-Q267UHDA",
   "producer": "finiex-mt5-collector",
-  "producer_version": "1.2.0"
+  "producer_version": "1.3.1"
 }
 ```
 
@@ -434,6 +452,35 @@ data_reliability_score = 1.0 - ((serious_errors + fatal_errors) / total_ticks)
 
 ## File Rotation System
 
+A file ends at whichever comes first: its 50,000th tick, 00:00 UTC, or the collector's stop.
+
+### Daily Close at 00:00 UTC
+
+From collector version 1.3.0 the open file is closed at 00:00 UTC, as the Kraken collector closes
+its files. A file therefore never reaches past the weekly package cutoff (Monday 00:00 UTC), which
+holds back every file whose last tick lies beyond it.
+
+- **A file opens with its first tick.** The weekend and a holiday leave no file at all: Friday's
+  file closes at 00:00 UTC on Saturday with all of Friday's ticks, and the next one opens with the
+  first tick on Sunday evening. There is no market-day check in the collector and none is needed.
+- **A file without a tick is discarded, never finished** — at the midnight close and at the
+  collector's stop alike, so no archive without content arises.
+- **A one-second timer closes the file in a quiet market**, where no tick would arrive to do it. It
+  returns at once when there is nothing to do; it never waits, so it cannot hold up the ticks.
+- **One stamp decides the file:** a tick's `collected_msc` (UTC) is taken before the file is chosen,
+  so a tick never lands in a file whose UTC day it does not belong to.
+- `CloseAtUtcMidnight = false` restores the tick-count rotation alone.
+
+### Flushing to Disk
+
+MT5 holds file writes in a buffer of its own and hands them to the disk in 256 KB blocks, which is
+why the size of an open `.part` grows in steps of 256 KB. Without a flush, a hard stop of the
+terminal loses what the buffer held — for a quiet pair, an hour of ticks — and leaves the file cut in
+the middle of a tick (`python/experiments/recover_part_files/` finishes such a file; the lost tail
+it cannot bring back). From version 1.3.0 the collector flushes the open file every
+`FlushIntervalSeconds` (5 by default) while it has written something, so a hard stop loses at most
+those seconds.
+
 ### Tick-Based Rotation
 
 Files rotate based on **tick count**, not file size:
@@ -463,7 +510,8 @@ Tick 50,001: Write to new file
 
 **Key Properties:**
 - **Seamless:** No data loss during rotation
-- **Predictable:** File size based on tick count
+- **Predictable:** File size based on tick count, on busy pairs; the daily close cuts a quiet pair's
+  file shorter
 - **Atomic:** Rotation happens between OnTick() calls
 
 ### File Naming Convention

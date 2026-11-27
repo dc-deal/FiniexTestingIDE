@@ -6,7 +6,7 @@ because FastAPI requires Pydantic for automatic OpenAPI schema generation
 and response serialization.
 """
 
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
 
@@ -16,6 +16,7 @@ from python.framework.types.config_types.data_origin_config_types import OriginC
 from python.framework.types.coverage_report_types import GapCategory
 from python.framework.types.machine_resources_types import LimitSource, PressureLevel
 from python.framework.types.run_origin_types import RunChannel
+from python.framework.types.store_types import StoreId
 
 
 class ApiContractResponse(BaseModel):
@@ -130,6 +131,28 @@ class MachineMemoryResponse(BaseModel):
     critical_at_pct: float
 
 
+# What makes one disk row unique: the stores that live on the filesystem it describes — several
+# stores usually share one, and the row says which, never the machine's path to it
+MACHINE_DISK_ROW_KEY = ['stores']
+
+
+class MachineDiskResponse(BaseModel):
+    """
+    One filesystem a session's stores live on, and how much room it still has (#632).
+
+    Args:
+        stores: The stores whose root lies on it, sorted — the row's key
+        free_bytes: The room a process that is not root may still use: the last 5 to 10 % of a
+            filesystem is reserved for root, and a session running as root writes into it
+        total_bytes: The filesystem's size
+        free_pct: `free_bytes` as a share of `total_bytes`; null for a filesystem that reports no size
+    """
+    stores: list[StoreId]
+    free_bytes: int
+    total_bytes: int
+    free_pct: Optional[float]
+
+
 class MachineResourcesResponse(BaseModel):
     """
     What the machine this server runs on has and uses, read at one instant (#595).
@@ -140,12 +163,16 @@ class MachineResourcesResponse(BaseModel):
         memory: The memory, with the thresholds it is graded against
         pressure_level: `ok`, `warn` or `critical` — graded on memory alone
         pressure_reasons: One sentence for a person per reason; empty when the level is `ok`
+        disks: The filesystems a session's stores live on (#632) — one row per filesystem
+        keys: What makes one row of each list unique
     """
     measured_at: str
     cpu: MachineCpuResponse
     memory: MachineMemoryResponse
     pressure_level: PressureLevel
     pressure_reasons: list[str] = []
+    disks: list[MachineDiskResponse] = []
+    keys: dict[str, list[str]] = {'disks': MACHINE_DISK_ROW_KEY}
 
 
 # What makes one activity row unique, declared beside the list so a consumer cannot key on the wrong
@@ -251,6 +278,13 @@ class CoverageResponse(BaseModel):
     start: str          # ISO-8601 UTC
     end: str            # ISO-8601 UTC
     timeframes: list[str]
+    # Whose data the symbol's bars were rendered from (#647), distinct, sorted, comma-joined — the
+    # shape every other served `origin_classes` has. `external` marks a venue's published history,
+    # the rest our own collection. Empty where the bar files predate the origin stamp
+    origin_classes: str = ''
+    # Where our own collection takes over from a venue's published history — the seam, ISO-8601 UTC.
+    # None where the bars hold no external history before collected data
+    collected_since: Optional[str] = None
 
 
 class BarResponse(BaseModel):
@@ -294,6 +328,18 @@ class ValidationCheckListResponse(BaseModel):
     """Every check a finding can name — the vocabulary behind every `check` id served."""
     key: list[str] = ['check']
     checks: list[ValidationCheckRow]
+
+
+class DrawingTypesResponse(BaseModel):
+    """
+    The drawing vocabulary as JSON Schema (#379) — what a served drawing's fields hold, so a client
+    generates its own types from it rather than copying a description.
+
+    Args:
+        indicator_series: The JSON Schema of one indicator series entry, as the recorded streams
+            serve it, the style vocabulary in its definitions
+    """
+    indicator_series: Dict[str, Any]
 
 
 class IndicatorPointResponse(BaseModel):

@@ -52,7 +52,7 @@ def stages() -> Dict[SecurityStageId, Dict[str, Any]]:
     for stage in SECURITY_STAGES:
         trader = AutotraderMain(load_autotrader_config(str(stage_profile_path(stage, MOCK_DIR))))
         trader.run()
-        run_dir = Path(trader._run_dir)
+        run_dir = Path(trader.get_run_dir())
         run_dirs.append(run_dir)
         capture = run_dir / SECURITY_CERT_CAPTURE
         safety = run_dir / IO_SUBDIR / SAFETY_ARTIFACT.filename

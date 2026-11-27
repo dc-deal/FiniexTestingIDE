@@ -33,7 +33,8 @@ the single symbol it traded. See [row keys](/api/v1/docs/row-keys).
 session has no scenario grid rather than an unrecorded one. [Nulls](/api/v1/docs/nulls) has the
 difference.
 
-On a backtest, `scenarios` names the scenarios that ran and produced results. It is not the list
+On a backtest, `scenarios` names the scenarios that ran and produced results, and
+`scenario_count` counts them. It is not the list
 the configuration declared: a scenario that was disabled, or refused before it started, is not
 here. The declared list is in [config](/api/v1/docs/config), and every scenario with its outcome,
 failures included, is on [scenario details](/api/v1/docs/scenario-details).
@@ -71,6 +72,22 @@ both thresholds read `0.0`. That is the configuration being correct, not a figur
 Where `venue_fee_expected` is true, a fill booked with our fee model's estimate instead
 (`fee_source: "estimate"` on the [order history](/api/v1/docs/order-history)) is a fill whose fee
 the venue's answer did not carry. Both are null on a record from before these fields existed.
+
+## How the venue decides a resting order
+
+| Field | Meaning |
+|---|---|
+| `stop_trigger_basis` | the price the venue watches to fire a stop — `last`, its last traded price, or `bid_ask`, the quote: a sell stop on the bid, a buy stop on the ask. A triggered stop fills at the market either way |
+| `limit_fill_evidence` | what proves a resting limit filled — `public_trade`, a public trade through its price (a print below a buy limit, above a sell limit), or `quote`, only the quote crossing it. The quote crossing a limit fills it under both |
+
+Both are the venue's declaration, the same in a backtest and a session, and the backtest and a dry
+run simulate stops and limits by them. A tick that carries no traded price — a quote-driven venue's
+— is decided on the quote whatever is declared; Kraken data recorded before the quote was kept carries
+the trade as its quote, and there the trade decides, whether a quote is modelled around it or not. A public
+trade counts only for a limit that already rests: on its arrival the quote alone decides. Kraken's
+values come from its own documentation: the stop's `trigger` defaults to the last
+price, and its central order book matches by price and time, so a trade only AT a limit's price fills
+the orders ahead of it in the queue first. Null on a record from before these fields existed.
 
 ## What one symbol row says
 

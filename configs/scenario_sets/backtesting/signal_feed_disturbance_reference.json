@@ -1,0 +1,113 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "signal_feed_disturbance_reference",
+  "run_purpose": "fixture",
+  "created": "2026-11-05T00:00:00.000000",
+  "description": "A SIGNAL worker on collected sentiment, with planned outages on both kinds of feed: each scenario's signal source goes stale for an hour — longer than the worker's 30-minute staleness threshold, so the flip happens inside the window — and its tick feed freezes for ten minutes. Fills the signal report and the feed-stability report in one run, both market worlds (kraken_spot BTCUSD with crypto_sentiment, mt5 GBPUSD with forex_macro_sentiment). The same window as sentiment_realdata_demo, the archive's clean stretch. Each scenario names only its own two sources — an event naming a source the scenario does not bind is refused. Every stress event surfaces as a warning by design. Didactic, not a profit claim.",
+  "global": {
+    "strategy_config": {
+      "decision_logic_type": "CORE/hybrid_sentiment_reference",
+      "worker_instances": {
+        "rsi_fast": "CORE/rsi",
+        "sentiment": "CORE/llm_sentiment"
+      },
+      "workers": {
+        "rsi_fast": {
+          "periods": {
+            "M5": 14
+          }
+        },
+        "sentiment": {
+          "max_staleness_minutes": 30
+        }
+      },
+      "decision_logic_config": {
+        "rsi_buy_threshold": 35,
+        "rsi_sell_threshold": 65,
+        "lot_size": 0.01,
+        "min_entry_capital": 100
+      }
+    },
+    "execution_config": {
+      "parallel_workers": false
+    },
+    "trade_simulator_config": {
+      "balances": {
+        "USD": 10000
+      },
+      "seeds": {
+        "inbound_latency_seed": 42424
+      }
+    }
+  },
+  "scenarios": [
+    {
+      "scenario_name": "BTCUSD_signal_feed_disturbed",
+      "symbol": "BTCUSD",
+      "data_broker_type": "kraken_spot",
+      "data_sentiment_type": "crypto_sentiment",
+      "start_date": "2026-08-11T00:00:00+00:00",
+      "end_date": "2026-08-14T20:00:00+00:00",
+      "max_ticks": 20000,
+      "enabled": true,
+      "strategy_config": {
+        "decision_logic_config": {
+          "lot_size": 0.001
+        }
+      },
+      "execution_config": {},
+      "trade_simulator_config": {},
+      "stress_test_config": {
+        "stale_data_stress": {
+          "enabled": true,
+          "events": [
+            {
+              "label": "crypto sentiment feed dies for an hour",
+              "stale_data_source": "crypto_sentiment",
+              "stale_start_date": "2026-08-11T01:00:00+00:00",
+              "stale_end_date": "2026-08-11T02:00:00+00:00"
+            },
+            {
+              "label": "kraken tick feed freezes",
+              "stale_data_source": "kraken_spot",
+              "stale_start_date": "2026-08-11T03:00:00+00:00",
+              "stale_end_date": "2026-08-11T03:10:00+00:00"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "scenario_name": "GBPUSD_signal_feed_disturbed",
+      "symbol": "GBPUSD",
+      "data_broker_type": "mt5",
+      "data_sentiment_type": "forex_macro_sentiment",
+      "start_date": "2026-08-11T00:00:00+00:00",
+      "end_date": "2026-08-14T20:00:00+00:00",
+      "max_ticks": 20000,
+      "enabled": true,
+      "strategy_config": {},
+      "execution_config": {},
+      "trade_simulator_config": {},
+      "stress_test_config": {
+        "stale_data_stress": {
+          "enabled": true,
+          "events": [
+            {
+              "label": "forex macro sentiment feed dies for an hour",
+              "stale_data_source": "forex_macro_sentiment",
+              "stale_start_date": "2026-08-11T01:00:00+00:00",
+              "stale_end_date": "2026-08-11T02:00:00+00:00"
+            },
+            {
+              "label": "mt5 tick feed freezes",
+              "stale_data_source": "mt5",
+              "stale_start_date": "2026-08-11T03:00:00+00:00",
+              "stale_end_date": "2026-08-11T03:10:00+00:00"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

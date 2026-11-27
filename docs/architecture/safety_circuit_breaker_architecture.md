@@ -11,7 +11,7 @@
 
 ## Overview
 
-The Safety Circuit Breaker is an account-level protection mechanism of the AutoTrader session (`SafetyCircuitBreaker`, which the tick loop feeds on every tick). It monitors the account value and the drawdown on every tick, and while a threshold is breached it forces every decision's action to FLAT — no new entry, and no close or reduction a strategy expresses as a BUY or SELL either.
+The Safety Circuit Breaker is an account-level protection mechanism of the AutoTrader session (`SafetyCircuitBreaker`, which the event loop feeds on every tick). It monitors the account value and the drawdown on every tick, and while a threshold is breached it forces every decision's action to FLAT — no new entry, and no close or reduction a strategy expresses as a BUY or SELL either.
 
 **Key characteristic: AutoTrader pipeline only.** The Safety Circuit Breaker does not exist in
 backtesting. In simulation, you want to see the full consequences of an algorithm's behavior —
@@ -24,7 +24,7 @@ including account blowups. The breaker is a *production safety net*, not a simul
 ## How It Works
 
 ```
-AutoTrader Tick Loop (every tick)
+AutoTrader Event Loop (every tick)
     │
     ├── Compute safety_value:
     │   └── portfolio.get_account_value()    ONE definition, per account model:
@@ -248,7 +248,7 @@ Absent only when no baseline was ever taken — a session that saw no tick it co
 | File | Role |
 |------|------|
 | `python/framework/autotrader/safety/safety_circuit_breaker.py` | The breaker: soft block, hard stop, daily loss, and the record for the report |
-| `python/framework/autotrader/autotrader_tick_loop.py` | Feeds it: the account value per tick, the entry block before each decision |
+| `python/framework/autotrader/event_loop/autotrader_event_loop.py` | Feeds it: the account value per tick, the entry block before each decision |
 | `python/framework/types/autotrader_types/autotrader_config_types.py` | `SafetyConfig` dataclass |
 | `python/configuration/autotrader/autotrader_config_loader.py` | Config parsing |
 | `python/system/ui/autotrader_live_display.py` | Safety status + detail line rendering |

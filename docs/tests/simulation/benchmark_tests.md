@@ -466,6 +466,12 @@ Reports are saved as JSON with full audit trail in `tests/simulation/benchmark/r
 - All measured values are **medians** across 3 runs
 - `raw_measurements` contains the individual run values for traceability
 - `breakdown` carries the per-stage medians plus the `shape` they were measured in — read the shape before comparing any value across reports
+- INFO metrics give a drift an address and are never gated, among them `worker_decision_avg_ms` (the
+  workers and the decision, most of a tick), `warmup_ticks_parquet_s` (most of the warmup) and
+  `loop_glue_avg_ms` — what a tick costs outside its named steps: the drive, the hand-over into the
+  loop core and its events, the ghost passes, the day boundary and the state frame. The loop core's
+  budget per tick is far below the throughput tolerance, so its cost is read here, summed from the
+  units' totals per run and taken as the median of the runs
 - `record_kind` / `app_version` / `git_*` / `valid_until` / `isolation_active` /
   `workspace_overrides` come from the **shared** `CertificateIdentity` that all four release
   certificates carry — see [Release Certificates](../../architecture/release_certificates.md)
@@ -544,7 +550,7 @@ for each run (3x):
          ├→ batch_warmup_time (IO-bound: Phases 0-5)
          ├→ batch_tickrun_time (CPU-bound: Phase 6)
          └→ process_result_list[]
-              └→ tick_loop_results.coordination_statistics.ticks_processed
+              └→ event_loop_results.coordination_statistics.ticks_processed
   BatchReportCoordinator.generate_and_log()
     └→ summary_generation_time (measured externally)
 

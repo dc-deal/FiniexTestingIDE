@@ -71,7 +71,7 @@ def _undecided(broker_ref: str) -> BrokerResponse:
         broker_ref=broker_ref,
         status=BrokerOrderStatus.PENDING,
         undecided_reason='no quote to compare the limit against',
-        timestamp=_TS,
+        ts_init=_TS,
     )
 
 
@@ -137,7 +137,7 @@ class TestTheRefusalReachesTheOperator:
         executor._handle_broker_response(pending, BrokerResponse(
             broker_ref='DRYRUN-000004',
             status=BrokerOrderStatus.PENDING,
-            timestamp=_TS))
+            ts_init=_TS))
 
         assert recorder.errors == []
 
@@ -215,7 +215,7 @@ class TestTheQuoteActuallyReachesTheSimulatedVenue:
         submit = adapter.parse_submit_response(
             {'__dry_run_op__': 'submit', 'lots': 1.0, 'ordertype': 'limit',
              'price': 3900.0, 'price2': None},
-            timestamp=_TS, direction=OrderDirection.LONG, order_type=OrderType.LIMIT)
+            ts_init=_TS, direction=OrderDirection.LONG, order_type=OrderType.LIMIT)
         raw = {'__dry_run_op__': 'query', 'broker_ref': submit.broker_ref}
 
         away = adapter.parse_query_response(
@@ -243,7 +243,7 @@ class TestTheQuoteActuallyReachesTheSimulatedVenue:
         submit = adapter.parse_submit_response(
             {'__dry_run_op__': 'submit', 'lots': 1.0, 'ordertype': 'limit',
              'price': 3900.0, 'price2': None},
-            timestamp=_TS, direction=OrderDirection.LONG, order_type=OrderType.LIMIT)
+            ts_init=_TS, direction=OrderDirection.LONG, order_type=OrderType.LIMIT)
 
         def _poll_with(bid: float, ask: float) -> BrokerResponse:
             request_processor._dispatch_query_job(QueryJob(

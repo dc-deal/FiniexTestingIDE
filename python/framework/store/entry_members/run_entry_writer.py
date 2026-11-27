@@ -13,7 +13,7 @@ seals per trading day is registered there, with the place its day records belong
 
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, TypeVar
+from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar
 
 from python.framework.constants.run_layout_constants import DAY_LABEL_FORMAT
 from python.framework.exceptions.store_errors import EntryMemberRefusedError
@@ -32,6 +32,7 @@ from python.framework.types.store_member_types import (
     EntryMemberWriteMode,
     RunEntryMemberId,
 )
+from python.framework.types.store_types import StoreId
 from python.framework.utils.atomic_file_utils import write_text_atomic
 from python.framework.utils.csv_table_utils import write_csv_table
 from python.framework.utils.file_utils import create_directory
@@ -107,7 +108,7 @@ class RunEntryWriter:
         member = self._member(member_id, EntryMemberShape.SNAPSHOT)
         path = self._run_dir / member.path_for(**names)
         if member.write_mode is EntryMemberWriteMode.ATOMIC_REPLACE:
-            write_text_atomic(path, text)
+            write_text_atomic(path, text, StoreId.RUNS)
         else:
             create_directory(path.parent, holds=f'the file {path.name}')
             path.write_text(text, encoding='utf-8')
@@ -137,6 +138,8 @@ class RunEntryWriter:
     def open_stream(self, member_id: RunEntryMemberId, run_id: str,
                     logger: Optional[AbstractLogger], stops: str,
                     header_fields: Optional[Dict[str, Any]] = None, required: bool = False,
+                    keeps_unwritten: bool = False,
+                    on_failure: Optional[Callable[[OSError], None]] = None,
                     **names: str) -> RunStreamAppender:
         """
         Open one stream: its header line names the member and the version the declaration gives it,
@@ -150,6 +153,9 @@ class RunEntryWriter:
             stops: What the failure means for the session, said with it
             header_fields: Further fields of the header line
             required: An open that fails raises instead of being said
+            keeps_unwritten: A failed write keeps its lines in memory to be written again — the
+                money record (#632)
+            on_failure: Told the first failure of each stretch the stream cannot be written
             names: One value per variable part of the member's path
 
         Returns:
@@ -161,7 +167,7 @@ class RunEntryWriter:
             member.schema_version, run_id, logger, stops=stops, header_fields=header_fields,
             time_fields=member.time_fields or (),
             trading_day=self._streams.get_current_day() if self._streams is not None else None,
-            required=required)
+            required=required, keeps_unwritten=keeps_unwritten, on_failure=on_failure)
         if self._streams is not None and member.day_record is not None:
             day_member = self._member(member.day_record, EntryMemberShape.DAY_RECORD)
 
@@ -197,7 +203,7 @@ class RunEntryWriter:
         """
         member = self._member(member_id, EntryMemberShape.STRATEGY_OUTPUT)
         path = self._run_dir / member.path_for(**names)
-        write_text_atomic(path, text)
+        write_text_atomic(path, text, StoreId.RUNS)
         return path
 
     def log_path(self, member_id: RunEntryMemberId, **names: str) -> Path:

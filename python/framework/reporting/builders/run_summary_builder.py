@@ -10,6 +10,8 @@ API, live snapshot).
 
 from typing import Dict, List, Optional
 
+from python.framework.reporting.aggregation.aggregation_fold import fold_group
+from python.framework.reporting.aggregation.tables.run_summary_figure_table import RUN_SPAN_TABLE
 from python.framework.reporting.builders.report_aggregators import aggregate_signal_fresh_ratio
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import (
@@ -25,7 +27,6 @@ from python.framework.types.api.report_types import (
     UnitRoster,
 )
 from python.framework.types.trading_env_types.trading_env_stats_types import EXECUTION_COUNT_FIELDS
-from python.framework.utils.time_utils import covered_seconds
 
 
 def build_run_summary(
@@ -66,17 +67,15 @@ def build_run_summary(
     ]
     totals = execution_report.totals
     unit_count = len(portfolio_report.units)
-    spans = [(u.first_tick_time, u.last_tick_time) for u in units or []
-             if u.first_tick_time and u.last_tick_time]
+    spans = fold_group(units or [], RUN_SPAN_TABLE)
     roster = roster or UnitRoster(declared=unit_count)
     return RunSummary(
         run_id=run_id,
         currencies=currencies,
         **{field_name: getattr(totals, field_name) for field_name in EXECUTION_COUNT_FIELDS},
         unit_count=unit_count,
-        tick_timespan_seconds=covered_seconds(spans) if spans else None,
-        tick_timespan_total_seconds=(
-            sum((last - first).total_seconds() for first, last in spans) if spans else None),
+        tick_timespan_seconds=spans['tick_timespan_seconds'],
+        tick_timespan_total_seconds=spans['tick_timespan_total_seconds'],
         units_declared=roster.declared,
         units_disabled=roster.disabled,
         units_absent=list(roster.absent),

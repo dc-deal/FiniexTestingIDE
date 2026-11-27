@@ -25,7 +25,7 @@ served from the run-results ledger, which is where a sweep's identity and its KP
 ## The list
 
 ```json
-{ "key": ["sweep_id"], "sweeps": [ ... ], "count": 4 }
+{ "key": ["sweep_id"], "best_combinations_key": ["currency"], "sweeps": [ ... ], "count": 4 }
 ```
 
 Newest first, one row per sweep:
@@ -42,6 +42,15 @@ Newest first, one row per sweep:
 | `base_config` | the scenario set that was swept, with the sweep's own tag stripped off |
 | `symbols` | the symbols its runs read |
 | `objective` · `maximize` | the KPI it ranks by, and the direction |
+| `best_combinations` | its first-ranked combination in each account currency: `currency`, `run_id`, `objective_value`, `sweep_params` |
+
+`best_combinations` is the head of what the sweep's own route below ranks, by the same rule and
+the same tie-break, so a list can show a sweep as its best combination without asking for each
+sweep. There is one per account currency, keyed by `currency` as `best_combinations_key` says,
+because a money objective in two currencies is not one scale. A currency in which no combination
+carries a value for the objective has no entry, and a sweep whose recorded objective cannot rank
+at all — unknown, or a figure that can be undefined for a run — has none: its own route below says
+why, and one such sweep does not take the list down.
 
 `duration_s` is the spread of the **starts**, not how long the sweep took: it is computed from
 the run starts alone, so the last run's own duration falls outside it. It is `0.0` where there is
@@ -62,6 +71,18 @@ objective and the direction **the sweep declared**, because ranking by anything 
 a question the sweep never asked. Where a sweep recorded neither, the response says what was used
 instead — `net_pnl`, maximized — in its own `objective` and `maximize` fields, so you are
 never left to assume.
+
+Each combination is its run's ledger row, folded to one per account currency. It carries the run's
+unit counts as the run list does — `total_units`, `failed_count` and `succeeded_count`, null on a
+run recorded before contract 56.
+
+It also carries what the run's accounts in that currency held at its end, **`total_final_equity`**,
+beside the capital they started with, **`total_initial_balance`** — each summed over the run's
+accounts, so a combination of several scenarios has one even though `final_equity`, the reading of
+one account, is null there. The end equity includes what is still open, so ranking by it can order
+two combinations differently from `net_pnl`: one that closed +50 and holds nothing ends above one
+that closed +80 and still holds a position 120 under water. A sweep may declare it as its
+objective. Null on a run recorded before contract 56.
 
 **Combinations are ranked within each account currency, currencies in order.** A money objective
 in two currencies is not one scale: one list ranking EUR rows against USD rows by `net_pnl`
@@ -110,7 +131,9 @@ null on a combination recorded before that, when a period carried none.
 
 A row's `status` is `ok` or `error`, and `error` means the run produced no usable data, with
 `error` carrying the reason. Those rows are recorded in the ledger but never rank — so the detail
-list leaves them out while the sweep's own `error_count` still counts them.
+list leaves them out while the sweep's own `error_count` still counts them. Which is why the
+figures a run that measured nothing leaves empty — `net_pnl`, `win_rate`, `total_fees` and the
+trade counts — are nullable in the schema and still never null in this list.
 
 The two counts are also counted over different things: `run_count` in the list counts
 **combinations**, while `count` in the detail counts **rows** — one per combination and account
@@ -148,10 +171,17 @@ that before trusting the order:
 - `input_plane` · `data_format_versions` · `origin_classes` · `origin_evidence_grades` ·
   `price_bases` — what kind of data the run read, over all its scenarios, as
   [scenario details](/api/v1/docs/scenario-details) says it per scenario; `input_files` counts the
-  files it read and `unstamped_input_files` those that were not production data stamped by their
-  producer, which a measurement may not rest on. They say what kind of data and how much, never
-  which files. `features_beyond_venue` names the order features the run was allowed beyond what its
+  files it read and `unstamped_input_files` those whose origin no stamp attests, whatever their
+  class. A venue's published history carries its converter's stamp and does not count there, but no
+  measurement may rest on it either: a parity measurement reads only production data its producer
+  stamped. On a row with `logic_version` 21 or older the count held the files that were not
+  production data stamped by their producer. `server_clock_rules` names the server clock rules the
+  tick files' times were converted with, empty where no file stated one, and
+  `external_warmup_timeframes` the bar timeframes whose warmup reached back into a venue's published
+  history. They say what kind of data and how much, never which files. `features_beyond_venue` names the order features the run was allowed beyond what its
   venue's API holds, empty for every other row. Empty, and the counts null, on a row written before they existed.
+- `exclusivity_violated_at` — null on every combination: it is a session's, set when its start found
+  its account's declared exclusivity false, and a backtest meets no venue at its start.
 - `rendered_config_id` · `broker_config_id` — what the combination ran with: the run-config
   store's ids of its rendered scenario set and of the broker configuration it traded under,
   comma-joined where it traded under several. `config_hash` on the run's
@@ -186,5 +216,8 @@ involved at all — deliberately not `1.0`, which would claim a perfect feed. Se
 
 ## Errors
 
-An unknown sweep id is `404 sweep_not_found`. The whole refusal vocabulary is in
-[errors](/api/v1/docs/errors).
+An unknown sweep id is `404 sweep_not_found`. A sweep that recorded a figure to rank by that cannot
+order its combinations — one the ranking does not know, one that is not a number, or one that can
+be undefined for a run — is `409 sweep_objective_unrankable`: its combinations cannot be put in an
+order, and the list shows it with no best combination. A sweep started since contract 56 cannot
+record such a figure: it is refused before its first combination runs. The whole refusal vocabulary is in [errors](/api/v1/docs/errors).

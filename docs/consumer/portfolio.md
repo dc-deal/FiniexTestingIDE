@@ -130,7 +130,7 @@ month of restarts — and nothing in the amount itself says so. Three fields say
 |---|---|
 | `drawdown_carried_from` | where the inherited curve came from; **empty** means this unit began its own |
 | `drawdown_restarts` | how many restarts the curve has been carried across |
-| `drawdown_started_at` | when the curve began — not when it was last handed over. It is wall-clock time, taken when the unit began measuring: in a backtest when its scenario valued its first tick — after the run started, and different for each scenario — never an instant of the replayed data |
+| `drawdown_started_at` | when the curve began — not when it was last handed over. It is the instant on the run's own clock at which the unit first valued its account: in a backtest an instant of the replayed data, the same in every run of that scenario; in a session the market's time of that pass. **Empty** when a session ended before its first pass, which has no instant to name |
 
 An empty `drawdown_carried_from` is always the case in a backtest: a scenario starts its own
 curve.
@@ -140,6 +140,30 @@ of run — a session placing real orders never continues a rehearsal's curve, no
 money's — when the inherited curve does not say which kind of run wrote it, and when the start was
 told `--new-deployment`. In the first two cases its warnings carry `carried_readings_not_continued`,
 saying which it was; a new deployment the operator asked for is not warned about.
+
+## The five deepest drawdown periods, not only the deepest
+
+One figure cannot tell an account that fell 12 % once from one that fell 11 % five times.
+`account_drawdown_periods` lists the five deepest drawdown periods of the same curve, each from a
+peak until the account was back at that peak — two rows never describe one fall — deepest first by
+their share of the peak, so rank 1 is the period whose depth `account_max_dd_pct` measures. Its rows
+are unique by `rank`, which `account_drawdown_periods_key` declares.
+
+| Field | Meaning |
+|---|---|
+| `rank` | 1 for the deepest |
+| `peak` | the account value the period fell from |
+| `depth` | how far below that peak it went, in the account currency |
+| `depth_pct` | that depth as a share of the peak; **null** where the peak was not above zero |
+| `started_at`, `trough_at` | the first value below the peak and the deepest one, ISO-8601 UTC on the run's own clock; **null** where a session's clock was not running yet |
+| `recovered_at` | the first value back at or above the peak; **null** while the period was still open when the unit ended |
+| `to_trough_s` | seconds from `started_at` to `trough_at`; **null** where either is unknown |
+| `duration_s` | seconds from `started_at` to `recovered_at`; **null** while the period is still open, and where an instant is unknown or lies before the start, which a session replaying an earlier stretch of data after a restart can produce |
+
+A session that inherits its predecessor's curve inherits its drawdown periods with it, so the five
+span the same stretch the three fields above name. A unit with fewer than five periods lists the ones
+it had; one that never fell below its peak lists none. The aggregate rows have no such list: a
+drawdown period is one account's.
 
 ## What was still open when the run ended
 
@@ -153,7 +177,8 @@ open is reported as what it is.
 - `unrealized_pnl` — what those positions were worth at the last tick; `0.0` when nothing was open
 - `final_equity` — the realised balance plus what the open positions are worth
 - `final_equity_valued` — whether `final_equity` is a real mark-to-market
-- `open_position_count` — on the aggregate row, how many positions the currency's accounts held
+- `open_position_count` — how many positions were still open: on a unit row the length of its
+  `open_positions`, on the aggregate row the positions the currency's accounts held
 
 **`final_equity_valued: false` is the one to respect.** It means something was still open that no
 tick could price, so the figure is the balance alone with the holding counted at zero — the very

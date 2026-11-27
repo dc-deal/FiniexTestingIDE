@@ -193,6 +193,9 @@ class OrderEvent:
             has been set — an adoption at boot
         ts_init: When this process saw it, on the wall clock — live only; None in a backtest,
             which has to stay reproducible
+        ts_event: When the venue says it happened, on the venue's own clock, where its answer
+            gives a stamp — today a live fill in full, at the time the venue closed the order
+            (#461); None in a backtest, a mock session and a dry run, and on every other event
         initiator: Who ended the order, on an ending nobody refused
         end_reason: Why it ended
         rejection_reason: Why it was refused
@@ -228,6 +231,7 @@ class OrderEvent:
     in_flight_ms: Optional[float] = None
     event_time: Optional[datetime] = None
     ts_init: Optional[datetime] = None
+    ts_event: Optional[datetime] = None
     initiator: Optional[OrderInitiator] = None
     end_reason: Optional[OrderEndReason] = None
     rejection_reason: Optional[RejectionReason] = None

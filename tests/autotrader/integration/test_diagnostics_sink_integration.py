@@ -23,7 +23,7 @@ def probe_session():
     trader = AutotraderMain(config)
     result = trader.run()
     yield trader, result
-    remove_run_dir(trader._run_dir)
+    remove_run_dir(trader.get_run_dir())
 
 
 class TestDiagnosticsSinkAutoTrader:
@@ -31,12 +31,12 @@ class TestDiagnosticsSinkAutoTrader:
 
     def test_diagnostics_csv_written(self, probe_session):
         trader, _ = probe_session
-        out = trader._run_dir / 'diagnostics' / 'probe_funnel.csv'
+        out = trader.get_run_dir() / 'diagnostics' / 'probe_funnel.csv'
         assert out.exists(), 'probe_funnel.csv not flushed to diagnostics/ subfolder'
 
     def test_diagnostics_csv_content(self, probe_session):
         trader, _ = probe_session
-        out = trader._run_dir / 'diagnostics' / 'probe_funnel.csv'
+        out = trader.get_run_dir() / 'diagnostics' / 'probe_funnel.csv'
         rows = list(csv.reader(open(out, newline='')))
         assert rows[0] == ['tick_time', 'note']
         assert len(rows) == 2  # header + exactly one probe row
@@ -45,4 +45,4 @@ class TestDiagnosticsSinkAutoTrader:
     def test_no_suffix_in_autotrader_filename(self, probe_session):
         """AutoTrader is a single session → bare <name>.csv (no scenario suffix)."""
         trader, _ = probe_session
-        assert not list((trader._run_dir / 'diagnostics').glob('probe_funnel_*.csv'))
+        assert not list((trader.get_run_dir() / 'diagnostics').glob('probe_funnel_*.csv'))

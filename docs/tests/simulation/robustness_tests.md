@@ -2,7 +2,7 @@
 
 `tests/simulation/robustness/` — multi-window + In-Sample/Out-of-Sample validation (#367),
 sim-only. Unit-level, real types (`BatchExecutionSummary` / `ProcessResult` /
-`ProcessTickLoopResult` / `PortfolioStats` / `SingleScenario`), synthetic per-window net-P&L or end equity —
+`ProcessEventLoopResult` / `PortfolioStats` / `SingleScenario`), synthetic per-window net-P&L or end equity —
 no full pipeline run.
 
 See the feature: [Robustness Validation guide](../../user_guides/robustness_validation_guide.md).

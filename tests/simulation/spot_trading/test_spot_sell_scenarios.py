@@ -25,7 +25,7 @@ from python.framework.types.trading_env_types.trading_env_stats_types import Exe
 from tests.shared.fixture_helpers import (
     extract_order_history,
     extract_process_result,
-    extract_tick_loop_results,
+    extract_event_loop_results,
     run_scenario,
 )
 
@@ -33,21 +33,21 @@ SPOT_SELL_CONFIG = 'backtesting/spot_sell_test.json'
 
 
 @pytest.fixture(scope='module')
-def spot_sell_tick_loop():
+def spot_sell_event_loop():
     """Run the spot sell scenario once for the module."""
     summary = run_scenario(SPOT_SELL_CONFIG)
     process_result = extract_process_result(summary)
-    return extract_tick_loop_results(process_result)
+    return extract_event_loop_results(process_result)
 
 
 @pytest.fixture(scope='module')
-def spot_sell_order_history(spot_sell_tick_loop) -> List[OrderResult]:
-    return extract_order_history(spot_sell_tick_loop)
+def spot_sell_order_history(spot_sell_event_loop) -> List[OrderResult]:
+    return extract_order_history(spot_sell_event_loop)
 
 
 @pytest.fixture(scope='module')
-def spot_sell_execution_stats(spot_sell_tick_loop) -> ExecutionStats:
-    return spot_sell_tick_loop.execution_stats
+def spot_sell_execution_stats(spot_sell_event_loop) -> ExecutionStats:
+    return spot_sell_event_loop.execution_stats
 
 
 class TestSpotBuyExecutes:

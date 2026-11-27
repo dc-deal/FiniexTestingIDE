@@ -12,9 +12,17 @@ several currencies), and a function over its inputs is testable without building
 division the reporting pipeline already uses — shared derivation, pipeline-specific coordinators.
 """
 
-from typing import List, Optional, Tuple
+from collections import Counter
+from typing import Dict, List, Optional, Tuple
 
+from python.framework.types.config_types.data_origin_config_types import OriginClass
+from python.framework.types.data_deficiency_types import (
+    DEFICIENCY_DECLARATIONS,
+    DataDeficiency,
+)
+from python.framework.types.data_origin_types import is_admissible_for_measurement
 from python.framework.types.run_origin_types import CodeIdentity, RepositoryState
+from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.stress_test_types import StressTestConfig
 from python.framework.types.validation_types import (
     Severity,
@@ -168,3 +176,174 @@ def check_order_event_stream(
               for name, recorded, counted in short]
     return _finding('order_event_stream_incomplete', ValidationDomain.EXECUTION, '\n'.join(lines))
 
+
+
+def check_usable_funds(
+    units: List[Tuple[str, Dict[str, float]]], unit_label: str
+) -> Optional[ValidationFinding]:
+    """
+    Warn when a unit's funds in a currency fall below zero once its own unfilled orders count.
+
+    The balance moved past a claim this bot still holds — most often a resting order adopted at
+    boot, whose reserve the account had already spent. The order can no longer be filled in full
+    from what the account holds, and the venue may reject it when it fills.
+
+    Args:
+        units: One (unit name, currency → balance less its claim) pair per unit
+        unit_label: What a unit is called in the message ('Scenarios' / 'Session')
+
+    Returns:
+        The finding, or None when every claimed currency's funds stay at or above zero
+    """
+    short = [(name, currency, usable) for name, funds in units
+             for currency, usable in funds.items() if usable < 0]
+    if not short:
+        return None
+    lines = [f'FUNDS BELOW ZERO AFTER OWN ORDERS — {unit_label}: an unfilled order claims more '
+             f'than the account holds; check the resting orders']
+    lines += [f'   {name} · {currency} {usable:,.4f} usable'
+              for name, currency, usable in short]
+    return _finding('usable_funds_negative', ValidationDomain.PORTFOLIO, '\n'.join(lines))
+
+
+def check_data_origin(scenarios: List[SingleScenario]) -> List[ValidationFinding]:
+    """
+    Report how much of what a run read carries no production stamp of its own.
+
+    One finding for the whole run, deliberately. The per-scenario gate decides whether a
+    scenario may run at all; this measures the distance to a state where a parity
+    comparison is possible, and that distance is a property of the archive rather than of
+    any one scenario. Reported as a count rather than a verdict: the data is usable, and it
+    is not comparable, which are two different sentences.
+
+    It stays silent once every file read carries a producer's own stamp — which is the
+    state the thirty-day run needs and the only one that says nothing. An AutoTrader session
+    passes the scenario it replayed; a live-adapter session reads a socket and passes none.
+
+    Args:
+        scenarios: The scenarios whose mounted input files to count
+
+    Returns:
+        The findings: external data read, data not producer-stamped — none, one or both
+    """
+    findings: List[ValidationFinding] = []
+    total_files = 0
+    unstamped_files = 0
+    external_files = 0
+    external_scenarios = set()
+    for scenario in scenarios:
+        for origin_class, evidence in zip(scenario.origin_classes,
+                                          scenario.origin_evidence_grades):
+            total_files += 1
+            # A venue's published history IS stamped — by the converter that brought it in —
+            # so it is said in a finding of its own rather than counted as unstamped, where
+            # it would contradict that finding beside it.
+            if origin_class == OriginClass.EXTERNAL.value:
+                external_files += 1
+                external_scenarios.add(scenario.name)
+                continue
+            # Asked of the shared rule rather than spelled out here. It decides whether
+            # a measurement may use a file, and a second copy of that sentence would
+            # eventually answer a different question than the first — with the copy
+            # nobody reads being the one that decays.
+            if not is_admissible_for_measurement(origin_class, evidence):
+                unstamped_files += 1
+
+    # A warmup reaching back into a venue's published history needs no admission — the
+    # ticks traded on are what admission guards — so it is said here rather than refused.
+    warmup_scenarios = sorted(
+        f'{scenario.name} ({", ".join(scenario.external_warmup_timeframes)})'
+        for scenario in scenarios
+        if scenario.external_warmup_timeframes)
+    if external_files:
+        lines = [
+            f'EXTERNAL DATA — {external_files} of {total_files} input file(s) are a venue\'s '
+            f'published history, not recorded by our collectors',
+            '  → never admissible for a parity measurement',
+            f'  → scenarios: {", ".join(sorted(external_scenarios))}']
+    elif warmup_scenarios:
+        lines = [
+            'EXTERNAL DATA — the warmup history reached back before our collection, into a '
+            'venue\'s published history',
+            '  → the ticks traded on are our own; the indicators started from bars rendered '
+            'from external ticks']
+    else:
+        lines = []
+    if warmup_scenarios:
+        lines.append(f'  → warmup from external history: {", ".join(warmup_scenarios)}')
+    if lines:
+        findings.append(_finding('data_origin_external', ValidationDomain.DATA, '\n'.join(lines)))
+
+    if unstamped_files == 0:
+        return findings
+
+    findings.append(_finding('data_origin_unstamped', ValidationDomain.DATA, (
+        f'Data origin not producer-stamped for {unstamped_files}/{total_files} file(s) — '
+        f'usable, and NOT comparable\n'
+        f'  → a parity measurement reads only data a producer stamped itself\n'
+        f'  → docs/architecture/data_provenance.md')))
+    return findings
+
+
+def check_data_deficiencies(scenarios: List[SingleScenario]) -> List[ValidationFinding]:
+    """
+    Say once per run what the data a run read LACKS — counted, never repeated (#561).
+
+    One finding per deficiency present, over every input file of every scenario, with the
+    files grouped by where they came from: the same lack has a different reason in a
+    venue's published history than in a file our collector wrote under an older format.
+    A standing condition is still reported on every run, because dropping it would make a
+    run on complete data and one on deficient data look alike — but as one line with its
+    count, its explanation living in the check catalog. This replaces the spreadless
+    advisory, which guessed the missing quote from venue and format version and so stayed
+    silent for converted history declaring format 1.7.0.
+
+    Args:
+        scenarios: The scenarios whose mounted input files to count
+
+    Returns:
+        One finding per deficiency present, in the order the deficiencies are declared
+    """
+    findings: List[ValidationFinding] = []
+    total_files = 0
+    found: Dict[DataDeficiency, Counter] = {}
+    for scenario in scenarios:
+        versions = scenario.data_format_versions
+        for position, (origin_class, deficiencies) in enumerate(
+                zip(scenario.origin_classes, scenario.data_deficiencies)):
+            total_files += 1
+            group = _input_group(origin_class, versions[position] if position < len(versions) else None)
+            for deficiency in deficiencies:
+                found.setdefault(deficiency, Counter())[group] += 1
+
+    for deficiency in DataDeficiency:
+        groups = found.get(deficiency)
+        # `synthetic` is said before the run, per scenario, where both pipelines mount
+        # their signals — an AutoTrader session has no post-run counter of this kind
+        if not groups or deficiency == DataDeficiency.SYNTHETIC:
+            continue
+        declaration = DEFICIENCY_DECLARATIONS[deficiency]
+        breakdown = ' · '.join(f'{count} {group}' for group, count in sorted(groups.items()))
+        findings.append(_finding(declaration.check, ValidationDomain.DATA, (
+            f'{declaration.title} — {sum(groups.values())} of {total_files} input file(s): '
+            f'{declaration.consequence}\n'
+            f'  → {breakdown}')))
+    return findings
+
+
+def _input_group(origin_class: str, data_format_version: Optional[str]) -> str:
+    """
+    Name the group an input file is counted in, for a deficiency finding's breakdown.
+
+    Args:
+        origin_class: The file's resolved origin class
+        data_format_version: The tick file's declared format, None for a signal file
+
+    Returns:
+        'external', 'collected at format X', or 'signal'
+    """
+    if origin_class == OriginClass.EXTERNAL.value:
+        return 'external'
+    if data_format_version is None:
+        return 'signal'
+    return f'collected at format {data_format_version}'

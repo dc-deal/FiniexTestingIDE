@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - Safety Circuit Breaker Unit Tests
 
-Isolated tests for check_safety logic — no executor, no tick loop, no scenario.
+Isolated tests for check_safety logic — no executor, no event loop, no scenario.
 Uses a lightweight stub that mirrors the instance attributes check_safety reads/writes.
 
 Covers:

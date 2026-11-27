@@ -4,6 +4,7 @@ Typed configuration for live AutoTrader sessions.
 """
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -15,6 +16,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     ColdStartDefaults,
     DisplayDefaults,
     DriftAuditConfig,
+    IndicatorSeriesDefaults,
     OrderGuardDefaults,
     ReconciliationDefaults,
     SafetyConfig,
@@ -22,6 +24,7 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
     ShutdownDefaults,
     StateFramesDefaults,
     StatePersistenceDefaults,
+    StorageDefaults,
     TickSourceConfig,
 )
 from python.framework.types.config_types.operator_alerts_config_types import OperatorAlertsConfig
@@ -29,6 +32,17 @@ from python.framework.types.config_types.scenario_settings_config_types import (
     ScenarioSettingsConfig,
 )
 from python.framework.types.run_purpose_types import RunPurpose
+
+
+class AdapterType(StrEnum):
+    """
+    What an AutoTrader session trades against.
+
+    MOCK: a replay of recorded data against a simulated venue
+    LIVE: a venue's real API — with real money, or placing nothing where `dry_run` resolves true
+    """
+    MOCK = 'mock'
+    LIVE = 'live'
 
 
 @dataclass
@@ -104,6 +118,7 @@ class AutoTraderConfig:
             ends (#492). Two axes; `orders: 'leave'` is the loosening one and needs the
             broker's posture behind it, the same way `dry_run` does
         shutdown: The waits of the session's stop and the kill they have to fit under (#630)
+        storage: The free disk the start requires and the watch while the session runs (#632)
         operator_alerts: The out-of-band channels to the operator (#235) — Telegram alerts and
             the liveness ping, both off by default
         deployment: Whether this profile's sessions form one continuous deployment (#497).
@@ -121,7 +136,7 @@ class AutoTraderConfig:
     carry_over_from: str = ''
     symbol: str = ''
     broker_type: str = ''
-    adapter_type: str = 'mock'
+    adapter_type: AdapterType = AdapterType.MOCK
     strategy_config: Dict[str, Any] = field(default_factory=dict)
     scenario_settings: Optional[ScenarioSettingsConfig] = None
     tick_source: TickSourceConfig = field(default_factory=TickSourceConfig)
@@ -139,9 +154,11 @@ class AutoTraderConfig:
     api_monitor: ApiMonitorConfig = field(default_factory=ApiMonitorConfig)
     state_persistence: StatePersistenceDefaults = field(default_factory=StatePersistenceDefaults)
     state_frames: StateFramesDefaults = field(default_factory=StateFramesDefaults)
+    indicator_series: IndicatorSeriesDefaults = field(default_factory=IndicatorSeriesDefaults)
     cold_start: ColdStartDefaults = field(default_factory=ColdStartDefaults)
     session_end: SessionEndDefaults = field(default_factory=SessionEndDefaults)
     shutdown: ShutdownDefaults = field(default_factory=ShutdownDefaults)
+    storage: StorageDefaults = field(default_factory=StorageDefaults)
     capital: CapitalDefaults = field(default_factory=CapitalDefaults)
     operator_alerts: OperatorAlertsConfig = field(default_factory=OperatorAlertsConfig)
     config_path: Optional[Path] = None

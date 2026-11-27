@@ -20,11 +20,15 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Type
 
-from python.configuration.data_home import resolve_strategy_file
+from python.configuration.data_home import get_data_home, resolve_strategy_file
 from python.framework.exceptions.warmup_history_errors import WarmupRequirementMismatchError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.types.market_types.market_types import TradingContext
 from python.framework.types.parameter_types import ValidatedParameters
+from python.framework.validators.indicator_series_validator import (
+    validate_indicator_series,
+    validate_indicator_series_timeframes,
+)
 from python.framework.validators.parameter_validator import apply_defaults
 from python.framework.workers.abstract_worker import AbstractWorker
 from python.framework.workers.core.bollinger_worker import BollingerWorker
@@ -33,10 +37,19 @@ from python.framework.workers.core.ma_trend_worker import MaTrendWorker
 from python.framework.workers.core.macd_worker import MacdWorker
 from python.framework.workers.core.obv_worker import ObvWorker
 from python.framework.workers.core.rsi_worker import RsiWorker
+from python.framework.workers.core.tide_and_wave_worker import TideAndWaveWorker
 from python.framework.workers.core.test_probes.heavy_rsi_worker import HeavyRsiWorker
 from python.framework.workers.core.test_probes.sample_probe_worker import (
     SampleProbeWorker,
 )
+
+# The CORE workers that draw nothing on a run's chart, and why (#379). Every other CORE worker
+# declares its indicator series; a test holds the two to the registry.
+CORE_WORKERS_DRAWING_NOTHING: Dict[str, str] = {
+    'CORE/llm_sentiment': 'a signal worker resolves snapshots; it has no bars to give a value to',
+    'CORE/heavy_rsi': 'a load probe for the test suites',
+    'CORE/test_probes/sample_probe_worker': 'a warmup probe for the test suites',
+}
 
 
 class WorkerFactory:
@@ -84,6 +97,7 @@ class WorkerFactory:
             self._registry['CORE/heavy_rsi'] = (HeavyRsiWorker, None)
             self._registry['CORE/macd'] = (MacdWorker, None)
             self._registry['CORE/obv'] = (ObvWorker, None)
+            self._registry['CORE/tide_and_wave'] = (TideAndWaveWorker, None)
             self._registry['CORE/llm_sentiment'] = (LlmSentimentWorker, None)
             self._registry['CORE/test_probes/sample_probe_worker'] = (SampleProbeWorker, None)
 
@@ -137,6 +151,7 @@ class WorkerFactory:
         worker_class, _ = self.resolve_worker_class(worker_type, base_path)
 
         worker_class.validate_config(worker_config)
+        validate_indicator_series(worker_class, worker_type)
 
         warnings = worker_class.validate_parameter_schema(
             worker_config, strict=self._strict_validation
@@ -157,6 +172,7 @@ class WorkerFactory:
         )
 
         self._require_one_warmup_answer(worker_type, worker_config, worker_instance)
+        validate_indicator_series_timeframes(worker_instance, worker_type)
 
         self._logger.debug(
             f'✅ Created worker: {instance_name} ({worker_type}) '
@@ -327,6 +343,47 @@ class WorkerFactory:
             return str((base_path / p).resolve())
         return str((Path.cwd() / p).resolve())
 
+    def resolve_configured_worker_class(
+        self,
+        worker_type: str,
+    ) -> Tuple[Type[AbstractWorker], Optional[Path]]:
+        """
+        Resolve a worker reference a scenario set or a profile CONFIGURES (`worker_instances`).
+
+        Such a reference is named from the project root: a file path is looked up in the data home
+        first, then in the code tree — the resolution the run itself uses to create the worker.
+        Every check that reads a configured reference resolves it here, so a check cannot look
+        at a different file than the run (#633).
+
+        Args:
+            worker_type: "CORE/name" or a file path as the set names it
+
+        Returns:
+            Tuple of (worker class, source file path or None)
+        """
+        return self.resolve_worker_class(worker_type)
+
+    def resolve_required_worker_class(
+        self,
+        worker_type: str,
+        logic_source: Optional[Path],
+    ) -> Tuple[Type[AbstractWorker], Optional[Path]]:
+        """
+        Resolve a worker reference a decision logic REQUIRES (`get_required_workers()`).
+
+        Such a reference is named relative to the logic's own file, the way the worker orchestrator
+        compares it with the configured one.
+
+        Args:
+            worker_type: "CORE/name" or a file path as the logic names it
+            logic_source: The decision logic's source file, None for a CORE logic
+
+        Returns:
+            Tuple of (worker class, source file path or None)
+        """
+        return self.resolve_worker_class(
+            worker_type, base_path=logic_source.parent if logic_source else None)
+
     def resolve_worker_class(
         self,
         worker_type: str,
@@ -392,9 +449,15 @@ class WorkerFactory:
             return self._registry[cache_key]
 
         if not p.exists():
+            # A reference named from the project root was looked up in the data home first: say so,
+            # so the reader knows both places were tried
+            home = get_data_home()
+            looked_in = ''
+            if home is not None and not base_path and not Path(path_str).is_absolute():
+                looked_in = f"; the data home '{home}' holds no such file either"
             raise ValueError(
                 f"Worker file not found: '{p}' "
-                f"(resolved from '{path_str}')"
+                f"(resolved from '{path_str}'{looked_in})"
             )
 
         module_name = f'user_loaded.worker.{p.stem}'

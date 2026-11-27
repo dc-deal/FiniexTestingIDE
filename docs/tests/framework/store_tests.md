@@ -59,6 +59,48 @@ directory is measured whole — a run's size used to be its header's bytes — a
 entries hold another store's counts only its own files, so a sweep's combinations are measured
 once, as runs.
 
+## `test_store_index_replaced.py`
+
+**An index that vanishes under its reader or writer says so (#650).** Every writer holds the
+index's lock, so the file can vanish between two steps of a reader or writer only where something
+outside the lock removed it. Each test makes the file really vanish at that step, and none mocks
+the error into being:
+
+- a reader finds the index gone between its existence check and the open;
+- a second writer's replace takes the one temporary file both writers wrote;
+- the ledger index is gone between its write and the date its rebuild sets on it.
+
+Each time the error is still a `FileNotFoundError`, so whoever caught the bare one catches it, and
+its text names the index, the step, what can still cause it and that nothing is lost.
+
+## `test_store_index_lock.py`
+
+**A lock per store index (#650): whoever writes it holds it alone, whoever reads it shares it.** The
+failures it ends happened between processes, so the tests that matter run real child processes, each
+handed every path it uses — a child inherits none of this suite's redirections.
+
+- The lock file stands beside the index and is free after a write; an index that is not there is read
+  without one, so a reader creates no file; one instance inside its own hold never waits for itself.
+- The note of the process that holds an index alone names it while it holds, and goes with it.
+- **Two processes noting runs of one configuration both count.** The run-config index alone holds a
+  version's run count and first sighting, so an update lost there is lost for good.
+- **Two processes registering runs into one run index keep every row.** Without the lock the second
+  writer wrote the index back without the first one's rows: measured 2026-11-20 on the code before it,
+  15 of 30 rows survived.
+- A reader waits for a writer and reads what it wrote — also one that arrives while the index is missing
+  beside its lock file, between the delete and the rename of a replace, where it would otherwise have
+  read nothing; a wait that runs out names the holding process.
+- Three processes that rebuild one stale ledger index at once all answer with every row. A reader that
+  cannot take a stale index alone, or may not write where it lives, derives the rows in memory and
+  writes nothing — the read-only home is a refusal injected at the open, because the suite runs as
+  root.
+- On a data home it may not write, a reader reads an index a writer reached under the lock file that
+  writer left, opened for reading only.
+- A ledger fragment caught between the two halves of its replace is read again; one that stays
+  missing is named.
+- A session's run-index update that cannot take the index gives up with a warning naming the rebuild
+  command, and the session goes on.
+
 ## `test_run_entry_members.py`
 
 **The store's declaration of what a run directory and a sweep directory may hold (#621).** It reads
@@ -129,6 +171,32 @@ the list may only shrink. Such a file name never stands as a literal outside the
 and no path is joined from a section spec's file name outside the section writer. The production
 code is parsed once per module; the one-time scripts in `python/experiments/` are not scanned, the
 venue probes and the re-import tool are.
+
+## `test_store_durability.py`
+
+**How each store writes, declared once (#632).** Every store has its kind stated once
+(`STORE_KINDS`), and the registry's descriptors read it from there; the kind decides durability —
+RECORD, CARRY-OVER and ARCHIVE yes, DERIVED no — and every SPECIAL store answers for itself, no other
+does. An index writes durably exactly when its store declares that a rebuild loses something. And no
+file is renamed into place by hand outside the shared atomic writer: a source walk counts the file
+renames (`os.replace` / `os.rename`, and a path's own one-argument `.replace` / `.rename`) per module
+in the production code and in the tools that run again (the venue probes, the re-import tool) —
+the one-time scripts in `python/experiments/` aside — and holds them to a list of declared
+exceptions: each module with its count and its reason. A new rename fails, an exempt module's
+second one included, and so does one that went away until its entry is lowered or removed — the
+list may only shrink.
+
+## `test_session_storage.py`
+
+**Where a session records, and whether it can (#632).** The roots a session writes come from the
+store catalog — every session store has one, the global log is written into its folder — and the
+profile places the two carry-overs. The start check writes a probe of one page of data, passes
+writable roots with room and leaves no probe, replaces and removes one a crash left behind, and
+refuses — naming the store — a root that cannot be written or created (injected, because the suite
+runs as root) and a disk below the floor, naming its stores, a folder on it and the floor; every
+failing store and filesystem is named in one refusal. The machine reader measures roots on one
+filesystem as one reading under its device number, a root not there yet at its nearest parent, and
+reports the room a process that is not root may use (`f_bavail`); every session store is measured.
 
 ## `test_run_entry_writer.py`
 
@@ -363,7 +431,8 @@ by leaving them blank rather than inventing them.
 **A document without a file is frozen by content** (#547) — the rendered profile and the broker
 configuration an AutoTrader session records at its start. The same document is one entry and one
 copy in its own subdirectory; a changed one mints a new id; a source kind is refused from content;
-a rebuild finds both kinds by their directory. And the one property the design hangs on: a
+it reads back by its id where it is of the kind asked for, and an unknown id or another kind says
+so; a rebuild finds both kinds by their directory. And the one property the design hangs on: a
 document NEVER answers a lookup by file name — its source columns stay empty, so the profile's
 `history()` and `resolve()` keep returning the profile and not its own rendering.
 
@@ -431,7 +500,8 @@ from (`data/runtime/import_timings.json`):
   temporary file behind
 - a second measurement is averaged into the first, and a step not measured again keeps its rate
 - a new unit or worker count starts the average again, because averaging two different
-  quantities would describe neither
+  quantities would describe neither; so does a measurement more than twice or under half the
+  stored rate, in both directions
 - the file keeps the mode an ordinary write would give it, although it is written through an
   owner-only temporary file
 - another schema version, or a file that is not JSON, yields no rates — the estimate is a

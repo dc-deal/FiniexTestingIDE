@@ -5,7 +5,7 @@
 The signal-worker suite validates the SIGNAL worker type (#141): the pydantic envelope types, the
 JSONL loader, the `SignalDataProvider` lookup, the `CORE/llm_sentiment` worker, the orchestrator
 dispatch, and the didactic `CORE/hybrid_sentiment_reference` decision fusion. All run against mock
-fixtures via direct provider injection — no batch, no tick loop.
+fixtures via direct provider injection — no batch, no event loop.
 
 **Test Location:** `tests/framework/signal_workers/`
 
@@ -106,7 +106,9 @@ What the tests pin, and the second half matters as much as the first:
 - an unknown source is ignored;
 - **the three resolution counters stay tick-weighted** — an off-tick refresh increments
   `off_tick_arrivals` only, because the ledger's `signal_fresh_ratio` is defined on the tick base.
-  Changing that base is #463's job;
+  Changing that base is #463's job. `TestTheTelemetryCountsTicks` pins it for a backtest's slices
+  (#460): two passes standing for 3 and 2 ticks count 5 ticks and 2 passes, and a worker that
+  computed on the first only stands at tick 3, idle for 2 ticks — the #420 telemetry is in ticks;
 - an empty drain does nothing at all — which is the simulation's and a mock session's case on
   every single pass, and is what keeps both bit-identical.
 

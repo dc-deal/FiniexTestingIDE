@@ -125,9 +125,9 @@ def stopped_session():
         patch.setattr(AutotraderMain, '_shutdown', watching_shutdown)
         result = trader.run()
     yield _StoppedSession(
-        result, trader._run_dir, console.getvalue(), tick_thread, transport,
+        result, trader.get_run_dir(), console.getvalue(), tick_thread, transport,
         watched.get('stop_worker'), watched.get('alerts'))
-    remove_run_dir(trader._run_dir)
+    remove_run_dir(trader.get_run_dir())
 
 
 class TestTheCheckInASession:

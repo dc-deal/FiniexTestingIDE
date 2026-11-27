@@ -33,10 +33,15 @@ from python.configuration.credentials_cascade import (
     tracked_credentials_path,
     workspace_credentials_path,
 )
+from python.framework.exceptions.live_execution_errors import UnreadableVenueAnswerError
 from python.framework.trading_env.adapters.kraken_error_codes import raise_for_kraken_errors
 from python.framework.types.config_types.market_config_types import BrokerTransportConfig
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus, BrokerResponse
-from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
+from python.framework.types.live_types.reconciliation_types import (
+    BrokerOrder,
+    BrokerPosition,
+    ClosedOrdersRead,
+)
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import (
@@ -49,6 +54,7 @@ from python.framework.types.trading_env_types.broker_types import (
 from python.framework.types.trading_env_types.order_types import (
     FeeReport,
     IcebergOrder,
+    LimitFillEvidence,
     LimitOrder,
     MarketOrder,
     OrderCapabilities,
@@ -56,6 +62,7 @@ from python.framework.types.trading_env_types.order_types import (
     OrderSide,
     OrderType,
     StopLimitOrder,
+    StopTriggerBasis,
 )
 from python.framework.utils.http_attempt import send_classified
 
@@ -64,6 +71,11 @@ from .dry_run_simulator import DryRunOrderSimulator
 
 # Kraken's limit for a client order id, verified against their API docs (#355).
 _CL_ORD_ID_MAX_LEN: int = 18
+
+# How many ClosedOrders pages the boot read follows before it calls its evidence incomplete
+# (#652). A page holds up to 50 orders, so this reaches 1,000 orders closed since the last
+# carry-over write — a shared account's foreign orders count toward it.
+_CLOSED_ORDERS_PAGE_CAP: int = 20
 
 
 class KrakenAdapter(AbstractAdapter):
@@ -121,7 +133,7 @@ class KrakenAdapter(AbstractAdapter):
     # Sentinel key marking a raw response as a dry-run handoff. The
     # do_request_* layer tags the raw dict; parse_*_response detects
     # the tag and delegates to DryRunOrderSimulator for the synthetic
-    # BrokerResponse so the response timestamp matches the parse stage.
+    # BrokerResponse so the response's receipt stamp matches the parse stage.
     _DRY_RUN_SENTINEL = '__dry_run_op__'
     # The venue's own answer to the validate call, carried through the same handoff. It is
     # the ONLY thing that says what Kraken UNDERSTOOD of the order — its `descr` names the
@@ -158,7 +170,9 @@ class KrakenAdapter(AbstractAdapter):
         # refs remain queryable even if dry_run is toggled off mid-run.
         # Tier-3 transport layers route to it when self._dry_run is True
         # or when the broker_ref carries the DRYRUN-* prefix.
-        self._dry_run_simulator: DryRunOrderSimulator = DryRunOrderSimulator()
+        capabilities = self.get_order_capabilities()
+        self._dry_run_simulator: DryRunOrderSimulator = DryRunOrderSimulator(
+            stop_trigger_basis=capabilities.stop_trigger_basis, limit_fill_evidence=capabilities.limit_fill_evidence)
 
     # ============================================
     # Configuration
@@ -237,6 +251,15 @@ class KrakenAdapter(AbstractAdapter):
             # describes the venue, and a session caches it before it knows whether it is a
             # dry run. The executor tells a dry run's answers apart by where they come from.
             fee_report=FeeReport.STATUS_ANSWER,
+            # From Kraken's own documentation, read 2026-11-24 (#605). A stop-loss triggers on the
+            # last traded price: AddOrder's `trigger` is `index` or `last`, "Default: last"
+            # (docs.kraken.com/api/docs/rest-api/add-order), and this adapter sends none. Its
+            # matching engine is a central limit order book with one queue per price, matched by
+            # price and time (kraken.com/legal/exchangetradingrules) — so a public trade THROUGH a
+            # resting limit's price proves it was met; one only at the price fills the front of
+            # that queue.
+            stop_trigger_basis=StopTriggerBasis.LAST,
+            limit_fill_evidence=LimitFillEvidence.PUBLIC_TRADE,
             # Its API takes no stop or target for a position: no level on an order, no bracket,
             # no one-cancels-other, on REST, WebSocket or FIX (its API team, 2026-10-27, #625).
             offered_order_features=frozenset(),
@@ -632,7 +655,7 @@ class KrakenAdapter(AbstractAdapter):
     # DryRunOrderSimulator owned by this adapter: do_request_* runs the
     # real broker call when validation is still desired (validate=true
     # for submit) and tags the raw with the operation kind; the parse
-    # layer hands off to the simulator with the parse-stage timestamp.
+    # layer hands off to the simulator with the parse-stage receipt stamp.
     # ============================================
 
     # --- Build payloads (pure) ---
@@ -900,7 +923,7 @@ class KrakenAdapter(AbstractAdapter):
         an invalid order still raises and surfaces as REJECTED. On
         successful validation the call hands off to DryRunOrderSimulator
         via a sentinel-tagged dict so parse_submit_response can produce
-        the synthetic BrokerResponse with the parse-stage timestamp.
+        the synthetic BrokerResponse with the parse-stage receipt stamp.
 
         Args:
             payload: Pre-built AddOrder payload
@@ -1074,7 +1097,7 @@ class KrakenAdapter(AbstractAdapter):
     def parse_submit_response(
         self,
         raw: Dict[str, Any],
-        timestamp: datetime,
+        ts_init: datetime,
         direction: Optional[OrderDirection] = None,
         order_type: Optional[OrderType] = None,
     ) -> BrokerResponse:
@@ -1088,7 +1111,7 @@ class KrakenAdapter(AbstractAdapter):
 
         Args:
             raw: Raw Kraken result dict
-            timestamp: Response receipt timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
             direction: DRY-RUN only — which side of the quote a fill takes (#505)
             order_type: DRY-RUN only — which fill rule the simulated venue applies
 
@@ -1107,7 +1130,7 @@ class KrakenAdapter(AbstractAdapter):
             limit_price, trigger_price = self._dry_run_prices(order_type, raw)
             response = self._dry_run_simulator.submit(
                 lots=raw['lots'],
-                timestamp=timestamp,
+                ts_init=ts_init,
                 direction=direction,
                 order_type=order_type,
                 limit_price=limit_price,
@@ -1123,7 +1146,7 @@ class KrakenAdapter(AbstractAdapter):
         return BrokerResponse(
             broker_ref=broker_ref,
             status=BrokerOrderStatus.PENDING,
-            timestamp=timestamp,
+            ts_init=ts_init,
             raw_response=raw,
         )
 
@@ -1131,7 +1154,7 @@ class KrakenAdapter(AbstractAdapter):
         self,
         raw: Dict[str, Any],
         broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
         market: Optional[TickData] = None,
     ) -> BrokerResponse:
         """
@@ -1146,7 +1169,7 @@ class KrakenAdapter(AbstractAdapter):
         Args:
             raw: Raw Kraken result dict
             broker_ref: The txid that was queried
-            timestamp: Response receipt timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
             market: DRY-RUN only — the quote when this poll was decided; a real Kraken
                 response carries its own state and ignores it
 
@@ -1154,7 +1177,7 @@ class KrakenAdapter(AbstractAdapter):
             BrokerResponse with current status
         """
         if raw.get(self._DRY_RUN_SENTINEL) == 'query':
-            return self._dry_run_simulator.query(broker_ref, timestamp, market=market)
+            return self._dry_run_simulator.query(broker_ref, ts_init, market=market)
 
         # An answer that does not mention the txid is not a state, and it used to become
         # one: `raw.get(broker_ref, {})` then `.get('status', 'pending')` turned "Kraken has
@@ -1167,7 +1190,7 @@ class KrakenAdapter(AbstractAdapter):
             return BrokerResponse(
                 broker_ref=broker_ref,
                 status=BrokerOrderStatus.UNKNOWN,
-                timestamp=timestamp,
+                ts_init=ts_init,
                 raw_response=raw,
             )
 
@@ -1191,6 +1214,10 @@ class KrakenAdapter(AbstractAdapter):
         # like the price beside it; an answer with volume and no fee field reports none.
         raw_fee = order_info.get('fee') if filled_lots is not None else None
         fill_fee = float(raw_fee) if raw_fee not in (None, '') else None
+        # When the venue closed the order — Kraken's `closetm`, epoch seconds, documented on
+        # QueryOrders for an order it reports closed, cancelled or expired; an open order
+        # carries none (#461). The venue's time of the state, beside our receipt
+        ts_event = self._close_instant(order_info)
 
         return BrokerResponse(
             broker_ref=broker_ref,
@@ -1198,7 +1225,8 @@ class KrakenAdapter(AbstractAdapter):
             fill_price=fill_price,
             filled_lots=filled_lots,
             fill_fee=fill_fee,
-            timestamp=timestamp,
+            ts_init=ts_init,
+            ts_event=ts_event,
             raw_response=raw,
         )
 
@@ -1206,7 +1234,7 @@ class KrakenAdapter(AbstractAdapter):
         self,
         raw: Dict[str, Any],
         broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
     ) -> BrokerResponse:
         """
         Parse Kraken CancelOrder response into BrokerResponse.
@@ -1231,13 +1259,13 @@ class KrakenAdapter(AbstractAdapter):
         Args:
             raw: Raw Kraken result dict
             broker_ref: The txid that was cancelled
-            timestamp: Response receipt timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
 
         Returns:
             BrokerResponse(status=CANCELLED), or UNKNOWN when nothing was cancelled
         """
         if raw.get(self._DRY_RUN_SENTINEL) == 'cancel':
-            return self._dry_run_simulator.cancel(broker_ref, timestamp)
+            return self._dry_run_simulator.cancel(broker_ref, ts_init)
 
         # A missing `count` is NOT read as zero: an answer that does not carry the field
         # says nothing either way, and defaulting it to 0 would invent a refusal.
@@ -1247,7 +1275,7 @@ class KrakenAdapter(AbstractAdapter):
         return BrokerResponse(
             broker_ref=broker_ref,
             status=BrokerOrderStatus.CANCELLED if cancelled else BrokerOrderStatus.UNKNOWN,
-            timestamp=timestamp,
+            ts_init=ts_init,
             raw_response=raw,
         )
 
@@ -1255,7 +1283,7 @@ class KrakenAdapter(AbstractAdapter):
         self,
         raw: Dict[str, Any],
         original_broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
     ) -> BrokerResponse:
         """
         Parse Kraken AmendOrder response into BrokerResponse.
@@ -1269,7 +1297,7 @@ class KrakenAdapter(AbstractAdapter):
         Args:
             raw: Raw Kraken result dict
             original_broker_ref: The order's txid (unchanged by the amend)
-            timestamp: Response receipt timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
 
         Returns:
             BrokerResponse with the unchanged broker_ref
@@ -1277,7 +1305,7 @@ class KrakenAdapter(AbstractAdapter):
         if raw.get(self._DRY_RUN_SENTINEL) == 'modify':
             return self._dry_run_simulator.modify(
                 broker_ref=raw['broker_ref'],
-                timestamp=timestamp,
+                ts_init=ts_init,
                 new_limit_price=raw['new_limit_price'],
                 new_trigger_price=raw['new_trigger_price'],
             )
@@ -1285,7 +1313,7 @@ class KrakenAdapter(AbstractAdapter):
         return BrokerResponse(
             broker_ref=original_broker_ref,
             status=BrokerOrderStatus.PENDING,
-            timestamp=timestamp,
+            ts_init=ts_init,
             raw_response=raw,
         )
 
@@ -1371,6 +1399,8 @@ class KrakenAdapter(AbstractAdapter):
         start: datetime,
         end: datetime,
         client_order_id: Optional[str] = None,
+        close_time_only: bool = False,
+        cursor: Optional[str] = None,
     ) -> Dict[str, str]:
         """
         Build Kraken ClosedOrders payload. Pure.
@@ -1379,10 +1409,18 @@ class KrakenAdapter(AbstractAdapter):
         is measured to work here without a txid (2026-09-13) — which QueryOrders does NOT
         do, and that asymmetry is the reason this route exists at all.
 
+        The range filters on the open AND the close time by default (`closetime=both`:
+        start < opentm and closetm <= end), so an order sent before `start` and filled after
+        it is not in the answer. The boot read asks with `close_time_only`, which filters on
+        the close time alone (start < closetm <= end), and pages with a cursor, the way
+        Kraken's reference documents both (2026-11-26).
+
         Args:
-            start: Range start (UTC, inclusive)
+            start: Range start (UTC, exclusive)
             end: Range end (UTC, inclusive)
             client_order_id: Our wire key, when the question is about one order
+            close_time_only: Filter on the close time alone, and page with a cursor
+            cursor: The cursor the previous page answered with, for the next page
 
         Returns:
             POST data dict
@@ -1393,7 +1431,55 @@ class KrakenAdapter(AbstractAdapter):
         }
         if client_order_id:
             payload['cl_ord_id'] = str(client_order_id)[:_CL_ORD_ID_MAX_LEN]
+        if close_time_only:
+            payload['closetime'] = 'close'
+            payload['with_cursor'] = 'true'
+        if cursor:
+            payload['cursor'] = cursor
         return payload
+
+    def read_closed_orders(self, start: datetime, end: datetime) -> ClosedOrdersRead:
+        """
+        Read every order of the account that closed inside a range, page by page.
+
+        Kraken answers 50 orders a page and names the next page with `cursor.next`; the read
+        follows it until it is absent, up to a cap of pages. The whole read is one call of the
+        caller's ladder, so a page that fails fails the read, and a retry starts over — a read
+        changes nothing at the venue.
+
+        Args:
+            start: Range start (UTC, exclusive)
+            end: Range end (UTC, inclusive)
+
+        Returns:
+            The orders that closed inside the range, and whether the read reached its end
+        """
+        orders: List[BrokerOrder] = []
+        cursor: Optional[str] = None
+        for page in range(1, _CLOSED_ORDERS_PAGE_CAP + 1):
+            raw = self._do_request_closedorders(self._build_closedorders_payload(
+                start, end, close_time_only=True, cursor=cursor))
+            orders.extend(self._parse_closedorders_response(raw))
+            cursor = self._next_closedorders_cursor(raw)
+            if cursor is None:
+                return ClosedOrdersRead(orders=orders, complete=True, pages=page)
+        return ClosedOrdersRead(orders=orders, complete=False, pages=_CLOSED_ORDERS_PAGE_CAP)
+
+    def _next_closedorders_cursor(self, raw: Dict[str, Any]) -> Optional[str]:
+        """
+        The cursor of the next ClosedOrders page, when the answer names one. Pure.
+
+        Args:
+            raw: Raw Kraken result dict of one page
+
+        Returns:
+            The cursor, or None on the last page and in a dry run
+        """
+        if raw.get(self._DRY_RUN_SENTINEL) is not None:
+            return None
+        cursor_block = raw.get('cursor') or {}
+        next_cursor = cursor_block.get('next') if isinstance(cursor_block, dict) else None
+        return str(next_cursor) if next_cursor else None
 
     def _build_balance_payload(self) -> Dict[str, str]:
         """
@@ -1578,8 +1664,24 @@ class KrakenAdapter(AbstractAdapter):
             # #473 — read our own key back. Without it a resting order we placed and a
             # resting order somebody else placed are the same unknown row.
             client_order_id=info.get('cl_ord_id') or None,
+            ts_event=self._close_instant(info),
             raw=info,
         )
+
+    @staticmethod
+    def _close_instant(info: Dict[str, Any]) -> Optional[datetime]:
+        """
+        When the venue closed an order: Kraken's `closetm`, epoch seconds. Pure.
+
+        Args:
+            info: One order entry as the venue reported it
+
+        Returns:
+            The close instant in UTC, or None for an order that carries none (a working one)
+        """
+        close_seconds = float(info.get('closetm') or 0.0)
+        return (datetime.fromtimestamp(close_seconds, tz=timezone.utc)
+                if close_seconds > 0.0 else None)
 
     def _parse_closedorders_response(self, raw: Dict[str, Any]) -> List[BrokerOrder]:
         """
@@ -1731,7 +1833,7 @@ class KrakenAdapter(AbstractAdapter):
 
         Delegates to _do_fetch_private via the broker-agnostic _timed_call wrapper
         so the API monitor (#351) records per-endpoint latency/errors. The timing
-        includes the rate-limit throttle (the real tick-loop-blocking cost).
+        includes the rate-limit throttle (the real event-loop-blocking cost).
 
         Args:
             endpoint: API path (e.g., '/0/private/AddOrder')
@@ -1781,7 +1883,18 @@ class KrakenAdapter(AbstractAdapter):
                 endpoint,
             )
 
-        result = response.json()
+        try:
+            result = response.json()
+        except ValueError as error:
+            # The venue answered and the body is no JSON: a write it carried may have been
+            # executed, so this is neither a transport fault nor a refusal (#669)
+            raise UnreadableVenueAnswerError(
+                f'{endpoint} answered HTTP {response.status_code} with a body that is not '
+                f'JSON ({error})') from error
+        if not isinstance(result, dict):
+            raise UnreadableVenueAnswerError(
+                f'{endpoint} answered HTTP {response.status_code} with JSON that is no object '
+                f'({type(result).__name__})')
         # A Kraken-level error is the VENUE speaking, not a transport fault — it stays a
         # plain ConnectionError and therefore classifies TERMINAL. Retrying "Insufficient
         # funds" forever would report their outage for our order. The exceptions are the codes

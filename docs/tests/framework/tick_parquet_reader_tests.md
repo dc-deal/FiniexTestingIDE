@@ -79,10 +79,38 @@ repeating one of its stamps exactly:
 | `test_from_inside_a_file` | the ticks equal the first `max_ticks` of reading the whole archive |
 | `test_across_the_overlap_and_its_repeated_stamp` | the same holds where files overlap and two ticks share a stamp — a tie is broken as it is when everything is read |
 
+### A Price No Bar May Be Built From Is Refused (`test_unusable_tick_price.py`)
+
+The reader derives every tick's price once, and a bar renders it as it stands. A price that is not
+above zero would reach the bars silently, and so would a midpoint of a quote with a side at zero:
+half the other side is a positive number and still no price. `refuse_unusable_price`
+(`tick_price_check.py`) refuses such a
+file with `TickPriceUnusableError` where the price is consumed: the bar import fails the symbol, and
+the backtest refuses every scenario of that symbol and prepares the others. The reader itself
+refuses nothing.
+
+| Test | What it pins |
+|---|---|
+| `test_a_traded_price_passes` | an order-driven file reads its traded prices |
+| `test_a_quote_driven_file_reads_its_midpoint` | a `last` of 0.0 on every row (a quote-driven venue) is no traded price, and the midpoint passes |
+| `test_a_flat_file_without_the_column_passes` | a file before collector format 1.6.0 — bid = ask = the trade, no `last` — passes |
+| `test_a_traded_tick_is_not_judged_by_its_quote` | where the price is what traded, the quote is not what a bar is built from |
+| `test_a_price_of_zero_is_refused` | a tick with neither a traded price nor a quote is refused, and the message counts it |
+| `test_a_midpoint_of_a_one_sided_quote_is_refused` | a fallback row with one side at zero is refused although its midpoint is positive |
+| `test_a_price_that_is_not_a_number_is_refused` | a midpoint that is not a number is refused |
+| `test_the_reader_itself_refuses_nothing` | a caller that reads the quote as data gets a tick without a bid as it is — the divergence report skips such a tick itself |
+| `test_the_message_names_the_file_the_first_tick_and_an_absent_last` | the message names the file, the count and the first tick's time, and an absent traded price reads "no last", never 0.0 |
+| `test_an_unusable_file_refuses_its_symbol_and_the_other_runs` | in `prepare_ticks` the refusal reaches every scenario of the symbol, with the file named, and another symbol is prepared |
+| `test_a_mount_without_any_traded_price_still_ends_the_batch` | a mount without any traded price is not refused per symbol: the import refuses such a file, so it means the pipeline lost the column, and that fault still ends the batch |
+| `test_the_refused_scenario_carries_its_validation_error` | the scenario receives a validation error with the check `tick_data_unusable`, and no package |
+| `test_an_unusable_file_stops_the_symbols_load` | the bar import's load of a symbol stops at the refused file and names it — the render worker's existing catch then reports the symbol as failed, which this test does not run |
+
 ## Files
 
 - `tests/framework/tick_parquet_reader/test_tick_parquet_reader.py` — Test suite
 - `tests/framework/tick_parquet_reader/test_max_ticks_window.py` — the `max_ticks` read bound
+- `tests/framework/tick_parquet_reader/test_unusable_tick_price.py` — the refusal of an unusable price
+- `python/framework/data_preparation/tick_price_check.py` — the check where the price is consumed
 - `python/framework/data_preparation/tick_parquet_reader.py` — Module under test
 
 ## Running the Tests

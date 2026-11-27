@@ -599,6 +599,21 @@
             }
         },
         {
+            "name": "📥 Import (fetch packages)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "import",
+                "--fetch"
+            ],
+            "console": "integratedTerminal",
+            "presentation": {
+                "group": "03_import",
+                "order": 6
+            }
+        },
+        {
             "name": "📥 Import (Override)",
             "type": "debugpy",
             "request": "launch",
@@ -610,7 +625,22 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "03_import",
-                "order": 6
+                "order": 7
+            }
+        },
+        {
+            "name": "📥 Package services",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/data_index_cli.py",
+            "args": [
+                "package-sources",
+                "--check"
+            ],
+            "console": "integratedTerminal",
+            "presentation": {
+                "group": "03_import",
+                "order": 8
             }
         },
         // ====================================================
@@ -805,6 +835,28 @@
             }
         },
         {
+            "name": "🔍 Disc - Data Coverage: Trade Completeness",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/discoveries_cli.py",
+            "args": [
+                "data-coverage",
+                "trade-completeness",
+                "kraken_spot",
+                "${input:tradeCompletenessSymbol}",
+                "--start",
+                "${input:tradeCompletenessStart}",
+                "--end",
+                "${input:tradeCompletenessEnd}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "04_coverage",
+                "order": 13
+            }
+        },
+        {
             "name": "🔍 Disc - Data Coverage: Validate All",
             "type": "debugpy",
             "request": "launch",
@@ -817,7 +869,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 13
+                "order": 14
             }
         },
         {
@@ -835,7 +887,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 14
+                "order": 15
             }
         },
         {
@@ -853,7 +905,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 15
+                "order": 16
             }
         },
         {
@@ -871,7 +923,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 16
+                "order": 17
             }
         },
         {
@@ -889,7 +941,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 17
+                "order": 18
             }
         },
         {
@@ -907,7 +959,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 18
+                "order": 19
             }
         },
         {
@@ -925,7 +977,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 19
+                "order": 20
             }
         },
         {
@@ -943,7 +995,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "04_coverage",
-                "order": 20
+                "order": 21
             }
         },
         // ====================================================
@@ -1359,6 +1411,67 @@
             }
         },
         {
+            "name": "🔀 Behaviour Comparison: compare (prompt)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/behaviour_comparison_cli.py",
+            "args": [
+                "compare",
+                "--scenario-set",
+                "${input:behaviourScenarioSet}",
+                "--old-framework",
+                "${input:behaviourOldFramework}",
+                "--new-framework",
+                "${input:behaviourNewFramework}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 9
+            }
+        },
+        {
+            "name": "🔀 Divergence Report: aa (prompt)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/divergence_report_cli.py",
+            "args": [
+                "aa",
+                "--deployment",
+                "${input:deploymentId}",
+                "--release-tree",
+                "${input:aaReleaseTree}",
+                "--window",
+                "${input:aaWindow}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 10
+            }
+        },
+        {
+            "name": "🔀 Divergence Report: compare (prompt)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/divergence_report_cli.py",
+            "args": [
+                "compare",
+                "--deployment",
+                "${input:deploymentId}",
+                "--decision-timeframe",
+                "D1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "07_inspect",
+                "order": 11
+            }
+        },
+        {
             "name": "🖥️ Activities: Check Free Memory (prompt)",
             "type": "debugpy",
             "request": "launch",
@@ -1372,7 +1485,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 9
+                "order": 12
             }
         },
         {
@@ -1387,7 +1500,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 10
+                "order": 13
             }
         },
         {
@@ -1404,7 +1517,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 11
+                "order": 14
             }
         },
         {
@@ -1422,7 +1535,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 12
+                "order": 15
             }
         },
         {
@@ -1440,7 +1553,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "07_inspect",
-                "order": 13
+                "order": 16
             }
         },
         // ====================================================
@@ -1993,6 +2106,22 @@
             }
         },
         {
+            "name": "🔄 Fixture Catalog: freeze a golden sample (pick an entry)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/fixture_catalog_cli.py",
+            "args": [
+                "freeze",
+                "${input:fixtureEntry}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "11_maintenance",
+                "order": 5
+            }
+        },
+        {
             "name": "🔄 Fixture Catalog: produce (pick an entry)",
             "type": "debugpy",
             "request": "launch",
@@ -2005,7 +2134,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_maintenance",
-                "order": 5
+                "order": 6
             }
         },
         {
@@ -2020,7 +2149,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "11_maintenance",
-                "order": 6
+                "order": 7
             }
         },
         // ====================================================
@@ -2302,6 +2431,23 @@
             }
         },
         {
+            "name": "🧩 Pytest: Behaviour Comparison (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/behaviour_comparison/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 13
+            }
+        },
+        {
             "name": "🧩 Pytest: Broker Trade Records (#326)",
             "type": "debugpy",
             "request": "launch",
@@ -2317,7 +2463,24 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 13
+                "order": 14
+            }
+        },
+        {
+            "name": "🧩 Pytest: Cache Transparency (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/cache_transparency/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 15
             }
         },
         {
@@ -2334,7 +2497,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 14
+                "order": 16
             }
         },
         {
@@ -2351,7 +2514,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 15
+                "order": 17
             }
         },
         {
@@ -2368,7 +2531,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 16
+                "order": 18
             }
         },
         {
@@ -2385,7 +2548,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 17
+                "order": 19
             }
         },
         {
@@ -2402,7 +2565,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 18
+                "order": 20
             }
         },
         {
@@ -2419,7 +2582,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 19
+                "order": 21
             }
         },
         {
@@ -2436,7 +2599,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 20
+                "order": 22
             }
         },
         {
@@ -2454,7 +2617,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 21
+                "order": 23
             }
         },
         {
@@ -2471,7 +2634,24 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 22
+                "order": 24
+            }
+        },
+        {
+            "name": "🧩 Pytest: Divergence Report (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/divergence_report/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 25
             }
         },
         {
@@ -2488,7 +2668,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 23
+                "order": 26
             }
         },
         {
@@ -2506,7 +2686,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 24
+                "order": 27
             }
         },
         {
@@ -2524,7 +2704,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 25
+                "order": 28
             }
         },
         {
@@ -2542,7 +2722,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 26
+                "order": 29
             }
         },
         {
@@ -2558,7 +2738,23 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 27
+                "order": 30
+            }
+        },
+        {
+            "name": "🧩 Pytest: Golden Samples (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/golden_samples/",
+                "-v"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 31
             }
         },
         {
@@ -2575,7 +2771,24 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 28
+                "order": 32
+            }
+        },
+        {
+            "name": "🧩 Pytest: Indicator Series (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/indicator_series",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 33
             }
         },
         {
@@ -2592,7 +2805,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 29
+                "order": 34
             }
         },
         {
@@ -2609,7 +2822,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 30
+                "order": 35
             }
         },
         {
@@ -2626,7 +2839,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 31
+                "order": 36
             }
         },
         {
@@ -2643,7 +2856,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 32
+                "order": 37
             }
         },
         {
@@ -2660,7 +2873,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 33
+                "order": 38
             }
         },
         {
@@ -2677,7 +2890,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 34
+                "order": 39
             }
         },
         {
@@ -2694,7 +2907,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 35
+                "order": 40
             }
         },
         {
@@ -2711,7 +2924,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 36
+                "order": 41
             }
         },
         {
@@ -2728,7 +2941,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 37
+                "order": 42
             }
         },
         {
@@ -2745,7 +2958,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 38
+                "order": 43
             }
         },
         {
@@ -2762,7 +2975,58 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 39
+                "order": 44
+            }
+        },
+        {
+            "name": "🧩 Pytest: Loop Events (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/loop_events/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 45
+            }
+        },
+        {
+            "name": "🧩 Pytest: Loop Pass Order (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/loop_pass_order/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 46
+            }
+        },
+        {
+            "name": "🧩 Pytest: Loop Timeline (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/loop_timeline/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 47
             }
         },
         {
@@ -2780,7 +3044,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 40
+                "order": 48
             }
         },
         {
@@ -2797,7 +3061,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 41
+                "order": 49
             }
         },
         {
@@ -2814,7 +3078,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 42
+                "order": 50
             }
         },
         {
@@ -2832,7 +3096,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 43
+                "order": 51
             }
         },
         {
@@ -2851,7 +3115,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 44
+                "order": 52
             }
         },
         {
@@ -2868,7 +3132,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 45
+                "order": 53
             }
         },
         {
@@ -2885,7 +3149,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 46
+                "order": 54
             }
         },
         {
@@ -2902,7 +3166,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 47
+                "order": 55
             }
         },
         {
@@ -2920,7 +3184,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 48
+                "order": 56
             }
         },
         {
@@ -2937,7 +3201,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 49
+                "order": 57
             }
         },
         {
@@ -2954,7 +3218,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 50
+                "order": 58
             }
         },
         {
@@ -2972,7 +3236,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 51
+                "order": 59
             }
         },
         {
@@ -2987,7 +3251,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 52
+                "order": 60
             }
         },
         {
@@ -3004,7 +3268,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 54
+                "order": 62
             }
         },
         {
@@ -3021,7 +3285,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 55
+                "order": 63
             }
         },
         {
@@ -3038,7 +3302,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 56
+                "order": 64
             }
         },
         {
@@ -3055,7 +3319,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 57
+                "order": 65
             }
         },
         {
@@ -3072,7 +3336,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 58
+                "order": 66
             }
         },
         {
@@ -3083,7 +3347,7 @@
             "console": "integratedTerminal",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 59
+                "order": 67
             }
         },
         {
@@ -3100,7 +3364,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 60
+                "order": 68
             }
         },
         {
@@ -3117,7 +3381,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 61
+                "order": 69
             }
         },
         {
@@ -3134,7 +3398,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 62
+                "order": 70
             }
         },
         {
@@ -3151,7 +3415,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 63
+                "order": 71
             }
         },
         {
@@ -3168,7 +3432,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 64
+                "order": 72
             }
         },
         {
@@ -3186,7 +3450,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 65
+                "order": 73
             }
         },
         {
@@ -3204,7 +3468,7 @@
             "cwd": "${workspaceFolder}",
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 66
+                "order": 74
             }
         },
         {
@@ -3221,7 +3485,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 67
+                "order": 75
             }
         },
         {
@@ -3238,7 +3502,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 68
+                "order": 76
             }
         },
         {
@@ -3255,7 +3519,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 69
+                "order": 77
             }
         },
         {
@@ -3272,7 +3536,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 70
+                "order": 78
             }
         },
         {
@@ -3289,7 +3553,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 71
+                "order": 79
             }
         },
         {
@@ -3306,7 +3570,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 72
+                "order": 80
             }
         },
         {
@@ -3323,7 +3587,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 73
+                "order": 81
             }
         },
         {
@@ -3340,7 +3604,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 74
+                "order": 82
             }
         },
         {
@@ -3357,7 +3621,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 75
+                "order": 83
             }
         },
         {
@@ -3374,7 +3638,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 76
+                "order": 84
             }
         },
         {
@@ -3391,7 +3655,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 77
+                "order": 85
             }
         },
         {
@@ -3408,7 +3672,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 78
+                "order": 86
             }
         },
         {
@@ -3425,7 +3689,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 79
+                "order": 87
             }
         },
         {
@@ -3442,7 +3706,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 80
+                "order": 88
             }
         },
         {
@@ -3459,7 +3723,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 81
+                "order": 89
             }
         },
         {
@@ -3476,7 +3740,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 82
+                "order": 90
             }
         },
         {
@@ -3493,7 +3757,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 83
+                "order": 91
             }
         },
         {
@@ -3510,7 +3774,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 84
+                "order": 92
             }
         },
         {
@@ -3527,7 +3791,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 85
+                "order": 93
             }
         },
         {
@@ -3544,7 +3808,24 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 86
+                "order": 94
+            }
+        },
+        {
+            "name": "🧩 Pytest: Venue History (All)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/framework/venue_history/",
+                "-v",
+                "--tb=short"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13_pytest_validation",
+                "order": 95
             }
         },
         {
@@ -3561,7 +3842,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 87
+                "order": 96
             }
         },
         {
@@ -3578,7 +3859,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13_pytest_validation",
-                "order": 88
+                "order": 97
             }
         },
         // ====================================================
@@ -3625,6 +3906,26 @@
             }
         },
         {
+            "name": "🧪 AutoTrader: Divergence Report Test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/autotrader_cli.py",
+            "args": [
+                "run",
+                "--config",
+                "configs/autotrader_profiles/mock/divergence_report_test.json",
+                "--display",
+                "--delay",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13b_manual_inspection",
+                "order": 3
+            }
+        },
+        {
             "name": "🧪 AutoTrader: Duplicate Signal Guard",
             "type": "debugpy",
             "request": "launch",
@@ -3641,7 +3942,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 3
+                "order": 4
             }
         },
         {
@@ -3661,7 +3962,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 4
+                "order": 5
             }
         },
         {
@@ -3681,7 +3982,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 5
+                "order": 6
             }
         },
         {
@@ -3701,7 +4002,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 6
+                "order": 7
             }
         },
         {
@@ -3721,7 +4022,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 7
+                "order": 8
             }
         },
         {
@@ -3741,7 +4042,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 8
+                "order": 9
             }
         },
         {
@@ -3761,7 +4062,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 9
+                "order": 10
             }
         },
         {
@@ -3781,7 +4082,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 10
+                "order": 11
             }
         },
         {
@@ -3801,7 +4102,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 11
+                "order": 12
             }
         },
         {
@@ -3821,7 +4122,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 12
+                "order": 13
             }
         },
         {
@@ -3841,7 +4142,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 13
+                "order": 14
             }
         },
         {
@@ -3861,7 +4162,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 14
+                "order": 15
             }
         },
         {
@@ -3881,7 +4182,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 15
+                "order": 16
             }
         },
         {
@@ -3901,7 +4202,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 16
+                "order": 17
             }
         },
         {
@@ -3921,7 +4222,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 17
+                "order": 18
             }
         },
         {
@@ -3941,7 +4242,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 18
+                "order": 19
             }
         },
         {
@@ -3961,7 +4262,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 19
+                "order": 20
             }
         },
         {
@@ -3981,7 +4282,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 20
+                "order": 21
             }
         },
         {
@@ -4001,7 +4302,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 21
+                "order": 22
             }
         },
         {
@@ -4017,7 +4318,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 22
+                "order": 23
             }
         },
         {
@@ -4033,7 +4334,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 23
+                "order": 24
             }
         },
         {
@@ -4049,7 +4350,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 24
+                "order": 25
             }
         },
         {
@@ -4065,7 +4366,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 25
+                "order": 26
             }
         },
         {
@@ -4081,7 +4382,23 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 26
+                "order": 27
+            }
+        },
+        {
+            "name": "🧪 Simulation: Indicator Series",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/python/cli/strategy_runner_cli.py",
+            "args": [
+                "run",
+                "backtesting/indicator_series_test.json"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "presentation": {
+                "group": "13b_manual_inspection",
+                "order": 28
             }
         },
         {
@@ -4097,7 +4414,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 27
+                "order": 29
             }
         },
         {
@@ -4113,7 +4430,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 28
+                "order": 30
             }
         },
         {
@@ -4129,7 +4446,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 29
+                "order": 31
             }
         },
         {
@@ -4145,7 +4462,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 30
+                "order": 32
             }
         },
         {
@@ -4161,7 +4478,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 31
+                "order": 33
             }
         },
         {
@@ -4177,7 +4494,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 32
+                "order": 34
             }
         },
         {
@@ -4193,7 +4510,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 33
+                "order": 35
             }
         },
         {
@@ -4209,7 +4526,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 34
+                "order": 36
             }
         },
         {
@@ -4225,7 +4542,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 35
+                "order": 37
             }
         },
         {
@@ -4241,7 +4558,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 36
+                "order": 38
             }
         },
         {
@@ -4257,7 +4574,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 37
+                "order": 39
             }
         },
         {
@@ -4273,7 +4590,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 38
+                "order": 40
             }
         },
         {
@@ -4289,7 +4606,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 39
+                "order": 41
             }
         },
         {
@@ -4305,7 +4622,7 @@
             "justMyCode": false,
             "presentation": {
                 "group": "13b_manual_inspection",
-                "order": 40
+                "order": 42
             }
         },
         // ====================================================
@@ -4652,6 +4969,24 @@
     ],
     "inputs": [
         {
+            "id": "behaviourScenarioSet",
+            "type": "promptString",
+            "description": "Scenario set both code stands run, as a file path",
+            "default": "configs/scenario_sets/backtesting/margin_validation_test.json"
+        },
+        {
+            "id": "behaviourOldFramework",
+            "type": "promptString",
+            "description": "Framework revision that runs now (branch, tag or commit)",
+            "default": "HEAD~1"
+        },
+        {
+            "id": "behaviourNewFramework",
+            "type": "promptString",
+            "description": "Framework revision that is to be deployed (branch, tag or commit)",
+            "default": "HEAD"
+        },
+        {
             "id": "releaseCheckVersion",
             "type": "promptString",
             "description": "The release about to be tagged, e.g. 1.5.0"
@@ -4690,6 +5025,22 @@
             "type": "promptString",
             "description": "Fixture catalog entry (the list entry names them), or --all",
             "default": "report_coverage"
+        },
+        {
+            "id": "tradeCompletenessSymbol",
+            "type": "promptString",
+            "description": "Kraken symbol to compare with the venue's trade list, e.g. ETHUSD",
+            "default": "ETHUSD"
+        },
+        {
+            "id": "tradeCompletenessStart",
+            "type": "promptString",
+            "description": "Window start, ISO-8601 UTC, e.g. 2026-11-16T00:00:00+00:00"
+        },
+        {
+            "id": "tradeCompletenessEnd",
+            "type": "promptString",
+            "description": "Window end, ISO-8601 UTC, excluded — about one second per thousand trades"
         },
         {
             "id": "docsSearchQuery",
@@ -4748,6 +5099,16 @@
             "type": "promptString",
             "description": "Deployment id to report on (e.g. deploy_20260918_091413 — the `deployments` entry lists them)",
             "default": "deploy_20260918_091413"
+        },
+        {
+            "id": "aaReleaseTree",
+            "type": "promptString",
+            "description": "A checkout of the release the sessions ran (git worktree add --detach <dir> v1.5.0)"
+        },
+        {
+            "id": "aaWindow",
+            "type": "promptString",
+            "description": "The window to backtest on both code stands: <start>,<end> (UTC) — one where the strategy trades"
         },
         {
             "id": "optimizationSweepId",

@@ -42,8 +42,8 @@ Boundary conditions and data quality guards.
 | Test | What |
 |------|------|
 | `test_empty_ticks` | Empty tick list → zero stats, budget recorded |
-| `test_pre_v13_data_skips_filtering` | `collected_msc=0` → all ticks returned unchanged (no `is_clipped` flag) |
-| `test_pre_v13_logs_warning` | Data without an arrival time triggers a logger.warning naming `no_arrival_time` |
+| `test_data_without_an_arrival_time_is_timed_on_its_event_time` | `collected_msc=0` — none recorded, or cleared by data preparation (#460) → the budget runs on `time_msc`: 1000, 1001, 1002 at 2 ms keep the first and the third |
+| `test_data_timed_on_its_event_time_is_said_so` | The log says how many ticks were budgeted on their event time; no warning |
 | `test_sub_ms_budget_no_clipping` | Budget < 1.0ms with integer-ms data → all `is_clipped=False` |
 | `test_symbol_not_in_ticks` | Unknown symbol → empty stats |
 
@@ -67,6 +67,15 @@ Boundary conditions and data quality guards.
 | `test_original_tick_data_preserved` | bid, ask, collected_msc, time_msc unchanged by flagging |
 | `test_tick_dicts_are_copies` | Flagged dicts are copies — original dicts not mutated |
 | `test_algo_tick_count_equals_stats_kept` | Non-clipped count = `stats.ticks_kept`, clipped = `stats.ticks_clipped` |
+
+### `test_untrusted_arrival.py`
+The arrival time a scenario's ticks carry out of the preparation (#460): a file whose arrival
+time says nothing about arrival has it cleared, so its ticks order and are budgeted on their event
+time. Driven over a small archive of one flagged and one clean file, built by hand.
+
+| Test | What |
+|------|------|
+| `test_the_arrival_is_cleared_exactly_where_the_deficiency_leaves_it_untrusted` | Once per `DataDeficiency`: the flagged file's arrival is cleared exactly where the deficiency leaves it untrusted, kept otherwise; the clean file keeps its 14 ms lag every time |
 
 ---
 

@@ -3,7 +3,7 @@ FiniexTestingIDE - Margin Safety Circuit Breaker Integration Tests
 
 End-to-end tests through a mock AutoTrader session in margin mode.
 Validates that safety checks read the ACCOUNT VALUE (#356) correctly during
-a real tick loop session with mt5/EURUSD.
+a real event loop session with mt5/EURUSD.
 
 Uses margin_safety_test.json as base profile (margin_stress_probe
 decision logic with deterministic trade_sequence), overrides safety config
@@ -42,7 +42,7 @@ def _run_with_margin_safety(safety: SafetyConfig) -> AutoTraderResult:
     trader = AutotraderMain(config)
     result = trader.run()
     # Clean up log directory
-    remove_run_dir(trader._run_dir)
+    remove_run_dir(trader.get_run_dir())
     return result
 
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Regression suite for the bar rendering / clipping gate ordering in the simulation tick loop. Ensures that bars aggregate **all** ticks regardless of the `is_clipped` flag set by the tick processing budget.
+Regression suite for the bar rendering / clipping gate ordering in the simulation event loop. Ensures that bars aggregate **all** ticks regardless of the `is_clipped` flag set by the tick processing budget.
 
 **Context:** The tick processing budget flags ticks as `is_clipped=True` to simulate "algo was too
 slow to react". Clipped ticks skip the algo path (workers, decision logic) but must still reach bar
@@ -11,9 +11,9 @@ not algo input.
 
 **Location:** `tests/simulation/tick_clipping/`
 
-**Approach:** Lightweight integration test against `execute_tick_loop`. Uses a real
+**Approach:** Lightweight integration test against `execute_event_loop`. Uses a real
 `BarRenderingController` with mocked trade executor, worker orchestrator, and decision logic —
-isolates the tick loop ordering from the rest of the simulation pipeline.
+isolates the event loop ordering from the rest of the simulation pipeline.
 
 ---
 
@@ -21,7 +21,7 @@ isolates the tick loop ordering from the rest of the simulation pipeline.
 
 ### `test_volume_aggregation_includes_clipped_ticks`
 
-Feeds 5 synthetic ticks (mix of clipped + non-clipped) into the tick loop and verifies:
+Feeds 5 synthetic ticks (mix of clipped + non-clipped) into the event loop and verifies:
 - `bar.volume` == sum of **all** tick volumes (not only non-clipped)
 - `bar.tick_count` == total tick count (not only non-clipped)
 - Broker path (`trade_simulator.on_tick`) called for every tick
@@ -31,11 +31,18 @@ Feeds 5 synthetic ticks (mix of clipped + non-clipped) into the tick loop and ve
 
 Constructs a tick sequence where the extreme high price is on a **clipped** tick. Verifies that `bar.high` captures that price — i.e. bar rendering must not skip clipped ticks.
 
+### `test_autotrader_loop_bar_rendering_covers_all_ticks`
+
+The AutoTrader side of the same guard: five ticks 10 s apart, two of them flagged clipped, from a
+replay source, so each is a slice of its own (#461). Verifies that the bar holds every tick (count,
+volume, OHLC), that the broker path (`apply_tick`) saw every tick, and that the algo computed on
+each — the AutoTrader has no clipping gate.
+
 ---
 
 ## Why This Test Exists
 
-Before the fix, `process_tick_loop.py` placed the clipping gate **before** bar rendering:
+Before the fix, `process_event_loop.py` placed the clipping gate **before** bar rendering:
 
 ```
 for tick in ticks:

@@ -11,27 +11,26 @@ pipeline makes no decisions — the verdict ("does this warrant a warning?") liv
 reads the structured result. See docs/architecture/warnings_errors_tiers.md.
 """
 
-from collections import Counter
 from datetime import datetime, timezone
 from typing import Dict, Optional, Tuple
 
 from python.configuration.autotrader.broker_config_cache_policy import CACHE_REFRESH_DAYS
 from python.framework.reporting.builders.pending_orders_report_builder import submission_count
+from python.framework.reporting.builders.portfolio_report_builder import usable_funds
 from python.framework.reporting.builders.robustness_report_builder import (
     build_robustness_report_from_batch,
 )
-from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.config_types.data_origin_config_types import OriginClass
-from python.framework.types.config_types.robustness_config_types import RobustnessMetric
-from python.framework.types.data_deficiency_types import (
-    DEFICIENCY_DECLARATIONS,
-    DataDeficiency,
+from python.framework.reporting.builders.worker_decision_breakdown_builder import (
+    coordination_overhead_ms,
 )
-from python.framework.types.data_origin_types import is_admissible_for_measurement
+from python.framework.types.api.report_types import WalkForwardClass
+from python.framework.types.batch_execution_types import BatchExecutionSummary
+from python.framework.types.config_types.robustness_config_types import RobustnessMetric
 from python.framework.types.process_data_types import ProcessResult
 from python.framework.types.run_origin_types import CodeIdentity
 from python.framework.types.scenario_types.scenario_set_performance_types import (
     EXPECTED_OPERATIONS,
+    PROFILE_TOTAL_KEYS,
     ProfilingData,
 )
 from python.framework.types.validation_types import (
@@ -42,9 +41,12 @@ from python.framework.types.validation_types import (
 )
 from python.framework.utils.version_utils import parse_version
 from python.framework.validators.shared_advisory_checks import (
+    check_data_deficiencies,
+    check_data_origin,
     check_order_event_stream,
     check_stress_test,
     check_unversioned_code,
+    check_usable_funds,
 )
 
 # Scope of a batch-global finding — it concerns the run, not one scenario.
@@ -101,6 +103,7 @@ class PostRunValidator:
         self._check_multi_currency()
         self._check_time_divergence()
         self._check_order_event_stream()
+        self._check_usable_funds()
         self._check_robustness()
 
     def _add(self, check: str, domain: ValidationDomain, message: str) -> None:
@@ -194,110 +197,14 @@ class PostRunValidator:
             f'    python python/cli/tick_index_cli.py rebuild'))
 
     def _check_data_origin(self) -> None:
-        """
-        Report how much of what this run read carries no production stamp of its own.
-
-        One finding for the whole run, deliberately. The per-scenario gate decides whether a
-        scenario may run at all; this measures the distance to a state where a parity
-        comparison is possible, and that distance is a property of the archive rather than of
-        any one scenario. Reported as a count rather than a verdict: the data is usable, and it
-        is not comparable, which are two different sentences.
-
-        It stays silent once every file read carries a producer's own stamp — which is the
-        state the thirty-day run needs and the only one that says nothing.
-        """
-        total_files = 0
-        unstamped_files = 0
-        external_files = 0
-        external_scenarios = set()
-        for scenario in self._batch.single_scenario_list:
-            for origin_class, evidence in zip(scenario.origin_classes,
-                                              scenario.origin_evidence_grades):
-                total_files += 1
-                # A venue's published history IS stamped — by the converter that brought it in —
-                # so it is said in a finding of its own rather than counted as unstamped, where
-                # it would contradict that finding beside it.
-                if origin_class == OriginClass.EXTERNAL.value:
-                    external_files += 1
-                    external_scenarios.add(scenario.name)
-                    continue
-                # Asked of the shared rule rather than spelled out here. It decides whether
-                # a measurement may use a file, and a second copy of that sentence would
-                # eventually answer a different question than the first — with the copy
-                # nobody reads being the one that decays.
-                if not is_admissible_for_measurement(origin_class, evidence):
-                    unstamped_files += 1
-
-        # A warmup reaching back into a venue's published history needs no admission — the
-        # ticks traded on are what admission guards — so it is said here rather than refused.
-        warmup_scenarios = sorted(
-            f'{scenario.name} ({", ".join(scenario.external_warmup_timeframes)})'
-            for scenario in self._batch.single_scenario_list
-            if scenario.external_warmup_timeframes)
-        if external_files:
-            lines = [
-                f'EXTERNAL DATA — {external_files} of {total_files} input file(s) are a venue\'s '
-                f'published history, not recorded by our collectors',
-                '  → never admissible for a parity measurement',
-                f'  → scenarios: {", ".join(sorted(external_scenarios))}']
-        elif warmup_scenarios:
-            lines = [
-                'EXTERNAL DATA — the warmup history reached back before our collection, into a '
-                'venue\'s published history',
-                '  → the ticks traded on are our own; the indicators started from bars rendered '
-                'from external ticks']
-        else:
-            lines = []
-        if warmup_scenarios:
-            lines.append(f'  → warmup from external history: {", ".join(warmup_scenarios)}')
-        if lines:
-            self._add('data_origin_external', ValidationDomain.DATA, '\n'.join(lines))
-
-        if unstamped_files == 0:
-            return
-
-        self._add('data_origin_unstamped', ValidationDomain.DATA, (
-            f'Data origin not producer-stamped for {unstamped_files}/{total_files} file(s) — '
-            f'usable, and NOT comparable\n'
-            f'  → a parity measurement reads only data a producer stamped itself\n'
-            f'  → docs/architecture/data_provenance.md'))
+        """Report external and not producer-stamped input files (shared with the AutoTrader check)."""
+        for finding in check_data_origin(self._batch.single_scenario_list):
+            self._add_finding(finding)
 
     def _check_data_deficiencies(self) -> None:
-        """
-        Say once per run what the data this run read LACKS — counted, never repeated (#561).
-
-        One finding per deficiency present, over every input file of every scenario, with the
-        files grouped by where they came from: the same lack has a different reason in a
-        venue's published history than in a file our collector wrote under an older format.
-        A standing condition is still reported on every run, because dropping it would make a
-        run on complete data and one on deficient data look alike — but as one line with its
-        count, its explanation living in the check catalog. This replaces the spreadless
-        advisory, which guessed the missing quote from venue and format version and so stayed
-        silent for converted history declaring format 1.7.0.
-        """
-        total_files = 0
-        found: Dict[DataDeficiency, Counter] = {}
-        for scenario in self._batch.single_scenario_list:
-            versions = scenario.data_format_versions
-            for position, (origin_class, deficiencies) in enumerate(
-                    zip(scenario.origin_classes, scenario.data_deficiencies)):
-                total_files += 1
-                group = _input_group(origin_class, versions[position] if position < len(versions) else None)
-                for deficiency in deficiencies:
-                    found.setdefault(deficiency, Counter())[group] += 1
-
-        for deficiency in DataDeficiency:
-            groups = found.get(deficiency)
-            # `synthetic` is said before the run, per scenario, where both pipelines mount
-            # their signals — an AutoTrader session has no post-run counter of this kind
-            if not groups or deficiency == DataDeficiency.SYNTHETIC:
-                continue
-            declaration = DEFICIENCY_DECLARATIONS[deficiency]
-            breakdown = ' · '.join(f'{count} {group}' for group, count in sorted(groups.items()))
-            self._add(declaration.check, ValidationDomain.DATA, (
-                f'{declaration.title} — {sum(groups.values())} of {total_files} input file(s): '
-                f'{declaration.consequence}\n'
-                f'  → {breakdown}'))
+        """Say once per run what the data read LACKS (shared with the AutoTrader check)."""
+        for finding in check_data_deficiencies(self._batch.single_scenario_list):
+            self._add_finding(finding)
 
     def _check_modelled_spread(self) -> None:
         """
@@ -367,28 +274,30 @@ class PostRunValidator:
                 f'`python python/cli/broker_config_cli.py sync --force` before a comparison backtest'))
 
     def _check_budget(self) -> None:
-        """Warn when avg tick processing exceeds the P5 interval (consider setting a budget)."""
+        """Warn when an algo pass takes longer than the P5 tick interval (consider setting a budget)."""
         # When budget is already active, clipping is being simulated — warning is redundant
         if self._batch.clipping_stats_map:
             return
 
+        # One algo pass is the unit a budget clips: a slice of ticks that arrived in one
+        # millisecond is computed once, so the time per tick would understate it (#460)
         warning_count = 0
         for result in self._batch.process_result_list:
             profiling = self._profiling(result)
             if not profiling or not profiling.interval_stats:
                 continue
-            ticks = result.tick_loop_results.coordination_statistics.ticks_processed
-            if ticks == 0:
+            avg_ms = profiling.avg_per_algo_pass_ms()
+            if avg_ms is None:
                 continue
-            avg_ms = profiling.total_per_tick_ms / ticks
             if avg_ms > profiling.interval_stats.p5_ms:
                 warning_count += 1
 
         if warning_count == 0:
             return
         self._add('budget', ValidationDomain.PROFILING, (
-            f'Tick processing budget: {warning_count} scenario(s) exceed P5 tick interval '
-            f'— consider setting tick_processing_budget_ms (see Profiling Analysis)'))
+            f'Tick processing budget: in {warning_count} scenario(s) an algo pass takes longer '
+            f'than the P5 tick interval — consider setting tick_processing_budget_ms '
+            f'(see Profiling Analysis)'))
 
     def _check_budget_granularity(self) -> None:
         """Warn when an active budget is below data granularity (no effect with integer-ms collected_msc)."""
@@ -420,10 +329,10 @@ class PostRunValidator:
             profiling = self._profiling(result)
             if not profiling:
                 continue
-            ticks = result.tick_loop_results.coordination_statistics.ticks_processed
-            if ticks == 0:
+            avg_ms = profiling.avg_per_algo_pass_ms()
+            if avg_ms is None:
                 continue
-            avg_times.append(profiling.total_per_tick_ms / ticks)
+            avg_times.append(avg_ms)
 
         if not avg_times:
             return
@@ -443,14 +352,14 @@ class PostRunValidator:
         """Warn when worker/decision coordination overhead exceeds 50% of computation (was an inline report verdict)."""
         high = []
         for result in self._batch.process_result_list:
-            tlr = result.tick_loop_results
+            tlr = result.event_loop_results
             if not tlr or not tlr.profiling_data:
                 continue
             op_total = tlr.profiling_data.profile_times.get('worker_decision', 0.0)
             worker_exec = sum(w.worker_total_time_ms for w in (tlr.worker_statistics or []))
             decision = tlr.decision_statistics.decision_total_time_ms if tlr.decision_statistics else 0.0
             computation = worker_exec + decision
-            overhead = max(0.0, op_total - computation)
+            overhead = coordination_overhead_ms(op_total, worker_exec, decision)
             if computation > 0 and overhead / computation > _HIGH_OVERHEAD_RATIO:
                 high.append(result.scenario_name)
         if high:
@@ -463,7 +372,7 @@ class PostRunValidator:
         freq = {}
         scenarios = 0
         for result in self._batch.process_result_list:
-            tlr = result.tick_loop_results
+            tlr = result.event_loop_results
             if not tlr or not tlr.profiling_data:
                 continue
             scenarios += 1
@@ -484,18 +393,18 @@ class PostRunValidator:
     @staticmethod
     def _bottleneck_operation(profiling_data) -> str:
         """The operation with the largest total time (the scenario's bottleneck), or '' if none."""
-        ops = {n: t for n, t in profiling_data.profile_times.items() if n != 'total_per_tick'}
+        ops = {n: t for n, t in profiling_data.profile_times.items() if n not in PROFILE_TOTAL_KEYS}
         return max(ops, key=ops.get) if ops else ''
 
     def _check_parallel_penalty(self) -> None:
         """Warn when parallel worker execution COST time instead of saving it."""
         penalised = [
-            (result.scenario_name, result.tick_loop_results.coordination_statistics)
+            (result.scenario_name, result.event_loop_results.coordination_statistics)
             for result in self._batch.process_result_list
-            if result.tick_loop_results
-            and result.tick_loop_results.coordination_statistics
-            and result.tick_loop_results.coordination_statistics.parallel_workers
-            and result.tick_loop_results.coordination_statistics.parallel_time_saved_ms < 0
+            if result.event_loop_results
+            and result.event_loop_results.coordination_statistics
+            and result.event_loop_results.coordination_statistics.parallel_workers
+            and result.event_loop_results.coordination_statistics.parallel_time_saved_ms < 0
         ]
         if not penalised:
             return
@@ -505,12 +414,22 @@ class PostRunValidator:
             f"'{name}'{f' (+{len(penalised) - 1} more)' if len(penalised) > 1 else ''} — "
             f'consider disabling parallel workers for this workload'))
 
+    def _check_usable_funds(self) -> None:
+        """Warn when a scenario's funds fall below zero once its own unfilled orders count."""
+        finding = check_usable_funds(
+            [(result.scenario_name, usable_funds(result.event_loop_results.portfolio_stats))
+             for result in self._batch.process_result_list
+             if result.event_loop_results and result.event_loop_results.portfolio_stats],
+            _SCENARIO_UNIT_LABEL)
+        if finding is not None:
+            self._add_finding(finding)
+
     def _check_multi_currency(self) -> None:
         """Advisory when a batch mixes account currencies (cross-currency P&L is not summed)."""
         currencies = sorted({
-            result.tick_loop_results.portfolio_stats.currency
+            result.event_loop_results.portfolio_stats.currency
             for result in self._batch.process_result_list
-            if result.tick_loop_results and result.tick_loop_results.portfolio_stats})
+            if result.event_loop_results and result.event_loop_results.portfolio_stats})
         if len(currencies) > 1:
             self._add('multi_currency', ValidationDomain.PORTFOLIO, (
                 f"Multi-currency batch ({len(currencies)} currencies: {', '.join(currencies)}) — "
@@ -521,7 +440,7 @@ class PostRunValidator:
         """Advisory when a currency group's scenarios span a large time range (aggregation unrealistic)."""
         groups = {}
         for result in self._batch.process_result_list:
-            tlr = result.tick_loop_results
+            tlr = result.event_loop_results
             if not tlr or not tlr.portfolio_stats:
                 continue
             trs = tlr.tick_range_stats
@@ -541,10 +460,10 @@ class PostRunValidator:
         """Advisory when a scenario's order-event stream lacks submissions it counted (#362)."""
         finding = check_order_event_stream([
             (result.scenario_name,
-             submission_count(result.tick_loop_results.order_events or []),
-             result.tick_loop_results.execution_stats.orders_submitted)
+             submission_count(result.event_loop_results.order_events or []),
+             result.event_loop_results.execution_stats.orders_submitted)
             for result in self._batch.process_result_list
-            if result.tick_loop_results and result.tick_loop_results.execution_stats
+            if result.event_loop_results and result.event_loop_results.execution_stats
         ], 'Scenarios')
         if finding is not None:
             self._add_finding(finding)
@@ -597,9 +516,12 @@ class PostRunValidator:
         # Per-bucket sufficiency: the WFE rests on BOTH the IS and OOS means. The overall
         # window check above can pass while a single bucket — usually OOS — is decimated
         # (excluded / crashed scenarios), so guard each bucket before trusting the verdict.
+        # Both checks read the class the report serves (#557) — one classification, not a copy
+        # of its thresholds here.
+        walk_forward = report.walk_forward_class
         is_n = report.in_sample.window_count if report.in_sample else 0
         oos_n = report.out_of_sample.window_count if report.out_of_sample else 0
-        if is_n < config.min_windows or oos_n < config.min_windows:
+        if walk_forward is WalkForwardClass.INCONCLUSIVE:
             self._add('robustness_insufficient_buckets', ValidationDomain.ROBUSTNESS, (
                 f'ROBUSTNESS: verdict suppressed — IS={is_n} / OOS={oos_n} window(s), one below '
                 f'the {config.min_windows}-window minimum; the Walk-Forward Efficiency rests on '
@@ -608,7 +530,7 @@ class PostRunValidator:
 
         # The degradation verdict — only OVERFIT fires a warning (ROBUST is good news, no advisory).
         wfe = report.walk_forward_efficiency
-        if wfe is not None and wfe < config.overfit_wfe_threshold:
+        if walk_forward is WalkForwardClass.OVERFIT:
             self._add('robustness_overfit', ValidationDomain.ROBUSTNESS, (
                 f'ROBUSTNESS: OVERFIT — Walk-Forward Efficiency {wfe:.2f} (OOS/IS) below '
                 f'{config.overfit_wfe_threshold:.2f}; out-of-sample performance degrades sharply '
@@ -616,30 +538,12 @@ class PostRunValidator:
 
     def _profiling(self, result: ProcessResult) -> Optional[ProfilingData]:
         """Build typed ProfilingData for a scenario, or None when no profiling data exists."""
-        if (not result.tick_loop_results or
-                not result.tick_loop_results.profiling_data):
+        if (not result.event_loop_results or
+                not result.event_loop_results.profiling_data):
             return None
-        pd = result.tick_loop_results.profiling_data
+        pd = result.event_loop_results.profiling_data
         return ProfilingData.from_dicts(
             pd.profile_times, pd.profile_counts,
             inter_tick_intervals_ms=pd.inter_tick_intervals_ms,
             gap_threshold_s=pd.gap_threshold_s,
             ticks_total=pd.ticks_total)
-
-
-def _input_group(origin_class: str, data_format_version: Optional[str]) -> str:
-    """
-    Name the group an input file is counted in, for a deficiency finding's breakdown.
-
-    Args:
-        origin_class: The file's resolved origin class
-        data_format_version: The tick file's declared format, None for a signal file
-
-    Returns:
-        'external', 'collected at format X', or 'signal'
-    """
-    if origin_class == OriginClass.EXTERNAL.value:
-        return 'external'
-    if data_format_version is None:
-        return 'signal'
-    return f'collected at format {data_format_version}'

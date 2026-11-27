@@ -24,12 +24,12 @@ from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.probe_metadata_types import ProbeMetadata
-from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessResult, ProcessEventLoopResult
 from tests.shared.fixture_helpers import (
     extract_portfolio_stats,
     extract_probe_metadata,
     extract_process_result,
-    extract_tick_loop_results,
+    extract_event_loop_results,
     extract_trade_history,
     extract_trade_sequence,
     load_scenario_config,
@@ -59,38 +59,38 @@ def process_result(batch_execution_summary: BatchExecutionSummary) -> ProcessRes
 
 
 @pytest.fixture(scope='session')
-def tick_loop_results(process_result: ProcessResult) -> ProcessTickLoopResult:
-    """Extract tick loop results."""
-    return extract_tick_loop_results(process_result)
+def event_loop_results(process_result: ProcessResult) -> ProcessEventLoopResult:
+    """Extract event loop results."""
+    return extract_event_loop_results(process_result)
 
 
 @pytest.fixture(scope='session')
-def probe_metadata(tick_loop_results: ProcessTickLoopResult) -> ProbeMetadata:
+def probe_metadata(event_loop_results: ProcessEventLoopResult) -> ProbeMetadata:
     """Extract ProbeMetadata from decision statistics."""
-    return extract_probe_metadata(tick_loop_results)
+    return extract_probe_metadata(event_loop_results)
 
 
 @pytest.fixture(scope='session')
-def portfolio_stats(tick_loop_results: ProcessTickLoopResult) -> PortfolioStats:
+def portfolio_stats(event_loop_results: ProcessEventLoopResult) -> PortfolioStats:
     """Extract portfolio statistics."""
-    return extract_portfolio_stats(tick_loop_results)
+    return extract_portfolio_stats(event_loop_results)
 
 
 @pytest.fixture(scope='session')
-def trade_history(tick_loop_results: ProcessTickLoopResult) -> List[TradeRecord]:
+def trade_history(event_loop_results: ProcessEventLoopResult) -> List[TradeRecord]:
     """Extract trade history for P&L verification."""
-    return extract_trade_history(tick_loop_results)
+    return extract_trade_history(event_loop_results)
 
 
 @pytest.fixture(scope='session')
 def pending_row(
-    process_result: ProcessResult, tick_loop_results: ProcessTickLoopResult
+    process_result: ProcessResult, event_loop_results: ProcessEventLoopResult
 ) -> PendingOrdersUnitRow:
     """The scenario's pending-order row, derived from its order-event stream."""
     # The symbol labels the row and is not asserted — every counter comes from the events
     return pending_orders_row(
-        process_result.scenario_name, '', tick_loop_results.order_events or [],
-        tick_loop_results.active_orders)
+        process_result.scenario_name, '', event_loop_results.order_events or [],
+        event_loop_results.active_orders)
 
 
 # =============================================================================

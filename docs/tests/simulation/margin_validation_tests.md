@@ -89,7 +89,7 @@ tests/
 |---------|-------|-------------|
 | `batch_execution_summary` | session | Runs margin validation scenario once per session |
 | `process_result` | session | First scenario's ProcessResult |
-| `tick_loop_results` | session | ProcessTickLoopResult with all execution data |
+| `event_loop_results` | session | ProcessEventLoopResult with all execution data |
 | `scenario_config` | session | Raw JSON config |
 
 ### Statistics Fixtures

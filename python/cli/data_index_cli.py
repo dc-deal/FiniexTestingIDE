@@ -4,29 +4,38 @@ Command-line tools for tick data import and inspection
 
 Usage:
     python python/cli/data_index_cli.py import [--override] [--only ticks|signals]
-                                               [--include-finished] [--no-display]
+                                               [--no-display] [--fetch]
+    python python/cli/data_index_cli.py package-sources [--check]
     python python/cli/data_index_cli.py tick-data-report [BROKER_TYPE]
     python python/cli/data_index_cli.py inspect BROKER_TYPE SYMBOL [TIMEFRAME]
 
-One import covers both inboxes — tick exports, then signal JSONL — and ends with the bars
-and the discovery caches. Import configuration is driven by configs/import_config.json (with
-user_configs override); each broker's server clock (market_config.json) converts its times.
+One import covers the one inbox — tick exports, then signal JSONL, loose or in zips — and ends
+with the bars and the discovery caches; with --fetch it first fetches the packages of every
+switched-on package service. Import configuration is driven by
+configs/import_config.json (with user_configs override); each broker's server clock
+(market_config.json) converts its times.
 """
 
 import argparse
 import sys
 import traceback
 
+from python.configuration.package_service_registry import resolve_package_services
 from python.data_management.importers.import_coordinator import (
     IMPORT_EXIT_CODES,
     ImportCoordinator,
     import_paths_from_config,
+)
+from python.data_management.importers.package_service_status import (
+    any_list_unread,
+    build_package_service_status,
 )
 from python.data_management.importers.tick_data_reporter import run_summary_report
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.data_inspector import DataInspector
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.reporting.console.package_services_summary import render_package_services
 from python.framework.types.import_types.import_progress_types import ImportSection
 from python.framework.types.run_origin_types import RunChannel
 
@@ -49,15 +58,15 @@ class DataIndexCli:
         self.bar_index_manager = BarsIndexManager()
 
     def cmd_import(self, override: bool = False, only: str = None,
-                   include_finished: bool = False, show_display: bool = True) -> int:
+                   show_display: bool = True, fetch: bool = False) -> int:
         """
-        Import both inboxes: tick exports, then signal JSONL.
+        Import the inbox: tick exports, then signal JSONL, loose or in zips.
 
         Args:
             override: If True, overwrite existing Parquet files
             only: 'ticks' or 'signals' to import one archive only, None for both
-            include_finished: If True, also re-read the finished signal archive
             show_display: If False, log line by line instead of the live screen
+            fetch: If True, fetch the packages of every switched-on package service first
 
         Returns:
             The process exit code for the import's outcome
@@ -66,11 +75,25 @@ class DataIndexCli:
             paths=import_paths_from_config(),
             override=override,
             only=ImportSection(only) if only else None,
-            include_finished=include_finished,
             show_display=show_display,
             channel=RunChannel.CLI,
+            package_services=resolve_package_services() if fetch else None,
         )
         return IMPORT_EXIT_CODES[coordinator.run()]
+
+    def cmd_package_sources(self, check: bool = False) -> int:
+        """
+        List every package service an import can fetch from.
+
+        Args:
+            check: Read each switched-on service's list
+
+        Returns:
+            The exit code: 1 when a check could not read a switched-on service's list, else 0
+        """
+        rows = build_package_service_status(resolve_package_services(), check=check)
+        render_package_services(rows, checked=check)
+        return 1 if any_list_unread(rows) else 0
 
     def cmd_tick_data_report(self, broker_type: str = None):
         """
@@ -130,7 +153,7 @@ def main():
     # IMPORT command
     # ─────────────────────────────────────────────────────────────────────────
     import_parser = subparsers.add_parser(
-        'import', help='Import the tick and signal inboxes, render bars, rebuild caches')
+        'import', help='Import the import inbox, render bars, rebuild caches')
     import_parser.add_argument(
         '--override', action='store_true', default=False,
         help='Overwrite existing Parquet files')
@@ -138,11 +161,20 @@ def main():
         '--only', choices=[ImportSection.TICKS.value, ImportSection.SIGNALS.value],
         default=None, help='Import one archive only')
     import_parser.add_argument(
-        '--include-finished', action='store_true', default=False,
-        help='Also re-read the finished signal archive, re-projecting every day ever imported')
-    import_parser.add_argument(
         '--no-display', action='store_true', default=False,
         help='Log line by line instead of showing the live screen')
+    import_parser.add_argument(
+        '--fetch', action='store_true', default=False,
+        help='Fetch the packages of every switched-on package service first')
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # PACKAGE-SOURCES command
+    # ─────────────────────────────────────────────────────────────────────────
+    sources_parser = subparsers.add_parser(
+        'package-sources', help='List every package service an import can fetch from')
+    sources_parser.add_argument(
+        '--check', action='store_true', default=False,
+        help="Read each switched-on service's list")
 
     # ─────────────────────────────────────────────────────────────────────────
     # TICK-DATA-REPORT command
@@ -182,9 +214,12 @@ def main():
             sys.exit(cli.cmd_import(
                 override=args.override,
                 only=args.only,
-                include_finished=args.include_finished,
                 show_display=not args.no_display,
+                fetch=args.fetch,
             ))
+
+        elif args.command == 'package-sources':
+            sys.exit(cli.cmd_package_sources(check=args.check))
 
         elif args.command == 'tick-data-report':
             cli.cmd_tick_data_report(broker_type=args.broker_type)

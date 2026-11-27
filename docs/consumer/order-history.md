@@ -26,9 +26,9 @@ way it ended — `executed` when it fills — and every close of a position adds
 position closed in three parts produces three close rows.
 
 The rows are in **append order within their unit**, and that position in the list is their
-identity. No combination of fields is unique, so this list declares **no row key**, which is a
-statement in itself rather than an omission: see [row keys](/api/v1/docs/row-keys). Keep the order
-the API served, and do not deduplicate.
+identity. No combination of fields is unique, so `keys` declares `[]` for `orders` — the
+position is the identity, a statement in itself rather than an omission: see
+[row keys](/api/v1/docs/row-keys). Keep the order the API served, and do not deduplicate.
 
 An order that ends without filling has a row for that ending too: its `status` says which way it
 ended, and on a cancelled, expired or unaccounted row `initiator` and `end_reason` say who ended it
@@ -93,9 +93,10 @@ schema with their values.
 **A fill's slippage is measured against a price set before the fill could move it.** A market order
 against the mid when it was sent, so every part of a split fill is measured against the same
 price; a limit against its limit, which a fill can only meet or beat; a stop against its trigger. A
-stop-loss or take-profit close against the level that fired: a backtest fills such a close at its
-level and reads 0, a live session reads how far past the level the venue filled it — the difference
-a comparison of the two runs is after. The [execution statistics](/api/v1/docs/execution-stats)
+stop-loss or take-profit close against the level that fired: a backtest fills a take-profit at its
+level and reads 0, and a stop-loss at the market of the tick that breaches it, so it reads the gap it
+fell through; a live session reads how far past the level the venue filled it — the difference a
+comparison of the two runs is after. The [execution statistics](/api/v1/docs/execution-stats)
 summarise it per reference.
 
 ## What is null, and the one field that never is
@@ -143,6 +144,24 @@ counts them together as `orders_failed` in [execution stats](/api/v1/docs/execut
 
 The `status` query parameter takes one of these values and matches it exactly.
 
+## The failed orders, counted
+
+Beside the rows, the report counts the failed rows it lists:
+
+| Field | Meaning |
+|---|---|
+| `failed_listed` | every failed row in `orders` |
+| `failed_by_unit` | per unit: `listed`, how many of its failed rows are here |
+| `failed_by_reason` | per `status` and `reason` — the reason a failed row names: its `rejection_reason`, else its `end_reason`, else its status — with its `count`; the most frequent first |
+
+`keys` declares what makes a row of each list unique: `scenario_name` for `failed_by_unit`, `status`
+and `reason` for `failed_by_reason`, and nothing for `orders`, whose rows are events identified by
+their place in the list.
+
+They count what is LISTED. A long session's history keeps only its newest rows, so these can be
+fewer than `orders_failed` in [execution stats](/api/v1/docs/execution-stats), which counts every
+one. A filter counts them again over the rows it kept.
+
 ## Who ended it, and why — `initiator` and `end_reason`
 
 On a cancelled, expired or unaccounted row, `initiator` says who ended the order — `strategy`,
@@ -156,6 +175,7 @@ On a cancelled, expired or unaccounted row, `initiator` says who ended the order
 | `order_timeout` | it did not fill within the order timeout |
 | `resolution_ceiling` | its answer was lost, and the venue never named it however long it was asked |
 | `session_end` | the live session ended with the order still out |
+| `entries_held` | it would have opened a position while the session held its entries — cancelled by the framework when the hold began |
 | `scenario_end` | the backtest's data ended with the order still out |
 | `venue_cancelled` | the venue cancelled it on its own |
 | `venue_expired` | the venue let it expire |
@@ -171,7 +191,7 @@ set on a `denied` and on a `rejected` row. The vocabulary:
 ```
 insufficient_margin · insufficient_funds · invalid_lot_size · symbol_not_tradeable
 market_closed · invalid_price · order_type_not_supported · broker_error
-rejection_cooldown · stale_market_data · unaccounted_order · position_not_found
+rejection_cooldown · stale_market_data · unaccounted_order · entries_held · position_not_found
 remainder_below_minimum · order_feature_not_declared
 ```
 
@@ -185,6 +205,17 @@ Four of them are worth spelling out, because their names do not carry their mean
   unaccounted for: the venue was asked about it as long as the session said it would ask, and
   never named it. **It may still be resting there.** Closing and protecting what is already held
   continue; only new entries stop.
+- **`entries_held`** — a new entry was refused because the session holds its entries, for one of
+  three causes. At its start, orders of another owner rested on the bot's own instrument while the
+  account is declared exclusive: the hold lasts until those orders are gone or an operator lifts
+  it. Or, since contract 65, the session's own record of its orders and trades could not be written
+  — a full disk, say: the hold lasts until what it kept in memory is written. Or, since contract 69,
+  its start found an order of its own that the venue filled after the session's record was last
+  written — a session stopped between sending an order and its fill leaves the coins at the venue —
+  or could not finish reading the venue's closed orders: the hold lasts until an operator lifts it at
+  a start they watch. The session manages
+  and closes what it has and opens nothing new meanwhile. Closing and cancelling are never refused
+  for it.
 - **`position_not_found`** — a close for a position that is not held. In a backtest the simulated
   venue also refuses a close whose position was closed while the close was on its way.
 

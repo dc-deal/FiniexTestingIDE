@@ -19,10 +19,11 @@ from typing import List, Optional
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.config_directory.config_directory import declared_run_purposes
 from python.framework.reporting.builders.deployment_history_builder import (
+    add_unbooked_sessions,
     build_deployment_histories,
+    compose_deployment_list,
     deployment_code_summary,
     deployment_comparability_advisory,
-    summarize_deployments,
 )
 from python.framework.reporting.console.deployment_history_summary import (
     render_deployment_history,
@@ -121,12 +122,20 @@ class RunIndexCli:
         """
         ledger = RunResultsLedger(Path(AppConfigManager().get_run_ledger_path()))
         rows = ledger.read_rows()
-        histories = build_deployment_histories(rows)
+        # Which sessions a deployment holds is the run index's answer, what they booked the
+        # ledger's (#645): a session registers at its start and books its first row only at its
+        # first seal, so the ledger alone leaves a new deployment out until then.
+        runs = self._index.list_runs()
+        histories = add_unbooked_sessions(build_deployment_histories(rows), rows, runs)
         if deployment:
             histories = {k: v for k, v in histories.items() if k == deployment}
 
         if not histories:
-            print('No deployment found in the ledger.')
+            if deployment:
+                print(f'No deployment {deployment!r}: no session in the run index and no ledger '
+                      'row names it.')
+                return 0
+            print('No deployment found: no session in the run index and no ledger row names one.')
             print('A session joins one only when its profile declares '
                   '`deployment.continuous: true` — until then every start stands alone.')
             return 0
@@ -146,14 +155,12 @@ class RunIndexCli:
         # "which one do I open", the DETAIL answers "what happened inside it". Printing every
         # deployment's full table was neither — it buried the overview in the detail.
         if not deployment:
-            render_deployment_list(summarize_deployments(histories, advisories, code_summaries))
+            render_deployment_list(compose_deployment_list(rows, runs, now))
             return 0
 
-        # The sessions ABOVE come from the ledger, which holds the row of a session's close
-        # only at the end: a hard kill leaves the session in that table without an end when it
-        # sealed a day, and out of it when it did not. The run index registered it at start, so
-        # every such run is recoverable from there.
-        runs = self._index.list_runs()
+        # The ledger holds the row of a session's close only at the end: a hard kill leaves the
+        # session in the table without an end when it sealed a day, and with no figures when it
+        # did not. The run index registered it at start, so every such run is named from there.
         for name in sorted(histories):
             # Resolved BEFORE rendering: the table's own heading counts the sessions the
             # ledger holds, so it has to be told how many never completed.
@@ -172,7 +179,7 @@ class RunIndexCli:
 
     def cmd_prune(self, orphans: bool, keep_last: int,
                   older_than: Optional[timedelta], apply: bool,
-                  release_fixtures: bool = False) -> int:
+                  release_fixtures: bool = False, keep_run_ids: Optional[List[str]] = None) -> int:
         """
         Remove what the run tree no longer needs — showing it first, deleting only on request.
 
@@ -182,15 +189,17 @@ class RunIndexCli:
             older_than: Keep runs that started within this window (None = selector off).
                 Composes with keep_last as a second KEEP rule — see PruneSelectors
             apply: Actually delete; without it nothing is touched
-            release_fixtures: Let the selectors reach the runs of the fixture catalog's
-                superseded productions (#576); a current production is never released
+            release_fixtures: Remove the runs of the fixture catalog's superseded productions
+                (#576), and only those; a current production is never released
+            keep_run_ids: Runs no selector may remove, named by id
 
         Returns:
             Process exit code
         """
         selectors = PruneSelectors(
             keep_last=keep_last if keep_last > 0 else None,
-            older_than=older_than, orphans=orphans, release_fixtures=release_fixtures)
+            older_than=older_than, orphans=orphans, release_fixtures=release_fixtures,
+            keep_run_ids=frozenset(keep_run_ids or ()))
         pruner = RunTreePruner()
 
         # PREVIEW, not 'dry run': in this project `dry_run` names exactly one thing — a
@@ -219,6 +228,8 @@ class RunIndexCli:
                           self._redundancy_reason(keep_last, older_than))
         self._print_group('DELETE', report.to_delete_uncommissioned,
                           'reporting=none, produced nothing')
+        self._print_group('DELETE', report.to_delete_superseded_fixture,
+                          'superseded catalog fixtures, released by --release-fixtures')
         self._print_group('DELETE', report.emptied_sweep_dirs,
                           'sweep directories left without a single combination')
         self._print_group('KEEP', report.kept_incomplete,
@@ -228,6 +239,7 @@ class RunIndexCli:
                           'hold field_study.jsonl (evidence behind a release gate)', names=False)
         self._print_group('KEEP', report.kept_certificate,
                           'certificate runs — never deleted, by any selector', names=False)
+        self._print_group('KEEP', report.kept_named, 'named with --keep')
         self._print_group('KEEP', report.kept_unreadable_header,
                           'a header that cannot be read — no guard can clear it')
         self._print_group('KEEP', report.kept_current_fixture,
@@ -381,9 +393,13 @@ def main() -> int:
              '--keep-last: a run goes only when BOTH release it')
     prune_parser.add_argument(
         '--release-fixtures', action='store_true', default=False,
-        help="Let the selectors reach the runs of the fixture catalog's SUPERSEDED productions, "
+        help="Remove the runs of the fixture catalog's SUPERSEDED productions, and only those, "
              'once the consumer has moved to the current ones. A current production is never '
              'released')
+    prune_parser.add_argument(
+        '--keep', action='append', default=[], metavar='RUN_ID',
+        help='Keep this run whatever the selectors say — a run a consumer still reads outside '
+             'the catalog. Repeat for several')
     prune_parser.add_argument(
         '--apply', action='store_true', default=False,
         help='Actually delete. Without it nothing is touched — a run directory is the only '
@@ -404,7 +420,7 @@ def main() -> int:
     cli = RunIndexCli()
     if args.command == 'prune':
         return cli.cmd_prune(args.orphans, args.keep_last, args.older_than, args.apply,
-                             args.release_fixtures)
+                             args.release_fixtures, args.keep)
     if args.command == 'deployments':
         return cli.cmd_deployments(args.id)
     return {'rebuild': cli.cmd_rebuild, 'status': cli.cmd_status}[args.command]()

@@ -92,12 +92,14 @@ true — a recurrence before the all-clear keeps the episode open.
 | STARTUP FAILED — a step of the start broke | ⛔ |
 | STARTUP REFUSED — a step of the start declined, quoting why: a restart that may not adopt under `operator_confirm`, a Field Study account that holds a resting order | ⛔ |
 | REFUSED AT THE FIRST TICK, and what had been sent before it | ⛔ |
-| RUNTIME ERROR — the session aborted | ⛔ |
+| RUNTIME ERROR — the session aborted, and how many ticks it had processed | ⛔ |
 | EMERGENCY STOP, and EMERGENCY STOP incomplete — check the account by hand (only when closes were sent; kept spot holdings are said in the first message) | ⛔ |
-| TICK LOOP STALLED — the process is alive and not trading; with Telegram on, also when the liveness ping is off | ⛔ |
+| EVENT LOOP STALLED — the process is alive and not trading; with Telegram on, also when the liveness ping is off | ⛔ |
 | SESSION CRASHED while shutting down — the report may be incomplete | ⛔ |
 | The liveness ping was refused (wrong URL, deleted check) / its fail URL was refused | ⛔ / ⚠️ |
 | Safety circuit breaker — new entries blocked / cleared | ⚠️ / ✅ |
+| Entries held — the start found orders of another owner on the bot's instrument while the account is declared exclusive: the session runs, manages and closes its position and opens nothing new, its resting entries cancelled; and whether it lifts by itself or only at a start with `--attended`. Or the money record could not be written: its lines wait in memory and are written again every `storage.stream_sync_interval_s`. Or the start found a fill of its own the book does not hold, or could not finish reading the venue's closed orders — only a start with `--attended` lifts it (*A fill the book does not hold*) / Entries lifted — those orders are gone, or the operator accepted them; or the kept lines are on the disk; or the operator lifted the hold over a fill | ⛔ / ✅ |
+| Disk low / recovered — free space on the disk of the session's stores below `storage.warn_free_gb`, naming a folder on it and its stores; recovered once it has stayed above for the all-clear period | ⚠️ / ✅ |
 | Market data stale / fresh again — including no first tick within `market_data_stale_after_s` of the loop's start, a feed that never connected | ⚠️ / ✅ |
 | A signal input stale / fresh again | ⚠️ / ✅ |
 | A trading day closed — its booking period: trades, net P&L and the open part, fees, equity at the close and at the open, the deepest dip; `daily_digest` switches it off. Days one late check closes together — a machine that slept, a clock that jumped — are the first day in full and one message for the rest, naming their span | ✅ |
@@ -352,10 +354,10 @@ verdict `stopped` comes after `stopped_after_cadences` cadences, long after a su
 
 Every alert above is sent by the session about itself, which covers one class of failure: the
 process is alive and notices something. The ping covers the other class. It goes out every
-minute — but only while the **tick loop** has come round within `loop_stall_after_s`:
+minute — but only while the **event loop** has come round within `loop_stall_after_s`:
 
 ```
-  tick loop (every pass)            liveness thread (every interval_s)        monitor
+  event loop (every pass)            liveness thread (every interval_s)        monitor
   ──────────────────────            ──────────────────────────────────        ─────────────────
   stamp loop progress   ───────►    loop passed recently?
                                       yes → ping            ───────────►     last_seen = now
@@ -379,6 +381,15 @@ or it will raise its alarm once they ran out. A restart inside them sends no mai
 short shows only in the data. A refused ping URL stops the pings — the monitor then reports the
 session silent, which is the right answer to a check that no longer exists; a refused fail URL
 stops only the fail pings, and the ordinary pings go on.
+
+**Measured on an unattended dry-run session on a small server (November 2026, period 10 min, grace
+30 min).** A session frozen with `kill -STOP` raised nothing itself: its own watch was frozen with
+it. The process stayed listed as running, and the run list read `recording: stopped` after about
+three minutes. The monitor raised its alarm 40 minutes after the last ping, which is how long a hung
+session went unnoticed. Resumed, the session reported the stall at once, with the time it had
+stood, reconnected its feed within 11 s and pinged again a minute later; the monitor's own "back up"
+message counts from its alarm, not from the freeze. The check was then shortened to a period of
+5 min and a grace of 10 min, which brings the same alarm to about 15 minutes.
 
 With the ping off and Telegram on, the same watch runs without pinging: a stalled loop still
 reaches the operator. What it cannot report is a process that died — that silence is the ping's.
@@ -432,6 +443,15 @@ hung process lives on, two units for one bot, or a deploy's new code tree starte
 session has ended. The lock lies beside the bot's carry-over and is held until the session has
 written its last record; the kernel drops it with the process however that ends, so there is
 never a stale lock to clear.
+
+**Measured on the same session (November 2026, the systemd unit above).** `kill -9` ended the
+process at once (exit 137), with no record of its end. systemd started the session again exactly
+60 s later, and its tick loop ran 4 s after that; the lock was free, because the kernel had dropped
+it with the process. The new session continued the carry-over the old one had last written at the
+day boundary and took the next decision on time. The monitor raised no alarm, since a gap of about a
+minute lies far inside period and grace, so the kill shows in the data only: the day's seal covers
+the new session's part of that day, and what the old session recorded that day before the kill
+stays unsealed in its run.
 
 **The restart and the adoption are one decision.** A session that starts restores the previous
 session's position book whatever the adoption mode (at spot, in a real-money session — a dry run
@@ -523,6 +543,12 @@ run two versions. Going back is the same steps with the old tree. The stop must 
 systemd's stop timeout (`TimeoutStopSec`, 90 s by default); a kill after that costs the session
 its ledger row, never its carry-over.
 
+**Measured on the same session (November 2026): a stop and a start 15 minutes apart.** The stop
+ended the session with exit 0 within 1.3 s of the signal, its booking period sealed and its
+carry-over written. The started session named the carry-over it continued (the run that wrote it,
+and when) and took its first decision 11 s after the start. Each start added about 2.4 KB to
+`logs/global.log`, all of it at boot.
+
 ## A restart under a changed configuration
 
 A whole week of it, change by change — a rehearsal, an edited parameter, a clean restart, a release,
@@ -605,8 +631,8 @@ Not cases:
    into the profile. The session continues as one series. A value marked `not set` cannot be
    restored in a file (case 3).
 2. **Finish under the old configuration** — run it until nothing is open, then switch. Resting
-   orders alone can be cancelled at the venue. A holding sold by hand stays in the bot's position
-   book (#627), so at spot the bot has to close it itself.
+   orders alone can be cancelled at the venue. A holding sold by hand ends its note only with
+   `--book-closed-externally` (*After a holding was sold by hand*, below).
 3. **Accept it for this start** — `--accept-composite-change <key>`, with the key the refusal
    printed. What is open continues under the new configuration. The run header records the key
    (`origin.accept_composite_change`), the session's warnings carry `composite_change_accepted` with
@@ -673,6 +699,134 @@ would block entries from the first tick — past a hard limit, flatten real posi
 real money never had — and a simulated denominator below it would loosen every limit. A session
 that starts fresh says why at its start and in its warnings (`carried_readings_not_continued`); a
 new deployment the operator asked for is only said.
+
+## The disk under the records
+
+A session that cannot record would trade without a record, and a disk that fills during a thirty-day
+run stops every record at once — without a warning, the first sign is the first failed write (#632).
+
+**Before the first order**, the start writes a probe of one page into every root the session records
+into — the run store, the ledger, the frozen configurations and patches, the logs, the activity list,
+the broker cache and both carry-overs — and removes it again. A permission bit is not enough: it
+answers yes to root on a read-only folder and says nothing of a network mount or a quota, and an empty
+file would pass a block quota that refuses data. And every filesystem
+those roots live on needs `storage.min_free_gb_to_start` free, measured as a process that is not root
+may use it: the last 5 to 10 % of a filesystem is reserved for root, and a session running as root
+would write into it until the very last byte. Either failing ends the start as STARTUP FAILED, with an
+alert and exit 2, which a supervisor does not restart; every store and filesystem that fails is named in
+the one refusal:
+
+```
+❌ STARTUP FAILED — This session cannot record its trading: the disk under /srv/finiex/runtime/cold_start_state
+   (the cold_start_state, global_log, run_configs, run_ledger, runs store(s)) has 0.6 GB free, below
+   autotrader.storage.min_free_gb_to_start (1 GB) — the session's records would stop when it is full.
+   Free the disk or fix the store, then start again.
+```
+
+**While the session runs**, a timer of its timeline reads the free space every
+`storage.check_interval_s`. Below `storage.warn_free_gb` the operator hears it once per filesystem —
+*Disk low*, naming a folder on that disk and its stores — and once more, *Disk recovered*, when the
+space has stayed above the floor for the alerts' all-clear period. The same figures are on the
+machine view the API serves (`/machine-resources`, `disks`).
+
+**The money record** — the order events and the trades, which the session's money figures and the
+parity proof rest on — is forced to the disk every `storage.stream_sync_interval_s` when lines were
+written since, so a stop of the machine loses at most that much of it. When one of its streams cannot
+be written, its lines wait in memory in their order and the session holds its entries: it manages and
+closes its position and opens nothing it could not record. At the same cadence the kept lines are
+written again, after the file is cut back to its last forced line — a line half on the disk lies past
+it — and the hold lifts the moment they are on the disk:
+
+```
+❌ The order_events stream …/order_events.jsonl could not be written at seq 412: [Errno 28] No space
+   left on device. Entries are held until it is written again; its lines are kept in memory and
+   written again, and the session continues.
+✅ Entries lifted: the money record is written again — the 37 line(s) it kept in memory are on the disk.
+```
+
+A failed force counts the lines written since the last good one as lost and writes them again with
+the rest, because forcing again can answer success over what the system already dropped. The other
+streams — the state frames, the tick record, the diagnostics rows — stop at their first failure and
+say so once, as before. A session that ends with lines it still could not write says how many are
+lost.
+
+## A fill the book does not hold
+
+A session stopped between sending an order and its fill — killed, crashed, or a stop whose wait ran out
+— leaves the coins at the venue and nothing in its book. The supervisor starts the next session, and
+before it would have bought again: it read only the venue's open orders, and a filled order is closed.
+
+So a start on a real venue, at spot, reads the venue's closed orders since its carry-over was last
+written — the *boot read* — and files every fill of its own against the book that carry-over holds:
+
+```
+🧬 Cold start: the venue's closed orders read from 2026-12-03 23:59:53 UTC — 1 fill(s) of ours, 1 the book does not hold
+❌ Entries held: the venue filled 1 order(s) of ours that the book written at 2026-12-03 23:59:58 UTC does
+   not hold: BUY 0.001 BTCUSD (order OQX3…, closed 2026-12-03 23:59:59 UTC, unbooked_entry: it opens a
+   position the book does not hold). The session manages and closes what is its own and opens nothing new.
+```
+
+The carry-over is written after every change of the book, and it keeps the orders open at each write,
+so the read reaches back to the oldest of them: an order whose answer had not arrived, or a resting
+order the poll had not read yet, can have filled just before the write. A margin of a few seconds
+around the write (`autotrader.cold_start.boot_read_skew_s`) absorbs the difference between our clock
+and the venue's; a fill inside it that nothing else explains is filed *unclear*, and holds like an
+unbooked one. So does a read that could not finish, and so does a market order of its own the venue
+still works at the start (*in flight*): its fill may come yet. Whatever the start cannot account for,
+it never buys a second time.
+
+The session starts and holds its entries (`unbooked_fill`): it manages and closes what is its own,
+cancels its resting entries, and opens nothing new. Nothing books the fill yet, so the hold does not
+lift by itself, and a restart does not lift it either — the next start measures against the same
+write and finds the same fill. To end it:
+
+1. Read the fill in the start's cold-start record and in the venue's own order history.
+2. Reconcile the account by hand — the coins are there, the book does not know them.
+3. Start once with `--attended` and answer yes when the start asks to lift the hold.
+
+A dry run reads nothing at the venue, and a margin session does not read: its positions come back
+from the venue itself.
+
+## After a holding was sold by hand
+
+The bot is down, the price moves, and the operator sells the holding at the venue's website. At spot
+the bot's position is its own note in the carry-over, not something the venue knows, so nothing ends
+that note: every following start finds the book claiming coins the account no longer holds, logs an
+ERROR (the session ends with exit 3), and restores the note. The strategy then believes it still
+holds the position, and a restart under a changed configuration stays refused because the note
+counts as open.
+
+**Start once with `--book-closed-externally <position_id>`**, the id the ERROR names (repeat it for
+several notes):
+
+```
+❌ Cold start: the restored book's LONG positions claim 0.004 BTC but the account holds 0.0 — 0.004 short.
+   … If its holding was sold outside this bot, start once with --book-closed-externally and the note:
+   pos_btcusd_7
+```
+
+The start honours it only where the venue confirms it: the account must no longer hold the coins the
+named notes claim, or they are restored as they are and a warning says so. A confirmed note never
+reaches the strategy; it is booked at the session's first instant as a trade with
+`close_reason: closed_externally`:
+
+- **at its entry price, with `exit_observed: false`** — the bot never saw the sale, so its gross P&L
+  is zero by construction and its fees are the entry's. The sale's real price and fee stand in no
+  record of the bot; the trade's P&L therefore differs from the account's change by the result of
+  that sale. Pricing it at the market of the moment of the start, possibly days later, would invent a
+  result nobody realised.
+- **without moving a balance** — the session read its balances from the venue, which already shows
+  the sale.
+
+The run header records the ids as typed (`origin.book_closed_externally`), and the session's warnings
+carry `book_closed_externally`. The next start, without the flag, finds a covered book and is clean.
+Left in a service unit the flag closes nothing later, because position ids never come back. A dry run
+and a margin session ignore it: the first restores no notes, the second reads its positions from the
+venue.
+
+The established systems decide this from the venue's evidence where they have it — a closing order
+the venue reports — and the bot will too once it reads the venue's closed orders at the start (#652).
+Until then the operator's word is the only evidence, so the bot never decides it alone.
 
 ## What the venue could do, and why it does not here
 

@@ -235,9 +235,9 @@ def composite_change_refusal(
            '     take way 3.'] if comparison.one_sided else []),
         '  2. Finish under the old configuration — run it until nothing is open, then switch. '
         'Resting orders alone',
-        "     can be cancelled at the venue; a holding sold by hand stays in this bot's position "
-        'book (#627), so at',
-        '     spot the bot has to close it itself.',
+        '     can be cancelled at the venue; a position whose holding was sold by hand ends '
+        'with one start given',
+        '     --book-closed-externally <position_id>.',
         f'  3. Accept it for this start — run again with {command}. What is open continues '
         'under the',
         '     new configuration, and the run records that it crossed. From here the deployment is '

@@ -130,7 +130,7 @@ def test_import_progress_frame_serialized():
         signal_files=0, signal_bytes=0, ticks_written=5, signal_rows_written=0,
         warning_count=1, error_count=0,
         last_message=ImportMessage(LogLevel.WARNING, 'a warning'),
-        steps=[ImportStepFrame(ImportStepId.SCAN, ImportSection.INBOXES, 'Scan import inboxes',
+        steps=[ImportStepFrame(ImportStepId.SCAN, ImportSection.INBOXES, 'Scan the import inbox',
                                ImportStepStatus.DONE, 1, 1, 'files')],
         log_path='logs/imports/import_20261010T090011Z.log',
         outcome=ImportOutcome.COMPLETED)

@@ -29,7 +29,7 @@ def session_result():
     trader = AutotraderMain(config)
     result = trader.run()
     yield result
-    remove_run_dir(trader._run_dir)
+    remove_run_dir(trader.get_run_dir())
 
 
 class TestNormalCycle:
@@ -192,7 +192,7 @@ class TestLogFiles:
         trader = AutotraderMain(config)
         trader.run()
 
-        run_dir = trader._run_dir
+        run_dir = trader.get_run_dir()
         cleanup_log_dir.append(run_dir)
 
         assert run_dir.exists()

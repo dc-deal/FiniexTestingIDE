@@ -14,7 +14,7 @@ what to do when the answer is "do not start".
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import Optional, Set
+from typing import List, Optional, Set
 
 from python.configuration.data_home import resolve_in_data_home
 from python.framework.autotrader.cold_start.cold_start_adopter import ColdStartAdopter
@@ -26,6 +26,8 @@ from python.framework.trading_env.abstract_trade_executor import AbstractTradeEx
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.autotrader_types.autotrader_config_types import AutoTraderConfig
 from python.framework.types.autotrader_types.cold_start_types import (
+    BootPremiseViolation,
+    BootRead,
     ColdStartSituation,
     ColdStartVerdict,
     CurrentConfiguration,
@@ -74,6 +76,16 @@ class ColdStartSetup:
             it takes over were made under (#626) leaves on the run's record, when anything
         acceptance_notice: The notice of a change `--accept-composite-change` let through, for
             the console — '' when none was
+        boot_premise_violation: Orders of another owner on this bot's instrument while the
+            account is declared exclusive (#499): the session starts and holds its entries
+            over them. None when the start found none
+        accepted_foreign_refs: Orders of another owner on this bot's instrument an operator
+            accepted at an earlier start, still resting (#499): they hold nothing, and the
+            account's exclusivity is still false
+        closed_externally_finding: What booking notes closed outside the bot (#627) leaves on the
+            run's record; None when the start closed none
+        boot_read: What the read of the venue's closed orders since the carry-over found (#652);
+            None where the start read none
     """
     proceed: bool = True
     store: Optional[ColdStartStateStore] = None
@@ -85,6 +97,10 @@ class ColdStartSetup:
     refusal: str = ''
     configuration_finding: Optional[ValidationFinding] = None
     acceptance_notice: str = ''
+    boot_premise_violation: Optional[BootPremiseViolation] = None
+    accepted_foreign_refs: List[str] = field(default_factory=list)
+    closed_externally_finding: Optional[ValidationFinding] = None
+    boot_read: Optional[BootRead] = None
 
 
 def setup_cold_start(
@@ -99,6 +115,7 @@ def setup_cold_start(
     session_end_orders: str = 'cancel',
     current_configuration: Optional[CurrentConfiguration] = None,
     accept_composite_change: Optional[str] = None,
+    book_closed_externally: Optional[List[str]] = None,
 ) -> ColdStartSetup:
     """
     Run the cold-start boot step and hand back what the session keeps.
@@ -131,6 +148,8 @@ def setup_cold_start(
             the claims it takes over were made under (#626); None compares nothing
         accept_composite_change: The composite this one start accepts
             (`--accept-composite-change <key>`); None when the flag was not given
+        book_closed_externally: The position notes this one start declares closed outside the bot
+            (`--book-closed-externally <id>`, #627); None when the flag was not given
 
     Returns:
         A ColdStartSetup; `proceed=False` means the session must not start
@@ -163,6 +182,7 @@ def setup_cold_start(
             partial(compare_carried_configuration, current=current_configuration)
             if current_configuration is not None else None),
         accept_composite_change=accept_composite_change,
+        book_closed_externally=book_closed_externally,
     )
 
     if not adopter.run():
@@ -198,6 +218,10 @@ def setup_cold_start(
         verdict=adopter.get_verdict(),
         configuration_finding=adopter.get_configuration_finding(),
         acceptance_notice=adopter.get_acceptance_notice(),
+        boot_premise_violation=adopter.get_boot_premise_violation(),
+        accepted_foreign_refs=adopter.get_accepted_foreign_refs(),
+        closed_externally_finding=adopter.get_closed_externally_finding(),
+        boot_read=adopter.get_boot_read(),
     )
 
 

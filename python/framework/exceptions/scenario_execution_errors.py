@@ -13,7 +13,7 @@ from python.framework.types.process_data_types import ProcessResult
 
 class ScenarioExecutionError(FiniexError):
     """
-    Raised when scenario tick loop execution fails.
+    Raised when scenario event loop execution fails.
 
     This includes failures during:
     - Tick processing
@@ -40,7 +40,7 @@ class BatchExecutionError(ScenarioExecutionError):
     4. After all execution, if failures exist: raise BatchExecutionError
 
     ERROR SOURCES:
-    - Exception tracebacks (tick_loop failures)
+    - Exception tracebacks (event_loop failures)
     - Logged errors from scenario_logger_buffer
     - Both sources displayed separately for clarity
 

@@ -47,6 +47,7 @@ from python.data_management.importers.vectorized_bar_renderer import VectorizedB
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.data_management.index.tick_index_manager import TickIndexManager
 from python.framework.data_preparation.tick_parquet_reader import read_tick_parquet
+from python.framework.data_preparation.tick_price_check import refuse_unusable_price
 from python.framework.discoveries.discovery_cache_manager import DiscoveryCacheManager
 from python.framework.exceptions.data_quality_errors import BarFileVerificationException
 from python.framework.logging.bootstrap_logger import get_global_logger
@@ -275,6 +276,7 @@ def _load_all_ticks_for_symbol(
     dfs = []
     for loaded, tick_file in enumerate(tick_files, 1):
         df = read_tick_parquet(tick_file, columns=_RENDER_SOURCE_COLUMNS)
+        refuse_unusable_price(tick_file, df)
         dfs.append(df[[column for column in _RENDER_COLUMNS if column in df.columns]])
         if on_file_loaded is not None:
             on_file_loaded(loaded, len(tick_files))

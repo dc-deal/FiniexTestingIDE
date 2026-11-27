@@ -5,7 +5,7 @@ AlgoClockViolationError (#359): a loaded decision logic or worker reads wall-clo
 directly (datetime.now() / datetime.utcnow() / time.time()) instead of the canonical
 clock DecisionTradingApi.get_current_time().
 
-ClockNotInjectedError (#365): the canonical clock was requested before the tick loop
+ClockNotInjectedError (#365): the canonical clock was requested before the event loop
 injected a time. The clock must NEVER fall back to wall-clock — a missing injected
 time is a hard error, not a silent wall-clock substitution. Both break backtest
 reproducibility and decouple timing from the tick cadence that gates async resolution.

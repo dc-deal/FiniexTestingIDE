@@ -8,7 +8,7 @@ contract must be identical.
 
 This file directly invokes modify/cancel on both pipelines and asserts the
 return shape, in_flight_operation transitions, and post-resolve state are
-identical. Lightweight by design — does NOT run a full tick loop; instead
+identical. Lightweight by design — does NOT run a full event loop; instead
 spins up minimal sim and live executors and drives them deterministically.
 
 The full-bar-parity tests in test_bar_parity_kraken_spot_*.py cover bar
@@ -48,8 +48,8 @@ def _build_sim_executor() -> TradeSimulator:
         account_currency='USD',
         logger=GlobalLogger('ParitySim'),
         seeds={'inbound_latency_seed': 42},
-        inbound_latency_min_ms=0,
-        inbound_latency_max_ms=0,
+        inbound_latency_min_ms=1,
+        inbound_latency_max_ms=1,
     )
 
 

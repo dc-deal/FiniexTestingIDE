@@ -6,7 +6,7 @@ records the one it started from.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class WarmupSource(str, Enum):
@@ -16,6 +16,9 @@ class WarmupSource(str, Enum):
     ARCHIVE = 'archive'
     # The venue's own bar history — a live-adapter session
     VENUE = 'venue'
+    # Another run's recorded history — a backtest of a session's window, started from the bars
+    # the session started from (#512)
+    RECORD = 'record'
 
 
 @dataclass(frozen=True)
@@ -85,3 +88,39 @@ class WarmupHistoryRecord:
     first_tick: Optional[str]
     reread_at_first_tick: List[str]
     timeframes: Dict[str, WarmupTimeframeRecord]
+
+    @staticmethod
+    def from_dict(data: Dict[str, Any]) -> 'WarmupHistoryRecord':
+        """
+        Read a record back from the JSON its run wrote.
+
+        Every key is required: a record missing one was not written by this version of the
+        writer, and reading it with a guess would warm a backtest up on something else than what
+        the session started from.
+
+        Args:
+            data: The parsed `io/warmup_history.json`
+
+        Returns:
+            The record
+        """
+        missing = [key for key in ('symbol', 'source', 'read_at', 'selected_for', 'first_tick',
+                                   'reread_at_first_tick', 'timeframes') if key not in data]
+        if missing:
+            raise ValueError(f'warmup history record lacks {", ".join(missing)}')
+        return WarmupHistoryRecord(
+            symbol=data['symbol'],
+            source=WarmupSource(data['source']),
+            read_at=data['read_at'],
+            selected_for=data['selected_for'],
+            first_tick=data['first_tick'],
+            reread_at_first_tick=list(data['reread_at_first_tick']),
+            timeframes={
+                timeframe: WarmupTimeframeRecord(
+                    required=int(entry['required']),
+                    bars=[(str(row[0]), float(row[1]), float(row[2]), float(row[3]),
+                           float(row[4]), float(row[5]), int(row[6])) for row in entry['bars']],
+                )
+                for timeframe, entry in data['timeframes'].items()
+            },
+        )

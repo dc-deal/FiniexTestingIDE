@@ -5,8 +5,9 @@ Shared gap-aware region extraction for all splitters.
 
 Splits a data-coverage timeline into continuous regions at gaps that are NOT in the
 configured allowed-gap categories (weekend / holiday / seamless / short are treated as
-continuous; only moderate / large gaps cause a region split). Optionally clips the regions
-to a requested time range.
+continuous; only moderate / large gaps cause a region split). A gap in a venue's published
+history never splits: nobody traded there, and no data is missing. Optionally clips the
+regions to a requested time range.
 
 This is the single source for region extraction — previously duplicated as a private method
 on BlocksGenerator that ProfileGenerator reached into across class boundaries.
@@ -17,6 +18,7 @@ from typing import Dict, List, Optional
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
+from python.framework.types.coverage_report_types import SeamSide
 from python.framework.utils.market_calendar import GapCategory
 
 
@@ -56,7 +58,8 @@ class ContinuousRegionExtractor:
 
         Splits timeline at gaps that are NOT in allowed_gap_categories. Allowed gaps
         (e.g. weekend, holiday, seamless, short) are treated as continuous — regions
-        may span across them.
+        may span across them — and so is every gap in external history, judged by the
+        same seam as the scenario validation (#647).
 
         Args:
             data_coverage_report: Coverage report with gap analysis
@@ -73,10 +76,11 @@ class ContinuousRegionExtractor:
             if cat_str in [c.value for c in GapCategory]
         }
 
-        # Filter for interrupting gaps: those NOT in allowed categories
+        # Filter for interrupting gaps: those NOT in allowed categories, in collected data
         interrupting_gaps = [
             g for g in data_coverage_report.gaps
             if g.category not in allowed_categories
+            and data_coverage_report.seam_side(g) != SeamSide.EXTERNAL_HISTORY
         ]
 
         if not interrupting_gaps:

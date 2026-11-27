@@ -16,6 +16,7 @@ from python.framework.types.config_types.performance_tracking_config_types impor
     AutoTraderPerformanceTrackingConfig,
 )
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
+from python.framework.types.config_types.verification_config_types import VerificationConfig
 from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 
@@ -48,14 +49,14 @@ class UnresolvedResolutionDefaults(StrictConfigModel):
 
 
 class AutotraderExecutionDefaults(StrictConfigModel):
-    """AutoTrader tick-loop execution defaults."""
+    """AutoTrader event-loop execution defaults."""
     parallel_workers: bool = False
     bar_max_history: int = 1000
-    # Idle-heartbeat cadence (#360): max wait for a real tick before the loop
-    # fires a timer event (drain + reconcile + re-poll + decision ghost-pass).
-    # Governs the live idle wake only; does not multiply broker I/O (re-poll is
-    # gated by poll_interval_ms, reconcile by min_interval_seconds). 500 ms for
-    # snappier between-tick reaction; event-driven wake-on-arrival is #331.
+    # Heartbeat cadence (#360, #461): the heartbeat falls due this long after the
+    # last instant with ticks or the last heartbeat (drain + re-poll + staleness
+    # check + decision ghost-pass). Does not multiply broker I/O (the re-poll is
+    # gated by poll_interval_ms). A venue's answer wakes the loop on arrival, and
+    # the reconciliation is a timer of its own (#461).
     heartbeat_interval_ms: int = 500
     # Market-data staleness contract (#436): no real tick for this many wall
     # seconds → session-level stale (pot warning + on_market_data_stale hook +
@@ -78,12 +79,13 @@ class AutotraderExecutionDefaults(StrictConfigModel):
     venue_read_settle_seconds: float = 5.0
     unresolved_resolution: UnresolvedResolutionDefaults = UnresolvedResolutionDefaults()
     performance_tracking: AutoTraderPerformanceTrackingConfig = AutoTraderPerformanceTrackingConfig()
+    # Switches that change no result by design; turned off only to compare (#653)
+    verification: VerificationConfig = VerificationConfig()
 
 
 class ClippingMonitorDefaults(StrictConfigModel):
     """Clipping monitor defaults."""
     report_interval_s: float = 60.0
-    strategy: str = 'queue_all'
     # Post-session advisory: warn when the clipping ratio exceeds this share of ticks. Unlike
     # an absolute millisecond threshold, this one is grounded — the ratio is already measured
     # against real tick arrival, so it says how often the algo failed to keep up. Where the
@@ -207,6 +209,16 @@ class StateFramesDefaults(StrictConfigModel):
         return value
 
 
+class IndicatorSeriesDefaults(StrictConfigModel):
+    """
+    The indicator series a run records (#379) — each drawing worker's outputs, one value per closed
+    bar of its timeframe, into one stream per worker instance, so the run's chart can show them as
+    indicator panes. It reads what the workers computed anyway and changes nothing they compute.
+    Off unless a profile or a scenario asks.
+    """
+    enabled: bool = False
+
+
 class ColdStartDefaults(StrictConfigModel):
     """
     Cold-start recovery defaults (#355) — adopting our own resting orders on boot.
@@ -236,6 +248,9 @@ class ColdStartDefaults(StrictConfigModel):
     path: str = 'data/runtime/cold_start_state'
     adoption_mode: Literal['operator_confirm', 'auto'] = 'operator_confirm'
     book_drift_interval_ticks: int = 500
+    # #652 — the margin, in seconds, around the carry-over's write that absorbs the skew between our
+    # wall clock and the venue's: a fill closed within it that nothing else explains is unclear
+    boot_read_skew_s: float = Field(5.0, ge=0.0)
 
 
 class CapitalDefaults(StrictConfigModel):
@@ -304,6 +319,38 @@ class SessionEndDefaults(StrictConfigModel):
     """
     orders: Literal['cancel', 'leave'] = 'cancel'
     positions: Literal['close', 'leave'] = 'leave'
+
+
+class StorageDefaults(StrictConfigModel):
+    """
+    The disk a session records on — checked before its first order and watched while it runs (#632).
+
+    A session that cannot write its records trades without a record, and a disk that fills during a
+    thirty-day run stops every record at once. Space is measured as a process that is not root may
+    use it: the last 5 to 10 % of a filesystem is reserved for root, and a session running as root
+    would otherwise write to the very last byte before anything warns. The block says how a session
+    is kept, not what it is compared as: it is neutral in the composite definition.
+
+    `min_free_gb_to_start`
+        The free space the start requires on every filesystem a store of the session lives on; below
+        it the start is refused, naming the filesystem's stores.
+
+    `warn_free_gb`
+        Below it, while the session runs, the operator is alerted once; when the space has come back
+        above it, once more.
+
+    `check_interval_s`
+        How often the session reads the free space.
+
+    `stream_sync_interval_s`
+        How often the money record — the order events and the trades — is forced to the disk, when
+        lines were written since; a stop of the machine loses at most this much of it. While the
+        record cannot be written, how often its kept lines are written again.
+    """
+    min_free_gb_to_start: float = Field(1.0, ge=0.0)
+    warn_free_gb: float = Field(2.0, ge=0.0)
+    check_interval_s: float = Field(60.0, gt=0.0)
+    stream_sync_interval_s: float = Field(1.0, gt=0.0)
 
 
 class ShutdownDefaults(StrictConfigModel):
@@ -379,7 +426,8 @@ class TickSourceConfig(StrictConfigModel):
 
     Args:
         type: Tick source type ('mock' for scenario-data replay, 'kraken' for live WebSocket)
-        tick_delay_ms: Artificial delay per tick in ms (mock replay only). 0 = full speed
+        tick_delay_ms: Artificial delay per tick in ms (mock replay only), slept before each
+            arrival millisecond for all its ticks at once. 0 = full speed
         ws_url: WebSocket URL (kraken mode)
         quote_channel_enabled: Subscribe to the venue's quote channel beside trades (kraken mode,
             #520 step B). ON: a trade tick carries the real bid/ask it executed against, which is
@@ -396,7 +444,8 @@ class TickSourceConfig(StrictConfigModel):
         connection_dead_s: Silence threshold to force reconnect in seconds (kraken mode). Kraken
             sends a heartbeat about once a second on every connection (measured 2026-10-20, the
             longest healthy pause 1.15 s), so 10 s is a dead connection, never a quiet market
-        freeze_after_ticks: Outage drill (#436, mock mode): pause emission once after N ticks. 0 = off
+        freeze_after_ticks: Outage drill (#436, mock mode): pause emission once, at the first
+            arrival millisecond after N ticks were put. 0 = off
         freeze_duration_s: Outage drill (#436, mock mode): pause duration in wall seconds
     """
     type: str = 'mock'
@@ -527,8 +576,10 @@ class AutotraderDefaultsConfig(StrictConfigModel):
     api_monitor: ApiMonitorConfig = ApiMonitorConfig()
     state_persistence: StatePersistenceDefaults = StatePersistenceDefaults()
     state_frames: StateFramesDefaults = StateFramesDefaults()
+    indicator_series: IndicatorSeriesDefaults = IndicatorSeriesDefaults()
     cold_start: ColdStartDefaults = ColdStartDefaults()
     session_end: SessionEndDefaults = SessionEndDefaults()
     shutdown: ShutdownDefaults = ShutdownDefaults()
+    storage: StorageDefaults = StorageDefaults()
     tick_source: TickSourceConfig = TickSourceConfig()
     operator_alerts: OperatorAlertsConfig = OperatorAlertsConfig()

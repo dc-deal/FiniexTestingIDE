@@ -27,7 +27,7 @@ import pytest
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.autotrader.autotrader_config_loader import load_autotrader_config
 from python.framework.autotrader.autotrader_main import AutotraderMain
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.event_loop.autotrader_event_loop import AutotraderEventLoop
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
 from python.framework.autotrader.shutdown_status_holder import ShutdownStatusHolder
 from python.framework.autotrader.stop_budget import StopBudget
@@ -175,6 +175,9 @@ class _HearingLogic:
     def on_session_end(self, event: Any) -> None:
         self.heard.append('session_end')
 
+    def on_session_end_order_outcome(self, event: Any) -> None:
+        self.heard.append(f'session_end_order:{event.order_id}:{event.status.value}')
+
 
 class _Stage:
     """
@@ -213,6 +216,7 @@ class _Stage:
                          if connection is not None else None),
         )
         MockOrderExecution().feed_tick(self.executor, bid=_BID, ask=_ASK, timestamp=at)
+        self.at = at
         self.alerts = MagicMock()
         self.holds: List[_HeldAnswer] = []
 
@@ -264,9 +268,9 @@ class _Stage:
             time.sleep(0.005)
         return self.executor.get_open_positions()[0].position_id
 
-    def loop(self, logic: Optional[_HearingLogic] = None, **options: Any) -> AutotraderTickLoop:
+    def loop(self, logic: Optional[_HearingLogic] = None, **options: Any) -> AutotraderEventLoop:
         """
-        The tick loop of this session, with no tick to come.
+        The event loop of this session, with no tick to come.
 
         Args:
             logic: What hears the decision events; nothing hears them when None
@@ -277,14 +281,18 @@ class _Stage:
         """
         tick_queue: queue.Queue = queue.Queue()
         tick_queue.put(None)
+        # The session's axis (#461): a venue's answer is stamped on it, on the worker thread, so
+        # the source answers a time, as a replay does — the instant of the tick fed
+        tick_source = MagicMock()
+        tick_source.get_idle_pass_time.return_value = self.at
         config = AutoTraderConfig(
             profile_name='stop_waits', symbol='BTCUSD', broker_type='kraken_spot',
             adapter_type='mock', shutdown=self.settings,
             execution=AutotraderExecutionDefaults(heartbeat_interval_ms=5))
-        return AutotraderTickLoop(
+        return AutotraderEventLoop(
             config=config,
             tick_queue=tick_queue,
-            tick_source=MagicMock(),
+            tick_source=tick_source,
             executor=self.executor,
             bar_controller=BarRenderingController(logger=self.logger),
             worker_orchestrator=options.pop('worker_orchestrator', MagicMock()),
@@ -304,7 +312,7 @@ class _Stage:
 
     def stop(self, logic: Optional[_HearingLogic] = None,
              severity: SessionEndSeverity = SessionEndSeverity.NORMAL,
-             **options: Any) -> AutotraderTickLoop:
+             **options: Any) -> AutotraderEventLoop:
         """
         A stop asked for before any pass, so the loop goes straight to what follows its last one.
 
@@ -989,7 +997,7 @@ def session_with_awaited_order(request):
     """
     trader, result = _run_session(request.param, _settings(), answer_after_s=0.2)
     yield trader, result
-    remove_run_dir(trader._run_dir)
+    remove_run_dir(trader.get_run_dir())
 
 
 @pytest.fixture(scope='module', params=[_SPOT_PROFILE, _MARGIN_PROFILE], ids=['spot', 'margin'])
@@ -1003,7 +1011,7 @@ def session_run_out(request):
     trader, result = _run_session(
         request.param, _settings(order_wait_s=0.1), answer_after_s=1.0, bot_suffix='ro')
     yield trader, result
-    remove_run_dir(trader._run_dir)
+    remove_run_dir(trader.get_run_dir())
 
 
 @pytest.fixture(scope='module', params=[_SPOT_PROFILE, _MARGIN_PROFILE], ids=['spot', 'margin'])
@@ -1018,7 +1026,7 @@ def session_venue_gone(request):
         request.param, _settings(supervisor_kill_after_s=1.0, reserve_for_records_s=0.0),
         answer_after_s=0.0, venue_stops_answering=True, bot_suffix='un')
     yield trader, result
-    remove_run_dir(trader._run_dir)
+    remove_run_dir(trader.get_run_dir())
 
 
 @pytest.fixture(scope='module', params=[_SPOT_PROFILE, _MARGIN_PROFILE], ids=['spot', 'margin'])
@@ -1033,7 +1041,7 @@ def session_nothing_awaited_short_kill(request):
         request.param, _settings(supervisor_kill_after_s=1.0, reserve_for_records_s=0.0),
         answer_after_s=0.0, bot_suffix='nk', sends_an_order=False)
     yield trader, result
-    remove_run_dir(trader._run_dir)
+    remove_run_dir(trader.get_run_dir())
 
 
 class TestAWholeSessionWithNothingAwaitedUnderAShortKill:
@@ -1573,8 +1581,8 @@ class TestAnOrderSentAtTheSessionEnd:
         assert [trade.position_id for trade in trades] == [position_id]
         assert built.executor.get_awaited_orders() == []
         assert built.errors() == []
-        # What the second wait settled is booked, and the session end stays the last word
-        assert logic.heard[-1] == 'session_end'
+        # What the second wait settled is booked, and the logic hears how it ended (#642)
+        assert logic.heard[-2:] == ['session_end', f'session_end_order:{position_id}:executed']
         assert any('1 order(s) sent at the session end' in message for message in journal.infos)
         if spot_mode:
             balances = built.executor.portfolio.get_balances()
@@ -1610,7 +1618,27 @@ class TestAnOrderSentAtTheSessionEnd:
             position_id, OrderAction.CLOSE, OrderStatus.UNACCOUNTED)
         assert len([message for message in built.errors() if position_id in message]) == 1
         built.alerts.send.assert_called_once()
-        assert logic.heard[-1] == 'session_end'
+        # The close the bound ran out on is told as what it is (#642)
+        assert logic.heard[-2:] == ['session_end', f'session_end_order:{position_id}:unaccounted']
+
+    @ACCOUNT_MODELS
+    def test_an_order_sent_from_the_outcome_hook_never_leaves(self, stage, spot_mode):
+        """The session is over when the logic hears the outcome: what it sends then is withdrawn."""
+        built = stage('acknowledging', spot_mode)
+        built.open_a_position()
+        sent: List[str] = []
+
+        class _SendsAgain(_ActsAtTheSessionEnd):
+            def on_session_end_order_outcome(self, event: Any) -> None:
+                super().on_session_end_order_outcome(event)
+                sent.append(built.buy_at_market().order_id)
+
+        built.stop(_SendsAgain(lambda: _close_everything(built)))
+
+        row, = [row for row in built.endings() if row.order_id == sent[0]]
+        assert (row.status, row.initiator, row.end_reason) == (
+            OrderStatus.CANCELLED, OrderInitiator.FRAMEWORK, OrderEndReason.SESSION_END)
+        assert built.executor.get_open_positions() == []
 
     @ACCOUNT_MODELS
     def test_after_a_wait_that_ran_out_nothing_more_goes_out(self, stage, spot_mode):
@@ -2043,7 +2071,7 @@ class TestWhatTheStatusAsksTheSession:
     ], ids=['input_ran_out', 'never_started'])
     def test_no_request_names_how_far_it_got(self, stage, loop_started, expected):
         session = _session_around(stage().executor)
-        session._tick_loop_started = loop_started
+        session._event_loop_started = loop_started
 
         assert session._what_asked_for_the_stop() == expected
 

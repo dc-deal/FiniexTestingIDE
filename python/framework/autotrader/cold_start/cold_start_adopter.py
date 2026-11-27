@@ -18,14 +18,20 @@ a boot step, not a reconcile cycle, and tying it to `reconciliation.enabled` wou
 disappear exactly where it is cheapest to exercise — a mock session.
 """
 
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
+from python.framework.autotrader.cold_start.boot_fill_reader import BootFillReader
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.persistence.cold_start_state_store import ColdStartStateStore
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.autotrader_types.cold_start_types import (
     AdoptedOrder,
+    BootFill,
+    BootFillClass,
+    BootPremiseViolation,
+    BootRead,
     ColdStartSituation,
     ColdStartVerdict,
     ConfigurationComparison,
@@ -35,12 +41,17 @@ from python.framework.types.autotrader_types.cold_start_types import (
 )
 from python.framework.types.config_types.autotrader_defaults_config_types import ColdStartDefaults
 from python.framework.types.live_types.reconciliation_types import BrokerOrder
-from python.framework.types.persistence_types import ColdStartPayload, PositionCarryOver
+from python.framework.types.persistence_types import (
+    AcceptedForeignOrders,
+    ColdStartPayload,
+    OpenOrderCarryOver,
+    PositionCarryOver,
+)
 from python.framework.types.trading_env_types.order_types import (
     RESTING_ORDER_TYPES,
     OrderDirection,
 )
-from python.framework.types.validation_types import ValidationFinding
+from python.framework.types.validation_types import Severity, ValidationDomain, ValidationFinding
 from python.framework.utils.broker_asset_utils import normalize_broker_asset
 from python.framework.utils.connection_ladder import run_with_ladder
 from python.framework.utils.run_id_utils import parse_client_order_id
@@ -59,6 +70,9 @@ from python.framework.validators.carry_over_configuration_validator import (
 # than a fact. One satoshi is the smallest unit any supported venue settles in, so a real
 # divergence is always larger and a computed one is always smaller.
 _BOOK_DUST = 1e-8
+
+# The finding a start leaves when it books notes closed outside the bot (#627)
+_BOOK_CLOSED_EXTERNALLY_CHECK = 'book_closed_externally'
 
 # Skip reasons whose order carries a key of OUR shape, so its counter came from a session of
 # THIS bot. A foreign symbol is excluded on purpose: position ids are numbered per bot.
@@ -97,7 +111,7 @@ def _describe_order(order: BrokerOrder) -> str:
 
 class ColdStartAdopter:
     """
-    Reconstructs this bot's resting orders from broker truth, once, before the tick loop.
+    Reconstructs this bot's resting orders from broker truth, once, before the event loop.
 
     Args:
         executor: The live executor — adapter, session key, adoption surface, REST ladder
@@ -112,6 +126,8 @@ class ColdStartAdopter:
             proves nothing about whether anybody reads it
         decision_logic: Asked to answer for the situation (#493). None means nobody is asked,
             which is how the framework alone decides
+        book_closed_externally: The position notes this one start declares closed outside the
+            bot (`--book-closed-externally <id>`, #627); empty when none
     """
 
     def __init__(
@@ -129,6 +145,7 @@ class ColdStartAdopter:
         compare_configuration: Optional[
             Callable[[ColdStartPayload], ConfigurationComparison]] = None,
         accept_composite_change: Optional[str] = None,
+        book_closed_externally: Optional[List[str]] = None,
     ):
         self._executor = executor
         self._store = store
@@ -161,6 +178,19 @@ class ColdStartAdopter:
         self._configuration_comparison: Optional[ConfigurationComparison] = None
         self._configuration_finding: Optional[ValidationFinding] = None
         self._acceptance_notice = ''
+        # #499: orders of another owner on this bot's instrument while the account is declared
+        # exclusive — the boot holds the session's entries over them
+        self._boot_premise_violation: Optional[BootPremiseViolation] = None
+        # #627: the notes this start declares closed outside the bot, and those it took out
+        self._book_closed_externally = list(book_closed_externally or [])
+        self._closed_externally: List[PositionCarryOver] = []
+        # #652: what the read of the venue's closed orders since the carry-over found; None where
+        # the start read none
+        self._boot_read: Optional[BootRead] = None
+        self._closed_externally_finding: Optional[ValidationFinding] = None
+        # #499: orders of another owner on this bot's instrument an operator accepted at an
+        # earlier start and that still rest — they hold nothing, and the premise is still false
+        self._accepted_foreign_refs: List[str] = []
 
     def get_configuration_comparison(self) -> Optional[ConfigurationComparison]:
         """
@@ -189,6 +219,52 @@ class ColdStartAdopter:
             The notice; '' when no change was accepted
         """
         return self._acceptance_notice
+
+    def get_boot_read(self) -> Optional[BootRead]:
+        """
+        What the read of the venue's closed orders since the carry-over found (#652).
+
+        Returns:
+            The read; None where the start read none — a dry run, a margin session, a first start
+        """
+        return self._boot_read
+
+    def get_boot_premise_violation(self) -> Optional[BootPremiseViolation]:
+        """
+        What the exclusivity check found on this bot's instrument (#499).
+
+        Returns:
+            The violation the boot holds the entries over; None when the start found none
+        """
+        return self._boot_premise_violation
+
+    def get_closed_externally(self) -> List[PositionCarryOver]:
+        """
+        The notes this start took out of the book as closed outside the bot (#627).
+
+        Returns:
+            The notes; empty when it closed none
+        """
+        return list(self._closed_externally)
+
+    def get_closed_externally_finding(self) -> Optional[ValidationFinding]:
+        """
+        The finding the start leaves on the run's record when it closed notes outside the bot (#627).
+
+        Returns:
+            A run-scoped warning; None when it closed none
+        """
+        return self._closed_externally_finding
+
+    def get_accepted_foreign_refs(self) -> List[str]:
+        """
+        The orders of another owner on this bot's instrument that an operator accepted at an earlier
+        start, and that still rest (#499).
+
+        Returns:
+            Their venue references; empty when none rest
+        """
+        return list(self._accepted_foreign_refs)
 
     def get_situation(self) -> Optional[ColdStartSituation]:
         """
@@ -259,6 +335,11 @@ class ColdStartAdopter:
                 'does not have. Both paths are exercised by the cold-start suite and by a '
                 'real run, not by a rehearsal.'
             )
+            if self._book_closed_externally:
+                self._logger.info(
+                    f"🧬 Cold start (dry run): --book-closed-externally "
+                    f"{' '.join(self._book_closed_externally)} is ignored — a dry run restores no "
+                    f'position book, so there is no note to close.')
             # No skipped orders and no book: a dry run queried nothing and restored nothing,
             # so the carry-over's own high-water mark is all there is to go on.
             self._raise_counter_floor([], payload.highest_position_counter)
@@ -279,11 +360,17 @@ class ColdStartAdopter:
         # not have yet.
         book = self._restorable_book(payload.open_positions)
 
+        # #652: what the venue finished under our keys since the book was written. Read before the
+        # balances, because a fill found here is the one reason to read them with an empty book
+        self._boot_read = self._read_closed_since_write(payload, book, known_keys)
+        found_fill = self._boot_read is not None and bool(self._boot_read.get_holding_fills())
+
         # Only asked when there is a book to hold against it. The ladder may be configured
         # to ABORT on a give-up (§43), so an unnecessary read is not merely a wasted REST
         # call — it is a way to end a boot over a number nobody needed.
         shortfall = 0.0
-        if book:
+        balances: Optional[Dict[str, float]] = None
+        if book or found_fill:
             balances = self._pull_broker_balances()
             if balances is None:
                 self._logger.error(
@@ -292,11 +379,17 @@ class ColdStartAdopter:
                     'session may start — but nothing has confirmed that the account still '
                     'covers the book.'
                 )
-            else:
-                shortfall = self._cross_check_book(book, balances)
+        # #627: before the cross-check, the situation and the configuration check, so all three
+        # speak about the book that remains
+        book = self._take_out_closed_externally(book, balances)
+        if (book or found_fill) and balances is not None:
+            shortfall = self._cross_check_book(book, balances)
 
         ours, skipped = self._split(broker_orders, known_keys)
         self._report_unattributable(skipped)
+        # #652 — a market order of ours still working at the venue: its fill may come yet, so it holds
+        # the entries beside the fills the book does not hold, and the session never buys it twice
+        self._hold_over_in_flight(skipped)
 
         self._situation = self._build_situation(ours, skipped, book, shortfall)
         verdict = self._consult_algo(self._situation)
@@ -306,12 +399,17 @@ class ColdStartAdopter:
         # still leaves a full record — and deliberately WITHOUT consulting the verdict: the
         # hook may only lift the one refusal the framework makes for lack of an ANSWER
         # (#493), and this one is made for lack of exclusivity, which no algo can supply.
-        if not self._check_exclusivity(skipped):
+        if not self._check_exclusivity(skipped, payload.accepted_foreign_orders):
             return False
 
         # #626 — here for the same reason as the exclusivity check: the situation is on file and
         # nothing is applied yet, so a refused boot leaves the executor as it found it.
-        if not self._check_configuration(payload, ours, book):
+        configured_payload = payload
+        if self._closed_externally:
+            closed_ids = {note.position_id for note in self._closed_externally}
+            configured_payload = payload.model_copy(update={'open_positions': [
+                note for note in payload.open_positions if note.position_id not in closed_ids]})
+        if not self._check_configuration(configured_payload, ours, book):
             return False
 
         if ours:
@@ -328,6 +426,8 @@ class ColdStartAdopter:
         # === From here the session is allowed to start, so state may change ===
         self._situation.applied = True
         self._restore_position_book(book)
+        if self._closed_externally:
+            self._executor.book_closed_externally(self._closed_externally)
         if ours:
             self._executor.adopt_resting_orders(ours)
             # The consequence is stated, not left to be discovered. An adopted order makes
@@ -340,7 +440,9 @@ class ColdStartAdopter:
                 f'has_pending_orders() is true from the first tick — an algo that gates on it '
                 f'will wait until these orders fill or are cancelled.'
             )
-        self._raise_counter_floor(ours, payload.highest_position_counter, skipped, book)
+        # The closed notes count too: their ids were minted by this bot and must never come back
+        self._raise_counter_floor(ours, payload.highest_position_counter, skipped,
+                                  book + self._closed_externally)
         return True
 
     # ============================================
@@ -396,6 +498,7 @@ class ColdStartAdopter:
             adoption_mode=self._config.adoption_mode,
             attended=self._interactive,
             book_shortfall=shortfall,
+            boot_read=self._boot_read,
         )
 
     def _consult_algo(self, situation: ColdStartSituation) -> Optional[ColdStartVerdict]:
@@ -542,6 +645,115 @@ class ColdStartAdopter:
             )
         self._logger.warning('\n'.join(lines))
 
+    def _take_out_closed_externally(
+        self,
+        book: List[PositionCarryOver],
+        balances: Optional[Dict[str, float]],
+    ) -> List[PositionCarryOver]:
+        """
+        Take the notes this start declares closed outside the bot out of the book (#627).
+
+        An operator sold the holding at the venue while the bot was down; nothing else could end
+        its note. The declaration is honoured only where the venue confirms it: the account's
+        shortfall against the book's LONG notes has to cover every note named. A note whose coins
+        the account still holds stays — closing it would lose a holding that is still there from
+        every record. A SHORT note is not checked against the base balance (closing it buys the
+        base back, a claim on the shared quote), so it cannot be confirmed and stays too.
+
+        Args:
+            book: The notes this session may restore
+            balances: Asset → amount as the venue reports it; None when they could not be read
+
+        Returns:
+            The notes that remain to be restored
+        """
+        named = self._book_closed_externally
+        if not named:
+            return book
+
+        ids_in_book = {note.position_id for note in book}
+        unknown = [position_id for position_id in named if position_id not in ids_in_book]
+        if unknown:
+            where = ('this session is not in spot mode, so it restores no position notes'
+                     if not self._executor.portfolio.is_spot_mode()
+                     else 'the restored book holds no such note')
+            self._logger.info(
+                f"🧬 Cold start: --book-closed-externally {', '.join(unknown)} closes nothing — "
+                f'{where}.')
+
+        candidates = [note for note in book if note.position_id in named]
+        if not candidates:
+            return book
+        if balances is None:
+            self._logger.warning(
+                f"⚠️ Cold start: --book-closed-externally {', '.join(n.position_id for n in candidates)} "
+                f'is not honoured — the venue\'s balances could not be read, so nothing confirms '
+                f'that the holding left the account. The notes are restored as they are.')
+            return book
+
+        shorts = [note for note in candidates if note.direction != OrderDirection.LONG.value]
+        if shorts:
+            self._logger.warning(
+                f"⚠️ Cold start: --book-closed-externally {', '.join(n.position_id for n in shorts)} "
+                f'is not honoured — a SHORT note cannot be held against the base balance, so '
+                f'nothing confirms that it was closed. Restored as it is.')
+        longs = [note for note in candidates if note.direction == OrderDirection.LONG.value]
+        if not longs:
+            return book
+
+        base, held, booked = self._holding_against_book(book, balances)
+        named_lots = sum(note.lots * note.contract_size for note in longs)
+        if named_lots - (booked - held) > _BOOK_DUST:
+            self._logger.warning(
+                f"⚠️ Cold start: --book-closed-externally {', '.join(n.position_id for n in longs)} "
+                f'is not honoured — the notes claim {named_lots} {base}, but the account holds '
+                f'{held} {base} against a book of {booked}, so at most {max(booked - held, 0.0)} '
+                f'left it. Closing them would lose a holding that is still there. Restored as '
+                f'they are.')
+            return book
+
+        self._closed_externally = longs
+        lines = [f'⚠️ Cold start: {len(longs)} position note(s) booked as closed outside this bot, '
+                 f'as this start declares (--book-closed-externally) — at the entry price, '
+                 f'because the exit was not seen here; the account\'s balances are not moved:']
+        for note in longs:
+            lines.append(f'   {note.position_id}  {note.direction} {note.lots} {note.symbol} '
+                         f'@ {note.entry_price}')
+        self._logger.warning('\n'.join(lines))
+        self._closed_externally_finding = ValidationFinding(
+            severity=Severity.WARNING, check=_BOOK_CLOSED_EXTERNALLY_CHECK,
+            domain=ValidationDomain.SETUP, scope='run',
+            message=(f'This start declared {len(longs)} position note(s) closed outside the bot '
+                     f"({', '.join(n.position_id for n in longs)}); each is booked at its entry "
+                     f'price with exit_observed false. Its gross P&L is zero by construction, not '
+                     f'measured — the sale itself happened outside every record of the bot.'))
+        closed_ids = {note.position_id for note in longs}
+        return [note for note in book if note.position_id not in closed_ids]
+
+    def _holding_against_book(
+        self,
+        book: List[PositionCarryOver],
+        balances: Dict[str, float],
+    ) -> Tuple[str, float, float]:
+        """
+        The base asset the account holds against what the book's LONG notes claim of it.
+
+        Only a LONG note claims the base: at spot an open SHORT has already spent it.
+
+        Args:
+            book: The notes
+            balances: Asset → amount as the venue reports it
+
+        Returns:
+            (base asset, amount held, amount the LONG notes claim), in base units
+        """
+        base = self._executor.broker.get_symbol_specification(self._symbol).base_currency
+        held = sum(amount for asset, amount in balances.items()
+                   if normalize_broker_asset(asset) == base)
+        booked = sum(record.lots * record.contract_size for record in book
+                     if record.direction == OrderDirection.LONG.value)
+        return base, held, booked
+
     def _cross_check_book(
         self,
         book: List[PositionCarryOver],
@@ -579,35 +791,127 @@ class ColdStartAdopter:
             How much the book's LONG positions claim beyond what the account holds, in base
             units; 0.0 when the account covers it
         """
-        if not book:
-            return 0.0
-
-        base = self._executor.broker.get_symbol_specification(self._symbol).base_currency
-        held = sum(
-            amount for asset, amount in balances.items()
-            if normalize_broker_asset(asset) == base
-        )
-        booked = sum(
-            record.lots * record.contract_size for record in book
-            if record.direction == OrderDirection.LONG.value
-        )
+        base, held, booked = self._holding_against_book(book, balances)
 
         if booked - held > _BOOK_DUST:
+            # The way out names only the notes the shortfall could cover: the start honours the
+            # flag for no more than the coins that left the account (#627)
+            closable = [r.position_id for r in book
+                        if r.direction == OrderDirection.LONG.value
+                        and r.lots * r.contract_size - (booked - held) <= _BOOK_DUST]
+            way_out = (f' If a holding was sold outside this bot, start once with '
+                       f"--book-closed-externally and its note: {', '.join(closable)}."
+                       if closable else '')
             self._logger.error(
                 f'❌ Cold start: the restored book\'s LONG positions claim {booked} {base} '
                 f'but the account '
                 f'holds {held} — {booked - held} short. Something sold outside this bot '
                 f'between the sessions. The book is NOT adjusted: closing against it will '
-                f'fail or partially fill. Check the account by hand.'
+                f'fail or partially fill. Check the account by hand.{way_out}'
             )
             return booked - held
 
         self._logger.info(
             f'🧬 Cold start: book {booked} {base} against {held} held at the venue — covered'
-            + (f' ({held - booked} beyond the book, not this bot\'s to use)'
+            + (f' ({held - booked} beyond the book: untraded capital, or a fill of ours the book '
+               f'does not hold — {self._found_fills_phrase()})'
                if held - booked > _BOOK_DUST else '')
         )
         return 0.0
+
+    def _found_fills_phrase(self) -> str:
+        """
+        What the read of the venue's closed orders said about fills of ours, for the balance line (#652).
+
+        Returns:
+            A few words: how many it found, that it found none, or that it did not read
+        """
+        if self._boot_read is None:
+            return 'the venue\'s closed orders were not read'
+        holding = len(self._boot_read.get_holding_fills())
+        if holding:
+            return f'the closed-orders read found {holding} such fill(s)'
+        return ('the closed-orders read found none' if self._boot_read.complete
+                else 'the closed-orders read did not complete')
+
+    def _hold_over_in_flight(self, skipped: List[SkippedOrder]) -> None:
+        """
+        File every market order of ours still in flight at the start into the boot read (#652).
+
+        Args:
+            skipped: Everything the split left alone, each with its reason
+        """
+        if self._boot_read is None:
+            return
+        for order in skipped:
+            if order.reason != SkipReason.IN_FLIGHT or not order.key_is_ours:
+                continue
+            self._boot_read.fills.append(BootFill(
+                client_order_id=order.client_order_id or '',
+                broker_ref=order.broker_ref,
+                symbol=order.symbol,
+                direction=order.direction,
+                lots=order.lots,
+                filled_lots=0.0,
+                closed_at=None,
+                fill_class=BootFillClass.IN_FLIGHT,
+                reason='still working at the venue at the start — its fill may come yet',
+            ))
+
+    def _read_closed_since_write(
+        self,
+        payload: ColdStartPayload,
+        book: List[PositionCarryOver],
+        known_keys: Set[str],
+    ) -> Optional[BootRead]:
+        """
+        Read which orders of ours the venue finished since the book was written, and file each fill (#652).
+
+        Not read on a first start (no carry-over was written, so no order can be ours) and not at
+        margin, whose positions come back from the venue itself (#209). While a hold of this kind
+        stands from an earlier start, the read measures against the write that start measured
+        against, so a restart cannot step past the fill that holds the entries.
+
+        Args:
+            payload: The carry-over as read
+            book: The notes this start restores
+            known_keys: The session keys whose orders are ours
+
+        Returns:
+            The read; None where the start reads none
+        """
+        saved_at = self._store.get_saved_at()
+        if saved_at is None or not known_keys:
+            return None
+        if not self._executor.portfolio.is_spot_mode():
+            self._logger.info(
+                '🧬 Cold start: the venue\'s closed orders are not read at margin — positions come '
+                'back from the venue itself there (#209).')
+            return None
+        # While a hold of this kind stands, its fills count as open at the write it was measured
+        # against, from where that read began: the held session's own writes have replaced the open
+        # orders since, and without this the same fill would now read as answered before the write
+        hold = payload.boot_read_hold
+        written_at = datetime.fromisoformat(hold.written_at_utc if hold is not None else saved_at)
+        open_orders = list(payload.open_orders_at_write) + (
+            [OpenOrderCarryOver(client_order_id=key, submitted_at_utc=hold.read_from_utc)
+             for key in hold.client_order_ids] if hold is not None else [])
+        reader = BootFillReader(
+            self._executor.broker.adapter,
+            self._executor.get_rest_ladder(),
+            timedelta(seconds=self._config.boot_read_skew_s),
+            _BOOK_DUST,
+        )
+        # The end of the range is the wall-clock now: the venue's close instants are on its own
+        # wall clock, and the canonical clock has not begun at boot
+        boot_read = reader.read(written_at, open_orders, book, known_keys, datetime.now(timezone.utc))
+        holding = boot_read.get_holding_fills()
+        self._logger.info(
+            f'🧬 Cold start: the venue\'s closed orders read from '
+            f"{boot_read.read_from.strftime('%Y-%m-%d %H:%M:%S UTC')} — "
+            f'{len(boot_read.fills)} fill(s) of ours, {len(holding)} the book does not hold'
+            + ('' if boot_read.complete else f'; incomplete: {boot_read.incomplete_reason}'))
+        return boot_read
 
     def _split(
         self,
@@ -818,12 +1122,12 @@ class ColdStartAdopter:
             lines.append(f'{len(ours)} resting order(s) of ours — {orders}')
         return lines
 
-    def _check_exclusivity(self, skipped: List[SkippedOrder]) -> bool:
+    def _check_exclusivity(self, skipped: List[SkippedOrder],
+                           accepted: Optional[AcceptedForeignOrders]) -> bool:
         """
-        Hold a declared-exclusive account against what the venue actually reports (#489).
+        Hold a declared-exclusive account against what the venue actually reports (#489, #499).
 
-        REPORTS, and does not refuse. That is one answer rather than two, and the reason
-        is the same in both halves — a refusal is not the safe outcome here:
+        Does not refuse: a refusal is not the safe outcome here —
 
         - It leaves a state that is not "flat and safe" but **exposed and unmanaged**. This
           bot may hold a spot position; a refusal abandons it at the venue with nothing
@@ -839,9 +1143,10 @@ class ColdStartAdopter:
         stranger on the instrument this bot TRADES, where at spot the exposures merge into
         one balance no tag can split and the bot cannot size an order against what is
         actually its own. That is an ERROR into the session pot rather than a warning, and
-        it is what **#499** turns into a boot-time HALT once #349 has built the state to
-        hold it: start, manage what is ours, place nothing new until an operator clears it.
-        Withholding new risk is the institutional answer; refusing to run is not.
+        the boot HOLDS the session's entries over it (#499): it starts, manages and closes
+        what is its own, and places nothing new until those orders are gone or an operator
+        accepts them. An order the operator accepted at an earlier start holds nothing again,
+        but it is still said, as a warning: the account is still not this bot's alone.
 
         UNKNOWN_SESSION is not judged at all. Its key HAS our shape, and on an account
         declared exclusive nobody else uses our key format, so it is more likely ours rather
@@ -850,10 +1155,11 @@ class ColdStartAdopter:
 
         Args:
             skipped: Everything the split left alone, each with its reason and ownership
+            accepted: The orders of another owner an operator accepted at an earlier start
 
         Returns:
-            True — always, today. The signature keeps the boolean because #499 makes this
-            decidable, and a caller that already honours it needs no change then
+            True — the session starts either way; what holds its entries is recorded for the
+            boot (`get_boot_premise_violation`)
         """
         if not self._exclusive_account:
             return True
@@ -871,19 +1177,37 @@ class ColdStartAdopter:
                 f"{', '.join(f'{o.symbol} {o.broker_ref}' for o in elsewhere)}"
             )
 
-        if on_our_symbol:
-            refs = ', '.join(o.broker_ref for o in on_our_symbol)
+        accepted_refs = set(accepted.broker_refs) if accepted is not None else set()
+        already_accepted = [o.broker_ref for o in on_our_symbol if o.broker_ref in accepted_refs]
+        unaccepted = [o.broker_ref for o in on_our_symbol if o.broker_ref not in accepted_refs]
+        self._accepted_foreign_refs = already_accepted
+        if already_accepted:
+            self._logger.warning(
+                f'⚠️ Cold start: {len(already_accepted)} order(s) of another owner on '
+                f'{self._symbol} were accepted by the operator at {accepted.accepted_at_utc}, so '
+                f'they hold no entries — but they still rest, while this profile declares '
+                f'capital.exclusive_account=true. Every account-level risk limit measures a '
+                f"denominator that is not this bot's alone: {', '.join(already_accepted)}"
+            )
+
+        if unaccepted:
+            refs = ', '.join(unaccepted)
             self._logger.error(
-                f'❌ Cold start: {len(on_our_symbol)} order(s) carrying no key of ours rest '
+                f'❌ Cold start: {len(unaccepted)} order(s) carrying no key of ours rest '
                 f'on {self._symbol} — the very instrument this bot trades — while this '
                 f'profile declares capital.exclusive_account=true. At spot both exposures '
                 f'merge into one balance that no tag can separate, so this bot cannot size '
-                f'an order against what is actually its own: {refs}. The session STARTS '
-                f"anyway, because refusing would abandon this bot's own exposure at the "
-                f'venue — #499 turns this into a HALT that keeps managing what is ours while '
-                f'placing nothing new. Until then: cancel those orders at the venue, or set '
-                f'capital.exclusive_account=false.'
+                f'an order against what is actually its own: {refs}. The session STARTS and '
+                f'HOLDS its entries: it manages and closes what is its own and opens nothing '
+                f'new, because refusing to start would abandon its exposure at the venue. The '
+                f'hold lifts when those orders are gone, or when an operator lifts it at a '
+                f'start with --attended; or set capital.exclusive_account=false.'
             )
+            self._boot_premise_violation = BootPremiseViolation(
+                symbol=self._symbol, foreign_refs=unaccepted, accepted_refs=already_accepted,
+                detail=(f'{len(unaccepted)} order(s) of another owner rest on {self._symbol} '
+                        f'while the account is declared exclusive ({refs}) — cancel them at the '
+                        f'venue, or start with --attended and lift the hold'))
 
         return True
 

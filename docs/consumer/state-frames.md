@@ -81,11 +81,21 @@ worker and of the decision; and the memory the session's process held.
   the cadence's timeframe; `cadence_slot` names the period by its opening),
   `bar_close` (a bar the workers read closed; `closed_bars` names it by its opening), `order` (the
   decision sent an order; `order_id` names it) or `shutdown` (the session's last frame, at the state
-  its report describes).
+  its report describes; after a crash in the session's loop its `ticks_processed` is the count up to
+  the crash).
 - **null means not checked**, never a default: `feed_stale` is null when the session reads no
   signal, `reconcile_clean` when it runs no reconciliation — or none has reached the venue yet, or
   the latest could not — and `last_price` and `equity` before the first price.
 - `process_memory` is on every frame of a live session; a replayed session records it now and then.
+
+**Two drawdowns, two questions.** `account_drawdown_pct` is how far `equity` lies below the
+account's running peak, in percent of that peak — the same curve and the same peak the
+[portfolio](/api/v1/docs/portfolio)'s drawdown periods are measured against, the peak being raised by
+every tick, so a chart's underwater curve drawn from the frames agrees with them. A frame written at a
+new high before the session sampled it reads 0, and it is null where `equity` is, and before the
+account's first valuation. `safety_drawdown_pct` is the circuit breaker's reading: the decline against
+the baseline its configuration names, which can be a fixed starting value rather than the peak; null
+on a session without a breaker. The two differ by design and are never subtracted.
 
 ## How current it is — `age_s` and `recording`
 
@@ -125,7 +135,7 @@ writing it. That line is left out and the frame before it is served.
 | Status | `error` | meaning |
 |---|---|---|
 | 404 | `run_not_found` | no such run in the run index |
-| 404 | `state_frames_not_recorded` | the run records no state frames: a session from before they were recorded, one with the recording switched off, or a backtest |
+| 404 | `state_frames_not_recorded` | the run records no state frames: a session from before they were recorded, one with the recording switched off, or a backtest — whose frames are not served even where its scenario records them |
 | 404 | `state_frame_not_written_yet` | the session has opened its stream but not written its first frame yet — ask again after one cadence |
 | 409 | `artifact_unreadable` | the stream, or the end classification, exists but cannot be read |
 

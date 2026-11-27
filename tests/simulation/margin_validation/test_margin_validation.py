@@ -14,7 +14,7 @@ from typing import List
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.probe_metadata_types import ProbeMetadata
-from python.framework.types.process_data_types import ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessEventLoopResult
 from python.framework.types.trading_env_types.order_types import OrderAction, OrderStatus
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
 from tests.shared.shared_batch_health import TestBatchHealth
@@ -162,10 +162,10 @@ class TestExecutionStatistics:
     def test_trade_history_excludes_rejections(
         self,
         trade_history: List[TradeRecord],
-        tick_loop_results: ProcessTickLoopResult,
+        event_loop_results: ProcessEventLoopResult,
     ):
         """Trade history holds one record per executed close, and no rejected order."""
-        closes = [o for o in tick_loop_results.order_history
+        closes = [o for o in event_loop_results.order_history
                   if o.status is OrderStatus.EXECUTED and o.action is OrderAction.CLOSE]
         assert len(trade_history) == len(closes), (
             f'Trade history has {len(trade_history)} entries, '

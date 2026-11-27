@@ -34,6 +34,7 @@ from python.configuration.discoveries_config_loader import DiscoveriesConfigLoad
 from python.data_management.index.bars_index_manager import BarsIndexManager
 from python.framework.discoveries.discovery_cache_index import DiscoveryCacheIndex
 from python.framework.discoveries.volatility_profile_analyzer.volatility_profile_analyzer import (
+    VOLATILITY_METHOD_VERSION,
     VolatilityProfileAnalyzer,
 )
 from python.framework.logging.abstract_logger import AbstractLogger
@@ -58,7 +59,7 @@ vLog = get_global_logger()
 
 # Parquet column schema for VolatilityPeriod rows
 _PERIOD_COLUMNS = [
-    'start_time', 'end_time', 'session', 'atr', 'atr_percentile', 'regime',
+    'start_time', 'end_time', 'session', 'atr', 'atr_absolute', 'atr_percentile', 'regime',
     'tick_count', 'tick_density', 'activity', 'bar_count',
     'high', 'low', 'range_pips',
 ]
@@ -161,6 +162,9 @@ class VolatilityProfileAnalyzerCache:
         - The config section that PRODUCED it has changed (#486 finding 57) — this family
           writes `timeframe` into its own metadata from the CONFIG while keying staleness on a
           hard-coded GRANULARITY, so a config-level timeframe change was invisible to it
+        - It was measured by another method (#647). Kept out of the config fingerprint on
+          purpose: a generated profile records that fingerprint and checks itself against it,
+          and a new method that leaves its windows unchanged must not call it stale
         """
         cache_path = self._get_cache_path(broker_type, symbol)
         metadata = read_cache_metadata(cache_path)
@@ -168,6 +172,9 @@ class VolatilityProfileAnalyzerCache:
             return False
 
         if metadata.get('config_fingerprint') != self._live_config_fingerprint():
+            return False
+
+        if metadata.get('method_version') != VOLATILITY_METHOD_VERSION:
             return False
 
         cached_mtime = float(metadata.get('source_bar_mtime', '0'))
@@ -274,6 +281,7 @@ class VolatilityProfileAnalyzerCache:
                     'end_time': p.end_time,
                     'session': p.session.value,
                     'atr': float(p.atr),
+                    'atr_absolute': float(p.atr_absolute),
                     'atr_percentile': float(p.atr_percentile),
                     'regime': p.regime.value,
                     'tick_count': int(p.tick_count),
@@ -326,6 +334,7 @@ class VolatilityProfileAnalyzerCache:
                 b'source_bar_mtime': str(source_mtime).encode(),
                 b'generated_at': datetime.now(timezone.utc).isoformat().encode(),
                 b'config_fingerprint': self._get_current_config_fingerprint().encode(),
+                b'method_version': VOLATILITY_METHOD_VERSION.encode(),
             }
 
             table = pa.Table.from_pandas(df)
@@ -362,6 +371,7 @@ class VolatilityProfileAnalyzerCache:
                     end_time=row['end_time'].to_pydatetime(),
                     session=TradingSession(row['session']),
                     atr=float(row['atr']),
+                    atr_absolute=float(row['atr_absolute']),
                     atr_percentile=float(row['atr_percentile']),
                     regime=VolatilityRegime(row['regime']),
                     tick_count=int(row['tick_count']),

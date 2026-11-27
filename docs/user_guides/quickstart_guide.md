@@ -68,11 +68,12 @@ class RsiWorker(AbstractIndicatorWorker):
     
     def compute(
         self,
-        tick: TickData,
-        bar_history: Dict[str, List[Bar]],
-        current_bars: Dict[str, Bar],
+        tick: AlgoTick,
+        bar_history: Mapping[str, Tuple[Bar, ...]],
+        current_bars: Mapping[str, AlgoBar],
     ) -> WorkerResult:
-        """Called every tick - compute RSI value"""
+        """Called every tick - compute RSI value. The tick and the forming bars arrive as
+        read-only masks, the history as tuples of frozen bars (docs/user_guides/algo_masks.md)"""
         
         timeframe = list(self.periods.keys())[0]  # e.g., "M5"
         period = self.periods[timeframe]           # e.g., 14
@@ -175,6 +176,16 @@ class RsiWorker(AbstractIndicatorWorker):
 | `choices` | Allowed values for enum-style outputs (e.g., trend direction) |
 
 Workers return results via `WorkerResult(outputs={...})`. Decision Logics access values with `result.get_signal('key')`.
+
+### Drawing the Outputs on the Chart
+
+A worker can also show its outputs on a run's chart, as an indicator pane under the candles or on
+them — RSI in its own pane from 0 to 100 with lines at 30 and 70, Bollinger bands on the candles. It
+declares how in `get_indicator_series()`, beside the output schema, and writes no drawing code; a
+scenario set records the values with `execution_config.indicator_series.enabled`. The
+`indicator_series_test` scenario set draws the RSI, Bollinger and OBV of `CORE/simple_consensus`, and
+beside them `CORE/tide_and_wave` on two timeframes at once.
+How to declare one: [Drawing a Worker's Outputs](worker_naming_doc.md#drawing-a-workers-outputs).
 
 ---
 
@@ -325,7 +336,7 @@ class AggressiveTrend(AbstractDecisionLogic):
 
     def compute_tick(
         self,
-        tick: TickData,
+        tick: AlgoTick,
         worker_results: Dict[str, WorkerResult],
     ) -> Decision:
         """Generate trading decision from worker results"""
@@ -371,14 +382,16 @@ class AggressiveTrend(AbstractDecisionLogic):
     def _execute_decision_impl(
         self,
         decision: Decision,
-        tick: TickData
-    ) -> Optional[OrderResult]:
-        """Execute the trading decision"""
+        tick: AlgoTick
+    ) -> Optional[AlgoOrderResult]:
+        """Execute the trading decision — send_order's result is a read-only AlgoOrderResult
+        (docs/user_guides/algo_masks.md)"""
 
         if decision.action == DecisionLogicAction.FLAT:
             return None
 
-        # Check existing positions (one position only)
+        # Check existing positions (one position only) — each an AlgoPosition, read-only,
+        # its price and P&L current when read (docs/user_guides/algo_masks.md)
         open_positions = self.trading_api.get_open_positions()
 
         new_side = OrderSide.BUY if decision.action == DecisionLogicAction.BUY else OrderSide.SELL

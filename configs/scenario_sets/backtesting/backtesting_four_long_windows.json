@@ -1,0 +1,79 @@
+{
+  "version": "1.0",
+  "scenario_set_name": "backtesting_four_long_windows",
+  "run_purpose": "fixture",
+  "created": "2026-11-26T11:00:00+00:00",
+  "_comment": "The execution-heavy counterpart to backtesting_loadtest_40_scenarios.json, and built to differ from it in ONE thing: the shape. Same symbol, same venue, same decision logic and the same two workers, but four windows of a whole trading day instead of forty of a few hours. The two halves of a batch grow with different things - a batch prepares its data once, reading file after file, while its scenarios then execute at the same time - so forty short windows spend a large share of their wall time preparing and four long ones spend a small one. Which of the two a change helps is not answerable from one of them alone. Monday to Thursday of one week, so the four windows lie next to each other and no window meets the weekend.",
+  "global": {
+    "strategy_config": {
+      "decision_logic_type": "CORE/aggressive_trend",
+      "worker_instances": {
+        "rsi_fast": "CORE/rsi",
+        "bollinger_main": "CORE/bollinger"
+      },
+      "workers": {
+        "rsi_fast": {
+          "periods": {
+            "M5": 14
+          }
+        },
+        "bollinger_main": {
+          "periods": {
+            "M30": 20
+          },
+          "deviation": 2.0
+        }
+      },
+      "decision_logic_config": {
+        "rsi_buy_threshold": 35,
+        "rsi_sell_threshold": 65,
+        "min_confidence": 0.6
+      }
+    },
+    "execution_config": {},
+    "trade_simulator_config": {
+      "balances": {
+        "USD": 10000.0
+      }
+    },
+    "stress_test_config": {}
+  },
+  "scenarios": [
+    {
+      "scenario_name": "USDJPY_day_01",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2026-03-02T00:00:00+00:00",
+      "end_date": "2026-03-02T23:59:59+00:00",
+      "max_ticks": null,
+      "enabled": true
+    },
+    {
+      "scenario_name": "USDJPY_day_02",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2026-03-03T00:00:00+00:00",
+      "end_date": "2026-03-03T23:59:59+00:00",
+      "max_ticks": null,
+      "enabled": true
+    },
+    {
+      "scenario_name": "USDJPY_day_03",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2026-03-04T00:00:00+00:00",
+      "end_date": "2026-03-04T23:59:59+00:00",
+      "max_ticks": null,
+      "enabled": true
+    },
+    {
+      "scenario_name": "USDJPY_day_04",
+      "symbol": "USDJPY",
+      "data_broker_type": "mt5",
+      "start_date": "2026-03-05T00:00:00+00:00",
+      "end_date": "2026-03-05T23:59:59+00:00",
+      "max_ticks": null,
+      "enabled": true
+    }
+  ]
+}

@@ -30,7 +30,7 @@ def session_result():
     config = load_autotrader_config(MOCK_PROFILE)
     trader = AutotraderMain(config)
     result = trader.run()
-    run_dir = trader._run_dir
+    run_dir = trader.get_run_dir()
     yield result, run_dir
     remove_run_dir(run_dir)
 

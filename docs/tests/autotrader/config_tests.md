@@ -114,6 +114,7 @@ the session's loggers exist.
 | `test_the_header_written_at_the_start_holds_origin_and_identity` | `create_autotrader_loggers` writes both blocks into the header at the start, so a session killed before its close still says who started it and which code it ran |
 | `test_the_cli_declares_its_channel_and_allows_nothing_by_default` · `test_allow_dirty_is_carried_through` | The CLI declares `cli`; `--allow-dirty` reaches the session and is off unless typed |
 | `test_an_accepted_composite_change_reaches_the_header` · `test_accept_composite_change_is_carried_through` | #626 — the key given with `--accept-composite-change` reaches the session from the CLI and the header's `origin.accept_composite_change`, and is null unless typed |
+| `test_the_notes_declared_closed_reach_the_header` · `test_book_closed_externally_is_carried_through_and_repeatable` | #627 — the notes given with `--book-closed-externally`, repeatable, reach the session from the CLI and the header's `origin.book_closed_externally` as typed, and it is empty unless given |
 | `test_a_refused_run_directory_is_a_refusal_not_a_crash` | A run directory the operating system refuses ends the CLI with exit code 2 and the message that names the path and the cause, without a stack trace (#621) |
 | `test_a_stored_level_refuses_the_start_and_leaves_the_book_alone` | A carry-over still holding a stop or a target ends the real session as `STARTUP FAILED` with exit 2, no stack trace, and the book byte for byte as it was |
 | `test_an_untrusted_host_identity_is_a_refusal_not_a_crash` | A host identity file that cannot be trusted ends the CLI with exit code 2 and its own message, without a stack trace — the same shape as the other refusals |
@@ -138,6 +139,21 @@ anything, and these tests hold it to what construction then produces.
 | `test_the_same_profile_renders_the_same_document` | Rendering is deterministic and JSON-serialisable — the precondition for a content id |
 | `test_the_rendered_strategy_matches_the_constructed_components` | Over EVERY shipped mock profile: what the renderer records equals what `create_logic` / `create_workers_from_config` build — both go through the factories' one helper, and this is what notices a drift |
 | `test_a_parameter_that_moved_after_rendering_refuses_the_session` · `test_a_worker_the_record_does_not_name_refuses_the_session` | The startup check refuses, naming the parameter or the worker set — a record that misstates a real-money session is worse than none |
+
+### `test_config_registration_warning.py`
+
+The session registers its profile and freezes its rendered configuration in the run-config
+store before its header goes down. Both stay non-fatal, so a store that cannot be written costs
+the run its join keys and never its trading — but an empty id read afterwards cannot tell a
+failed store from one never asked, so the failure is said in the session's log at once.
+
+| Test | What it verifies |
+|---|---|
+| `test_a_profile_the_store_cannot_register_is_reported_with_its_cause` | An empty `config_id` comes with one warning naming the profile, the error and what is missing |
+| `test_a_rendered_configuration_the_store_cannot_freeze_is_reported_with_its_cause` | The same for `rendered_config_id`, the identity a backtest of the session's window reads |
+| `test_a_registration_that_succeeds_says_nothing` | A working store returns its ids and logs nothing |
+| `test_nothing_to_register_is_not_a_failure` | No profile path or no rendered document returns an empty id without a warning |
+| `test_a_held_run_config_index_costs_the_registration_never_the_start` | The store waits only the session's short bound for its index lock (#650); a holder past it costs both ids and a warning naming the holder, never the start |
 
 ### `test_uncommitted_code_guard.py` (#551)
 

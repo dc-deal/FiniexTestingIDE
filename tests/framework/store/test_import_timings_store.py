@@ -1,8 +1,9 @@
 """
 Import Timings Store Tests (#175)
 
-The measured step rates survive between imports as a moving average, a change of unit or
-worker count starts the average again, and an unusable file only costs the estimate.
+The measured step rates survive between imports as a moving average; a change of unit or
+worker count, or a measurement more than twice or under half the stored rate, starts it
+again, and an unusable file only costs the estimate.
 """
 
 import json
@@ -38,6 +39,21 @@ def test_second_measurement_is_averaged(tmp_path):
     rate = store.load()[ImportStepId.TICKS_INDEX]
     assert abs(rate.seconds_per_unit - 0.03) < 1e-9
     assert rate.samples == 2
+
+
+def test_a_measurement_far_off_starts_again(tmp_path):
+    """A step that became eight times faster (a cache rebuilt by new code) or ten times slower
+    takes the new measurement at once; averaging would hold the estimate back for imports."""
+    store = ImportTimingsStore(tmp_path / 'import_timings.json')
+    store.record({ImportStepId.CACHES: ImportStepRate(ImportRateUnit.BAR_FILE, 21.8)})
+    store.record({ImportStepId.CACHES: ImportStepRate(ImportRateUnit.BAR_FILE, 2.7)})
+    store.record({ImportStepId.PACKAGES_FETCH: ImportStepRate(ImportRateUnit.MB, 0.36)})
+    store.record({ImportStepId.PACKAGES_FETCH: ImportStepRate(ImportRateUnit.MB, 3.6)})
+
+    rates = store.load()
+    assert (rates[ImportStepId.CACHES].seconds_per_unit, rates[ImportStepId.CACHES].samples) == (2.7, 1)
+    assert (rates[ImportStepId.PACKAGES_FETCH].seconds_per_unit,
+            rates[ImportStepId.PACKAGES_FETCH].samples) == (3.6, 1)
 
 
 def test_a_new_worker_count_starts_again(tmp_path):

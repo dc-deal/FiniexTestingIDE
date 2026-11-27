@@ -4,9 +4,46 @@ Types for currency-grouped portfolio aggregation
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from python.framework.types.trading_env_types.broker_types import BrokerType
+
+
+@dataclass
+class DrawdownPeriod:
+    """
+    One drawdown period of the account's equity curve, from a peak until it is recovered (#529).
+
+    It opens with the first sample below the running peak and closes with the first sample back at
+    or above it; a new peak is the boundary, so two periods never share a fall. Its depth is the
+    deepest point below the peak it fell from — an amount, and a share of that peak, which is the
+    construction #497 uses for the deepest decline. The drawdown periods of established tools are
+    bounded the same way (pyfolio's worst drawdown periods); a continuous losing stretch is another
+    measure. The instants are on the run's own clock; one stays None where that clock was not set
+    yet — a session's run end before its first pass.
+
+    Args:
+        peak: The account value the period fell from
+        depth: How far below it the deepest sample lay, in account currency
+        depth_pct: That depth as a share of the peak, in percent; None where the peak was not above
+            zero, which leaves no share to take
+        started_at: The first sample below the peak, ISO-8601 UTC
+        trough_at: The deepest sample, ISO-8601 UTC
+        recovered_at: The first sample back at or above the peak, ISO-8601 UTC; None while the
+            period is still open
+        to_trough_s: Seconds from the first sample below the peak to the deepest one, on the run's
+            own clock; None where either instant is unknown
+        duration_s: Seconds from the first sample below the peak to the recovery; None while the
+            period is open, and where an instant is unknown or lies before the start
+    """
+    peak: float
+    depth: float
+    depth_pct: Optional[float]
+    started_at: Optional[str]
+    trough_at: Optional[str]
+    recovered_at: Optional[str] = None
+    to_trough_s: Optional[float] = None
+    duration_s: Optional[float] = None
 
 
 @dataclass
@@ -108,3 +145,6 @@ class PortfolioStats(BasePortfolioStats):
     # "since X · N sessions" from this; `drawdown_carried_from` is the handoff and walks
     # toward the present, so reading it as the start understates the span.
     drawdown_started_at: str = ''
+    # The five deepest drawdown periods of the same curve, deepest first by share of the peak, the
+    # one still open among them (#529). The first is the period whose depth `account_max_dd_pct` measures.
+    account_drawdown_periods: List[DrawdownPeriod] = field(default_factory=list)

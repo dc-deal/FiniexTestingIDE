@@ -81,6 +81,10 @@ _COVERED_ELSEWHERE = {
         'tests/autotrader/state_persistence/test_restored_state_record.py',
         'written only by a session whose logic keeps its state and finds a saved one; that test '
         'writes it into a run directory and holds it to the declaration'),
+    RunEntryMemberId.SCENARIO_WARMUP_HISTORY: (
+        'tests/framework/divergence_report/test_inputs_of_record_events.py',
+        "written only by a backtest that starts from a session's recorded warmup history; that "
+        'test runs one and holds its run directory to the declaration'),
     RunEntryMemberId.TICK_STREAM_EVENTS_DAY: (
         'tests/framework/reporting/test_run_stream_day_records.py',
         'a sealed day of the tick stream record, which only a session reading its ticks from a '
@@ -215,9 +219,9 @@ class TestARunThatStopsEarlyClosesClean:
         members = _closed_and_clean(census_session_refused_at_its_cold_start)
         assert members[RunEntryMemberId.ORDER_EVENTS][0] is MemberFootprintState.PRESENT
         assert members[RunEntryMemberId.STATE_FRAMES] == (
-            MemberFootprintState.SKIPPED, 'the session stopped before its tick loop')
+            MemberFootprintState.SKIPPED, 'the session stopped before its event loop')
         assert members[RunEntryMemberId.SESSION_DAY_LOG] == (
-            MemberFootprintState.SKIPPED, 'the session made no pass of its tick loop')
+            MemberFootprintState.SKIPPED, 'the session made no pass of its event loop')
 
     def test_a_session_aborted_before_its_order_record_skips_it(
             self, census_session_aborted_before_its_order_record):

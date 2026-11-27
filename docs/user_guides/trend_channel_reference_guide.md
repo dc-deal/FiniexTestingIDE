@@ -22,6 +22,7 @@ surface**:
 | **Multi-position** stacking | several concurrent positions on the symbol, each managed independently |
 | Resting-order **re-price / cancel** | the resting entry follows the band, and is cancelled if the trend gate flips |
 | **Cold-start answer** (#493) | `on_cold_start` — what to do when a restart finds one of its own orders still resting at the venue |
+| **Closing on the way out** (#642) | with `close_at_session_end` it closes what it holds from `on_session_end`, and hears how each close ended in `on_session_end_order_outcome` — a backtest settles such a close at its last quote, a session through the stop's second wait, which runs on a requested stop (a session whose input ran out reads it at its cleanup) |
 
 > **Who enforces what, if you run this on a live adapter.** The two RESTING ENTRIES are real orders at the
 > venue: `stop_breakout` places a Kraken `stop-loss` and `limit_pullback` a `limit`, so both
@@ -75,6 +76,7 @@ multi-symbol is a later milestone), so "multi-position" means several positions 
 | `lot_size` | `0.1` | Fixed entry size |
 | `min_entry_capital` | `0` | Capital floor before opening an entry, in account currency — the free quote balance at spot, free margin at margin. `0` disables it |
 | `write_strategy_files` | `false` | Keep the last submitted setup in the run as `strategy_files/last_setup.json` |
+| `close_at_session_end` | `false` | Close every open position from the session-end event, so the run ends flat — a backtest at its data end, a session on a requested stop. Off, an open position is left open and reported as open |
 
 The required workers (`CORE/ma_trend` H1, `CORE/bollinger` M15): keep `m15_channel` on the default
 `compute_basis: live` (it reads the live band position), and run `h1_trend` with

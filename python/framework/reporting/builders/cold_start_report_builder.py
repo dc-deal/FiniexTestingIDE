@@ -12,9 +12,10 @@ changes the VERDICT, never the record, so "the algo said it was fine" cannot loo
 "nothing was found" when somebody reads thirty restarts back.
 """
 
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from python.framework.types.api.report_types import (
+    ColdStartBootFillRow,
     ColdStartOrderRow,
     ColdStartPositionRow,
     ColdStartReport,
@@ -94,4 +95,42 @@ def build_cold_start_report_from_session(
         decision_logic_class=decision_logic_class,
         decision_logic_accounted_for=verdict.accounted_for if verdict is not None else None,
         decision_logic_note=verdict.note if verdict is not None else '',
+        **_boot_read_fields(situation),
     )
+
+
+def _boot_read_fields(situation: ColdStartSituation) -> Dict[str, Any]:
+    """
+    The boot read's part of the report (#652): its range, whether it completed, every fill it filed.
+
+    Args:
+        situation: What the boot step found at the venue
+
+    Returns:
+        The report fields; the unread defaults where the start read none
+    """
+    boot_read = situation.boot_read
+    if boot_read is None:
+        return {}
+    return {
+        'boot_read_done': True,
+        'boot_read_written_at': boot_read.written_at.isoformat(),
+        'boot_read_from': boot_read.read_from.isoformat(),
+        'boot_read_to': boot_read.read_to.isoformat(),
+        'boot_read_complete': boot_read.complete,
+        'boot_read_incomplete_reason': boot_read.incomplete_reason,
+        'boot_fills': [
+            ColdStartBootFillRow(
+                client_order_id=fill.client_order_id,
+                broker_ref=fill.broker_ref,
+                symbol=fill.symbol,
+                direction=fill.direction.value,
+                lots=fill.lots,
+                filled_lots=fill.filled_lots,
+                closed_at=fill.closed_at.isoformat() if fill.closed_at is not None else '',
+                fill_class=fill.fill_class.value,
+                reason=fill.reason,
+            )
+            for fill in boot_read.fills
+        ],
+    }

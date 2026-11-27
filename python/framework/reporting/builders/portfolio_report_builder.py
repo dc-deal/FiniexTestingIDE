@@ -9,11 +9,17 @@ The per-currency roll-up is derived from the rows via the shared `aggregate_port
 (one builder for both pipelines; mirrors the console `PortfolioAggregator` formulas).
 """
 
+from dataclasses import asdict
 from typing import Dict, List, Optional
 
+from python.framework.reporting.aggregation.aggregation_fold import fold_keyed
+from python.framework.reporting.aggregation.tables.portfolio_figure_table import (
+    FEE_SOURCE_FILLS_TABLE,
+)
 from python.framework.reporting.builders.report_aggregators import aggregate_portfolio_by_currency
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.types.api.report_types import (
+    DrawdownPeriodRow,
     FeeSourceFills,
     OpenPositionRow,
     PortfolioReport,
@@ -129,13 +135,14 @@ def equity_return_pct(row: PortfolioUnitRow) -> Optional[float]:
     return (row.final_equity - initial) / initial * 100
 
 
-def _usable_funds(stats: PortfolioStats) -> dict:
+def usable_funds(stats: PortfolioStats) -> dict:
     """
     What is left of each balance once this bot's own unfilled orders are counted (#489).
 
     Derived here rather than in a renderer: the same difference is read by the console, the
-    JSON artifact and the API, and three subtractions are three chances to disagree. Only
-    currencies with a claim appear — a balance nothing is holding needs no second number.
+    JSON artifact, the API and the post-run validators (a negative one is their advisory), and
+    each subtraction is a chance to disagree. Only currencies with a claim appear — a balance
+    nothing is holding needs no second number.
 
     Args:
         stats: The unit's portfolio stats, carrying the captured committed figure
@@ -167,15 +174,10 @@ def fill_fees_by_source(events: List[OrderEvent]) -> Dict[FeeSource, FeeSourceFi
         One entry per fee source that occurs, in the order FeeSource declares them; empty where
         nothing executed
     """
-    counts: Dict[FeeSource, int] = {}
-    fees: Dict[FeeSource, float] = {}
-    for event in events:
-        if event.fee_source is None:
-            continue
-        counts[event.fee_source] = counts.get(event.fee_source, 0) + 1
-        fees[event.fee_source] = fees.get(event.fee_source, 0.0) + (event.fee or 0.0)
-    return {source: FeeSourceFills(fill_count=counts[source], fill_fees=fees[source])
-            for source in FeeSource if source in counts}
+    executed = [event for event in events if event.fee_source is not None]
+    folded = dict(fold_keyed(executed, FEE_SOURCE_FILLS_TABLE))
+    return {source: FeeSourceFills(**folded[(source,)])
+            for source in FeeSource if (source,) in folded}
 
 
 def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
@@ -200,6 +202,9 @@ def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
         drawdown_carried_from=stats.drawdown_carried_from,
         drawdown_restarts=stats.drawdown_restarts,
         drawdown_started_at=stats.drawdown_started_at,
+        account_drawdown_periods=[
+            DrawdownPeriodRow(rank=rank, **asdict(period))
+            for rank, period in enumerate(stats.account_drawdown_periods, start=1)],
         total_fees=stats.total_fees,
         fees_charged=stats.fees_charged,
         data_broker_type=unit.data_broker_type,
@@ -223,7 +228,7 @@ def _to_unit_row(unit: RunUnit) -> PortfolioUnitRow:
         balances=stats.balances,
         initial_balances=stats.initial_balances,
         committed_funds=dict(stats.committed_funds),
-        usable_funds=_usable_funds(stats),
+        usable_funds=usable_funds(stats),
         last_price=stats.last_price,
         base_currency=stats.base_currency,
         quote_currency=stats.quote_currency,

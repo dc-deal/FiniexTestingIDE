@@ -17,22 +17,25 @@ Architecture:
             - SeededDelayGenerator for deterministic ms delays
             - submit_open_order() → store with calculated broker_fill_msc
             - submit_close_order() → store with calculated broker_fill_msc
-            - process_tick() → return orders whose delay has elapsed
+            - process_up_to_msc() → return orders whose delay has elapsed by an instant
 
 Design Philosophy:
 Fill timing uses inbound latency only (order → broker). The fill price is
 determined at broker_fill_msc = placed_at_msc + inbound_delay. This matches
 the approach of established frameworks (QuantConnect, Backtrader, Zipline).
 
-Delays are in milliseconds, fill detection uses tick timestamps
-(collected_msc or time_msc).
+Delays are in milliseconds, counted from the instant an order is sent in and compared with the
+instant being resolved, both on the arrival axis (#460).
 """
 
-import logging
+from datetime import datetime
 from typing import Dict, List, Optional
 
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.trading_env.abstract_pending_order_manager import AbstractPendingOrderManager
+from python.framework.types.config_types.backtesting_config_types import (
+    inbound_latency_range_problem,
+)
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.portfolio_types.portfolio_trade_record_types import CloseReason
 from python.framework.types.trading_env_types.latency_simulator_types import (
@@ -48,10 +51,6 @@ from python.framework.types.trading_env_types.order_types import (
 from python.framework.types.trading_env_types.submission_metadata_types import SubmissionMetadata
 from python.framework.utils.seeded_generators.seeded_delay_generator import SeededDelayGenerator
 
-# Module-level flag for one-time fallback warning
-_fallback_warned = False
-
-
 # ============================================
 # Simulation Latency Manager
 # ============================================
@@ -62,7 +61,7 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
 
     Extends AbstractPendingOrderManager with simulation-specific logic:
     - Seeded delay generators for API latency + market execution (ms)
-    - Timestamp-based fill detection (process_tick compares tick msc)
+    - Timestamp-based fill detection (process_up_to_msc compares an instant's msc)
 
     Inherited from AbstractPendingOrderManager:
     - Pending order storage (_pending_orders dict)
@@ -103,6 +102,12 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
                 f"using default: {DEFAULT_INBOUND_LATENCY_SEED}"
             )
 
+        # The configuration refuses such a range before a run starts; built here directly, the
+        # simulator refuses it too (#460)
+        problem = inbound_latency_range_problem(inbound_latency_min_ms, inbound_latency_max_ms)
+        if problem is not None:
+            raise ValueError(problem)
+
         # Create delay generator (ms-based)
         # Inbound latency: order reaches broker
         self._inbound_delay_gen = SeededDelayGenerator(
@@ -110,36 +115,6 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
             min_delay=inbound_latency_min_ms,
             max_delay=inbound_latency_max_ms
         )
-
-    # ============================================
-    # Timestamp Extraction
-    # ============================================
-
-    @staticmethod
-    def _get_tick_msc(tick: TickData) -> int:
-        """
-        Extract millisecond timestamp from tick.
-
-        Prefers collected_msc (device-side, monotonic) over time_msc (broker-side).
-
-        Args:
-            tick: Current tick data
-
-        Returns:
-            Millisecond timestamp
-        """
-        global _fallback_warned
-
-        if tick.collected_msc > 0:
-            return tick.collected_msc
-
-        if not _fallback_warned:
-            logging.getLogger(__name__).warning(
-                '⚠️ collected_msc=0 — falling back to time_msc for latency timing'
-            )
-            _fallback_warned = True
-
-        return tick.time_msc
 
     # ============================================
     # Simulation-Specific: Submit with Delay
@@ -150,6 +125,8 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         order_id: str,
         request: OpenOrderRequest,
         tick: TickData,
+        placed_msc: int,
+        placed_at: datetime,
     ) -> str:
         """
         Submit OPEN order for execution with delay.
@@ -160,12 +137,15 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         Args:
             order_id: Unique order identifier
             request: OpenOrderRequest with all order parameters
-            tick: Current tick data (for timestamp extraction)
+            tick: The last tick the sender saw, for the submission's price and venue time
+            placed_msc: The instant the order is sent at, on the axis due times are timed on —
+                the backtest's arrival axis (#460); the due time is this plus the drawn delay
+            placed_at: The same instant on the canonical clock, the order's entry time
 
         Returns:
             order_id: Same as input (for chaining)
         """
-        current_msc = self._get_tick_msc(tick)
+        current_msc = placed_msc
 
         # Generate delay (ms)
         inbound_delay = self._inbound_delay_gen.next()
@@ -206,7 +186,7 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
             direction=request.direction,
             lots=request.lots,
             entry_price=entry_price,
-            entry_time=tick.timestamp,
+            entry_time=placed_at,
             order_kwargs=order_kwargs,
             submission=SubmissionMetadata(
                 tick_mid_price=tick.mid,
@@ -231,6 +211,7 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         self,
         position_id: str,
         tick: TickData,
+        placed_msc: int,
         symbol: Optional[str] = None,
         close_lots: Optional[float] = None,
         close_reason: Optional[CloseReason] = None,
@@ -244,7 +225,8 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
 
         Args:
             position_id: Position to close
-            tick: Current tick data (for timestamp extraction)
+            tick: The last tick the sender saw, for the submission's price and venue time
+            placed_msc: The instant the close is sent at, on the axis due times are timed on (#460)
             symbol: The position's symbol — carried on the order, so what it ends with still
                 names its instrument once the position is gone (#362)
             close_lots: Lots to close (None = close all)
@@ -257,7 +239,7 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
         Returns:
             position_id: Same as input (for chaining)
         """
-        current_msc = self._get_tick_msc(tick)
+        current_msc = placed_msc
 
         # Generate delay (same system as open orders)
         inbound_delay = self._inbound_delay_gen.next()
@@ -300,35 +282,21 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
     # Simulation-Specific: Timestamp-Based Fill Detection
     # ============================================
 
-    def process_tick(self, tick: TickData) -> List[PendingOrder]:
-        """
-        Process current tick and return orders ready to fill.
-
-        Checks all pending orders and returns those whose
-        broker_fill_msc has been reached or passed by the current tick timestamp.
-
-        Args:
-            tick: Current tick data
-
-        Returns:
-            List of PendingOrder objects ready to be filled
-        """
-        return self.process_up_to_msc(self._get_tick_msc(tick))
-
     def process_up_to_msc(self, current_msc: int) -> List[PendingOrder]:
         """
         Resolve and return orders whose broker_fill_msc is at or before current_msc.
 
-        Tick-independent variant of process_tick: keyed on an explicit simulated
-        timestamp so the AutoTrader/sim heartbeat (#360 ghost-pass) can resolve
-        fills that land BETWEEN two replayed data ticks, not only on a tick.
+        Keyed on an explicit instant, so the backtest's timeline driver (#460) resolves a fill at
+        the instant it comes due — between two replayed data ticks too, not only on a tick.
 
         Args:
-            current_msc: Simulated wall-clock in ms to resolve against
+            current_msc: The instant to resolve against, on the arrival axis
 
         Returns:
             List of PendingOrder objects ready to be filled
         """
+        if not self._pending_orders:
+            return []
         to_fill = []
         to_remove = []
 
@@ -351,3 +319,18 @@ class OrderLatencySimulator(AbstractPendingOrderManager):
             self.remove_order(order_id)
 
         return to_fill
+
+    def peek_next_due_msc(self) -> Optional[int]:
+        """
+        When the next pending order comes due, resolving nothing (#457).
+
+        So a timeline can ask when the next fill lands without reading this simulator's state.
+        The instant lies on the arrival axis the backtest orders by (#460): the instant an order was
+        sent at, plus its delay.
+
+        Returns:
+            The earliest `broker_fill_msc` among the pending orders, or None when none is pending
+        """
+        if not self._pending_orders:
+            return None
+        return min(pending.timing.broker_fill_msc for pending in self._pending_orders.values())

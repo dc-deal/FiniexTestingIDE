@@ -45,7 +45,9 @@ the session in a live run — and it is the join into every other section.
 | `duration_s` | how long it was open, in seconds |
 | `entry_type` | how the position was opened — `market`, `limit`, `stop`, `stop_limit` |
 | `entry_side` · `exit_side` | `buy` or `sell` — what each end actually did |
-| `entry_tick_index` · `exit_tick_index` | the chronological sort key within the unit |
+| `entry_tick_index` · `exit_tick_index` | the chronological sort key within the unit. `entry_tick_index` is null on a trade whose position a session restored at boot: it opened in another session, and the closing session counts its ticks from zero again |
+| `exit_observed` | whether the bot saw the trade's exit — `false` only for `close_reason: closed_externally`, whose exit price, gross P&L and fees are then not measurements (see below); `true` on every other trade and on a row recorded before contract 63 |
+| `duration_ticks` | how many ticks of its unit the trade was open: `exit_tick_index` less `entry_tick_index`; null where there is no entry index, and on a run recorded before contract 53, where such a row still carries the opening session's index, wherever the exit lies before it. `duration_s` holds for every trade |
 | `stop_loss` · `take_profit` | the levels in force when this row's close was booked — after any move, not the levels at entry; null where none was |
 | `currency` | the account currency every money figure on the row is in |
 | `close_type` | `full` or `partial` — whether this row closed all of the position or part of it |
@@ -109,7 +111,8 @@ submission, signed so that **a value above zero means worse than that price**.
 **A stop-loss or take-profit exit is measured against the level that fired instead** — its
 `exit_slippage` and its `exit_slippage_pct`, the percent a share of the level
 (`exit_slippage_measured_against: "protective_level"`, otherwise `"submission_mid"`), and
-`exit_level` names it. A backtest fills a level the position carries AT the level, so it reads 0; a
+`exit_level` names it. A backtest fills a stop-loss in the tick that breaches it, at that tick's
+market, so it reads what a gap cost and 0 on a touch, and a take-profit at its level, so it reads 0; a
 level the strategy keeps itself is a close it sends once the market has reached the level, so it
 fills at the next price and reads what that cost, as a live session does. That level is on no
 position, so `stop_loss` and `take_profit` are null and `exit_level` is the only place it is read.
@@ -166,6 +169,13 @@ A fourth value, `scenario_end`, exists and no run produces it today. It used to 
 force close, which was removed because in a live session it never reached the venue and in a
 backtest it invented an exit the strategy never chose.
 
+**`closed_externally`** is a spot position whose holding an operator sold outside the bot — by hand
+at the venue while the bot was down — booked when a start was told so and the venue's balances
+confirmed it. The bot never saw that exit, so the row carries `exit_observed: false`: its exit price
+is the entry price, its gross P&L zero by construction, its fees the entry's, and no execution or
+slippage is attached to its exit. The sale's real price and fee are in no record of the bot. Such a
+row counts in every figure like any close; `external_closes` counts them apart.
+
 ## The filters, and what follows them
 
 Four query parameters narrow the list: `symbol`, `close_reason`, `start` and `end`.
@@ -196,7 +206,12 @@ entry names its `currency` and the `trade_count` it covers.
 | `avg_mfe_losers` | mean favourable excursion on losers — the "left on the table" read |
 | `largest_mae` · `largest_mfe` | the single worst and best excursion, as a P&L magnitude |
 | `avg_trade_duration_s` | mean holding time in seconds |
+| `avg_trade_duration_ticks` · `min_trade_duration_ticks` · `max_trade_duration_ticks` | the holding time in the unit's ticks, from each row's `duration_ticks`; 0 over no trade |
+| `long_trades` · `short_trades` | the trades by direction |
+| `winning_trades` · `losing_trades` | net P&L above and below zero — a trade that realised nothing is neither |
+| `sl_closes` · `tp_closes` · `scenario_end_closes` · `external_closes` · `manual_closes` | the trades by `close_reason` (`external_closes` counts `closed_externally`); `manual_closes` is every trade the other four do not name. Before contract 63 a close outside the bot did not exist, so no older total is affected |
 | `gross_pnl` · `net_pnl` · `total_fees` | sums over the group |
+| `avg_gross_pnl` · `avg_fees` · `avg_net_pnl` | those sums per trade |
 | `max_consecutive_wins` · `max_consecutive_losses` | the longest unbroken run, in realisation order |
 
 `avg_win_r` and `avg_loss_r` are **null when not measured, never `0.0`** — a measured zero and an

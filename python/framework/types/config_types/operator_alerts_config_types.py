@@ -2,7 +2,7 @@
 FiniexTestingIDE - Operator Alerts Configuration Types
 
 `app_config.json::autotrader.operator_alerts` (#235): the session's two out-of-band channels to its
-operator. Telegram carries what happened; the liveness ping proves the tick loop is still
+operator. Telegram carries what happened; the liveness ping proves the event loop is still
 passing, so that its ABSENCE can raise the alarm a dead process cannot send itself. Both are off
 by default, and both read their secrets through the credentials cascade — the ping URL is itself
 a secret, because whoever holds it can fake a liveness ping.
@@ -118,7 +118,7 @@ class TelegramAlertsConfig(StrictConfigModel):
 
 class LivenessPingConfig(StrictConfigModel):
     """
-    The liveness ping — an outward sign that the tick loop is still passing.
+    The liveness ping — an outward sign that the event loop is still passing.
 
     A monitoring service (healthchecks.io and its kin) expects a ping every period and raises
     the alarm when one is missing. The ping goes out only while the loop has passed recently,
@@ -133,7 +133,7 @@ class LivenessPingConfig(StrictConfigModel):
             pinging one check would each vouch for the other's hung loop
         interval_s: Time between two pings — also the retry cadence: a failed ping is not
             repeated, the next one is due anyway
-        loop_stall_after_s: How long the tick loop may go without a pass before the pings stop —
+        loop_stall_after_s: How long the event loop may go without a pass before the pings stop —
             and, with the ping off and Telegram on, before the operator is told the loop stalled
         liveness_stamp_file: Optional file the pinger rewrites with the UTC time of each ping, for
             a local watcher; empty writes none

@@ -18,6 +18,7 @@ from python.framework.types.config_types.robustness_config_types import (
     RobustnessRole,
 )
 from python.framework.types.data_deficiency_types import DataDeficiency
+from python.framework.types.market_types.warmup_history_types import WarmupHistoryRecord
 from python.framework.types.run_purpose_types import RunPurpose
 from python.framework.types.scenario_types.window_set_types import WindowSet
 from python.framework.types.spread_estimate_types import ModelledSpreadSummary
@@ -58,6 +59,21 @@ class SingleScenario:
     # pipeline_id (e.g. 'crypto_sentiment'); symbol reuses `symbol` above.
     # Empty = scenario has no SIGNAL worker input.
     data_sentiment_type: str = ''
+
+    # ============================================
+    # RECORDED INPUTS (OPTIONAL, #512)
+    # ============================================
+    # A backtest of a session's window reads what the session started with instead of what
+    # the archive and the configuration files hold today: the run whose recorded warmup
+    # history it starts from, and the frozen broker configuration document the session
+    # traded with (its `broker_config_id`). Empty = the archive's warmup selection and the
+    # broker's configuration file, as for every other backtest.
+    warmup_from_run: str = ''
+    broker_config_document: str = ''
+    # What the two name, read by the loader before any process starts — the scenario process and
+    # the batch's preparation never read a store for them
+    warmup_record: Optional[WarmupHistoryRecord] = None
+    broker_config_document_content: Optional[Dict[str, Any]] = None
 
     # ============================================
     # STRATEGY PARAMETERS
@@ -102,6 +118,10 @@ class SingleScenario:
     # run on purpose: one set spans symbols, brokers and windows, so a run-level answer would
     # be an aggregate over things that do not share one — and an aggregate is not a description.
     data_format_versions: List[str] = field(default_factory=list)
+    # The server clock rule each of those TICK files' times were converted with (#562), in the
+    # order of `data_format_versions` — a signal file has no such rule. None where the file's
+    # header states none (imported before the rule was written down).
+    server_clock_rules: List[Optional[str]] = field(default_factory=list)
     origin_classes: List[str] = field(default_factory=list)
     origin_evidence_grades: List[str] = field(default_factory=list)
     # What each of those files LACKS (#561), in the same order as `origin_classes` — the tick

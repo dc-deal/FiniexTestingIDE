@@ -17,7 +17,6 @@ from typing import Any, Dict, List
 
 import pytest
 
-from python.configuration.app_config_manager import AppConfigManager
 from python.framework.constants.currency_constants import (
     format_currency_signed,
     format_currency_simple,
@@ -29,6 +28,7 @@ from python.framework.reporting.console.portfolio_summary import PortfolioSummar
 from python.framework.reporting.console.sim_executive_summary import SimExecutiveSummary
 from python.framework.types.api.report_types import (
     AggregatedPortfolioReport,
+    DrawdownPeriodRow,
     ExecutionStatsReport,
     ExecutionStatsTotals,
     FeeSourceFills,
@@ -173,7 +173,7 @@ def _render_executive(units: List[PortfolioUnitRow]) -> str:
         The printed text, colours stripped
     """
     executive = SimExecutiveSummary(
-        app_config=AppConfigManager(), run_summary=RunSummary(run_id=_RUN_ID, currencies=[]),
+        run_summary=RunSummary(run_id=_RUN_ID, currencies=[]),
         run_meta_report=RunMetaReport(run_id=_RUN_ID),
         profiling_report=ProfilingReport(run_id=_RUN_ID, units=[]),
         scenario_details_report=ScenarioDetailsReport(run_id=_RUN_ID, units=[]),
@@ -361,3 +361,40 @@ class TestASignedFigureKeepsItsSign:
         assert _line(charge, 'Spread Cost:').startswith('Spread Cost:        -€1,50')
         assert _line(charge, 'Taker Fee:') == 'Taker Fee:          -€0,40'
         assert _line(charge, 'Maker Fee:') == 'Maker Fee:          €0,00'
+
+
+class TestTheDeepestDrawdownPeriods:
+    """A unit's deepest drawdown periods, one line each under its drawdown line (#529)."""
+
+    @_ACCOUNT_MODELS
+    def test_each_period_is_one_line_with_its_span_and_its_recovery(self, spot_mode):
+        periods = [
+            DrawdownPeriodRow(rank=1, peak=10_388.10, depth=1_184.20, depth_pct=11.4,
+                              started_at='2026-12-03T14:02:11+00:00',
+                              trough_at='2026-12-04T09:41:03+00:00',
+                              to_trough_s=70_732.0),
+            DrawdownPeriodRow(rank=2, peak=10_290.00, depth=1_121.50, depth_pct=10.9,
+                              started_at='2026-12-11T08:15:00+00:00',
+                              trough_at='2026-12-11T16:30:00+00:00',
+                              recovered_at='2026-12-14T10:05:00+00:00',
+                              to_trough_s=29_700.0, duration_s=265_800.0),
+        ]
+        lines = _lines(_render_unit(_unit(spot_mode, account_drawdown_periods=periods)))
+
+        start = lines.index('↳ deepest drawdown periods:')
+        assert lines[start + 1] == ('1   -11.4%  -$1,184.20 from +$10,388.10 · '
+                                    '2026-12-03 14:02 → 2026-12-04 09:41 (19h 38m) · '
+                                    'still open')
+        assert lines[start + 2] == ('2   -10.9%  -$1,121.50 from +$10,290.00 · '
+                                    '2026-12-11 08:15 → 2026-12-11 16:30 (8h 15m) · '
+                                    'recovered 2026-12-14 10:05 (73h 50m)')
+
+    def test_an_instant_nobody_recorded_prints_a_dash(self):
+        period = DrawdownPeriodRow(rank=1, peak=100.0, depth=5.0, depth_pct=5.0,
+                                   started_at=None, trough_at=None)
+        output = _render_unit(_unit(False, account_drawdown_periods=[period]))
+
+        assert '— → — · still open' in output
+
+    def test_a_unit_that_never_fell_prints_no_list(self):
+        assert 'deepest drawdown periods' not in _render_unit(_unit(False))

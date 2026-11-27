@@ -140,7 +140,7 @@ output in every backtest, so it is its own decision.
 
 ## `test_scalar_series_parity.py` — the promise that keeps one definition one
 
-Every indicator exists twice: a scalar form for the tick loop and a series form for the
+Every indicator exists twice: a scalar form for the event loop and a series form for the
 analysis plane. That is not a convenience — forcing either onto the other puts pandas inside
 the per-tick path or a Python loop across hundreds of thousands of rows.
 

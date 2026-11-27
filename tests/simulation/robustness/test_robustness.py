@@ -23,7 +23,7 @@ from python.framework.types.config_types.robustness_config_types import (
     RobustnessRole,
 )
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessResult, ProcessEventLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.validators.post_run_validator import PostRunValidator
@@ -79,7 +79,7 @@ def _result(name: str, idx: int, net: float, edge: dict = None) -> ProcessResult
     edge = edge or {}
     return ProcessResult(
         success=True, scenario_name=name, scenario_index=idx,
-        tick_loop_results=ProcessTickLoopResult(
+        event_loop_results=ProcessEventLoopResult(
             portfolio_stats=_stats(net),
             open_positions=make_open_positions(
                 edge.get('open_trades', 0), edge.get('open_pnl', 0.0)),
@@ -139,7 +139,7 @@ def _equity_result(name: str, idx: int, end_equity: float, spot_mode: bool) -> P
         stats = replace(stats, current_balance=1000.0, unrealized_pnl=held)
     return ProcessResult(
         success=True, scenario_name=name, scenario_index=idx,
-        tick_loop_results=ProcessTickLoopResult(
+        event_loop_results=ProcessEventLoopResult(
             portfolio_stats=stats, open_positions=make_open_positions(1, held)))
 
 

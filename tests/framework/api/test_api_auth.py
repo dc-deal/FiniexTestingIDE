@@ -352,6 +352,8 @@ class TestTheAppLevelRoutesAreADecision:
       nothing about market data.
     - `/validation-checks` is OPEN for the same reason: what a check id means is the app's own
       declaration, not data.
+    - `/drawing-types` is OPEN for the same reason: what a served drawing's fields mean is the
+      app's own declaration, not data (#379).
     - `/brokers` needs a `brokers` grant (contract 35). Which venues this installation holds
       data for is something it holds; the list has no path parameter, so any grant on the
       surface reaches it.
@@ -367,6 +369,11 @@ class TestTheAppLevelRoutesAreADecision:
         """What a `check` id means is the app's own declaration, like the timeframes."""
         client = _client(_token(token='t-any', grants=['bars:*'], note='c'))
         assert client.get('/api/v1/validation-checks').status_code == 200
+
+    def test_the_drawing_vocabulary_is_open(self):
+        """What a served drawing's fields mean is the app's own declaration, like the timeframes."""
+        client = _client(_token(token='t-any', grants=['bars:*'], note='c'))
+        assert client.get('/api/v1/drawing-types').status_code == 200
 
     def test_the_broker_list_requires_a_token(self):
         client = _client(_token(token='t-any', grants=['bars:*'], note='c'))

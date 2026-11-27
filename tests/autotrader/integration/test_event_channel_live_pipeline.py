@@ -31,7 +31,7 @@ def session():
     trader = AutotraderMain(config)
     result = trader.run()
     received = trader._decision_logic.get_received_event_log()
-    run_dir = trader._run_dir
+    run_dir = trader.get_run_dir()
     yield result, received
     remove_run_dir(run_dir)
 

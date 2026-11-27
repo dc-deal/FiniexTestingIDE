@@ -9,6 +9,10 @@ it is finished. World 1 holds orders **in flight**; Worlds 2 and 3 hold **restin
 stops. On the live execution stack a limit or stop enters its world at submit and is in flight
 there until the venue acknowledges it.
 
+In a backtest an order stays in World 1 for a latency drawn from the configured range, at least
+1 ms — why at least 1 ms, and what other backtesters assume, is *An order's latency* in the
+[Configuration Cascade Guide](../config_cascade_guide.md).
+
 > **Execution layer foundation:** see [architecture_execution_layer.md](architecture_execution_layer.md)
 > **Live execution specifics:** see [live_execution_architecture.md](live_execution_architecture.md)
 
@@ -101,9 +105,11 @@ New fields land in their sub-type — no further widening of the parent surface.
 
 **Simulation:** `OrderLatencySimulator` extends `AbstractPendingOrderManager`. Uses
 `SeededDelayGenerator` (`utils/seeded_generators/`) to assign a deterministic `broker_fill_msc`
-(millisecond timestamp) to each order. On each tick, `process_tick()` compares the tick's
-`collected_msc` (or `time_msc` fallback) against `broker_fill_msc` and returns orders whose inbound
-latency has elapsed. See
+(millisecond timestamp) to each order: the instant the order is sent in (`placed_msc`, on the
+arrival axis the backtest orders by) plus the delay drawn for it. The backtest's timeline places an
+instant at the next due time (`peek_next_due_msc`), between two ticks if need be, and
+`resolve_due` fills what is due once per instant, through `process_up_to_msc`, at the prices of
+the last tick (#460). See
 [Design Decision: Inbound-Only Fill Timing](#design-decision-inbound-only-fill-timing) below.
 
 **Live:** `LiveRequestProcessor` extends `AbstractPendingOrderManager`. Tracks orders by `broker_ref` (O(1) lookup). Fill/rejection arrives via broker polling, not tick counting.
@@ -132,9 +138,16 @@ latency has elapsed. See
 - Pure LIMIT orders that weren't immediately fillable after latency
 - Converted STOP_LIMIT orders (flagged with `order_kwargs["_from_stop_limit"] = True`)
 
-**Trigger logic (checked every tick in Phase 2 of `_process_pending_orders`):**
+**Trigger logic (checked against every tick, `_monitor_price_triggers`):**
 - LONG: `ask <= limit_price` — price dropped to limit, favorable entry
 - SHORT: `bid >= limit_price` — price rose to limit, favorable entry
+- And on a venue whose `limit_fill_evidence` is `public_trade` (Kraken): a public trade THROUGH the
+  limit fills it too — LONG `last < limit_price`, SHORT `last > limit_price` — while the quote may
+  still stand away. A trade only at the limit does not. A tick with no traded price is judged on the
+  quote, a tick whose quote is its trade (bid = ask) on the trade alone. The trade counts only for a
+  limit already resting: the check on arrival and a stop-limit's
+  conversion read the quote alone. The venue's rule:
+  [market model](market_model.md#when-a-stop-fires-and-a-resting-limit-is-met)
 
 **Fill behavior:**
 - Fill at `limit_price` (not current tick — guaranteed fill at requested price)
@@ -162,9 +175,12 @@ price. Shadow state correctness depends on #151 (Reconciliation).
 - STOP orders waiting for breakout trigger
 - STOP_LIMIT orders waiting for stop trigger (then convert to limit)
 
-**Trigger logic (checked every tick in Phase 3 of `_process_pending_orders`):**
+**Trigger logic (checked against every tick, after the limits, `_monitor_price_triggers`):**
 - LONG: `ask >= stop_price` — breakout upward, enter long
 - SHORT: `bid <= stop_price` — breakout downward, enter short
+- On a venue whose `stop_trigger_basis` is `last` (Kraken) the last traded price decides instead —
+  LONG `last >= stop_price`, SHORT `last <= stop_price` — wherever the tick carries one. A triggered
+  STOP_LIMIT's limit is judged on the quote at the instant it is placed, as a taker
 
 **Fill behavior by order type:**
 
@@ -489,25 +505,38 @@ At scenario end, `finish_remaining_orders()` handles all three worlds:
 
 ---
 
-## Three-Phase Processing Order
+## The Order Inside an Instant
 
-`_process_pending_orders()` runs on every tick, in strict order:
+A backtest's simulator works in the order of an instant of its timeline (#460) — whether the
+instant holds a slice of ticks, a due time or a timer, and for a tick handed to `on_tick` on its
+own:
 
 ```
-Phase 1: Latency drain      → process_tick() returns elapsed orders
-                              → dispatch by order_type (fill / queue)
+1. Scheduled        → resolve_scheduled(): modifies and cancels due by now apply,
+                      so a cancelled order does not fill in this instant
 
-Phase 2: Limit monitoring   → iterate _active_limit_orders
-                              → check _is_limit_price_reached()
-                              → fill triggered orders, keep others
+2. Each tick        → apply_tick(): the prices move, then
+                      Limit monitoring → iterate _active_limit_orders
+                                       → check _is_limit_price_reached()
+                                       → fill triggered orders, keep others
+                      Stop monitoring  → iterate _active_stop_orders
+                                       → check _is_stop_price_reached()
+                                       → STOP: fill at market
+                                       → STOP_LIMIT: _convert_stop_limit_to_limit()
+                      and the levels positions carry (SL/TP)
 
-Phase 3: Stop monitoring    → iterate _active_stop_orders
-                              → check _is_stop_price_reached()
-                              → STOP: fill at market
-                              → STOP_LIMIT: _convert_stop_limit_to_limit()
+3. Latency drain    → resolve_due(): process_up_to_msc() returns what came due by now
+                                       → dispatch by order_type (fill / rest), at the
+                                         last tick's prices
 ```
 
-**Order matters:** A STOP_LIMIT order can exit World 3 (Phase 3) and enter World 2 in the same tick. It will be checked by Phase 2 on the *next* tick (or immediately during conversion if limit price already reached).
+**Order matters:** A STOP_LIMIT order can exit World 3 and enter World 2 at one tick. It is
+checked as a limit from the next tick on (or immediately during conversion if the limit price is
+already reached). An order the latency drain brings in is checked against the resting triggers and
+its levels from the next tick on.
+
+A live session processes its pending orders in `_process_pending_orders()` on every pass: the
+broker's answers drain from the executor's inbox and the active orders are polled.
 
 ---
 

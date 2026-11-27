@@ -45,6 +45,7 @@ No guessing: each event delivers one typed payload to one hook.
 | `PARTIAL_CLOSE` | `PartialCloseEvent` — position_id, direction, closed_lots, remaining_lots, fill_price, result | `on_partial_close` |
 | `POSITION_CLOSED` | `PositionClosedEvent` — position_id, direction, close_reason, fill_price, lots | `on_position_closed` |
 | `SESSION_END` | `SessionEndEvent` — reason, severity | `on_session_end` |
+| `SESSION_END_ORDER_OUTCOME` | `SessionEndOrderOutcomeEvent` — order_id, position_id, status, result: how an order the logic sent from `on_session_end` ended — `executed`, `rejected`, `undelivered`, `unaccounted`, `cancelled` (withdrawn) or `expired`. Delivered once, after the session-end event; an order sent from this hook is withdrawn, never sent (#642) | `on_session_end_order_outcome` |
 
 Every payload also carries `tick_time` — the canonical clock: sim time in backtests; in an
 AutoTrader session the tick time, advanced by the wall clock between ticks.
@@ -71,12 +72,12 @@ it closes, and on a rejected or unaccounted close it is None once that position 
    POSITION_CLOSED ────┘                                                  │
                                                                           ▼
                                           ┌────────────────────────────────────┐
-   SESSION_END (tick loop) ──────────────►│  DecisionEventDispatcher             │
+   SESSION_END (event loop) ──────────────►│  DecisionEventDispatcher             │
                                           │   submit(event)  → filter + buffer   │
                                           │   drain()        → FIFO → on_* hooks │
                                           └────────────────────────────────────┘
                                                           ▲
-                                                          │ drain() at the tick-loop boundary
+                                                          │ drain() at the event-loop boundary
                                           (after compute/execute, and in the idle heartbeat)
 ```
 
@@ -91,7 +92,7 @@ it closes, and on a rejected or unaccounted close it is None once that position 
   "my position is gone" needs it whichever route closed it. That includes a spot close the venue
   ended with only dust left: `PARTIAL_CLOSE` for what it executed, then `POSITION_CLOSED`, because
   the record leaves the book.
-- `SESSION_END` is built by the tick loop at session end (request, exhaustion,
+- `SESSION_END` is built by the event loop at session end (request, exhaustion,
   Ctrl+C, or safety halt).
 
 ### Drain Ordering & Re-Entrancy (the critical invariant)
@@ -120,7 +121,7 @@ queue, FIX-based OMS (sequence-numbered execution reports), and the LMAX Disrupt
 It buys deterministic ordering, no re-entrancy, and back-pressure.
 
 **Where we sit — tick-gated, not a continuous event loop.** We drain at the
-tick-loop boundary (after compute/execute) and during the idle heartbeat (#320),
+event-loop boundary (after compute/execute) and during the idle heartbeat (#320),
 rather than the instant an event arrives. This keeps the model deterministic and
 **symmetric between simulation and the AutoTrader** — in a backtest there is no continuous
 loop, only ticks, so "drained before the next tick" *is* the backtest-determinism
@@ -148,32 +149,55 @@ subscribes to an event the current executor can't emit simply never receives it
 | `PARTIAL_CLOSE` | ✓ | ✓ |
 | `POSITION_CLOSED` | ✓ | ✓ |
 | `SESSION_END` | ✓ (ticks exhausted / request) | ✓ (request / Ctrl+C / safety) |
+| `SESSION_END_ORDER_OUTCOME` | ✓ (settled at the last quote, except after an `EMERGENCY` end) | ✓ (settled by the stop's second wait) |
 | `PARTIAL_FILL` (broker multi-execution) | — (order-book topic #143) | from #342 |
 | `RECONCILE_ALERT` | — (AutoTrader only) | from #151 Phase 2 |
 
 ## Session Control — `request_session_end`
 
 `DecisionTradingApi.request_session_end(reason, severity)` lets a decision logic
-end the session itself. The tick loop ends the session at the next boundary:
+end the session itself. The event loop ends the session at the next boundary:
 `SessionEndSeverity.NORMAL` runs the graceful shutdown (close remaining orders,
 final stats, clean exit); `EMERGENCY` exits immediately. Works in both pipelines —
 in backtesting it ends the scenario early; in an AutoTrader session it shuts the AutoTrader down. A
 `SESSION_END` event is delivered before teardown.
 
-An order a logic sends from `on_session_end` ends differently in the two pipelines today. An
-AutoTrader session waits for it once more and books its fill, without telling the logic, because the
-session-end event stays the last one it hears. A backtest has no tick left and expires it. So a logic
-closes before it requests the end, the way the field study's `stop_waits_for_close` phase does,
-until #642 gives both pipelines one outcome and a hook that reports it.
+An order a logic sends from `on_session_end` — a close on its way out — ends the same way in both
+pipelines (#642). An AutoTrader session waits for it once more and books its fill; a backtest, which
+has no tick left, settles it at the last quote, with the account model's costs, so its fill misses
+only the latency a live fill pays. A resting order sent then expires, as nothing is left to trigger
+it. The logic hears how each such order ended in `on_session_end_order_outcome`, once, after the
+session-end event — every ending, not only a fill, because a close that did not go through is what
+it most needs to know. The session is over by then: an order sent from that hook is withdrawn,
+never sent — a session holds its submit back from the venue, a backtest takes it out of the latency
+queue, and both book it cancelled by the framework at the session end. Only the orders the logic
+sent from its session-end hooks are reported: the ending of an order sent before the event — a
+resting order the cleanup cancels, one a live venue fills meanwhile — is not delivered, as it never
+was after the session-end event. A cancel or an amend the logic asks for from `on_session_end` is
+applied in the backtest too, where it used to wait for a tick that never came.
+
+Two edges, both the same in either pipeline where they can be. After an `EMERGENCY` end nothing is
+settled: a live stop does not wait then, so the backtest does not either, and the order is
+withdrawn. An order already on its way before the session-end event is the data's to end in a
+backtest — it expires as it always did — and the first wait's in a session. A live session whose
+input simply ran out does not wait at all — in practice a replayed mock session — so such a close is
+read at its cleanup instead and not reported; a backtest settles at its data end, which stands for
+the normal stop of the window it replays. A resting order sent from `on_session_end` expires in a
+backtest and is reported; in a session it is the session-end policy's, and not reported.
+`CORE/trend_channel_reference` shows the hook with `close_at_session_end`.
 
 ## Wiring & Drain Points
 
 - Built in the runner mains via `DecisionEventDispatcher.create_if_subscribed(...)`
   — `autotrader_main.py` (AutoTrader) and `process_main.py` (sim). Returns `None` when
   the logic subscribes to nothing.
-- Drained at the tick-loop boundary: `autotrader_tick_loop.py` (after
-  compute/execute and in the idle heartbeat) and `process_tick_loop.py` (after
-  compute/execute). The final `SESSION_END` is drained once the loop ends.
+- Drained inside each pass by the loop core (`loop/loop_event_dispatcher.py`, the one place
+  that orders a pass): in a backtest's instant once after what came due resolves and once more
+  after compute/execute (`dispatch_backtest_instant`, #460), so a fill of the instant reaches its
+  hook before the decision computes; in the AutoTrader's instant the same way, once before the algo
+  or its ghost pass and once after (`dispatch_live_instant`, #461), and in a stop's wait
+  (`dispatch_live_order_wait`). The AutoTrader's event loop keeps only the drain of a stop's
+  give-up. The final `SESSION_END` is drained once the loop ends.
 
 ## Relation to Other Components
 

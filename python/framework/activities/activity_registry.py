@@ -44,6 +44,7 @@ from python.framework.types.activity_registry_types import (
     ActivityState,
 )
 from python.framework.types.run_origin_types import RunChannel, RunOrigin
+from python.framework.types.store_types import StoreId
 from python.framework.utils.atomic_file_utils import write_text_atomic
 from python.framework.utils.file_lock import FileLock
 from python.framework.utils.file_utils import create_directory
@@ -88,6 +89,7 @@ class ActivityRegistry:
         origin: Optional[RunOrigin] = None,
         channel: RunChannel = RunChannel.DIRECT,
         logger: Optional[AbstractLogger] = None,
+        parent_activity_id: Optional[str] = None,
     ) -> Iterator[Optional[str]]:
         """
         Hold an entry for the duration of a `with` block.
@@ -101,11 +103,17 @@ class ActivityRegistry:
             channel: How it was started, as its entry point declares it; used to build the
                 origin when none is given
             logger: Where a failed registration is reported; the global log when omitted
+            parent_activity_id: The activity this one belongs under. Taken from the stack when
+                omitted — and that stack is per PROCESS, so it is the right answer only while one
+                activity opens the next. A caller that opens several at once, in threads of its
+                own, would otherwise have one of them handed another as its parent: it knows the
+                answer and says so
 
         Returns:
             The activity id while the block runs, or None when no entry could be written
         """
-        registration = self._register(kind, label, run_id, sweep_id, origin, channel, logger)
+        registration = self._register(kind, label, run_id, sweep_id, origin, channel, logger,
+                                      parent_activity_id)
         if registration is None:
             yield None
             return
@@ -126,6 +134,7 @@ class ActivityRegistry:
         origin: Optional[RunOrigin],
         channel: RunChannel,
         logger: Optional[AbstractLogger],
+        parent_activity_id: Optional[str] = None,
     ) -> Optional[_Registration]:
         """
         Take the lock, then write the entry.
@@ -138,6 +147,8 @@ class ActivityRegistry:
             origin: Who started it, if the caller knows
             channel: How it was started, for an origin built here
             logger: Where a failure is reported
+            parent_activity_id: The activity this one belongs under; the innermost one on this
+                process's stack when omitted
 
         Returns:
             The registration, or None when it could not be made
@@ -175,10 +186,13 @@ class ActivityRegistry:
                 origin=origin if origin is not None else _origin_for(channel),
                 run_id=run_id,
                 sweep_id=sweep_id,
-                parent_activity_id=_active_activity_ids[-1] if _active_activity_ids else None,
+                parent_activity_id=(parent_activity_id if parent_activity_id is not None
+                                    else (_active_activity_ids[-1]
+                                          if _active_activity_ids else None)),
             )
             json_path = directory / f'{activity_id}.json'
-            write_text_atomic(json_path, json.dumps(entry.to_dict(), indent=2), mode=0o600)
+            write_text_atomic(json_path, json.dumps(entry.to_dict(), indent=2),
+                              StoreId.ACTIVITIES, mode=0o600)
             return _Registration(activity_id=activity_id, lock=lock, json_path=json_path)
         except BaseException as error:
             # A stop (Ctrl+C) between the lock and the entry leaves neither behind: the stop goes

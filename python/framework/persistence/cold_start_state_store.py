@@ -18,7 +18,6 @@ was its predecessor (§44, #355 §5). The writing run is recorded as PROVENANCE 
 """
 
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -28,18 +27,23 @@ from pydantic import ValidationError
 from python.framework.logging.abstract_logger import AbstractLogger
 from python.framework.persistence.carry_over_identity import accepts_carry_over, carry_over_key
 from python.framework.persistence.cold_start_state_index import ColdStartStateIndex
+from python.framework.store.abstract_store_index import SESSION_INDEX_LOCK_WAIT_S
 from python.framework.types.persistence_types import (
+    AcceptedForeignOrders,
     AccountDrawdownCarryOver,
+    BootReadHoldCarryOver,
     CarryOverEnvelope,
     CarryOverLoad,
     CarryOverLoadOutcome,
     ColdStartPayload,
     ConfigurationCarryOver,
+    OpenOrderCarryOver,
     PositionCarryOver,
     RiskBaseline,
 )
 from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.store_types import StoreId
+from python.framework.utils.atomic_file_utils import write_text_atomic
 from python.framework.utils.file_utils import create_directory
 
 # Envelope format version for THIS store's documents — independent of the algo store's.
@@ -254,6 +258,10 @@ class ColdStartStateStore:
         replace_readings: bool = False,
         venue_claims_configuration: Optional[ConfigurationCarryOver] = None,
         deployment_id: Optional[str] = None,
+        accepted_foreign_orders: Optional[AcceptedForeignOrders] = None,
+        open_orders_at_write: Optional[List[OpenOrderCarryOver]] = None,
+        write_boot_read_hold: bool = False,
+        boot_read_hold: Optional[BootReadHoldCarryOver] = None,
         refresh_index: bool = True,
     ) -> None:
         """
@@ -306,10 +314,19 @@ class ColdStartStateStore:
                 None convention once more, and here it is what makes N session records one
                 history: a join key not written WHILE the sessions ran cannot be added
                 afterwards, because nothing left behind says which of them belonged together
+            accepted_foreign_orders: The orders of another owner an operator accepted on this
+                bot's instrument (#499). Same None convention: a write that accepted nothing
+                leaves what an earlier start accepted
+            open_orders_at_write: The orders open at this moment (#652). The book's convention:
+                None leaves the stored list untouched, an empty list says none is open
+            write_boot_read_hold: Whether this write states the held boot-read finding below
+                (#652) — None then CLEARS it. A write that does not leaves the stored one alone
+            boot_read_hold: The boot read's finding that holds the entries, or None when no such
+                hold stands; read only with `write_boot_read_hold`
             refresh_index: Whether to rebuild the store index afterwards. False for the
                 writes that happen DURING a session: the rebuild reads every bot's document
                 and costs 26-40 ms on this project's tree (§42), which has no business inside
-                a tick loop — and the index answers a cross-BOT question ("which bot carries
+                an event loop — and the index answers a cross-BOT question ("which bot carries
                 what") that nobody asks mid-session. It is derived and disposable (§44), so a
                 session that ends without one leaves a store that reports itself stale and
                 rebuilds on the next boot or via `store_cli.py rebuild cold_start_state`
@@ -366,14 +383,23 @@ class ColdStartStateStore:
             payload.venue_claims_configuration = venue_claims_configuration
         if deployment_id is not None:
             payload.deployment_id = deployment_id
+        if accepted_foreign_orders is not None:
+            payload.accepted_foreign_orders = accepted_foreign_orders
+        if open_orders_at_write is not None:
+            payload.open_orders_at_write = list(open_orders_at_write)
+        if write_boot_read_hold:
+            payload.boot_read_hold = boot_read_hold
 
         envelope = CarryOverEnvelope(
             schema_version=_SCHEMA_VERSION,
             store_id=StoreId.COLD_START_STATE,
-            # Wall-clock, and legitimately so (§9): this stamps when WE wrote the file — an
-            # observation of our own act, not an event time, and nothing decides on it. The
-            # store deliberately has no staleness policy: a resting order does not expire
-            # because a week passed.
+            # Wall clock: when WE wrote the file, an observation of our own act and not an event
+            # time. Since #652 a decision hangs on it, so it is no longer mere provenance: the
+            # next start reads the venue's closed orders from this instant, because a fill that
+            # closed after it cannot be in the book written here. It is compared only against the
+            # venue's own wall-clock close times, widened by a skew margin, never against the
+            # canonical clock. The store deliberately has no staleness policy: a resting order
+            # does not expire because a week passed.
             saved_at_utc=datetime.now(timezone.utc).isoformat(),
             written_by_run_id=self._run_id,
             profile=self._profile,
@@ -401,7 +427,11 @@ class ColdStartStateStore:
         read path must never cost the carry-over the write it just made.
         """
         try:
-            ColdStartStateIndex(self._root).rebuild()
+            index = ColdStartStateIndex(self._root)
+            # A session's own write: it waits briefly for the index and gives it up with the
+            # warning below, never ends over it (#650)
+            index.set_lock_wait_s(SESSION_INDEX_LOCK_WAIT_S)
+            index.rebuild()
         except Exception as e:
             self._logger.warning(
                 f'⚠️ Cold-start index rebuild failed ({e}) — the carry-over itself is written; '
@@ -414,16 +444,14 @@ class ColdStartStateStore:
 
     def _atomic_write(self, payload: str) -> None:
         """
-        Write via temp file + os.replace, so a crash mid-write never leaves half a document.
+        Write the document atomically and durably: a crash of the process never leaves half of
+        it, and a crash of the machine never an empty one — it holds the open position book (#632).
 
         Args:
             payload: Serialized JSON envelope
         """
         create_directory(self._path.parent, holds="the framework's state for the next session")
-        tmp_path = self._path.with_name(self._path.name + '.tmp')
-        with open(tmp_path, 'w', encoding='utf-8') as f:
-            f.write(payload)
-        os.replace(tmp_path, self._path)
+        write_text_atomic(self._path, payload, StoreId.COLD_START_STATE)
 
 
 def _claims_in(snapshot: dict) -> Tuple[int, int]:

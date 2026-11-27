@@ -32,7 +32,8 @@ from python.framework.types.store_types import StoreId
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 # The stores whose roots belong to the code tree (committed) or to the machine (#603) — never a home.
-OUTSIDE_THE_HOME = {StoreId.CERTIFICATES, StoreId.GENERATOR_PROFILES, StoreId.ACTIVITIES}
+OUTSIDE_THE_HOME = {StoreId.CERTIFICATES, StoreId.GOLDEN_SAMPLES, StoreId.GENERATOR_PROFILES,
+                    StoreId.ACTIVITIES}
 
 # Prints every registered store's root and index file, as one JSON line after whatever the
 # configuration prints while it loads.

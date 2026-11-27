@@ -35,6 +35,10 @@ with the backtest about WHEN or AT WHAT an order fills predicts nothing.
     STOP        the market crossed the trigger     → the QUOTE, not the trigger
     STOP_LIMIT  the trigger fires, then the limit  → the limit
 
+Which price counts as the market reaching an order is the venue's declared rule (#605): Kraken
+fires a stop on its last trade and takes a trade through a resting limit as its fill. A limit
+that does not rest yet, on its arrival or at a stop-limit's trigger, is decided by the quote.
+
 The two prices that are NOT obvious were both got wrong first, and the simulation is the
 authority on both. A MARKET order is priced when it ARRIVES, not when it was sent — the
 simulation stores `entry_price = 0` for a market order and fills from the tick current after
@@ -61,7 +65,12 @@ from python.framework.types.live_types.live_execution_types import (
     BrokerResponse,
 )
 from python.framework.types.market_types.market_data_types import TickData
-from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
+from python.framework.types.trading_env_types.order_types import (
+    LimitFillEvidence,
+    OrderDirection,
+    OrderType,
+    StopTriggerBasis,
+)
 from python.framework.utils.trading_math.price_trigger import (
     is_limit_reached,
     is_stop_reached,
@@ -87,6 +96,9 @@ class _DryRunOrderState:
     trigger_price: Optional[float] = None
     # STOP_LIMIT only: the trigger has fired and the order is now a resting limit.
     triggered: bool = False
+    # The limit stood at the venue through a poll without filling. From the next poll on a
+    # public trade through it counts as its fill, as in the simulation's resting check (#605).
+    limit_rests: bool = False
 
 
 class DryRunOrderSimulator:
@@ -97,12 +109,15 @@ class DryRunOrderSimulator:
     parallel adapters do not share refs.
     """
 
-    def __init__(self, polls_until_fill: int = 2):
+    def __init__(self, stop_trigger_basis: StopTriggerBasis, limit_fill_evidence: LimitFillEvidence, polls_until_fill: int = 2):
         """
         Args:
+            stop_trigger_basis: Which price the venue watches to fire a stop (#605) — its declaration,
+                so a rehearsal fires where the backtest does
+            limit_fill_evidence: What the venue counts as a resting limit's fill, likewise
             polls_until_fill: How many query() calls a PENDING order must
                               receive before it may fill. Default 2
-                              matches the typical tick-loop cadence
+                              matches the typical event-loop cadence
                               (one tick → poll → still pending → next
                               tick → poll → fill). It models the round
                               trip to the venue, so it applies to a
@@ -110,6 +125,8 @@ class DryRunOrderSimulator:
                               too — the order still had to get there.
         """
         self._counter: int = 0
+        self._stop_trigger_basis = stop_trigger_basis
+        self._limit_fill_evidence = limit_fill_evidence
         self._polls_until_fill = polls_until_fill
         self._orders: Dict[str, _DryRunOrderState] = {}
         # References this simulator has already resolved. A re-query after a fill has to keep
@@ -121,7 +138,7 @@ class DryRunOrderSimulator:
     def submit(
         self,
         lots: float,
-        timestamp: datetime,
+        ts_init: datetime,
         direction: OrderDirection,
         order_type: OrderType,
         limit_price: Optional[float] = None,
@@ -135,7 +152,7 @@ class DryRunOrderSimulator:
 
         Args:
             lots: Order size (preserved for the eventual fill)
-            timestamp: Response timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
             direction: LONG for a buy, SHORT for a sell — decides which side of the quote
                 a fill uses and which way a trigger points
             order_type: Which fill rule applies
@@ -158,13 +175,13 @@ class DryRunOrderSimulator:
         return BrokerResponse(
             broker_ref=broker_ref,
             status=BrokerOrderStatus.PENDING,
-            timestamp=timestamp,
+            ts_init=ts_init,
         )
 
     def query(
         self,
         broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
         market: Optional[TickData] = None,
     ) -> BrokerResponse:
         """
@@ -183,7 +200,7 @@ class DryRunOrderSimulator:
 
         Args:
             broker_ref: Synthetic DRYRUN-* reference
-            timestamp: Response timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
             market: The current quote, or None when none is available
 
         Returns:
@@ -198,7 +215,7 @@ class DryRunOrderSimulator:
                 return BrokerResponse(
                     broker_ref=broker_ref,
                     status=BrokerOrderStatus.FILLED,
-                    timestamp=timestamp,
+                    ts_init=ts_init,
                 )
             return BrokerResponse(
                 broker_ref=broker_ref,
@@ -206,24 +223,27 @@ class DryRunOrderSimulator:
                 undecided_reason=(
                     f'{broker_ref} was never issued by this simulator — nothing here knows '
                     f'what happened to it, and answering FILLED would invent a fill'),
-                timestamp=timestamp,
+                ts_init=ts_init,
             )
 
         order.remaining_polls -= 1
 
         fill_price, refusal = self._decide(order, market)
+        if (fill_price is None and order.remaining_polls <= 0
+                and (order.order_type == OrderType.LIMIT or order.triggered)):
+            order.limit_rests = True
         if refusal is not None:
             return BrokerResponse(
                 broker_ref=broker_ref,
                 status=BrokerOrderStatus.PENDING,
                 undecided_reason=refusal,
-                timestamp=timestamp,
+                ts_init=ts_init,
             )
         if fill_price is None or order.remaining_polls > 0:
             return BrokerResponse(
                 broker_ref=broker_ref,
                 status=BrokerOrderStatus.PENDING,
-                timestamp=timestamp,
+                ts_init=ts_init,
             )
 
         filled_lots = order.lots
@@ -234,17 +254,17 @@ class DryRunOrderSimulator:
             status=BrokerOrderStatus.FILLED,
             fill_price=fill_price,
             filled_lots=filled_lots,
-            timestamp=timestamp,
+            ts_init=ts_init,
         )
 
-    def cancel(self, broker_ref: str, timestamp: datetime) -> BrokerResponse:
+    def cancel(self, broker_ref: str, ts_init: datetime) -> BrokerResponse:
         """
         Cancel a dry-run order. Idempotent — removes from state if
         present, always returns CANCELLED.
 
         Args:
             broker_ref: Synthetic DRYRUN-* reference
-            timestamp: Response timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
 
         Returns:
             BrokerResponse(status=CANCELLED)
@@ -253,13 +273,13 @@ class DryRunOrderSimulator:
         return BrokerResponse(
             broker_ref=broker_ref,
             status=BrokerOrderStatus.CANCELLED,
-            timestamp=timestamp,
+            ts_init=ts_init,
         )
 
     def modify(
         self,
         broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
         new_limit_price: Optional[float] = None,
         new_trigger_price: Optional[float] = None,
     ) -> BrokerResponse:
@@ -275,7 +295,7 @@ class DryRunOrderSimulator:
 
         Args:
             broker_ref: Synthetic DRYRUN-* reference (unchanged by the amend)
-            timestamp: Response timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
             new_limit_price: New limit price (None = keep current)
             new_trigger_price: New trigger price of a triggered type (None = keep current)
 
@@ -293,7 +313,7 @@ class DryRunOrderSimulator:
         return BrokerResponse(
             broker_ref=broker_ref,
             status=BrokerOrderStatus.PENDING,
-            timestamp=timestamp,
+            ts_init=ts_init,
         )
 
     def _decide(
@@ -318,7 +338,7 @@ class DryRunOrderSimulator:
             return taken_price(order.direction, market.bid, market.ask), None
 
         if order.order_type == OrderType.LIMIT:
-            return self._decide_limit(order.direction, order.limit_price, market)
+            return self._decide_limit(order.direction, order.limit_price, market, order.limit_rests)
 
         if order.order_type == OrderType.STOP:
             return self._decide_stop(order.direction, order.trigger_price, market)
@@ -330,27 +350,33 @@ class DryRunOrderSimulator:
                 if refusal is not None or fired is None:
                     return None, refusal
                 order.triggered = True
-            return self._decide_limit(order.direction, order.limit_price, market)
+                # The limit is placed now: the quote alone decides it, as at the simulation's
+                # conversion (#605)
+                return self._decide_limit(order.direction, order.limit_price, market, False)
+            return self._decide_limit(order.direction, order.limit_price, market, order.limit_rests)
 
         return None, (f'{order.order_type} has no venue-side model in this project, so a '
                       'dry-run fill would be an invention rather than a rehearsal')
 
-    @staticmethod
     def _decide_limit(
+        self,
         direction: OrderDirection,
         limit_price: Optional[float],
         market: Optional[TickData],
+        resting: bool,
     ) -> Tuple[Optional[float], Optional[str]]:
         """
         Has a limit order been reached?
 
         A limit fills AT its own price: that is what a limit order is for, and it is what the
-        simulation books (`fill_price = pending.entry_price` on its limit path).
+        simulation books (`fill_price = pending.entry_price` on its limit path). A public trade
+        counts as evidence only once the limit rests (#605); before that the quote alone decides.
 
         Args:
             direction: Order direction
             limit_price: The limit
             market: The current quote, or None
+            resting: True once the limit has stood at the venue through a poll without filling
 
         Returns:
             (fill_price, refusal) as described on _decide
@@ -359,12 +385,14 @@ class DryRunOrderSimulator:
             return None, 'a LIMIT order arrived without a limit price'
         if market is None:
             return None, 'no quote to compare the limit against'
-        if not is_limit_reached(direction, limit_price, market.bid, market.ask):
+        last, rule = ((market.last, self._limit_fill_evidence) if resting
+                      else (None, LimitFillEvidence.QUOTE))
+        if not is_limit_reached(direction, limit_price, market.bid, market.ask, last, rule):
             return None, None
         return limit_price, None
 
-    @staticmethod
     def _decide_stop(
+        self,
         direction: OrderDirection,
         trigger_price: Optional[float],
         market: Optional[TickData],
@@ -390,6 +418,7 @@ class DryRunOrderSimulator:
             return None, 'a STOP order arrived without a trigger price'
         if market is None:
             return None, 'no quote to compare the trigger against'
-        if not is_stop_reached(direction, trigger_price, market.bid, market.ask):
+        if not is_stop_reached(direction, trigger_price, market.bid, market.ask, market.last,
+                               self._stop_trigger_basis):
             return None, None
         return taken_price(direction, market.bid, market.ask), None

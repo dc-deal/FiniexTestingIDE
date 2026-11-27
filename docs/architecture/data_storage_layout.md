@@ -45,8 +45,10 @@ and a written one cannot drift apart (#621). The tables, the shapes and how a fi
 | 1d | `runs/fixture_productions.jsonl` | RECORD | `entry_id` + `produced_at` — one line per production | none — one file, read whole | B · set |
 | 1e | `logs/imports/` | RECORD | import id — the UTC start plus a random half, e.g. `20261010_090011_a3f9c2d1` | none — opened by the id its file is named after | A · document |
 | 1f | `runs/simulation/sweeps/` — the parameter sweeps; their combinations are runs of row 1 | RECORD | `sweep_id` | none — its figures are the ledger's rows, `ranked.csv` an export of them | A · document |
+| 1g | `runs/divergence/` — comparisons of a live deployment with backtests of its windows; the backtests are runs of row 1 | RECORD | `report_id` | none — opened by its id | A · document |
 | 2 | `runs/ledger/` | RECORD | `(run_id, unit, period_no, currency)` — columns, never a path | `run_ledger_index.parquet` | B · set |
 | 3 | `tests/*/reports/` | RECORD | family + version + date | `certificates_index.parquet` | A · document |
+| 3b | `tests/fixtures/golden_samples/` — the frozen aggregates of fixture productions (#557) | RECORD | `entry_id` — one folder per fixture-catalog entry | none — opened by its entry id | A · document |
 | 4 | `data/runtime/session_state/` | **CARRY-OVER** | `<bot_id>_<symbol>`, separator reserved | none — opened by key | A · document |
 | 4b | `data/runtime/cold_start_state/` | **CARRY-OVER** | `<bot_id>_<symbol>`, separator reserved | `cold_start_state_index.parquet` | A · document |
 | 5 | `data/processed/{broker}/ticks` | ARCHIVE | broker / symbol / file | `ticks_index.parquet` | C · bulk |
@@ -59,7 +61,8 @@ and a written one cannot drift apart (#621). The tables, the shapes and how a fi
 | 10c | `data/runtime/import_timings.json` | DERIVED ← the imports' own durations (not a store) | none | none — one file | A · document |
 | 11 | `data/finished/` | ARCHIVE | zip or file name | none — opened by name | A · document |
 | 11b | `data/external/` | ARCHIVE | vendor / dataset / fetch folder | none — a fetch is opened by its folder, its `manifest.json` keyed on part SHA-256 and fetch time | A · document |
-| 12 | `data/raw/` → `data/finished/` | **SPECIAL** | file name | none — conveyor | — |
+| 12 | `data/raw/` → `data/finished/`, through `data/unpacking/` for a zip's files | **SPECIAL** | file name | none — conveyor | — |
+| 12b | `data/refused/` | **SPECIAL** | file or zip name | none — quarantine, a note beside each file | — |
 | 13 | `logs/global.log` | **SPECIAL** | none | none — append stream | — |
 | 14 | `user_configs/host_identity.json` | **SPECIAL** | none | none — one file, read at boot by its manager | — |
 | 15 | `~/.finiex/activities/` — one per machine, configured | **SPECIAL** | `activity_id` | none — read by its own reader | — |
@@ -74,6 +77,20 @@ and the ranking the report command writes, and each combination is a run of row 
 ([Parameter Optimization](parameter_optimization_system.md#what-a-sweep-directory-holds)). The sweep
 store declares both files and that it holds runs; it keeps no index, because what a sweep is and how
 its combinations rank are read from the ledger.
+
+### A divergence comparison keeps its own record
+
+One directory per comparison of a live deployment with backtests of its windows (#512), under
+`runs/divergence/<report_id>/`, the id minted like a run's. It holds, per segment, the scenario set
+it generated and the warmup history the segment's backtest started from — copied from the session,
+whose own record lies on another machine — and, where live orders filled, the set of the second
+backtest at their measured latency. Beside them: the run index it read a copy's sessions
+through, only where the sessions were read from a copy of another machine's data home, and its
+report, as `report.json` and as the `report.txt` the command printed. Its backtests are runs of row
+1: found by the scenario set's name, named in the report, never copied into it. An A/A — one
+window backtested on the sessions' release and on the current tree — keeps its two scenario sets
+per window and its report (`aa_report.json`, `aa_report.txt`) the same way. It keeps no index; a
+comparison is opened by its id.
 
 **Ticks and bars are two stores, and bars are DERIVED.** Ticks are IMPORTED from the collector's
 JSON; bars are GENERATED from those ticks, by a render that writes each symbol's files anew from
@@ -90,8 +107,9 @@ one data home, the directory the environment variable `FINIEX_DATA_HOME` names, 
 the workspace (`user_configs/`) and the strategy directories. Unset, the working directory is
 the home, and a development checkout keeps every path exactly as configured.
 
-Three roots stay where they are, each on purpose: the certificates (row 3) and the generator
-profiles (row 9) are committed and belong to the code tree of the release that made them, and
+Some roots stay where they are, each on purpose: the certificates (row 3), the golden samples
+(row 3b) and the generator profiles (row 9) are committed and belong to the code tree that made
+them, and
 the activity list (row 15) is the machine's, at an absolute path every tree shares. An absolute
 path in the configuration stands for itself. A home that does not exist refuses the start
 instead of being created: an empty one holds no carry-over, and a session started on it would
@@ -149,8 +167,8 @@ per trading day of ITS window. A run whose scenarios are shorter than a day writ
 which is the shape the ledger had before — the grain widened, it did not change meaning.
 
 **No aggregate row is written beside the periods.** The run's total is derivable from them —
-`COLUMN_REDUCTION` beside `LEDGER_COLUMNS` states how every column combines, and
-`COLUMN_NULL_MEANING` what an empty cell of a nullable figure means — and a derivable
+the figure catalog (`reporting/aggregation/figure_catalog.py`) states for every column of
+`LEDGER_COLUMNS` how it combines and what an empty cell of a nullable figure means — and a derivable
 copy kept next to its source is the pair that drifts. Keeping both would also be wrong in
 a way no reader could see: the deployment history SUMS rows and would count every month twice,
 the sweep ranking SORTS them and would see one candidate four times. One reduction has a limit
@@ -470,6 +488,22 @@ rather than serving it.
 | **DERIVED** | mirrors its source | **deletable** | none — *if deleting it loses something, it is misfiled* |
 | **SPECIAL** | — | — | catalogued with a stated reason, nothing else |
 
+**The kind also decides how a store writes (#632).** A crash of the process never leaves half a
+file: every document is written to a temporary file and renamed over its target. A crash of the
+machine can leave an EMPTY one, because a filesystem may commit a rename before the bytes it
+renames. So a RECORD, a CARRY-OVER and an ARCHIVE are written **durably** — the file's bytes forced
+to the disk before the rename, its folder after it — while a DERIVED store is not: it is rebuilt from
+its source, and a sync would buy it nothing. A SPECIAL store states its own answer with its reason
+(the host identity is durable: an identity lost to a crash is a new installation). The kinds are
+stated once, in `STORE_KINDS` (`python/framework/types/store_types.py`), and every write names the
+store it writes into — `write_file_atomic(path, write, store)` asks the store, never a flag at the
+call site — the importers' tick and signal files and the three data indexes too, which used to be
+written in place, so a reader could open half of one. A store index is derived and not synced,
+except one that holds what nothing else does (the run-config index, whose store declares
+`rebuild_loses`); the data indexes follow their store (#583 converges them). On a local disk a durable write of a
+carry-over costs about 2 ms more (measured 2026-11-22: 0.25 → 2.2 ms for 1.1 KB); on this project's
+bridged development mount about 8 ms (18 → 26 ms).
+
 **Deletable and append-only describe the store, not what a run read from it.** A fetch overwrites
 a symbol's entry in the runtime broker cache in place, a re-import with `--override` replaces tick
 files, and every render replaces bar files. So a run never relies on what it read staying as it
@@ -513,8 +547,15 @@ bot's, rather than ignoring it and overwriting the successor's book.
 ### Why the SPECIAL stores stay special
 
 - **`data/raw/` → `data/finished/`** is a **conveyor, not a store**: a file lies there in order to
-  disappear. The importer reads it and MOVES it; it never rewrites the content. Giving it a header
-  and an index would make it something it is not, and would blur that contract.
+  disappear. The importer reads it and MOVES it; it never rewrites the content, and every import
+  drains it. A zip's files pass through `data/unpacking/`, one folder per zip, which exists only
+  while a zip is unpacked. Giving it a header and an index would make it something it is not, and would
+  blur that contract.
+- **`data/refused/`** is a **quarantine**: a raw file or zip the import refused or failed on lies
+  there unchanged, with `<name>.refused.txt` beside it — one line per refusal, when and why — until
+  somebody decides. It goes back into `data/raw/` by hand once its cause is fixed. It is no archive
+  (nothing was imported from it) and no conveyor (nothing moves it on by itself), and the import only
+  ever adds to it, because what lies there is raw source of truth.
 - **`logs/global.log`** is an append stream without identity. It gets bounding and rotation, never
   an index.
 - **`user_configs/host_identity.json`** is the installation's minted identity (#551): one file,
@@ -638,6 +679,21 @@ rebuilding it when it is stale. Making the index derivable again, so that it rej
   exercise the code and not the file. Bump it whenever the MEANING of a column changes.
 - **Writes are atomic** (temp file + replace): a truncated parquet is unreadable, and an unreadable
   index is indistinguishable from a missing one only until something reads it.
+- **Every index has a lock beside it** (`runs_index.lock` beside `runs_index.parquet`, #650). Whoever
+  writes the index holds it alone, whoever reads it shares it, and a read-modify-write — a run's row
+  at its start, its streams, its artifacts — holds it alone from the read to the write. It ends two
+  failures: every writer replaced the index through one temporary file, so two rebuilds at once took
+  each other's file; and where a replace is a delete followed by a rename, as on the development
+  container's bridged drive, a reader landed in the gap. No rebuild holds the lock while it scans its
+  sources — the run index's took two minutes on that drive (measured 2026-11-20) — and a reader that
+  finds the index stale and cannot take it alone within a few seconds, or may not write where it
+  lives, derives the contents in memory instead: no reader fails on the lock. A record never waits for
+  it — a ledger fragment, a run header and a carry-over are written without it — and a session's own
+  index writes give up after a few seconds with a warning, because a derived index loses nothing a
+  rebuild cannot restore. The API server waits only a few seconds, because its readers share one pool
+  of worker threads, and then answers `503 store_index_busy` with `Retry-After`. Like a bot's lock
+  file, the lock file is the kernel's handle, not a store, an entry or a member: deleting it loses
+  nothing.
 
 **The three data-index managers are registered but not migrated.** `TickIndexManager`,
 `BarsIndexManager` and `SignalIndexManager` are 1368 battle-tested lines carrying legacy-JSON
@@ -774,7 +830,17 @@ write     STRUCTURAL change → at once      which positions exist, how much is 
           DRIFT             → tick cadence exit levels, excursion extrema
 restore   at BOOT, no tick needed: every field was known when the position was opened
 check     the restored book against the venue's balance — and only REPORT
+read      at BOOT, the venue's closed orders since the write: a fill of ours the book does not
+          hold holds the entries (#652)
 ```
+
+Each write also keeps the orders the session held open at it, and while a hold over such a fill
+stands, the finding that holds it: the write it was measured against, where that read began, and
+the fills' keys — the held session's own writes replace the open orders, so without them the next
+start would read the same fill as booked. A fill is missing from the written book only
+when its order closed after the write, or was open at it and filled unseen just before; the start
+reads the venue from the oldest of those orders, so it finds both (*A fill the book does not hold*
+in [Unattended Operation](../autotrader/unattended_operation.md)).
 
 The split is a measurement, not a preference. One carry-over write costs **11 ms** on this project's
 tree, and the store's index rebuild another **26-40 ms** (`/tmp` says 2 ms; on this bridged mount
@@ -803,7 +869,11 @@ The check is deliberately **one-sided**. The account is shared, so holding MORE 
 claims is normal and says nothing (what a bot may *use* is declared capital, #489). Holding
 LESS is not: the note then claims a position the account cannot cover, which is what happens
 when something sold outside this bot. That is reported and the book is left as written —
-shrinking it to fit would invent a number and hide the event.
+shrinking it to fit would invent a number and hide the event. The note ends only when one start is
+told so (`--book-closed-externally <id>`) and the shortfall confirms it: the note is then left out
+of the restore and booked as a trade closed outside the bot, at its entry price and without moving
+a balance (#627, *After a holding was sold by hand* in
+[Unattended Operation](../autotrader/unattended_operation.md)).
 
 The note is faithful rather than minimal, and the reason is silent failure. A sparse note does
 not crash; it produces a closing trade record that looks complete and is not — excursion

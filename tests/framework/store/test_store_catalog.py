@@ -363,7 +363,7 @@ class TestStatus:
 
         def _store(store_id: StoreId, patterns) -> StoreDescriptor:
             return StoreDescriptor(
-                store_id=store_id, kind=StoreKind.ARCHIVE, purpose='toy archive', doc='docs/x.md',
+                store_id=store_id, purpose='toy archive', doc='docs/x.md',
                 root=tmp_path, key='file name', form=RetrievalForm.DOCUMENT,
                 backend=StoreBackend.DISK, entry_glob=patterns)
 
@@ -393,7 +393,7 @@ class TestStatus:
 
         def _store(store_id: StoreId, glob: str, nested: bool) -> StoreDescriptor:
             return StoreDescriptor(
-                store_id=store_id, kind=StoreKind.RECORD, purpose='toy record', doc='docs/x.md',
+                store_id=store_id, purpose='toy record', doc='docs/x.md',
                 root=tmp_path, key='id', form=RetrievalForm.DOCUMENT, backend=StoreBackend.DISK,
                 entry_glob=glob, entry_members=RUN_ENTRY_MEMBERS,
                 contains_entries_of=StoreId.RUNS if nested else None)

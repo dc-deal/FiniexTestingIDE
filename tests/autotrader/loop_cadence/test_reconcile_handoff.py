@@ -1,19 +1,19 @@
 """
 Loop Cadence — Handing Attributions to the Executor (#355 Phase 1)
 
-The tick loop is the seam between the two halves of the client-key feature: the Reconciler
+The event loop is the seam between the two halves of the client-key feature: the Reconciler
 DETECTS (it is read-only by contract) and the executor WRITES (it owns the pending state).
 That handoff is the only write path in the feature, and it is invisible to both the
 reconciliation and the live-executor suites — each tests one side of a call the loop makes.
 
 The loop is exercised through `__new__` rather than a full construction: the method under
-test needs exactly two collaborators, and building a real tick loop would drag in a queue,
+test needs exactly two collaborators, and building a real event loop would drag in a queue,
 a tick source, workers and a decision logic without testing any of them.
 """
 
 from typing import List, Tuple
 
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.event_loop.autotrader_cadence_work import AutotraderCadenceWork
 from python.framework.types.live_types.live_execution_types import BrokerOrderStatus
 from python.framework.types.live_types.reconciliation_types import (
     BrokerOrder,
@@ -76,11 +76,13 @@ def _pair() -> Tuple[PendingOrder, BrokerOrder]:
     return pending, broker_order
 
 
-def _loop(reconciler, executor) -> AutotraderTickLoop:
-    """A tick loop with only the two collaborators this seam uses."""
-    loop = AutotraderTickLoop.__new__(AutotraderTickLoop)
+def _loop(reconciler, executor) -> AutotraderCadenceWork:
+    """The event loop's cadence work with only the two collaborators this seam uses."""
+    loop = AutotraderCadenceWork.__new__(AutotraderCadenceWork)
     loop._reconciler = reconciler
     loop._executor = executor
+    loop._intake = lambda: None
+    loop._on_reconciled = None
     return loop
 
 
@@ -92,7 +94,7 @@ class TestReconcileHandoff:
         result = ReconciliationResult(attributed_orders=[pair])
         spy = SpyExecutor()
 
-        _loop(StubReconciler(result), spy)._reconcile_if_due(7)
+        _loop(StubReconciler(result), spy).reconcile_if_due(7)
 
         assert len(spy.applied) == 1
         assert spy.applied[0] == [pair]
@@ -103,7 +105,7 @@ class TestReconcileHandoff:
         result = ReconciliationResult()
         spy = SpyExecutor()
 
-        _loop(StubReconciler(result), spy)._reconcile_if_due(7)
+        _loop(StubReconciler(result), spy).reconcile_if_due(7)
 
         assert spy.applied == []
 
@@ -113,7 +115,7 @@ class TestReconcileHandoff:
         reconciler = StubReconciler(result, due=False)
         spy = SpyExecutor()
 
-        _loop(reconciler, spy)._reconcile_if_due(7)
+        _loop(reconciler, spy).reconcile_if_due(7)
 
         assert reconciler.reconcile_calls == []
         assert spy.applied == []
@@ -122,7 +124,7 @@ class TestReconcileHandoff:
         # Mock sessions auto-disable reconciliation, so this path runs in every mock session.
         spy = SpyExecutor()
 
-        _loop(None, spy)._reconcile_if_due(7)
+        _loop(None, spy).reconcile_if_due(7)
 
         assert spy.applied == []
 
@@ -131,20 +133,20 @@ class TestReconcileHandoff:
         result = ReconciliationResult(is_clean=False, broker_truth_due=True)
         spy = SpyExecutor()
 
-        _loop(StubReconciler(result), spy)._reconcile_if_due(7)
+        _loop(StubReconciler(result), spy).reconcile_if_due(7)
 
         assert spy.truth_records == [result]
 
     def test_a_cycle_not_due_writes_no_broker_truth(self):
         spy = SpyExecutor()
 
-        _loop(StubReconciler(ReconciliationResult()), spy)._reconcile_if_due(7)
+        _loop(StubReconciler(ReconciliationResult()), spy).reconcile_if_due(7)
 
         assert spy.truth_records == []
 
     def test_the_tick_counter_reaches_the_reconciler(self):
         reconciler = StubReconciler(ReconciliationResult())
 
-        _loop(reconciler, SpyExecutor())._reconcile_if_due(4711)
+        _loop(reconciler, SpyExecutor()).reconcile_if_due(4711)
 
         assert reconciler.reconcile_calls == [4711]

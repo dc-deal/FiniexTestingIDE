@@ -654,7 +654,7 @@ class TestWhatIsPinnedOrCertifiedIsKept:
         assert [c.path for c in report.kept_superseded_fixture] == [old]
         assert [c.path for c in report.kept_current_fixture] == [new]
         assert failed in [c.path for c in report.to_delete_redundant]
-        assert old in [c.path for c in released.to_delete_redundant]
+        assert [c.path for c in released.to_delete_superseded_fixture] == [old]
         assert [c.path for c in released.kept_current_fixture] == [new]
 
 
@@ -670,7 +670,52 @@ class TestWhatIsPinnedOrCertifiedIsKept:
         released = _pruner(tmp_path).plan(PruneSelectors(keep_last=1, release_fixtures=True))
 
         assert [c.path for c in kept.kept_superseded_fixture] == [retired]
-        assert retired in [c.path for c in released.to_delete_redundant]
+        assert [c.path for c in released.to_delete_superseded_fixture] == [retired]
+
+    def test_releasing_the_fixtures_removes_them_and_nothing_else(self, tmp_path):
+        """
+        Given alone, the flag reaches exactly the superseded productions' runs: an ordinary run of
+        the same family stays, because no other selector released it.
+        """
+        old = _plant(tmp_path, '20260830_132034_aaaaaaaa', 'report_coverage_reference')
+        ordinary = _plant(tmp_path, '20260830_132035_bbbbbbbb', 'report_coverage_reference',
+                          minutes=1)
+        new = _plant(tmp_path, '20260830_132036_cccccccc', 'report_coverage_reference', minutes=2)
+        self._record(tmp_path, '2026-10-08T10:00:00+00:00', ['20260830_132034_aaaaaaaa'])
+        self._record(tmp_path, '2026-10-08T11:00:00+00:00', ['20260830_132036_cccccccc'])
+
+        report = _pruner(tmp_path).plan(PruneSelectors(release_fixtures=True))
+
+        assert [c.path for c in report.all_deletions()] == [old]
+        assert [c.path for c in report.kept_complete] == [ordinary]
+        assert [c.path for c in report.kept_current_fixture] == [new]
+
+    def test_a_named_run_is_kept_by_every_selector(self, tmp_path):
+        """A run a consumer still reads outside the catalog, superseded fixture or not."""
+        named = _plant(tmp_path, '20260830_132034_aaaaaaaa', 'report_coverage_reference')
+        _plant(tmp_path, '20260830_132035_bbbbbbbb', 'report_coverage_reference', minutes=1)
+        _plant(tmp_path, '20260830_132036_cccccccc', 'report_coverage_reference', minutes=2)
+        self._record(tmp_path, '2026-10-08T10:00:00+00:00', ['20260830_132034_aaaaaaaa'])
+        self._record(tmp_path, '2026-10-08T11:00:00+00:00', ['20260830_132036_cccccccc'])
+
+        report = _pruner(tmp_path).plan(PruneSelectors(
+            keep_last=1, older_than=timedelta(seconds=1), release_fixtures=True,
+            keep_run_ids=frozenset({'20260830_132034_aaaaaaaa'})))
+
+        assert [c.path for c in report.kept_named] == [named]
+        assert named not in [c.path for c in report.all_deletions()]
+
+    def test_apply_removes_the_released_fixtures(self, tmp_path):
+        old = _plant(tmp_path, '20260830_132034_aaaaaaaa', 'report_coverage_reference')
+        new = _plant(tmp_path, '20260830_132036_cccccccc', 'report_coverage_reference', minutes=2)
+        self._record(tmp_path, '2026-10-08T10:00:00+00:00', ['20260830_132034_aaaaaaaa'])
+        self._record(tmp_path, '2026-10-08T11:00:00+00:00', ['20260830_132036_cccccccc'])
+        pruner = _pruner(tmp_path)
+
+        result = pruner.apply(pruner.plan(PruneSelectors(release_fixtures=True)))
+
+        assert result.deleted == [old]
+        assert not old.exists() and new.exists()
 
 
 class TestARunIsNeverAnOrphan:

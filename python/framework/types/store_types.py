@@ -8,7 +8,7 @@ runtime collaborator, and lives beside the registry that builds it (§6).
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Optional
+from typing import Dict, Optional
 
 # The discovery caches' directory below data/processed. Named ONCE: the three cache families
 # each declared it, the store catalog declared it a fourth time, and four literals for one
@@ -30,6 +30,24 @@ class StoreKind(StrEnum):
     ARCHIVE = 'archive'        # the inputs — append-only
     DERIVED = 'derived'        # index, cache, compaction — deletable by definition
     SPECIAL = 'special'        # declared with a stated reason, managed by nothing
+
+    def writes_durably(self) -> Optional[bool]:
+        """
+        Whether a file of a store of this kind is forced to the disk before it replaces its
+        target, so a crash of the machine cannot leave it empty (#632).
+
+        A RECORD is what happened and a CARRY-OVER what the next run starts from — neither can be
+        rebuilt — and an ARCHIVE holds the inputs. A DERIVED store is rebuilt from its source and
+        deletable by definition, so the cost of a sync buys it nothing. A SPECIAL store answers
+        for itself.
+
+        Returns:
+            True or False; None for SPECIAL, whose stores each state it
+            (`SPECIAL_STORE_DURABILITY`)
+        """
+        if self is StoreKind.SPECIAL:
+            return None
+        return self is not StoreKind.DERIVED
 
 
 class RetrievalForm(StrEnum):
@@ -65,11 +83,13 @@ class StoreId(StrEnum):
     """
     RUNS = 'runs'
     SWEEPS = 'sweeps'
+    DIVERGENCE = 'divergence'
     RUN_CONFIGS = 'run_configs'
     RUN_PATCHES = 'run_patches'
     RUN_LEDGER = 'run_ledger'
     FIXTURE_PRODUCTIONS = 'fixture_productions'
     CERTIFICATES = 'certificates'
+    GOLDEN_SAMPLES = 'golden_samples'
     SESSION_STATE = 'session_state'
     COLD_START_STATE = 'cold_start_state'
     TICKS = 'ticks'
@@ -80,6 +100,7 @@ class StoreId(StrEnum):
     BROKER_RUNTIME = 'broker_runtime'
     CONFIG_DIRECTORY = 'config_directory'
     RAW_INBOX = 'raw_inbox'
+    REFUSED_FILES = 'refused_files'
     FINISHED_ARCHIVE = 'finished_archive'
     EXTERNAL_HISTORY = 'external_history'
     GLOBAL_LOG = 'global_log'
@@ -87,6 +108,76 @@ class StoreId(StrEnum):
     IMPORT_TIMINGS = 'import_timings'
     HOST_IDENTITY = 'host_identity'
     ACTIVITIES = 'activities'
+
+    def get_kind(self) -> StoreKind:
+        """
+        What this store is (`STORE_KINDS`).
+
+        Returns:
+            Its kind
+        """
+        return STORE_KINDS[self]
+
+    def writes_durably(self) -> bool:
+        """
+        Whether this store's files are forced to the disk before they replace their target (#632)
+        — its kind's answer, or for a SPECIAL store its own.
+
+        Returns:
+            True when a crash of the machine must not take a file of this store
+        """
+        answer = STORE_KINDS[self].writes_durably()
+        return answer if answer is not None else SPECIAL_STORE_DURABILITY[self]
+
+
+# What each store IS — the one place a store's kind is stated. Here, in a module that imports
+# nothing of the project, so the low-level writer can ask a store how it writes without the
+# store registry and its indexes (#632); the registry's descriptors read their kind from it.
+STORE_KINDS: Dict[StoreId, StoreKind] = {
+    StoreId.RUNS: StoreKind.RECORD,
+    StoreId.SWEEPS: StoreKind.RECORD,
+    StoreId.DIVERGENCE: StoreKind.RECORD,
+    StoreId.RUN_CONFIGS: StoreKind.RECORD,
+    StoreId.RUN_PATCHES: StoreKind.RECORD,
+    StoreId.RUN_LEDGER: StoreKind.RECORD,
+    StoreId.FIXTURE_PRODUCTIONS: StoreKind.RECORD,
+    StoreId.CERTIFICATES: StoreKind.RECORD,
+    StoreId.GOLDEN_SAMPLES: StoreKind.RECORD,
+    StoreId.IMPORT_LOGS: StoreKind.RECORD,
+    StoreId.SESSION_STATE: StoreKind.CARRY_OVER,
+    StoreId.COLD_START_STATE: StoreKind.CARRY_OVER,
+    StoreId.TICKS: StoreKind.ARCHIVE,
+    StoreId.SIGNALS: StoreKind.ARCHIVE,
+    StoreId.FINISHED_ARCHIVE: StoreKind.ARCHIVE,
+    StoreId.EXTERNAL_HISTORY: StoreKind.ARCHIVE,
+    StoreId.BARS: StoreKind.DERIVED,
+    StoreId.GENERATOR_PROFILES: StoreKind.DERIVED,
+    StoreId.DISCOVERY_CACHES: StoreKind.DERIVED,
+    StoreId.BROKER_RUNTIME: StoreKind.DERIVED,
+    StoreId.CONFIG_DIRECTORY: StoreKind.DERIVED,
+    StoreId.IMPORT_TIMINGS: StoreKind.DERIVED,
+    StoreId.RAW_INBOX: StoreKind.SPECIAL,
+    StoreId.REFUSED_FILES: StoreKind.SPECIAL,
+    StoreId.GLOBAL_LOG: StoreKind.SPECIAL,
+    StoreId.HOST_IDENTITY: StoreKind.SPECIAL,
+    StoreId.ACTIVITIES: StoreKind.SPECIAL,
+}
+
+# How each SPECIAL store writes, with its reason — the kind cannot answer for these (#632).
+SPECIAL_STORE_DURABILITY: Dict[StoreId, bool] = {
+    # A conveyor: a file rests there only until the import moves it on, and what it came from — a
+    # venue's published history, a package its service keeps until the receipt — still exists
+    StoreId.RAW_INBOX: False,
+    # Files the import refused, moved there with their reason; the import is what they are for
+    StoreId.REFUSED_FILES: False,
+    # An append stream with no identity; nothing renames a file into it
+    StoreId.GLOBAL_LOG: False,
+    # Minted once and never rewritten: an identity lost to a crash of the machine is a new
+    # installation, and every run before it names a host nobody can match
+    StoreId.HOST_IDENTITY: True,
+    # An entry lives as long as its activity's kernel lock — a crash of the machine ends both
+    StoreId.ACTIVITIES: False,
+}
 
 
 @dataclass

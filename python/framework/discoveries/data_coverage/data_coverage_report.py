@@ -26,8 +26,12 @@ from python.framework.discoveries.data_coverage.gap_listing import (
     recent_gap_listing,
 )
 from python.framework.discoveries.data_coverage.gap_timeline import GapTimeline
+from python.framework.discoveries.data_coverage.trade_id_gap_summary import (
+    build_trade_id_gap_report,
+)
 from python.framework.types.config_types.data_origin_config_types import OriginClass
-from python.framework.types.coverage_report_types import Gap, GapYearOriginSummary
+from python.framework.types.coverage_report_types import Gap, GapYearOriginSummary, SeamSide
+from python.framework.types.data_origin_types import SymbolDataOrigin
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.utils.market_calendar import GapCategory, MarketCalendar
 from python.framework.utils.time_utils import ensure_utc_aware, format_duration
@@ -81,6 +85,8 @@ class DataCoverageReport:
         market_rules = market_config.get_market_rules_for_broker(broker_type)
         self._weekend_closure = market_rules.weekend_closure
 
+        # Whose data the symbol's bars were rendered from, read with the bars; None until then
+        self._data_origin: Optional[SymbolDataOrigin] = None
         # Whether the gaps carry their files and origin classes yet (render path only)
         self._gaps_attributed = False
         # This symbol's tick index entries, read on first use (render path only)
@@ -152,6 +158,9 @@ class DataCoverageReport:
         # Initialize bar index
         bar_index = BarsIndexManager()
         bar_index.build_index()
+
+        # The origins the bars were rendered from: the seam the gaps are judged by
+        self._data_origin = bar_index.get_symbol_origin(self.broker_type, self.symbol)
 
         # Get bar file for symbol
         bar_file = bar_index.get_bar_file(
@@ -225,9 +234,8 @@ class DataCoverageReport:
         """
         Whether our own collection has moderate or large gaps.
 
-        A gap in a venue's published history is the venue's silence, and one no tick file was
-        found for is not ours to judge (`unjudged_gap_count`). Render path: the gaps are
-        attributed first.
+        A gap in a venue's published history is the venue's silence, and one whose side of the
+        seam the bar file does not state is not ours to judge (`unjudged_gap_count`).
 
         Returns:
             True if our collection has moderate or large gaps
@@ -237,25 +245,48 @@ class DataCoverageReport:
 
     def collected_gap_counts(self) -> Counter:
         """
-        The gaps of our own collection, counted per category. Render path: attributes first.
+        The gaps in collected data, counted per category — judged by the seam, so no tick index
+        is read.
 
         Returns:
             GapCategory → count
         """
-        self.attribute_gaps()
-        return Counter(gap.category for gap in self.gaps if _is_collected(gap))
+        return Counter(gap.category for gap in self.gaps
+                       if self.seam_side(gap) == SeamSide.COLLECTED)
 
     def unjudged_gap_count(self) -> int:
         """
-        The moderate and large gaps no tick file was found for — whose they are is unknown.
+        The moderate and large gaps whose side of the seam the bar file does not state.
 
         Returns:
             Their count
         """
-        self.attribute_gaps()
         return sum(1 for gap in self.gaps
-                   if gap.origin_class is None
+                   if self.seam_side(gap) == SeamSide.UNSTATED
                    and gap.category in (GapCategory.MODERATE, GapCategory.LARGE))
+
+    def seam_side(self, gap: Gap) -> SeamSide:
+        """
+        Which side of the symbol's seam a gap lies on — the judgment the validation, the
+        region extractor and this report's issue count share (#647).
+
+        Args:
+            gap: One of this report's gaps
+
+        Returns:
+            External history, collected, or unstated where the bars carry no origin
+        """
+        return gap.seam_side(self._data_origin)
+
+    def set_data_origin(self, data_origin: SymbolDataOrigin) -> None:
+        """
+        Set the origins the symbol's bars were rendered from — for a report restored from its
+        cache, which reads them from the same bar index the gaps were detected on.
+
+        Args:
+            data_origin: The symbol's data origin from the bar index
+        """
+        self._data_origin = data_origin
 
     def gaps_in_window(self, start: datetime, end: datetime) -> List[Gap]:
         """
@@ -298,9 +329,9 @@ class DataCoverageReport:
         Generate actionable recommendations for the gaps of our OWN collection.
 
         A gap in a venue's published history (`external`) is the venue's own silence: there is
-        nothing to re-collect and nothing to recommend. A gap no tick file could be found for is
-        not ours to judge either. The MT5 advice names the MQL5 TickCollector, so it is given
-        for an MT5 broker only. Render path: the gaps are attributed first.
+        nothing to re-collect and nothing to recommend. A gap whose side of the seam is not
+        stated is not ours to judge either. The MT5 advice names the MQL5 TickCollector, so it
+        is given for an MT5 broker only.
 
         Returns:
             List of recommendation strings
@@ -430,6 +461,38 @@ class DataCoverageReport:
             lines.append(
                 f'   ... and {len(spans) - MAX_VERSION_SPANS_DISPLAYED} more spans')
 
+        return lines
+
+    def _missing_trades_section(self) -> List[str]:
+        """
+        Build the missing-trades section from the tick index (#647).
+
+        How many of the venue's trades our files do not hold, where every trade carries its id.
+        A stretch whose files carry no ids is named as not measurable, never counted as complete.
+        Render path only, like the version spans.
+
+        Returns:
+            Report lines for the section
+        """
+        lines = [f"\n{'─'*60}", 'MISSING TRADES (venue trade ids):', f"{'─'*60}"]
+        report = build_trade_id_gap_report(self._tick_entries())
+        for summary in report.summaries:
+            share = f'{summary.missing / summary.span * 100:.3f} %' if summary.span else 'n/a'
+            lines.append(
+                f'   {summary.origin_class:<12} {summary.measured_files:,} file(s) · '
+                f'ids {summary.span:,} · missing {summary.missing:,} ({share}) · '
+                f'longest run {summary.longest_run:,} trades ({summary.longest_run_seconds:.0f} s) · '
+                f'over the limit {summary.files_over_limit}')
+        if not report.summaries:
+            lines.append('   no file carries trade ids')
+        for span in report.unmeasured_spans[:MAX_VERSION_SPANS_DISPLAYED]:
+            lines.append(
+                f"   {span.start_time.strftime('%Y-%m-%d %H:%M')} → "
+                f"{span.end_time.strftime('%Y-%m-%d %H:%M')} (format {span.version}, "
+                f'{span.file_count} file(s)): not measurable')
+        if len(report.unmeasured_spans) > MAX_VERSION_SPANS_DISPLAYED:
+            lines.append(f'   ... and {len(report.unmeasured_spans) - MAX_VERSION_SPANS_DISPLAYED} '
+                         f'more stretches without trade ids')
         return lines
 
     def attribute_gaps(self) -> None:
@@ -657,6 +720,9 @@ class DataCoverageReport:
         # === SECTION 1b: Data Format Version ===
         report.extend(self._version_spans_section())
 
+        # === SECTION 1c: Missing trades ===
+        report.extend(self._missing_trades_section())
+
         # === SECTION 2: Gap Summary ===
         report.append(f"\n{'─'*60}")
         report.append('GAP ANALYSIS:')
@@ -734,30 +800,38 @@ class DataCoverageReport:
         elif not missing:
             report.append(
                 '\n✅ All files form continuous timeline - no action needed!')
-        elif any(gap.origin_class is None for gap in missing):
-            # No clean bill: a gap no tick file was found for was not judged at all
-            report.append(f'\n⚠️  Not judged — {_no_action_reason(missing)}, so whose data '
+        elif any(self.seam_side(gap) == SeamSide.UNSTATED for gap in missing):
+            # No clean bill: a gap whose side of the seam is not stated was not judged at all
+            report.append(f'\n⚠️  Not judged — {self._no_action_reason(missing)}, so whose data '
                           f'they lie in is unknown')
         else:
-            report.append(f'\n✅ No gap in our own collection — {_no_action_reason(missing)}')
+            report.append(
+                f'\n✅ No gap in our own collection — {self._no_action_reason(missing)}')
 
         report.append(f"{'='*60}\n")
 
         return '\n'.join(report)
 
+    def _no_action_reason(self, missing: List[Gap]) -> str:
+        """
+        Say why gaps exist and none of them calls for action — they all lie outside our own
+        collection.
 
-def _is_collected(gap: Gap) -> bool:
-    """
-    Whether a gap lies in data a collector recorded — ours, as opposed to a venue's published
-    history or a stretch no tick file could be found for.
+        Args:
+            missing: The gaps that mean missing data, none of them in collected data
 
-    Args:
-        gap: An attributed gap
-
-    Returns:
-        True for a gap whose origin class is known and not external
-    """
-    return gap.origin_class is not None and gap.origin_class != OriginClass.EXTERNAL
+        Returns:
+            The reason, counted per side of the seam
+        """
+        sides = Counter(self.seam_side(gap) for gap in missing)
+        parts = []
+        if sides[SeamSide.EXTERNAL_HISTORY]:
+            parts.append(f"{sides[SeamSide.EXTERNAL_HISTORY]:,} lie in the venue's own history "
+                         f'(external): no trades at the venue, nothing to re-collect')
+        if sides[SeamSide.UNSTATED]:
+            parts.append(f'{sides[SeamSide.UNSTATED]:,} lie in bars rendered before their '
+                         f'origin was stamped')
+        return '; '.join(parts)
 
 
 def _origin_label(origin_class: Optional[OriginClass]) -> str:
@@ -771,25 +845,3 @@ def _origin_label(origin_class: Optional[OriginClass]) -> str:
         The class value, or the unattributed label
     """
     return origin_class.value if origin_class is not None else UNATTRIBUTED_LABEL
-
-
-def _no_action_reason(missing: List[Gap]) -> str:
-    """
-    Say why gaps exist and none of them calls for action — they all lie outside our own
-    collection.
-
-    Args:
-        missing: The gaps that mean missing data, none of them in collected data
-
-    Returns:
-        The reason, counted per kind
-    """
-    external = sum(1 for gap in missing if gap.origin_class == OriginClass.EXTERNAL)
-    unattributed = sum(1 for gap in missing if gap.origin_class is None)
-    parts = []
-    if external:
-        parts.append(f"{external:,} lie in the venue's own history (external): no trades at "
-                     f'the venue, nothing to re-collect')
-    if unattributed:
-        parts.append(f'{unattributed:,} could not be matched to a tick file')
-    return '; '.join(parts)

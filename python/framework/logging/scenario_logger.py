@@ -297,7 +297,7 @@ class ScenarioLogger(AbstractLogger):
         Replace the current file logger with a new one.
 
         Used by AutoTrader for daily session log rotation:
-        when the date changes, the tick loop creates a new FileLogger
+        when the date changes, the event loop creates a new FileLogger
         pointing to a new day's file and swaps it in.
 
         Args:

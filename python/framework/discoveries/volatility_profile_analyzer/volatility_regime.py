@@ -2,11 +2,11 @@
 Volatility Regime — where a period's ATR stands against a reference, asked once.
 
 A period's regime and percentile say how volatile it was against OTHER periods, so they depend on
-which periods those are. The volatility profile measures every period against the symbol's whole
-history; a generated profile measures the periods of its own range against that range — once a
-venue's published history precedes our collection (#561), the whole history spans a price range of
-two orders of magnitude, and a profile of half a year would otherwise be labelled by a decade it
-does not cover.
+which periods those are. The volatility profile measures every period's ATR over close against the
+trailing year (#647); a generated profile measures the absolute ATR of the periods of its own range
+against that range — once a venue's published history precedes our collection (#561), the history
+spans a price range of two orders of magnitude, and a profile of half a year would otherwise be
+labelled by years it does not cover.
 """
 
 from dataclasses import replace
@@ -49,9 +49,9 @@ def measured_against_themselves(
     """
     The same periods with ATR ratio, percentile and regime measured against their own average.
 
-    A period's `atr` is a ratio to the reference average, so dividing every ratio by their mean
-    re-bases them on these periods alone. Split points are unaffected — they compare periods with
-    each other — only the numbers and labels a window carries change.
+    Each period's absolute ATR divided by their mean re-bases them on these periods alone — the
+    figures a generated profile carried before the analyzer measured against the trailing year,
+    so a profile generated over the same range is unchanged by that.
 
     Args:
         periods: Volatility periods of one range
@@ -60,11 +60,11 @@ def measured_against_themselves(
     Returns:
         The re-based periods; unchanged where no period has a positive ATR
     """
-    ratios = np.array([period.atr for period in periods], dtype=float)
-    reference = float(ratios.mean()) if len(ratios) else 0.0
+    absolute = np.array([period.atr_absolute for period in periods], dtype=float)
+    reference = float(absolute.mean()) if len(absolute) else 0.0
     if not np.isfinite(reference) or reference <= 0.0:
         return periods
-    rebased = ratios / reference
+    rebased = absolute / reference
     return [
         replace(period,
                 atr=float(ratio),

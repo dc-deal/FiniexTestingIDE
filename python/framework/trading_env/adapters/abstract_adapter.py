@@ -15,7 +15,11 @@ from python.configuration.market_config_manager import MarketConfigManager
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.types.config_types.market_config_types import PipMode
 from python.framework.types.live_types.live_execution_types import BrokerResponse
-from python.framework.types.live_types.reconciliation_types import BrokerOrder, BrokerPosition
+from python.framework.types.live_types.reconciliation_types import (
+    BrokerOrder,
+    BrokerPosition,
+    ClosedOrdersRead,
+)
 from python.framework.types.market_types.market_data_types import TickData
 from python.framework.types.trading_env_types.broker_trade_types import BrokerTrade
 from python.framework.types.trading_env_types.broker_types import (
@@ -408,7 +412,7 @@ class AbstractAdapter(ABC):
 
         OPTIONAL — Real adapters determine market state broker-side and
         typically ignore this. Mock/simulation adapters use it to keep
-        their internal market view in sync with the tick loop so that
+        their internal market view in sync with the event loop so that
         execute_order() can fill at the current market price.
 
         Default: no-op.
@@ -637,7 +641,7 @@ class AbstractAdapter(ABC):
     def parse_submit_response(
         self,
         raw: Dict[str, Any],
-        timestamp: datetime,
+        ts_init: datetime,
         direction: Optional[OrderDirection] = None,
         order_type: Optional[OrderType] = None,
     ) -> BrokerResponse:
@@ -654,7 +658,7 @@ class AbstractAdapter(ABC):
 
         Args:
             raw: Raw broker response dict
-            timestamp: Response receipt timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
             direction: Order direction — which side of the quote a dry-run fill takes
             order_type: Which dry-run fill rule applies
 
@@ -669,7 +673,7 @@ class AbstractAdapter(ABC):
         self,
         raw: Dict[str, Any],
         broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
         market: Optional[TickData] = None,
     ) -> BrokerResponse:
         """
@@ -680,7 +684,7 @@ class AbstractAdapter(ABC):
         Args:
             raw: Raw broker response dict
             broker_ref: The broker reference that was queried
-            timestamp: Response receipt timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
             market: DRY-RUN only — the quote when the poll was decided, so the simulated
                 venue can answer whether the market has reached the order's price (#505).
                 A real broker knows its own book and ignores it
@@ -696,7 +700,7 @@ class AbstractAdapter(ABC):
         self,
         raw: Dict[str, Any],
         broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
     ) -> BrokerResponse:
         """
         Convert a raw broker cancel response into a BrokerResponse.
@@ -706,7 +710,7 @@ class AbstractAdapter(ABC):
         Args:
             raw: Raw broker response dict
             broker_ref: The broker reference that was cancelled
-            timestamp: Response receipt timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
 
         Returns:
             BrokerResponse with cancellation status
@@ -719,7 +723,7 @@ class AbstractAdapter(ABC):
         self,
         raw: Dict[str, Any],
         original_broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
     ) -> BrokerResponse:
         """
         Convert a raw broker modify response into a BrokerResponse.
@@ -732,7 +736,7 @@ class AbstractAdapter(ABC):
         Args:
             raw: Raw broker response dict
             original_broker_ref: The pre-modification broker reference
-            timestamp: Response receipt timestamp (UTC)
+            ts_init: When this process received the answer (UTC)
 
         Returns:
             BrokerResponse with (potentially new) broker_ref
@@ -814,6 +818,24 @@ class AbstractAdapter(ABC):
         raw = self._do_request_closedorders(
             self._build_closedorders_payload(start, end, client_order_id))
         return self._parse_closedorders_response(raw)
+
+    def read_closed_orders(self, start: datetime, end: datetime) -> ClosedOrdersRead:
+        """
+        Read every order of the account that CLOSED inside a range, to the end of the range.
+
+        The boot read's question (#652): what did the venue finish while no session of this bot
+        was watching. It filters on the close time, which `get_closed_broker_orders` does not
+        promise, and it says whether it reached the end of the range. This default reads one
+        answer and calls it complete; an adapter whose venue pages the answer overrides it.
+
+        Args:
+            start: Range start (UTC, exclusive)
+            end: Range end (UTC, inclusive)
+
+        Returns:
+            The orders that closed inside the range, and whether the read reached its end
+        """
+        return ClosedOrdersRead(orders=self.get_closed_broker_orders(start, end), complete=True)
 
     def get_broker_balances(self) -> Dict[str, float]:
         """

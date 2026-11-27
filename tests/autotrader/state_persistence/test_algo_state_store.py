@@ -84,7 +84,7 @@ class TestAtomicWrite:
 
 
 class TestCadence:
-    """Hybrid is_due — tick threshold or time threshold."""
+    """is_due by the tick count; the seconds are a timer of the session's timeline (#461)."""
 
     def test_is_due_by_ticks(self, store_config, logger):
         store = _make_store(store_config, logger)  # save_interval_ticks=10
@@ -92,6 +92,13 @@ class TestCadence:
         store.save({'k': 1}, tick_counter=10)
         assert store.is_due(15) is False
         assert store.is_due(20) is True
+
+    def test_the_seconds_are_the_timelines_timer_not_the_gates(self, store_config, logger):
+        store = _make_store(store_config, logger)
+        store.save({'k': 1}, tick_counter=10)
+
+        assert store.is_due(11) is False
+        assert store.get_save_interval_seconds() == store_config.save_interval_seconds
 
 
 class TestCorruptPolicy:

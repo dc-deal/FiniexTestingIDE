@@ -49,6 +49,8 @@ The splitters create their data dependencies internally. Tests use `unittest.moc
 - Multiple gaps → only non-allowed gaps split (weekend gaps span across)
 - Gap at data start → region starts after gap (with `preceding_gap` set)
 - Clip-to-range → regions clipped to requested `[start, end]`
+- A large gap in a venue's published history → no split; one after the seam still splits; a report
+  whose bars carry no origin splits as before (#647, `TestTheVenueSHistoryIsOneRegion`)
 
 ### Constrained Blocks
 - Full blocks generated correctly (WindowSet carries symbol/broker/strategy)
@@ -96,6 +98,9 @@ The splitters create their data dependencies internally. Tests use `unittest.moc
 - Profile splitters require `start_time` / `end_time`
 - Volatility: region ≤ max_block_hours → single `single_region` window
 - Volatility: region > max_block_hours → splits, no window exceeds the max
+- Both splitters produce the same windows — split points, ATR and regime — whatever ratio the
+  volatility profile stored, because they re-base on `atr_absolute` (#647,
+  `TestTheWindowsIgnoreTheProfilesReference`)
 
 ---
 
@@ -137,12 +142,15 @@ runnable set. Tests the pure dict assembly (no file write); quote-currency resol
 ## test_volatility_regime.py
 
 A generated profile measures its periods against its own range rather than the symbol's whole
-history (#561):
+history (#561), re-basing their absolute ATR (`atr_absolute`):
 
 - A range far above the whole history's average is ordinary among itself, not all `very_high`
 - Re-basing keeps the order of the periods (split points cannot move) and re-ranks percentiles
 - Periods without ATR are left as they are
 - The regime boundaries are the configured ones
+- A generated profile is unchanged by the volatility profile's new reference (#647): over random
+  ranges with ties, the ATR as written (6 decimals), the percentile and the regime equal what the
+  former re-base of the ratio to a whole-history mean produced
 
 ---
 

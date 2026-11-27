@@ -72,23 +72,28 @@ class MarketDataEpisodeTracker:
         now: datetime,
         status: MarketDataStatus,
         injected_label: str = '',
+        ticks: int = 1,
     ) -> None:
         """
-        Observe the status on the tick path: count this tick and track the episode edges.
+        Observe the status on the tick path: count this pass's ticks and track the episode edges.
 
         Args:
             now: Current tick timestamp (canonical clock)
             status: The executor's market-data status for this pass
             injected_label: Label of an outage the source declares as deliberately
                 injected ('' = a real outage)
+            ticks: The unclipped ticks this pass stands for — more than one where a backtest's
+                slice holds several (#460)
         """
         if status.is_stale:
-            self._stale_ticks += 1
+            self._stale_ticks += ticks
         else:
-            self._fresh_ticks += 1
+            self._fresh_ticks += ticks
 
         # Wall time is read only where it is the measuring axis (live) — the simulation
         # runs this per tick on the hot path and measures on the canonical axis anyway.
+        # A duration taken from two wall readings moves with every step of the clock; it belongs
+        # on the monotonic clock (#549)
         wall = time.time() if self._measure_wall_duration else 0.0
 
         # A flip seen on a tick begins with THIS tick — it is the first one the run
@@ -246,5 +251,6 @@ class MarketDataEpisodeTracker:
             Duration in seconds — wall axis live, canonical axis in simulation
         """
         if self._measure_wall_duration:
+            # Two wall readings: a step of the clock lands in the duration (#549)
             return max(0.0, time.time() - self._open_wall_anchor)
         return max(0.0, (end - self._open_from).total_seconds())

@@ -2,8 +2,8 @@
 FiniexTestingIDE - Signal Index CLI
 Command-line tools for the signal index and the producer (#429).
 
-The import itself runs with the tick import, in one command:
-    python python/cli/data_index_cli.py import [--only signals] [--override] [--include-finished]
+The import itself runs with the tick import, in one command, over one inbox:
+    python python/cli/data_index_cli.py import [--only signals] [--override]
 
 Usage:
     python python/cli/signal_index_cli.py status
@@ -11,15 +11,11 @@ Usage:
     python python/cli/signal_index_cli.py inspect DATA_SENTIMENT_TYPE SYMBOL
     python python/cli/signal_index_cli.py connect-check
 
-Paths are driven by configs/import_config.json → 'signal_paths' (with user_configs override):
-raw JSONL under data/raw/signals/<pipeline_id>/, processed parquet + index under
-data/processed/signals/<pipeline_id>/, imported JSONL archived to
-data/finished/signals/<pipeline_id>/ (switched by 'processing.move_processed_files').
-
-An import reads the raw directory only, so a re-run costs nothing once everything is
-archived; --include-finished additionally re-reads the finished archive and rebuilds every
-day ever imported. --override means what it means for ticks — replace an existing parquet
-instead of skipping it — and nothing more.
+Raw JSONL lies flat in the one import inbox beside the tick exports (data/raw/), loose or in a
+zip, and leaves it for data/finished/ or data/refused/ like every raw file; the pipeline is read
+from the envelopes. The processed parquet + index lie under data/processed/signals/<pipeline_id>/
+(configs/import_config.json → 'signal_paths', with user_configs override). --override means what
+it means for ticks — replace an existing parquet instead of skipping it — and nothing more.
 """
 
 import argparse

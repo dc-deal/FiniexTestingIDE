@@ -206,10 +206,19 @@ def process_startup_preparation(
     # === WARMUP HISTORY ===
     # Selected by the batch for this scenario's first tick and judged by the batch's data
     # validation (a timeframe without bars never reaches a process); injected here through the
-    # controller's checked route, the same one the AutoTrader uses.
-    warmup_history = WarmupHistory.from_package(
-        symbol=config.symbol, package=shared_data, logger=scenario_logger)
-    warmup_history.inject_into(bar_rendering_controller)
+    # controller's checked route, the same one the AutoTrader uses. A backtest of a session's
+    # window starts from the bars the session recorded instead (#512), and records what it
+    # injected under its scenario's name, so the comparison can hold it to that record bar by bar.
+    if config.warmup_record is not None:
+        warmup_history = WarmupHistory.from_record(config.warmup_record, logger=scenario_logger)
+        warmup_history.inject_into(
+            bar_rendering_controller,
+            RunEntryWriter(run_dir, RUN_TYPE_SIMULATION) if run_dir else None,
+            scenario=config.name)
+    else:
+        warmup_history = WarmupHistory.from_package(
+            symbol=config.symbol, package=shared_data, logger=scenario_logger)
+        warmup_history.inject_into(bar_rendering_controller)
 
     # Debug bars from warmup (line 151, unchanged)
     debug_warmup_bars_check(

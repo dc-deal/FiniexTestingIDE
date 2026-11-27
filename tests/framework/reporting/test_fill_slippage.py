@@ -237,7 +237,8 @@ class TestAProtectiveCloseIsMeasuredAgainstTheLevelThatFired:
     def test_the_level_belongs_to_the_reason_that_closed(self):
         """Every close reason answers — the level that fired, or none."""
         expected = {CloseReason.SL_TRIGGERED: 95.0, CloseReason.TP_TRIGGERED: 105.0,
-                    CloseReason.MANUAL: None, CloseReason.SCENARIO_END: None}
+                    CloseReason.MANUAL: None, CloseReason.SCENARIO_END: None,
+                    CloseReason.CLOSED_EXTERNALLY: None}
 
         assert set(expected) == set(CloseReason), 'a new close reason needs its answer here'
         for reason, level in expected.items():

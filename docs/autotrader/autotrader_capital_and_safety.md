@@ -139,7 +139,7 @@ What the check does is graded by **consequence**, not by category:
 
 | What the venue reports | Response | Why |
 |---|---|---|
-| An order with no key of ours, **on the instrument this bot trades** | **ERROR into the session pot** — the session starts | At spot both exposures merge into one balance no tag can split, so the bot cannot size an order against what is actually its own, and every risk limit measures a foreign denominator. The loudest case, and still not a refusal — see below |
+| An order with no key of ours, **on the instrument this bot trades** | **ERROR into the session pot** — the session starts and **holds its entries** | At spot both exposures merge into one balance no tag can split, so the bot cannot size an order against what is actually its own, and every risk limit measures a foreign denominator. The loudest case, and still not a refusal — see below |
 | An order that is not ours **on another instrument** | Tier-1 warning, session starts | It means the DECLARATION is wrong, which is worth an alert but is a lesser weight: the exposures do not merge |
 | An order of **our own key shape** whose session we cannot place | Error, no judgement | On an exclusive account nobody else uses our key format, so it is more likely OURS. Refusing forever would leave the operator no way out, which is the reason already written into the boot step |
 
@@ -153,9 +153,21 @@ What the check does is graded by **consequence**, not by category:
 - It can **loop**: a refused boot leaves the carry-over untouched and exits non-zero, so a
   supervisor relaunches into the same refusal.
 
-**What the declaration does TODAY — observation only.** Nothing in trading changes when it is
-set: the bot spends the whole account either way, exactly as before. What changes is that the
-boot now *checks* the premise and *says* when it does not hold. The declaration becomes
+**Held, not refused.** On the instrument this bot trades, the session starts and holds its
+entries: it manages and closes its position and opens nothing new; its own resting entries are
+cancelled with the hold, because the venue filling one would be new risk through the back door.
+The operator hears it out of band. The hold lifts when a reconcile cycle that completed shows
+those orders gone, or when a start with `--attended` is answered yes — which accepts them as
+another owner's, so the next start, attended or not, holds nothing over them — and still warns
+while they rest. Without a periodic reconcile only the operator lifts it. Whatever happens, the
+start's finding stays on the record: the session's safety report names every hold beside the
+figures it measured, and the risk baseline and the session's ledger rows say since when the
+denominator is not provably the bot's own — at every start that finds those orders resting,
+held over or accepted.
+
+**What the declaration does to the money — observation only.** Beyond the hold above, nothing in
+trading changes when it is set: the bot spends the whole account either way, exactly as before.
+What changes is that the boot *checks* the premise and *says* when it does not hold. The declaration becomes
 load-bearing when the account-level limits (#314, #356) are built — they measure against the
 account, and this flag is what makes "the account's drawdown" mean "the bot's drawdown".
 
@@ -197,7 +209,7 @@ in [venue_order_features.md](../architecture/venue_order_features.md).
 
 ## Safety Circuit Breaker
 
-A soft-stop mechanism: while a configured risk threshold is exceeded, the tick loop replaces the decision's ACTION with FLAT. Whatever a strategy sends only on a BUY or SELL action is suppressed — an entry, and also a close or a reduction it expresses as an action. What a strategy sends from its own position management whatever the action — a close, a stop amend, a cancel, a re-price — still goes out, an order already resting can still fill, and the a logic's own exits keep working. The breaker closes nothing itself. A strategy that reduces by deciding SELL therefore keeps its full exposure for as long as the block holds.
+A soft-stop mechanism: while a configured risk threshold is exceeded, the event loop replaces the decision's ACTION with FLAT. Whatever a strategy sends only on a BUY or SELL action is suppressed — an entry, and also a close or a reduction it expresses as an action. What a strategy sends from its own position management whatever the action — a close, a stop amend, a cancel, a re-price — still goes out, an order already resting can still fill, and the a logic's own exits keep working. The breaker closes nothing itself. A strategy that reduces by deciding SELL therefore keeps its full exposure for as long as the block holds.
 
 ### Behavior
 

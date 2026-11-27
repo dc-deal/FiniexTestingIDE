@@ -32,7 +32,7 @@ def _make_session_fixture(profile: str):
         trader = AutotraderMain(config)
         result = trader.run()
         yield result
-        remove_run_dir(trader._run_dir)
+        remove_run_dir(trader.get_run_dir())
     return _fixture
 
 

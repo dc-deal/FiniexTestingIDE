@@ -49,7 +49,7 @@ ACCEPTED_LEAKS: Dict[str, str] = {
     '((_+_)/2.0)':
         '`price_trigger.mid_price` against three sites, NONE of them a defect. '
         '`market_data_types.TickData.mid` is inline on purpose and says so: delegating was '
-        'measured at +30 % on an access that sits in the tick loop (§17). '
+        'measured at +30 % on an access that sits in the event loop (§17). '
         '`tick_parquet_reader` computes it over a pandas Series, which is the series form §46 '
         'explicitly keeps beside the scalar one. And `simple_consensus` averages two '
         'CONFIDENCE values — same shape, nothing to do with a midpoint.',

@@ -14,7 +14,7 @@ from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.probe_metadata_types import ProbeMetadata
-from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessResult, ProcessEventLoopResult
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.utils.seeded_generators.seeded_delay_generator import SeededDelayGenerator
 from tests.shared.fixture_helpers import (
@@ -23,7 +23,7 @@ from tests.shared.fixture_helpers import (
     extract_probe_metadata,
     extract_process_result,
     extract_seeds_config,
-    extract_tick_loop_results,
+    extract_event_loop_results,
     extract_trade_history,
     extract_trade_sequence,
     load_scenario_config,
@@ -53,33 +53,33 @@ def process_result(batch_execution_summary: BatchExecutionSummary) -> ProcessRes
 
 
 @pytest.fixture(scope='session')
-def tick_loop_results(process_result: ProcessResult) -> ProcessTickLoopResult:
-    """Extract tick loop results."""
-    return extract_tick_loop_results(process_result)
+def event_loop_results(process_result: ProcessResult) -> ProcessEventLoopResult:
+    """Extract event loop results."""
+    return extract_event_loop_results(process_result)
 
 
 @pytest.fixture(scope='session')
-def probe_metadata(tick_loop_results: ProcessTickLoopResult) -> ProbeMetadata:
+def probe_metadata(event_loop_results: ProcessEventLoopResult) -> ProbeMetadata:
     """Extract ProbeMetadata from decision statistics."""
-    return extract_probe_metadata(tick_loop_results)
+    return extract_probe_metadata(event_loop_results)
 
 
 @pytest.fixture(scope='session')
-def portfolio_stats(tick_loop_results: ProcessTickLoopResult) -> PortfolioStats:
+def portfolio_stats(event_loop_results: ProcessEventLoopResult) -> PortfolioStats:
     """Extract portfolio statistics."""
-    return extract_portfolio_stats(tick_loop_results)
+    return extract_portfolio_stats(event_loop_results)
 
 
 @pytest.fixture(scope='session')
-def trade_history(tick_loop_results: ProcessTickLoopResult) -> List[TradeRecord]:
+def trade_history(event_loop_results: ProcessEventLoopResult) -> List[TradeRecord]:
     """Extract trade history for P&L verification."""
-    return extract_trade_history(tick_loop_results)
+    return extract_trade_history(event_loop_results)
 
 
 @pytest.fixture(scope='session')
-def order_history(tick_loop_results: ProcessTickLoopResult) -> List[OrderResult]:
+def order_history(event_loop_results: ProcessEventLoopResult) -> List[OrderResult]:
     """Extract order history (executed + rejected orders)."""
-    return extract_order_history(tick_loop_results)
+    return extract_order_history(event_loop_results)
 
 
 # =============================================================================

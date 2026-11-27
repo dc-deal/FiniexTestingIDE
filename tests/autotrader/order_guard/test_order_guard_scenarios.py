@@ -12,6 +12,7 @@ rejections correctly flow into _order_history and execution_stats.orders_rejecte
 via the record_guard_rejection() hook on AbstractTradeExecutor.
 """
 
+import re
 from typing import List
 
 import pytest
@@ -24,7 +25,7 @@ from python.framework.types.trading_env_types.trading_env_stats_types import Exe
 from tests.shared.fixture_helpers import (
     extract_order_history,
     extract_process_result,
-    extract_tick_loop_results,
+    extract_event_loop_results,
     run_scenario,
 )
 
@@ -36,21 +37,21 @@ COOLDOWN_CONFIG = 'backtesting/order_guard_cooldown_test.json'
 
 
 @pytest.fixture(scope='module')
-def cooldown_tick_loop():
+def cooldown_event_loop():
     """Run the cooldown scenario once for the module."""
     summary = run_scenario(COOLDOWN_CONFIG)
     process_result = extract_process_result(summary)
-    return extract_tick_loop_results(process_result)
+    return extract_event_loop_results(process_result)
 
 
 @pytest.fixture(scope='module')
-def cooldown_order_history(cooldown_tick_loop) -> List[OrderResult]:
-    return extract_order_history(cooldown_tick_loop)
+def cooldown_order_history(cooldown_event_loop) -> List[OrderResult]:
+    return extract_order_history(cooldown_event_loop)
 
 
 @pytest.fixture(scope='module')
-def cooldown_execution_stats(cooldown_tick_loop) -> ExecutionStats:
-    return cooldown_tick_loop.execution_stats
+def cooldown_execution_stats(cooldown_event_loop) -> ExecutionStats:
+    return cooldown_event_loop.execution_stats
 
 
 class TestRejectionCooldown:
@@ -69,6 +70,24 @@ class TestRejectionCooldown:
             f'Expected at least 1 INSUFFICIENT_MARGIN rejection to arm '
             f'cooldown (threshold=1), got {len(margin_rejections)}'
         )
+
+    def test_a_margin_rejection_says_how_much_the_free_margin_covers(
+        self,
+        cooldown_order_history: List[OrderResult],
+    ):
+        """Each margin refusal names the share of its requirement the free margin covered."""
+        margin_rejections = [
+            r for r in cooldown_order_history
+            if r.rejection_reason == RejectionReason.INSUFFICIENT_MARGIN
+        ]
+        assert margin_rejections
+        for rejection in margin_rejections:
+            figures = re.search(
+                r'Required margin ([\d.]+) exceeds free margin ([-\d.]+) — covers ([\d.]+) % of it',
+                rejection.rejection_message)
+            assert figures is not None, rejection.rejection_message
+            required, free, share = (float(value) for value in figures.groups())
+            assert share == pytest.approx(max(free, 0.0) / required * 100.0, abs=0.1)
 
     def test_cooldown_rejection_present(
         self,

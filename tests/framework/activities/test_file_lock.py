@@ -9,6 +9,8 @@ import signal
 import subprocess
 import sys
 import textwrap
+import threading
+import time
 
 import pytest
 
@@ -126,3 +128,84 @@ class TestTheLockDiesWithItsHolder:
         child.wait()
         assert not is_lock_held(path)
         FileLock(path).release()
+
+
+class TestSharedHolders:
+    """A store index is read by many and written by one (#650): shared holds side by side, an exclusive alone."""
+
+    def test_two_shared_holders_hold_at_once(self, tmp_path):
+        path = tmp_path / 'a.lock'
+        first = FileLock(path, shared=True)
+        second = FileLock(path, shared=True)
+        first.release()
+        second.release()
+
+    def test_an_exclusive_request_is_refused_while_a_shared_holder_holds(self, tmp_path):
+        path = tmp_path / 'a.lock'
+        with FileLock(path, shared=True):
+            with pytest.raises(FileLockHeldError):
+                FileLock(path)
+        FileLock(path).release()
+
+    def test_a_shared_request_is_refused_while_an_exclusive_holder_holds(self, tmp_path):
+        path = tmp_path / 'a.lock'
+        with FileLock(path):
+            with pytest.raises(FileLockHeldError):
+                FileLock(path, shared=True)
+
+    def test_a_shared_holder_writes_no_note(self, tmp_path):
+        with FileLock(tmp_path / 'a.lock', shared=True) as lock:
+            with pytest.raises(ValueError):
+                lock.write_note('pid 1')
+
+
+class TestAWaitingRequest:
+
+    def test_a_wait_ends_when_the_holder_lets_go(self, tmp_path):
+        path = tmp_path / 'a.lock'
+        holder = FileLock(path)
+        threading.Timer(0.2, holder.release).start()
+        started = time.monotonic()
+        FileLock(path, wait_s=5.0).release()
+        assert 0.15 <= time.monotonic() - started < 5.0
+
+    def test_a_wait_that_runs_out_names_the_holder_and_the_wait(self, tmp_path):
+        path = tmp_path / 'a.lock'
+        with FileLock(path) as holder:
+            holder.write_note('pid 4711 · store_cli.py rebuild runs · since 18:02:11 UTC')
+            started = time.monotonic()
+            with pytest.raises(FileLockHeldError) as refused:
+                FileLock(path, shared=True, wait_s=0.3)
+            assert time.monotonic() - started >= 0.3
+        assert refused.value.note == 'pid 4711 · store_cli.py rebuild runs · since 18:02:11 UTC'
+        assert refused.value.waited_s == 0.3
+        assert 'pid 4711' in str(refused.value)
+        assert 'waited 0.3 s' in str(refused.value)
+
+    def test_a_request_that_does_not_wait_says_nothing_about_waiting(self, tmp_path):
+        path = tmp_path / 'a.lock'
+        with FileLock(path):
+            with pytest.raises(FileLockHeldError) as refused:
+                FileLock(path)
+        assert 'waited' not in str(refused.value)
+
+
+class TestAReadOnlyHold:
+    """On a data home it may not write, a reader opens the lock file a writer created, or none."""
+
+    def test_an_existing_file_is_held_shared_without_being_written(self, tmp_path):
+        path = tmp_path / 'a.lock'
+        FileLock(path).release()
+        with FileLock(path, shared=True, read_only=True):
+            with pytest.raises(FileLockHeldError):
+                FileLock(path)
+
+    def test_a_missing_file_is_not_created(self, tmp_path):
+        path = tmp_path / 'missing.lock'
+        with pytest.raises(FileNotFoundError):
+            FileLock(path, shared=True, read_only=True)
+        assert not path.exists()
+
+    def test_an_exclusive_hold_cannot_be_read_only(self, tmp_path):
+        with pytest.raises(ValueError):
+            FileLock(tmp_path / 'a.lock', read_only=True)

@@ -23,7 +23,7 @@ FiniexTestingIDE provides a collection of CLI tools for the complete workflow fr
 | `run_config_cli.py` | Run Config Store (#538) | list, history, show |
 | `config_directory_cli.py` | Every configuration that can start a run (#554) | list, show |
 | `store_cli.py` | Every data store and its index (#486) | catalog, entry-members, run-footprint, rebuild |
-| `discoveries_cli.py` | Volatility Profiles, Discoveries & Data Coverage | volatility-profile, extreme-moves, data-coverage (build/show/validate/status/clear), signal-coverage (validate/show), cache (rebuild-all/status) |
+| `discoveries_cli.py` | Volatility Profiles, Discoveries & Data Coverage | volatility-profile, extreme-moves, data-coverage (build/show/trade-completeness/validate/status/clear), signal-coverage (validate/show), cache (rebuild-all/status) |
 | `generator_cli.py` | Block & Generator-Profile Generation | generate-blocks, generate-profile, generate-all-profiles |
 | `strategy_runner_cli.py` | Backtesting | run, run --generator-profile, validate |
 | `docs_search_cli.py` | Search the whole documentation tree | search |
@@ -56,6 +56,36 @@ open this repository. In VS Code the `📚 Docs: Search` entry, first in the lis
 search runs afterwards, each with the search term appended as its last argument — for material a
 maintainer keeps outside the repository. Empty in a fresh clone; set it in your own
 `user_configs/app_config.json`.
+
+The search itself can be such a command. Given `--root`, it searches that one folder instead of the
+documentation tree: one level deep, so a sub-folder can be a collection of its own, and with no extra
+search after it. Its block is announced by the folder's name:
+
+```json
+"docs_search": {
+  "extra_commands": [
+    ["python", "python/cli/docs_search_cli.py", "search", "--root", "/path/to/my_notes"],
+    ["python", "python/cli/docs_search_cli.py", "search", "--root", "/path/to/my_notes/archive"]
+  ]
+}
+```
+
+The repository names none of these folders; only your own configuration does.
+
+**A folder kept current from elsewhere says how old it is.** Where such a folder is a snapshot that a
+service refreshes, `docs_search.snapshot_stamps` names the JSON file inside it and the key that
+records when it was fetched. Its block then carries the snapshot's age, and a snapshot older than a
+day is flagged — a refresh that stopped shows where the copy is read, not only where somebody looks:
+
+```json
+"docs_search": {
+  "snapshot_stamps": {"/path/to/my_snapshot": "meta.json::fetched_at"}
+}
+```
+
+```
+  1727 passages in my_snapshot, best 5   (snapshot 2h 51m old)
+```
 
 ---
 
@@ -90,7 +120,7 @@ the run would do does not.
 ## A) Data Pipeline - Import
 
 Tick data is collected by the **TickCollector** (MQL5 Expert Advisor) and exported as JSON; signal
-data arrives as JSONL from the signal producer. One import takes both import inboxes, converts
+data arrives as JSONL from the signal producer. One import takes the import inbox, converts
 them to Parquet and renders the bars for every configured timeframe.
 
 > 📖 See `tick_collector_guide.md` for details on data collection.
@@ -99,9 +129,9 @@ them to Parquet and renders the bars for every configured timeframe.
 
 | | |
 |---|---|
-| **VS Code** | `📥 Import` · `📥 Import (Override)` |
-| **CLI** | `python python/cli/data_index_cli.py import [--override] [--only ticks\|signals] [--include-finished] [--no-display]` |
-| **Purpose** | Import the tick and the signal import inbox, render bars, rebuild the discovery caches |
+| **VS Code** | `📥 Import` · `📥 Import (fetch packages)` · `📥 Import (Override)` · `📥 Package services` |
+| **CLI** | `python python/cli/data_index_cli.py import [--override] [--only ticks\|signals] [--no-display] [--fetch]` · `python python/cli/data_index_cli.py package-sources [--check]` |
+| **Purpose** | Import the import inbox — tick exports and signal files, loose or in zips — render bars, rebuild the discovery caches; with `--fetch`, first fetch the packages of every switched-on package service and acknowledge each one taken |
 
 Each broker's timestamps are converted to UTC through its server clock rule in `market_config.json`
 (see [Data Import Pipeline](data_pipeline/data_import_pipeline.md)); `--override` re-imports files that
@@ -109,9 +139,18 @@ already have a Parquet. Ticks come first, then the signals, then the discovery c
 
 **Flags:**
 - `--override` — replace an existing Parquet instead of skipping the file
-- `--only ticks` / `--only signals` — import only one of the two import inboxes
-- `--include-finished` — also re-read the finished signal archive
+- `--only ticks` / `--only signals` — import only one kind; the other kind's files stay in the inbox
 - `--no-display` — log line by line instead of showing the live screen
+- `--fetch` — first fetch the packages of every switched-on package service — the data
+  collector's tick packages, the RAG engine's signal packages — and acknowledge each one taken (see
+  [Fetching from the package services](data_pipeline/data_import_pipeline.md#fetching-from-the-package-services));
+  without it the import drains the inbox alone
+
+`package-sources` lists every package service: what it delivers, whether it is switched on, its
+endpoint and address, and which credential file answered — never a token. `--check` also reads
+each switched-on service's list: the packages waiting for a receipt, those acknowledged, the last
+one listed; it exits `1` when the list of a switched-on service could not be read, so a script can
+rely on the exit code.
 
 In a terminal the import shows one live screen with every step, machine memory as a bar and an
 estimate from earlier imports; every line also goes to its own log file, which the summary names
@@ -262,7 +301,7 @@ hidden.
 | | |
 |---|---|
 | **VS Code** | `📈 Run Index: Prune (preview)` |
-| **CLI** | `python run_index_cli.py prune [--orphans] [--keep-last N] [--older-than AGE] [--release-fixtures] [--apply]` |
+| **CLI** | `python run_index_cli.py prune [--orphans] [--keep-last N] [--older-than AGE] [--release-fixtures] [--keep RUN_ID] [--apply]` |
 | **Purpose** | Remove what the run tree no longer needs — after showing exactly what that is |
 
 **The preview is the default and it IS the product.** Without `--apply` nothing is touched. A run
@@ -303,7 +342,7 @@ catalog production is kept, whatever the selectors and flags say — it is what 
 and to drop one, produce the entry again ([Fixture Catalog](architecture/fixture_catalog.md)). An
 entry the catalog no longer declares has no current production, so its runs count as superseded. A
 SUPERSEDED production that passed its check is kept too, because a consumer may still pin it until
-they have moved to the new ids; the selectors reach it only with `--release-fixtures`, given once
+they have moved to the new ids; only `--release-fixtures` removes it, given once
 the consumer has re-pinned. A production that failed its check protects nothing.
 
 **The selectors** (`--keep-last`, `--older-than` and `--orphans` are opt-in; the last one is
@@ -314,7 +353,8 @@ always on):
 | `--keep-last N` | per scenario set / AutoTrader profile, all but the N newest complete runs. **A sweep is the unit, not the combination** — the N newest sweeps survive WHOLE, the rest go WHOLE, because a half-pruned sweep leaves a `ranked.csv` ranking runs that no longer exist |
 | `--older-than AGE` | runs that started longer ago than `AGE`, written as whole days or hours (`30d`, `12h`). The age comes from the run header's own start time; a run that records none is KEPT and reported separately, because an age nobody can measure is not a reason to delete |
 | `--orphans` | directories that are not runs: no header, not in the index, and no run anywhere below them — a set's directory holding a stray file beside its runs is never one. Never sweep directories (correctly header-less) and never a run's own `io/`, `scenario_logs/`, … |
-| `--release-fixtures` | nothing by itself — it lets the selectors above reach the runs of the fixture catalog's superseded productions; a current production is never released |
+| `--release-fixtures` | the runs of the fixture catalog's superseded productions, and only those — given alone, it leaves every other run of their families in place; a current production is never released |
+| `--keep RUN_ID` | nothing — it keeps the named run whatever the selectors say, for a run a consumer still reads outside the catalog; repeat it for several |
 | *(always on)* | `reporting=none` with no artifacts — commissioned to produce nothing, and it did not |
 
 **`--keep-last` and `--older-than` compose as KEEP rules, not as delete rules.** "Keep the
@@ -462,6 +502,30 @@ BY YEAR AND ORIGIN (short · moderate · large, and the hours without data):
    • Short gaps in our collection - likely MT5 restarts or connection blips (usually harmless)
    • 🔴 Large gaps in our collection - consider re-collecting data for these periods
    …
+```
+
+### 📊 Data Coverage: Trade Completeness
+
+| | |
+|---|---|
+| **VS Code** | `🔍 Disc - Data Coverage: Trade Completeness` |
+| **CLI** | `python discoveries_cli.py data-coverage trade-completeness kraken_spot ETHUSD --start 2026-11-16T00:00:00+00:00 --end 2026-11-16T06:00:00+00:00` |
+| **Purpose** | Our trades against the venue's own trade list over a window |
+
+The gap report and its missing-trades section count what our files lack by the venue's trade ids,
+which is an upper bound: a venue may allocate ids that never become public trades. This reads the
+venue's public trade list over the window — no account, about one page of a thousand trades a
+second — and compares it with our files trade by trade. A list it could not read is reported as not
+read, never as a window without trades. It changes nothing in the archive; filling what it finds is
+the tick backfiller's.
+
+```
+🔎 TRADE COMPLETENESS: kraken_spot/ETHUSD
+Window:        2026-11-16 00:00:00 → 2026-11-16 06:00:00 UTC
+Our trades:    8,886
+Venue trades:  8,889
+Missing:       3 (0.034 %) in 1 run(s)
+   2026-11-16 03:47:22 UTC        3 trade(s) over 0 s
 ```
 
 ### 📊 Data Coverage: Build Cache
@@ -867,6 +931,92 @@ runs started from the file.
 It is its own command, not part of the listing, because the loader creates directories and
 logs. Parameter names are not checked here: that happens at the start of a batch.
 
+### 🔀 Divergence Report — a live deployment against backtests of its windows
+
+| | |
+|---|---|
+| **VS Code** | `🔀 Divergence Report: compare (prompt)` |
+| **CLI** | `python python/cli/divergence_report_cli.py compare --deployment <id> --decision-timeframe D1` |
+| **Purpose** | Hold a live deployment against backtests of exactly its windows, built from what its sessions recorded, and judge the divergence by the rules fixed before the run (#512) |
+
+Step by step, from copying the live system's records to reading the verdict:
+[Comparing a Live Bot With Its Backtest](user_guides/divergence_report_guide.md).
+
+The live side is read from the deployment's records — this machine's stores, or `--records` a copy of
+the bot host's data home. Each segment's window is backtested from the session's own warmup and
+frozen broker configuration; the gate refuses a backtest that does not run the session's code; the
+gaps, the measures and the venue's own record follow; the verdict ends each measure passed, failed
+or not checked. Where live orders filled, a second backtest at their measured latency shows measure
+2b beside the verdict, never in it. The report is printed and kept under
+`runs/divergence/<report_id>/`.
+
+| Option | Meaning |
+|---|---|
+| `--until <boundary>` | The trading-day boundary the comparison ends at; the last sealed one when omitted. The archive must reach past it — otherwise the segment waits for the import |
+| `--records <dir>` | A copy of the bot host's data home to read the sessions from |
+| `--reading rehearsal` | Read as the rehearsal: no floor of compared days, measure 2 described |
+| `--declared-stop <instant>,<changed\|unchanged>[,<note>]` | A stop the operator declares; repeatable |
+| `--ledger-credentials <name>` | The key that may read the venue's ledger, as configured (`venues/kraken_ledger_credentials.json`) |
+
+Exit codes: `0` every segment compared and passed · `2` a segment not compared (the archive, the
+backtest or the gate refused) · `3` a compared segment failed or was not checked.
+
+**`aa` — the instrument checked first.** The verdict's backtests run on the current tree, not on the
+release the sessions ran. `aa` proves the two compute the same: it backtests each window twice with
+the same inputs — once from a checkout of the sessions' release, once from this tree with its state
+frames on — and compares the order events and the trades value by value. Both read only what both
+releases understand: the sessions' strategy and account, the archive's warmup, the broker file.
+
+```
+python python/cli/divergence_report_cli.py aa --deployment <id> \
+    --release-tree <checkout of the sessions' release> --window 2026-08-15,2026-11-06
+```
+
+| Option | Meaning |
+|---|---|
+| `--release-tree <dir>` | A checkout of the commit the sessions ran, e.g. `git worktree add --detach <dir> v1.5.0` |
+| `--window <start>,<end>` | A window to backtest; repeatable. Without one, the deployment's own windows — choose one where the strategy trades, or there is nothing to compare |
+| `--until <boundary>` | Where the deployment's own windows end |
+| `--records <dir>` | A copy of the bot host's data home to read the sessions from |
+
+Both backtests run as processes of their own trees against one data home, so `FINIEX_DATA_HOME`
+must name one, and it must hold no `python/` directory: on the release's import path, code there
+would mix into the release's own. A window is IDENTICAL only where the release's run reports the
+sessions' commit, this tree's run a commit with no uncommitted changes, both the same broker
+document, and no bar file was rendered between the two runs; otherwise it is not checked, with why.
+Kept beside the comparisons as `aa_report.json` and `aa_report.txt`.
+
+Exit codes: `0` every window identical · `2` refused, or a window not checked · `3` a window differs.
+
+### 🔀 Behaviour Comparison — one fixed backtest on two code stands
+
+| | |
+|---|---|
+| **VS Code** | `🔀 Behaviour Comparison: compare (prompt)` |
+| **CLI** | `python python/cli/behaviour_comparison_cli.py compare --scenario-set <path> --old-framework <rev> --new-framework <rev>` |
+| **Purpose** | Run the same scenario set on the code that runs now and on the code to be deployed, each from a throwaway tree and a scratch data home, prove that both ran on their own code, and say what their records agree and disagree on (#641) |
+
+What it does and what it does not do yet:
+[Comparing Two Code Stands Before a Deploy](user_guides/behaviour_comparison_guide.md).
+
+| Option | Meaning |
+|---|---|
+| `--scenario-set <path>` | The scenario set both stands run, as a file path |
+| `--old-framework <rev>` · `--new-framework <rev>` | The framework revisions: a branch, a tag or an abbreviation |
+| `--framework-repo <dir>` | The framework repository; this tree's when omitted |
+| `--strategy-repo <dir>` | The strategy repository, below the data home; with it, `--old-strategy` and `--new-strategy` |
+
+A change to the framework's documents and tests only, or to comments in either repository, ends the
+comparison before it builds anything; every other change of a strategy repository runs, because its
+layout is its author's. The two runs' records are then held against each other value by value, and
+the result names each kind of record `IDENTICAL`, `DIFFERENT`, `UNSTABLE`, `RESHAPED` or `UNSEEN`.
+Nothing of the data home it runs on is written; each stand's folder is removed when the comparison
+ends.
+
+Exit codes: `0` nothing executable changed, or the result is `IDENTICAL` or `RESHAPED` · `3` the
+result is `DIFFERENT` or `UNSTABLE` · `2` refused, or a stand could not be built, ran no backtest or loaded other
+code · `1` an error · `130` interrupted.
+
 ---
 
 ## G) Technical Tools (Advanced)
@@ -1026,6 +1176,9 @@ logged the moment it finishes.
 | **Start backtest** | `🔬 Run eurusd_3_windows_reference` | `strategy_runner_cli.py run <config>.json` |
 | **Profile Run (single)** | — | `strategy_runner_cli.py run <config>.json --generator-profile <profile>.json` |
 | **Profile Run (directory)** | `🔬 Generator-Profile Run: volatility_split/ folder` | `strategy_runner_cli.py run <config>.json --generator-profile <dir>` |
+| **Live against backtest** | `🔀 Divergence Report: compare (prompt)` | `divergence_report_cli.py compare --deployment <id> --decision-timeframe D1 [--records <copy>]` |
+| **Release against this tree** | `🔀 Divergence Report: aa (prompt)` | `divergence_report_cli.py aa --deployment <id> --release-tree <dir> --window <start>,<end>` |
+| **Two code stands** | `🔀 Behaviour Comparison: compare (prompt)` | `behaviour_comparison_cli.py compare --scenario-set <path> --old-framework <rev> --new-framework <rev>` |
 
 ---
 

@@ -126,9 +126,21 @@ class TestTheNoteLosesNothing:
             'position_id', 'symbol', 'direction', 'lots', 'original_lots', 'entry_price',
             'entry_time', 'entry_type', 'entry_tick_value', 'entry_bid', 'entry_ask',
             'broker_ref', 'digits', 'contract_size', 'pip_size', 'price_unit',
-            'entry_tick_index', 'swap_accrued_until',
+            'swap_accrued_until',
         ):
             assert getattr(restored, field) == getattr(original, field), field
+
+    def test_a_restored_position_has_no_entry_tick_in_the_new_session(self):
+        # The index counts the ticks of the session that opened the position; the next session
+        # counts from zero again, so a carried index would give the trade a duration in ticks
+        # that means nothing
+        original = _live_position()
+
+        note = position_to_carry_over(original)
+        restored = carry_over_to_position(note)
+
+        assert 'entry_tick_index' not in note.model_dump()
+        assert restored.entry_tick_index is None
 
     def test_a_partial_close_does_not_return_as_untouched(self):
         original = _live_position()
@@ -471,6 +483,7 @@ class TestTheNoteCoversPosition:
         'close_price': 'only set once the position is closed',
         'exit_tick_value': 'only set once the position is closed',
         'exit_tick_index': 'only set once the position is closed',
+        'entry_tick_index': "counted in the opening session's numbering, which a restart resets",
         # The ENTRY book is carried — it belongs to a position that is still open, and the
         # effective spread of its opening leg cannot be recomputed after a restart. The exit
         # book is the mirror and is deliberately NOT: a position in this store has no exit

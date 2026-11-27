@@ -288,7 +288,7 @@ one classification and one vocabulary; the list and the full policy are in
 [architecture/external_connection_policy.md](../architecture/external_connection_policy.md).
 Two consequences visible in this pipeline:
 
-**The tick loop cannot die of a broker fault.** The reconcile truth pull and the order
+**The event loop cannot die of a broker fault.** The reconcile truth pull and the order
 re-poll are already cadenced, so on a transient failure the cycle is **skipped** rather
 than retried inline — no sleep in the loop, no shifted heartbeat, and the cadence is the
 ladder. Before this, one 502 from a public venue propagated to `autotrader_main` and ended

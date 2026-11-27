@@ -5,7 +5,7 @@ The arithmetic mean over the last `period` values. The plainest of the three
 averages, and the only one with no memory beyond its window: two SMAs over the
 same window agree regardless of what came before them.
 
-Two forms. The scalar one answers for the newest value and is what the tick loop
+Two forms. The scalar one answers for the newest value and is what the event loop
 calls; the series one answers for every row and is what the analysis plane calls.
 They are pinned against each other by test rather than by shared code, because a
 per-tick path that builds a DataFrame and a full-history path that loops in Python

@@ -23,10 +23,11 @@ from python.framework.trading_env.live.live_request_processor import LiveRequest
 from python.framework.trading_env.live.live_trade_executor import LiveTradeExecutor
 from python.framework.types.live_types.live_execution_types import (
     BrokerOrderStatus,
+    BrokerResponse,
     TimeoutConfig,
 )
 from python.framework.types.live_types.reconciliation_types import BrokerOrder
-from python.framework.types.trading_env_types.order_types import OrderType
+from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
 
 # =============================================================================
 # MOCK EXECUTION FIXTURES (Function Scope — fresh per test)
@@ -141,6 +142,8 @@ class AcknowledgingVenueMock(MockBrokerAdapter):
         self._closed: List[BrokerOrder] = []
         self.fill_market_orders: bool = True
         self.lose_next_submit_answer: bool = False
+        # Raised once by parse_submit_response, AFTER the venue acted on the submit (#669)
+        self.parse_submit_fault: Optional[Exception] = None
         self.query_fault: Optional[Exception] = None
         self.submits: List[str] = []
         self.queries: List[str] = []
@@ -183,6 +186,31 @@ class AcknowledgingVenueMock(MockBrokerAdapter):
             self.lose_next_submit_answer = False
             raise ConnectionAttemptFailedError('read timeout after AddOrder', terminal=False)
         return {'status': 'PENDING', 'broker_ref': ref}
+
+    def parse_submit_response(
+        self,
+        raw: Dict[str, Any],
+        ts_init: datetime,
+        direction: Optional[OrderDirection] = None,
+        order_type: Optional[OrderType] = None,
+    ) -> BrokerResponse:
+        """
+        Read the venue's answer — or, with `parse_submit_fault` set, fail once while reading it.
+
+        Args:
+            raw: The acknowledgement do_request_submit returned
+            ts_init: When the answer was received
+            direction: The order's direction
+            order_type: The order's type
+
+        Returns:
+            The parsed answer
+        """
+        if self.parse_submit_fault is not None:
+            fault, self.parse_submit_fault = self.parse_submit_fault, None
+            raise fault
+        return super().parse_submit_response(
+            raw, ts_init, direction=direction, order_type=order_type)
 
     def do_request_query(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """

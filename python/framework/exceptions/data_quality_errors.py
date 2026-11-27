@@ -69,7 +69,7 @@ class TradedPriceMissingException(DataQualityException):
     Raised when a venue that prints trades delivers ticks without a traded price
 
     An order-driven venue has a central order book, so `last` is a real event on every
-    tick — and the import refuses a file where it is absent. Reaching the tick loop
+    tick — and the import refuses a file where it is absent. Reaching the event loop
     without one therefore means this pipeline dropped it somewhere between the archive
     and the mount, and the consequence is silent: `TickData.price` falls back to the
     book midpoint, so every bar of the run is built on a different basis than the
@@ -77,5 +77,35 @@ class TradedPriceMissingException(DataQualityException):
 
     Invisible on data below collector format 1.6.0, where the midpoint and the traded
     price are the same number, and total from the first file that carries a real spread.
+    """
+    pass
+
+
+class TickPriceUnusableError(DataQualityException):
+    """
+    Raised when a tick file holds a tick whose price no bar may be built from
+
+    The price is what traded where the venue prints trades, else the book midpoint. It
+    is unusable when it is not a finite number above zero, and when it is a midpoint of a
+    quote with a side at zero or below: half the other side is positive and still wrong,
+    so a check on the price alone would pass it. A bar renders such a tick as it stands,
+    which is why the file is refused where the price is consumed: in the bar import and
+    in the backtest's data preparation.
+
+    Deliberately not a ValueError: the backtest catches it by name to refuse the scenarios
+    of the file's symbol, and a ValueError would also be caught by handlers meant for other
+    faults — the spread estimate's, for one.
+    """
+    pass
+
+
+class InboxZipUnpackException(DataQualityException):
+    """
+    Raised when a member of a zip in the import inbox cannot be unpacked
+
+    A damaged member fails its CRC check when its stream ends, an unknown compression
+    method cannot be read at all, and a full disk stops the copy half way. Each refuses
+    the zip as a whole: an import of the members that did come out would leave the zip
+    neither archived nor importable as one.
     """
     pass

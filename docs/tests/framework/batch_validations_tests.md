@@ -72,6 +72,21 @@ Phase 0 step (#407) rejecting a symbol whose `swap_mode` the swap engine does no
 | `test_unknown_mode_marks_invalid` | `UNKNOWN` (unparseable string mapped by the adapter) → invalid |
 | `test_broker_not_in_map_skips_scenario` | Broker type not in map → silent skip |
 
+#### `TestValidateScenarioParameters`
+
+Strategy parameters checked against each component's schema before the run, with the real CORE
+components.
+
+| Test | Description |
+|------|-------------|
+| `test_clean_params_no_validation_result` | Valid parameters → nothing appended, no error logged |
+| `test_unknown_decision_param_marks_invalid` | An unknown decision parameter → invalid, named in the error |
+| `test_out_of_range_decision_param_marks_invalid` | A value outside the schema's bounds → invalid |
+| `test_unknown_worker_param_marks_invalid` | An unknown worker parameter → invalid |
+| `test_reserved_worker_keys_pass` | A framework key such as `compute_basis` is not an unknown parameter |
+| `test_a_user_worker_named_from_the_project_root_is_checked` | #633: a user worker the set names from the project root, beside a user decision logic, is resolved the way the run resolves it, so its misspelt parameter is caught |
+| `test_no_decision_logic_type_skips` | No decision logic → nothing checked |
+
 ### `test_scenario_data_validator.py`
 
 #### `TestMissingCoverageRange`
@@ -125,9 +140,24 @@ moving the start to the gap's end. A market closure is not a data gap and stays 
 | `test_a_start_inside_an_admitted_large_gap_moves_too` | `large` admitted → the same shift |
 | `test_a_start_inside_a_market_closure_stays_an_error` | A weekend gap, admitted inside a stretch, is still an error at the start |
 
+#### `TestAGapInTheVenueSHistory` (#647)
+
+A venue's published record lists every trade, so a gap in it is an hour nobody traded there. Judged
+by the seam the bar file records, it is admitted whatever its category; a gap after the seam is
+judged by `allowed_gap_categories` as before. The report is a real one with its bars' origin set.
+
+| Test | Description |
+|---|---|
+| `test_a_large_gap_before_the_seam_is_admitted` | A large gap in the venue's history inside the stretch → no error |
+| `test_a_moderate_gap_after_the_seam_is_still_refused` | Of two moderate gaps, only the one after the seam is reported |
+| `test_a_start_inside_it_moves_to_its_end` | A start inside a large gap of the venue's history moves to its end; the warning says the gap lies in the venue's published history |
+| `test_a_start_inside_a_market_closure_there_stays_an_error` | A weekend closure in the venue's history is no data gap: a start inside it stays an error, as in collected data |
+| `test_without_the_bars_origin_it_is_judged_as_before` | A report whose bars carry no origin refuses the same large gap |
+
 A test that drives the validator with a STUB report builds it through
 `tests/shared/coverage_report_stub.py`: a bare `MagicMock` would answer the window queries with
-another mock, which the validator reads as a gap.
+another mock, which the validator reads as a gap. The stub states no side of the seam, so its gaps
+are judged by their category.
 
 ### `test_broker_data_preparator.py`
 
@@ -416,6 +446,8 @@ the structured finding rather than on printed text.
 | `test_clean_batch_no_warnings` | The zero state — nothing invented |
 | `test_coordination_overhead` / `test_no_overhead_when_low` | Coordination cost above half the computation is flagged; below it is not |
 | `test_infra_bottleneck` / `test_expected_bottleneck_no_warning` | A non-hot-path operation dominating is flagged; `worker_decision` dominating is normal |
+| `test_the_total_of_the_algo_passes_is_no_bottleneck` | The total of the algo passes times whole instants like the total per tick, and is never read as an operation (#460) |
+| `TestTheBudgetIsHeldToAnAlgoPass` | The two budget checks take one algo pass, not one tick (#460): 300 ticks in 100 passes of 3.0 ms against a P5 interval of 2.0 ms are warned about, though a tick takes 1.0 ms; a 5.0 ms budget is not called too high, a 7.0 ms one is |
 | `TestTheStreamHoldsEverySubmission` | A scenario whose order-event stream holds fewer submissions than its executor counted is named in `order_event_stream_incomplete` (#362) — a record lost on its way back from the subprocess; a complete stream says nothing (shared with the AutoTrader session validator) |
 
 `TestThePerformanceVerdictsLiveHere` covers the parallel-execution verdict (penalty flagged,

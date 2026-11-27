@@ -115,7 +115,7 @@ class TestTheOtherWorkEntersItself:
     def test_the_test_suite_is_listed(self, witness, registry_dir, monkeypatch):
         # Through the module: a class named Test… imported here would be collected as a test
         runner_cli = test_runner_cli_module.TestRunnerCli
-        monkeypatch.setattr(runner_cli, '_run_suites', lambda self: None)
+        monkeypatch.setattr(runner_cli, '_run_suites', lambda self, full_activity_id: None)
         runner_cli().cmd_run()
         [(kind, label, entry)] = witness
         assert (kind, label) == (ActivityKind.TEST_SUITE, 'full') and entry is not None
@@ -126,20 +126,26 @@ class TestTheOtherWorkEntersItself:
         runner_cli = test_runner_cli_module.TestRunnerCli
         ran = []
 
-        def run_suite(self, suite_name, pytest_paths):
+        def run_suite(self, suite_name, pytest_paths, timeout_s):
             ran.append(suite_name)
-            return test_runner_cli_module.SuiteResult(name=suite_name, passed=1, failed=0,
-                                                      errors=0, skipped=0, exit_code=0,
-                                                      duration=0.0, failed_tests=[])
+            return test_runner_cli_module.SuiteResult(
+                name=suite_name, passed=1, failed=0, errors=0, skipped=0, exit_code=0,
+                duration=0.0, failed_tests=[],
+                outcome=test_runner_cli_module.SuiteOutcome.PASSED)
 
         monkeypatch.setattr(runner_cli, '_run_suite', run_suite)
         with pytest.raises(SystemExit):
             runner_cli().cmd_run()
         (_, _, full), *suites = witness
         assert ran and len(suites) == len(ran)
-        for position, ((kind, label, entry), name) in enumerate(zip(suites, ran), start=1):
+        # The suites run side by side, so the order they register in is a race between lanes.
+        # What is not a race is the place in the label: the runner sorts its suites by name, so
+        # each one's position is fixed before any of them starts.
+        expected = {f'{name} ({position}/{len(ran)})'
+                    for position, name in enumerate(sorted(ran), start=1)}
+        assert {label for _, label, _ in suites} == expected
+        for kind, _, entry in suites:
             assert kind is ActivityKind.TEST_SUITE
-            assert label == f'{name} ({position}/{len(ran)})'
             assert entry.parent_activity_id == full.activity_id
         _assert_left_no_trace(registry_dir)
 

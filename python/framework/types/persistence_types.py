@@ -171,7 +171,6 @@ class PositionCarryOver(BaseModel):
         contract_size: Contract size as stamped at entry
         pip_size: Authoritative pip size for the report unit (#167)
         price_unit: The report's unit label ('pip' / 'tick')
-        entry_tick_index: Tick index at entry, in the numbering of the session that opened it
         mae_pnl: Worst gross unrealized P&L seen so far (#389) — cannot be recomputed
         mfe_pnl: Best gross unrealized P&L seen so far (#389) — cannot be recomputed
         mae_price: Price at the worst excursion
@@ -201,7 +200,6 @@ class PositionCarryOver(BaseModel):
     contract_size: int = 100000
     pip_size: float = 0.0
     price_unit: str = ''
-    entry_tick_index: int = 0
 
     mae_pnl: float = 0.0
     mfe_pnl: float = 0.0
@@ -296,6 +294,12 @@ class RiskBaseline(BaseModel):
         exclusive_account: The #489 declaration in force when it was taken. The denominator
             is the bot's own only if the account is the bot's alone, and a drawdown shown
             without that premise is a number about somebody else's deposits too
+        exclusivity_violated_at_utc: When the start of the session that took this record found
+            the declaration false on this bot's own instrument — orders of another owner rested
+            there, held over or accepted by an operator (#499) — ISO-8601 UTC, the session's
+            start. The figures measured against it
+            stand, but their denominator is not provably the bot's own. None when that start
+            found nothing
     """
     kind: BaselineKind
     value: float
@@ -304,6 +308,32 @@ class RiskBaseline(BaseModel):
     mark_price: Optional[float] = None
     quantities: Optional[BaselineQuantities] = None
     exclusive_account: bool = False
+    exclusivity_violated_at_utc: Optional[str] = None
+
+
+class CarriedDrawdownPeriod(BaseModel):
+    """
+    One drawdown period of the account's curve, carried across a restart (#529) — the fields of
+    `DrawdownPeriod`, which the report describes.
+
+    Args:
+        peak: The account value the period fell from
+        depth: How far below it the deepest sample lay, in account currency
+        depth_pct: That depth as a share of the peak, in percent; None where the peak was not above zero
+        started_at: The first sample below the peak, ISO-8601 UTC; None where the clock was not set
+        trough_at: The deepest sample, ISO-8601 UTC; None where the clock was not set
+        recovered_at: The first sample back at or above the peak; None while still open
+        to_trough_s: Seconds from the start to the trough; None where an instant is unknown
+        duration_s: Seconds from the start to the recovery; None while the period is open
+    """
+    peak: float
+    depth: float
+    depth_pct: Optional[float] = None
+    started_at: Optional[str] = None
+    trough_at: Optional[str] = None
+    recovered_at: Optional[str] = None
+    to_trough_s: Optional[float] = None
+    duration_s: Optional[float] = None
 
 
 class AccountDrawdownCarryOver(BaseModel):
@@ -342,6 +372,9 @@ class AccountDrawdownCarryOver(BaseModel):
             reading the handoff stamp understates exactly the period the count exists to
             make visible. Same convention as `BaselineOrigin.RESTORED_CARRY_OVER`: a restart
             does not begin a new curve, so nothing may re-stamp its start
+        drawdown_periods: The deepest closed drawdown periods of the curve so far (#529)
+        open_drawdown_period: The drawdown period still open when the record was written, None
+            when the curve stood at its peak
     """
     max_equity: float
     max_drawdown: float
@@ -349,6 +382,11 @@ class AccountDrawdownCarryOver(BaseModel):
     taken_at_utc: str
     restarts: int = 0
     curve_started_utc: str = ''
+    # #529 — the deepest closed drawdown periods so far, and the one still open: a successor
+    # continues the same curve, so it keeps its five instead of counting from its own start. A
+    # record written before these existed carries none.
+    drawdown_periods: List[CarriedDrawdownPeriod] = []
+    open_drawdown_period: Optional[CarriedDrawdownPeriod] = None
 
 
 class ConfigurationCarryOver(BaseModel):
@@ -377,6 +415,63 @@ class ConfigurationCarryOver(BaseModel):
     ticks_from: TicksFrom
     orders_to: OrdersTo
     rendered_config_id: str = ''
+
+
+class AcceptedForeignOrders(BaseModel):
+    """
+    Orders of another owner the operator accepted on this bot's instrument, at a start they watched (#499).
+
+    The profile declares the account exclusive and the start found these orders on the very instrument
+    this bot trades, so it held the session's entries; the operator lifted the hold and so said these
+    orders may rest there. The next start does not hold its entries again over the same orders — only
+    over one it has not seen. A list of the venue's references, because those are what the venue names.
+
+    Args:
+        broker_refs: The venue's references of the accepted orders
+        accepted_at_utc: When the operator accepted them, ISO-8601 UTC
+    """
+    broker_refs: List[str] = Field(default_factory=list)
+    accepted_at_utc: str = ''
+
+
+class OpenOrderCarryOver(BaseModel):
+    """
+    An order the session held open at a carry-over write (#652): sent and not yet answered, or
+    resting at the venue.
+
+    The written book holds every fill the session had booked at the write. An order open at the
+    write may still have filled before it, unseen — an answer not yet arrived, a resting fill the
+    poll had not read yet — so the next start reads the venue's closed orders from the oldest of
+    these, and counts a fill of one of them as missing from the book whatever its close time.
+
+    Args:
+        client_order_id: The wire key it was sent under
+        submitted_at_utc: When it was sent, or for an order a start adopted, when that start
+            adopted it — ISO-8601 UTC, wall clock. A decision input: the next start's venue read
+            begins at the oldest of these. None when neither is known
+    """
+    client_order_id: str
+    submitted_at_utc: Optional[str] = None
+
+
+class BootReadHoldCarryOver(BaseModel):
+    """
+    A start's finding that holds this bot's entries over a fill the book does not hold (#652), kept while
+    the hold stands.
+
+    The held session writes its carry-over again, and every write replaces the orders open at it with the
+    session's own — so the next start could no longer tell the fill was missing. This keeps what it needs
+    to read the same stretch and file the same fills the same way: the write they were measured against,
+    where the read began, and their keys, which the next start counts as open at the write.
+
+    Args:
+        written_at_utc: The write the finding was measured against, ISO-8601 UTC
+        read_from_utc: Where that read began, ISO-8601 UTC
+        client_order_ids: The wire keys of the fills that held the entries
+    """
+    written_at_utc: str
+    read_from_utc: str
+    client_order_ids: List[str] = Field(default_factory=list)
 
 
 class ColdStartPayload(BaseModel):
@@ -426,6 +521,15 @@ class ColdStartPayload(BaseModel):
             NOT derivable afterwards, because the profile name says which bot rather than
             which deployment — the same profile stopped for a month and restarted is a second
             one, and from outside the two look identical
+        accepted_foreign_orders: Orders of another owner the operator accepted on this bot's
+            instrument (#499). None means none was accepted — a start holds its entries over
+            every such order it finds
+        open_orders_at_write: The orders open at the time of writing (#652, spot only) — what the
+            next start's boot read reaches back for
+        boot_read_hold: The finding of a boot read that holds this bot's entries (#652). While it
+            is set, the next start measures against the same write and reads the same stretch, so a
+            restart cannot step past the fill that held them; an operator's lift clears it. None
+            means no such hold stands
     """
     session_keys: List[str] = Field(default_factory=list)
     highest_position_counter: int = 0
@@ -440,6 +544,9 @@ class ColdStartPayload(BaseModel):
     readings_orders_to: Optional[OrdersTo] = None
     venue_claims_configuration: Optional[ConfigurationCarryOver] = None
     deployment_id: Optional[str] = None
+    accepted_foreign_orders: Optional[AcceptedForeignOrders] = None
+    open_orders_at_write: List[OpenOrderCarryOver] = Field(default_factory=list)
+    boot_read_hold: Optional[BootReadHoldCarryOver] = None
 
 
 class ReadingsVerdict(StrEnum):

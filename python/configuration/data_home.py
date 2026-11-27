@@ -80,6 +80,28 @@ def resolve_in_data_home(path: PathT) -> PathT:
     return str(joined) if isinstance(path, str) else joined
 
 
+def relative_in_data_home(path: PathT) -> Optional[Path]:
+    """
+    Where a resolved path lies below the data home — the inverse of resolve_in_data_home, for a
+    caller that lays out a second home the way this one is laid out (#641).
+
+    Args:
+        path: A path as a getter resolved it
+
+    Returns:
+        The path below the home — the working directory when no home is named, where a getter's
+        path stays relative; None when it lies outside the home
+    """
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        return candidate
+    base = get_data_home() or Path.cwd()
+    try:
+        return candidate.resolve().relative_to(base.resolve())
+    except ValueError:
+        return None
+
+
 def workspace_path(relative: str = '') -> Path:
     """
     A path in the operator's workspace, under the data home.

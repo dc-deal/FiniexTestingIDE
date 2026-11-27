@@ -17,7 +17,7 @@ Phases, and which of them write:
            loose source there. Beside them it writes a manifest: the scope, the members, the
            tick index rows they had before, and when each one was extracted.
   import   the operator's, not this tool's: python python/cli/data_index_cli.py import --override
-           --only ticks (without --only it would import a waiting signal inbox as well)
+           --only ticks (without --only it would import waiting signal files as well)
   verify   reads only. Checks count, names, inbox and rewritten against the manifest; exit
            code 0 only when every one passes.
   clean    writes. Re-runs verify and refuses unless it is green. Then deletes each loose copy the
@@ -38,9 +38,10 @@ the importer moved there before its batch was archived, not a copy.
 Why count and names are not enough: the importer refuses a file it judges defective BEFORE it
 deletes the file's old parquet, so a refused file keeps its old parquet and its index row. The
 archive and the index still hold the same number of files under the same names. verify therefore
-also checks that no selected file is left in data/raw/ (inbox) and that the parquet of every
-selected file was written after the file was extracted (rewritten, read from the processed_at
-stamp in the parquet footer).
+also checks that no selected file is left in data/raw/ or was moved to data/refused/ (inbox) and
+that the parquet of every selected file was written after the file was extracted (rewritten, read
+from the processed_at stamp in the parquet footer). An import run without --override skips every
+file as a duplicate and moves it on all the same — only rewritten sees that.
 
 It never writes into an archive or unpacks one whole, never touches a signal archive, never runs
 the import, and never deletes a file that is not SHA-256-equal to its archived member or that is
@@ -103,6 +104,7 @@ from python.experiments.raw_archive_reimport.raw_archive_reimport_types import (
 )
 from python.framework.store.abstract_store_index import store_index_filename
 from python.framework.types.store_types import StoreId
+from python.framework.utils.machine_resources_reader import MachineResourcesReader
 from python.framework.utils.time_utils import ensure_utc_aware, parse_datetime
 
 TOOL_VERSION = '1.0'
@@ -142,7 +144,8 @@ class RawArchiveReimport:
     extract and verify is the operator's, so this class never runs it.
     """
 
-    def __init__(self, catalog: RawArchiveCatalog, raw_dir: Path, manifest_path: Path) -> None:
+    def __init__(self, catalog: RawArchiveCatalog, raw_dir: Path, manifest_path: Path,
+                 refused_dir: Path) -> None:
         """
         Bind the phases to an archive, an inbox and the place of the manifest.
 
@@ -150,10 +153,12 @@ class RawArchiveReimport:
             catalog: The raw archive, resolved against the current tick index
             raw_dir: The importer's inbox
             manifest_path: Where extract records what it selected
+            refused_dir: Where the importer moves a file it refused
         """
         self._catalog = catalog
         self._raw_dir = raw_dir
         self._manifest_path = manifest_path
+        self._refused_dir = refused_dir
 
     # =========================================================================
     # PHASES
@@ -410,21 +415,35 @@ class RawArchiveReimport:
         else:
             results.append((True, f'no manifest at {self._manifest_path}'))
 
-        # The import moves every file it took to the finished directory and replaces whatever
-        # lies there under the same name. A loose copy that differs from its member would be lost.
+        # The import moves every file it took to the finished directory and never overwrites
+        # what lies there: a selected member lying loose there already would keep its extracted
+        # copy in the inbox, and the re-import could not be told complete.
         finished_dir = self._catalog.get_finished_dir()
         lying_loose = [member.name for member in members
                        if member.origin is MemberOrigin.ZIP
                        and (finished_dir / member.name).exists()]
         if lying_loose:
             results.append((False, f'{len(lying_loose):,} selected members already lie loose in '
-                                   f'{finished_dir}, and the import would replace them — archive '
+                                   f'{finished_dir}, where the import never overwrites — archive '
                                    f'or remove them first: {_examples(lying_loose)}'))
         else:
             results.append((True, f'no selected member lies loose in {finished_dir}'))
 
+        # A refusal from an earlier import would read as a refusal of this one in verify
+        refused_before = [member.name for member in members
+                          if (self._refused_dir / member.name).exists()]
+        if refused_before:
+            results.append((False, f'{len(refused_before):,} selected members lie in '
+                                   f'{self._refused_dir} from an earlier refusal — look at their '
+                                   f'notes, then move or remove them first: '
+                                   f'{_examples(refused_before)}'))
+        else:
+            results.append((True, f'no selected member lies in {self._refused_dir}'))
+
         needed = sum(member.size_bytes for member in members)
-        free = shutil.disk_usage(self._existing_ancestor(self._raw_dir)).free
+        # The machine's one reader of free disk (#632)
+        (disk,) = MachineResourcesReader().read_disks({StoreId.RAW_INBOX: self._raw_dir.resolve()})
+        free = disk.free_bytes
         if free >= _DISK_HEADROOM * needed:
             results.append((True, f'free {_format_bytes(free)} ≥ {_DISK_HEADROOM} × '
                                   f'{_format_bytes(needed)}'))
@@ -475,8 +494,9 @@ class RawArchiveReimport:
 
     def _check_inbox(self, manifest: ReimportManifest) -> ReimportCheck:
         """
-        No selected file is left in the inbox: a file the importer refused stays there, and so
-        does every file when the import ran without --override.
+        No selected file is left in the inbox, and none was refused: the importer moves a file
+        it refused to the refused directory, and leaves one in the inbox only when it could not
+        move it at all.
 
         Args:
             manifest: What extract recorded
@@ -487,10 +507,13 @@ class RawArchiveReimport:
         left = [member.name for member in manifest.members
                 if (self._raw_dir / member.name).exists()
                 or (self._raw_dir / f'{member.name}{_PART_SUFFIX}').exists()]
+        refused = [member.name for member in manifest.members
+                   if (self._refused_dir / member.name).exists()]
         return ReimportCheck(
-            check_id=ReimportCheckId.INBOX, passed=not left,
-            detail=f'{len(left):,} of {len(manifest.members):,} left in {self._raw_dir}',
-            offenders=tuple(left))
+            check_id=ReimportCheckId.INBOX, passed=not left and not refused,
+            detail=(f'{len(left):,} of {len(manifest.members):,} left in {self._raw_dir}, '
+                    f'{len(refused):,} refused to {self._refused_dir}'),
+            offenders=tuple(left + refused))
 
     def _check_rewritten(self, manifest: ReimportManifest) -> ReimportCheck:
         """
@@ -832,22 +855,6 @@ class RawArchiveReimport:
         found.extend(self._raw_dir.glob(f'{_TICKS_GLOB}{_PART_SUFFIX}'))
         return sorted(path.name for path in found)
 
-    @staticmethod
-    def _existing_ancestor(path: Path) -> Path:
-        """
-        The path itself, or its nearest existing parent, to measure free disk on.
-
-        Args:
-            path: A directory that may not exist yet
-
-        Returns:
-            An existing directory
-        """
-        candidate = path.resolve()
-        while not candidate.exists():
-            candidate = candidate.parent
-        return candidate
-
 
 # =============================================================================
 # ARGUMENTS
@@ -1121,6 +1128,7 @@ def _build_from_config() -> RawArchiveReimport:
     import_config = ImportConfigManager()
     raw_dir = Path(import_config.get_data_raw_path())
     finished_dir = Path(import_config.get_data_finished_path())
+    refused_dir = Path(import_config.get_data_refused_path())
     index_path = Path(import_config.get_import_output_path()) / store_index_filename(StoreId.TICKS)
     tick_index = (pd.read_parquet(index_path, columns=list(TICK_INDEX_COLUMNS))
                   if index_path.is_file() else pd.DataFrame())
@@ -1128,7 +1136,8 @@ def _build_from_config() -> RawArchiveReimport:
         archives_dir=finished_dir / ARCHIVES_DIR_NAME, finished_dir=finished_dir,
         tick_index=tick_index, known_broker_types=MarketConfigManager().get_all_broker_types())
     return RawArchiveReimport(catalog=catalog, raw_dir=raw_dir,
-                              manifest_path=raw_dir / MANIFEST_FILE_NAME)
+                              manifest_path=raw_dir / MANIFEST_FILE_NAME,
+                              refused_dir=refused_dir)
 
 
 def main() -> int:

@@ -25,7 +25,7 @@ from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessResult, ProcessEventLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.broker_types import BrokerType
 from python.framework.types.trading_env_types.trading_env_stats_types import ExecutionStats
@@ -59,9 +59,9 @@ def _batch() -> BatchExecutionSummary:
     """A real two-scenario batch with per-scenario execution stats."""
     results = [
         ProcessResult(success=True, scenario_name='s1', scenario_index=0,
-                      tick_loop_results=ProcessTickLoopResult(execution_stats=_stats(5, 4, 1, 2))),
+                      event_loop_results=ProcessEventLoopResult(execution_stats=_stats(5, 4, 1, 2))),
         ProcessResult(success=True, scenario_name='s2', scenario_index=1,
-                      tick_loop_results=ProcessTickLoopResult(execution_stats=_stats(3, 3, 0, 1))),
+                      event_loop_results=ProcessEventLoopResult(execution_stats=_stats(3, 3, 0, 1))),
     ]
     scenarios = [
         SingleScenario(name='s1', scenario_index=0, symbol='EURUSD', data_broker_type='mt5', start_date=_DT),

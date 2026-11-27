@@ -3,8 +3,9 @@ BlocksSplit Tests
 =================
 Unit tests for chronological block splitting + the shared continuous-region extraction.
 
-Tests cover: region extraction (ContinuousRegionExtractor), constrained/extended block
-generation, data quality warnings, and count limiting.
+Tests cover: region extraction (ContinuousRegionExtractor) — a gap in a venue's published history
+never splits (#647) — constrained/extended block generation, data quality warnings, and count
+limiting.
 """
 
 from datetime import timedelta
@@ -12,7 +13,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from python.framework.discoveries.data_coverage.data_coverage_report import DataCoverageReport
+from python.framework.types.config_types.data_origin_config_types import OriginClass
 from python.framework.types.coverage_report_types import GapCategory
+from python.framework.types.data_origin_types import SymbolDataOrigin
 from python.framework.types.market_types.market_volatility_profile_types import (
     VolatilityRegime,
 )
@@ -156,6 +160,47 @@ class TestExtractContinuousRegions:
         assert len(regions) == 1
         assert regions[0]['start'] == utc(2025, 10, 3)
         assert regions[0]['end'] == utc(2025, 10, 6)
+
+
+class TestTheVenueSHistoryIsOneRegion:
+    """
+    A gap in a venue's published history is an hour nobody traded at the venue, so it never
+    splits a region: a decade of Kraken's record had been cut at thousands of such hours. A gap
+    after the seam, in collected data, splits as before (#647). The report is a real one, so its
+    seam judgment is the one the scenario validation uses.
+    """
+
+    START, END = utc(2016, 1, 1), utc(2026, 11, 1)
+    SEAM = utc(2026, 1, 24, 14)
+
+    def _regions(self, *gaps, origin_read: bool = True):
+        report = DataCoverageReport(symbol='ETHUSD', broker_type='kraken_spot')
+        report.start_time, report.end_time = self.START, self.END
+        report.gaps = list(gaps)
+        if origin_read:
+            report.set_data_origin(SymbolDataOrigin(
+                origin_classes=[OriginClass.PRODUCTION, OriginClass.EXTERNAL],
+                collected_since=self.SEAM))
+        return [(region['start'], region['end'])
+                for region in ContinuousRegionExtractor().extract(report)]
+
+    def test_a_large_gap_in_the_venue_s_history_does_not_split(self):
+        venue = make_gap(utc(2016, 3, 4, 2), utc(2016, 3, 4, 9), GapCategory.LARGE)
+
+        assert self._regions(venue) == [(self.START, self.END)]
+
+    def test_a_large_gap_in_our_collection_still_splits(self):
+        venue = make_gap(utc(2017, 5, 1), utc(2017, 5, 1, 8), GapCategory.LARGE)
+        ours = make_gap(utc(2026, 3, 1), utc(2026, 3, 1, 6), GapCategory.LARGE)
+
+        assert self._regions(venue, ours) == [
+            (self.START, ours.gap_start), (ours.gap_end, self.END)]
+
+    def test_without_the_bars_origin_it_splits_as_before(self):
+        venue = make_gap(utc(2017, 5, 1), utc(2017, 5, 1, 8), GapCategory.LARGE)
+
+        assert self._regions(venue, origin_read=False) == [
+            (self.START, venue.gap_start), (venue.gap_end, self.END)]
 
 
 # =============================================================================

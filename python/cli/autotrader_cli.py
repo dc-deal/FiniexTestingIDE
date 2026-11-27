@@ -106,6 +106,19 @@ def main():
              '(origin.accept_composite_change) and reported as a warning; the next start compares '
              'against this one. With nothing open or nothing changed it is ignored with a note. '
              'A mock or dry-run session is never affected.')
+    run_parser.add_argument(
+        '--book-closed-externally', metavar='POSITION_ID', action='append',
+        help='Declare that the holding of a spot position note was sold outside this bot — by '
+             'hand at the venue while the bot was down — so THIS start books the note as closed '
+             'instead of restoring it (#627). Repeat it for several notes. The start honours it '
+             'only where the venue confirms it: the account must no longer hold the coins the '
+             'named notes claim, or they are restored as they are. The note is booked at its '
+             'entry price with exit_observed false — the exit was not seen here, so its gross '
+             'P&L is zero by construction — and no balance moves, because the venue already '
+             'shows the sale. Recorded in the run header (origin.book_closed_externally) and '
+             'reported as a warning. Position ids never come back, so the flag left in a service '
+             'unit closes nothing later. A dry run restores no notes and ignores it; a margin '
+             'session reads its positions from the venue and ignores it.')
 
     # ─────────────────────────────────────────────────────────────────────────
     # Parse and execute
@@ -134,7 +147,8 @@ def main():
                 one_off=args.one_off, new_deployment=args.new_deployment,
                 channel=RunChannel.CLI, allow_dirty=args.allow_dirty,
                 first_start=args.first_start,
-                accept_composite_change=args.accept_composite_change)
+                accept_composite_change=args.accept_composite_change,
+                book_closed_externally=args.book_closed_externally)
             result = trader.run()
 
             # The result carries the graded outcome; the CLI only maps it (#372)

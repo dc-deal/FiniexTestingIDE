@@ -109,7 +109,12 @@ tests/
 │   ├── connection_ladder/ unit — shared retry decision for every external connection: classification, backoff, jitter, budget, give-up (#473)
 │   ├── config_directory/  unit — every configuration that can start a run: what a file declares, unreadable files as rows, precedence, the per-file cache, run figures from the run index, and the console views over it (#554)
 │   ├── fixture_catalog/   unit + one real production — the runs a consumer pins: the catalog's completeness, the production record and the current fixture, a session sequence's profiles, the report-coverage run carrying every asserted property (#576)
+│   ├── golden_samples/    unit over committed samples — every aggregate frozen from a fixture production, rebuilt through today's code and compared field by field, and the read-time views composed from the frozen rows (#557)
+│   ├── indicator_series/  unit + one real backtest — what a worker draws on a run's chart (#379): each declaration held to the worker's outputs, the value recorded for a closed bar, the orders the same with the recording on and off
 │   ├── indicators/        unit — the shared indicator library: what each name means (Wilder vs EMA vs simple), the scalar/series parity, and the warmup each recursive average needs (#517)
+│   ├── loop_events/       unit — the loop core's event vocabulary and its one timeline (#457): two stamps per event, earliest stamp then submission order, no kind first, one instant per stamp, ticks of one instant as one data slice
+│   ├── loop_pass_order/   integration — what each event loop calls in each kind of pass, and in which order, spied on the real collaborators: the backtest's tick, clipped tick and ghost pass, the AutoTrader's tick, idle and stop-wait pass (#458)
+│   ├── loop_timeline/     unit + integration — the backtest's timeline driver (#460): ticks grouped by arrival, due times and timers merged into instants, an order filled when it comes due, a due cancel first, a stop inside a sweep, the same run twice and no wall clock in the record
 │   ├── worker_tests/      unit — worker computation, parameter schema, factory
 │   ├── warmup_history/    unit + cross-path — the bars a run starts from: one synthetic stream through the backtest, mock and live
 │   │                      warmup paths, the venue read by period and commit, start invariance, the injection guard, the outcome table (#588)
@@ -119,7 +124,8 @@ tests/
 │   ├── spread_estimate/   unit — the spread estimated from the trades' aggressor sides, and its measurement over an archive with the quoted truth beside it (#602)
 │   ├── data_coverage/     unit — data format version spans (#453), which file a gap falls in (open times through the server clock, #562), how long a gap reads, which gaps are listed and whose silence each is, the window queries a run asks and the cache load it pays (#599)
 │   ├── market_calendar/  unit — swap-rollover + DST calendar helpers + MarketClock awareness (#365)
-│   ├── test_price_trigger.py  unit — the shared order-vs-quote predicate: limit/stop reached, book side (#505)
+│   ├── test_price_trigger.py  unit — the shared order-vs-market predicate: limit/stop reached on the quote or on the venue's trade, book side (#505, #605)
+│   ├── test_resting_order_venue_rule.py  unit — the simulation fires stops and fills resting limits by the venue's declared rule, both account models; the dry run fills on the same tick (#605)
 │   ├── test_order_features.py  unit — a logic declares its order features, a run refuses what its venue does not hold: the start, the batch's main process, the four entry points, the recorded exception (#625)
 │   ├── test_own_exit_levels.py  unit — a logic's own stop and target: seeded, only tightened, closed once, restored only for restored positions (#625)
 │   ├── test_order_endings.py  unit — one status per way an order ends, in both pipelines, and the counts declared from them (#362)
@@ -128,6 +134,7 @@ tests/
 │   ├── test_execution_counters.py  unit — every order count reaches the run and the running booking period; a period is taken once
 │   ├── test_time_utils_utc.py  unit — every parsed or normalised datetime is UTC, also on a machine in another zone
 │   ├── test_create_directory.py  unit — the one way the IDE creates a directory; a refusal is a named hard error that says why (#621)
+│   ├── test_suite_runner_contract.py  unit — how the test runner names the way a suite ended, and that its defaults are the ones the config file shows (#660)
 │   ├── test_server_clock.py  unit — a broker server's wall clock to UTC through the zone's daylight saving rules: both seasons, the changed hours refused (#562)
 │   ├── market_compatibility/ unit — market activity metric, validator
 │   ├── tick_parquet_reader/  unit — parquet reader normalization
@@ -142,13 +149,31 @@ tests/
 │   ├── algo_clock_validator/ unit — wall-clock ban, runtime startup validator: AST scan of loaded algos (CORE + user) + batch pre-flight (#359)
 │   ├── discovery_validity/ unit — the three discovery caches compare the config fingerprint they were already writing (#486 finding 57); a config change moves no bar file, so mtime alone kept serving a stale cache
 │   ├── static_analysis/   unit — undefined-name gate (pyflakes) over python/ + tests/; the ruff/vulture backlog tier is measured, not gated
+│   ├── cache_transparency/ unit + integration — nothing an algo sees depends on the portfolio's lazy marking: the observer
+│   │                      probe's record with the cache on and off, a session read at its tick, the read-only algo mask (#653)
+│   ├── behaviour_comparison/ unit + integration — one fixed backtest on two code stands (#641): the rule of what a run
+│   │                      does not execute held to what shipped sets load; a clone at a commit that leaves its source
+│   │                      untouched; the scratch home — caches copied, archive and workspace linked; whether each stand
+│   │                      ran on its own code; which records are compared and why the rest are not; the records
+│   │                      held value by value and judged; a neutral and a defective commit end to end, nothing left
+│   │                      behind
+│   ├── divergence_report/ unit + integration — a live session against a backtest of its window: the backtest built from the session's
+│   │                      record — rendered profile, frozen broker document, recorded warmup — every block declared; the live
+│   │                      side's segments, windows and trading days, each day compared or excluded with every cause; the
+│   │                      gate — code path, strategy, configuration, broker document, window — that refuses a pair; the
+│   │                      measures — each day's decision, each order, the account values, the day attribution — on
+│   │                      real backtests too; the window's gaps and what they leave out; what the venue's own record
+│   │                      confirms and refutes — its trades, the account's movements in its ledger; the verdict by
+│   │                      the rules, and the command that joins it all (#512)
+│   ├── venue_history/     unit — what a venue itself records, read from Kraken: the public trade list and an account's
+│   │                      ledger at the venue, against recorded answers; the seam that hands readers out (#512, #127)
 │   ├── composite/         unit — which accounts may add up: the composite definition and its floor, the key projected from
 │   │                      the rendered configuration, joins and splits, the excluded member, every shipped value classified (#615)
 │   ├── rendered_config/   unit — what a run records it ran with: the one strategy renderer and its portable type key, every shipped
 │   │                      scenario set's document against what its subprocess reads, the header naming it, never fatal (#547)
 │   ├── run_entry_census/  integration — real runs held to the run store's declaration: no undeclared file, every member written
 │   │                      somewhere, the stream versions, the run index row; a sweep and mock sessions, one without log files (#621)
-│   └── store/             unit — the store catalog: completeness, what it prints, its two dated-claim advisories, the shared index base (atomic write, delete-and-rebuild, logic version), generic form-A retrieval, carry-over envelope (#486), carry-over identity + declared continuation + boot continuity checks (#358)
+│   └── store/             unit — the store catalog: completeness, what it prints, its two dated-claim advisories, the shared index base (atomic write, delete-and-rebuild, logic version, the lock per index between processes, #650), generic form-A retrieval, carry-over envelope (#486), carry-over identity + declared continuation + boot continuity checks (#358)
 │
 ├── data/
 │   ├── import_pipeline/   unit + integration — tick import, duplicate detection

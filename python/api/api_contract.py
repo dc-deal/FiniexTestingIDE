@@ -23,7 +23,7 @@ from typing import List
 
 # One monotonic integer. Not a date and not the app version: a consumer compares it for
 # equality, and equality is the only question they have.
-API_CONTRACT_VERSION = 48
+API_CONTRACT_VERSION = 69
 
 # Every response carries it, so a saved fixture carries it too.
 CONTRACT_HEADER = 'X-Api-Contract'
@@ -36,8 +36,8 @@ API_PREFIX = '/api/v1'
 # What moved INTO the current version. One line per change, written for someone who cannot
 # read this repository.
 CHANGES: List[str] = [
-    'health: host_id, the identity of the installation answering, the same value as origin_host on the '
-    'rows; null where the server cannot read it',
-    "health: host_name, a name for people to read from the installation's configuration; null where none "
-    'is set',
+    "order-history: rejection_reason entries_held has a third cause (a broadened meaning) — the session's "
+    "start found an order of its own that the venue filled after the session's record was last written, "
+    "or could not finish reading the venue's closed orders; the hold lasts until an operator lifts it",
 ]
+

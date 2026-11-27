@@ -1,7 +1,7 @@
 """
 FiniexTestingIDE - Operator Alert Recorder for Tests
 
-Stands in for a session's operator alerts (#235) where a test builds the tick loop without its
+Stands in for a session's operator alerts (#235) where a test builds the event loop without its
 constructor and binds the real methods to a stub: it keeps the kind of every alert sent, so a
 test can hold a symptom to being reported once per edge — never once per tick.
 

@@ -19,7 +19,7 @@ def get_tick_range_stats(
     """
 
     # === DEBUG: TICK RANGE INFO ===
-    logger.debug('🔍 Tick loop range info')
+    logger.debug('🔍 Event loop range info')
     logger.debug(f'  Total ticks: {len(ticks)}')
     logger.debug(f'  TradeSimulator ID: {id(trade_simulator)}')
     logger.debug(f'  Portfolio ID: {id(trade_simulator.portfolio)}')

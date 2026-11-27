@@ -145,9 +145,9 @@ class KrakenHistoryCommands:
         Prove a conversion imported, zip its files into the raw archive, remove the loose copies.
 
         The four checks of the import protocol, over exactly the files the conversion wrote:
-        count and names against the tick index, none left in the inbox, every parquet written
-        after the conversion. Only all four together prove the import complete; a file the
-        import refused keeps whatever was there before, and count and names alone would pass.
+        count and names against the tick index, none left in the inbox or refused, every parquet
+        written after the conversion. Only all four together prove the import complete; a file
+        the import refused keeps whatever was there before, and count and names alone would pass.
 
         Args:
             zip_name: File name of the zip under data/finished/Archives/
@@ -162,6 +162,7 @@ class KrakenHistoryCommands:
         converted_at = datetime.fromisoformat(record['converted_at'])
         raw_dir = Path(record['raw_dir'])
         finished_dir = Path(ImportConfigManager().get_data_finished_path())
+        refused_dir = Path(ImportConfigManager().get_data_refused_path())
 
         index = self._tick_index(force=True)
         parquet_by_source = {
@@ -176,8 +177,12 @@ class KrakenHistoryCommands:
                             f'e.g. {missing[0]}')
         left = [name for name in names if (raw_dir / name).exists()]
         if left:
-            failures.append(f'inbox: {len(left)} file(s) still in {raw_dir} — refused by the '
-                            f'import, or not imported yet, e.g. {left[0]}')
+            failures.append(f'inbox: {len(left)} file(s) still in {raw_dir} — not imported yet, '
+                            f'e.g. {left[0]}')
+        refused = [name for name in names if (refused_dir / name).exists()]
+        if refused:
+            failures.append(f'refused: {len(refused)} file(s) in {refused_dir}, each with the '
+                            f'reason beside it, e.g. {refused[0]}')
         stale = [name for name in names if name in parquet_by_source
                  and self._processed_at(parquet_by_source[name]) <= converted_at]
         if stale:
@@ -197,6 +202,14 @@ class KrakenHistoryCommands:
 
         zip_path = finished_dir / ARCHIVES_DIR / zip_name
         create_directory(zip_path.parent, holds='the zipped history archive')
+        # Mode 'a' on a file that is no zip does not fail: it writes a new archive BEHIND those
+        # bytes, and the result still opens and passes `testzip`. A file a failed write left behind
+        # is exactly that, so it is refused here rather than built upon (#647)
+        if zip_path.exists() and zip_path.stat().st_size > 0 and not zipfile.is_zipfile(zip_path):
+            print(f'❌ {zip_path} exists and is no zip — a failed write may have left it. Nothing '
+                  f'appended, nothing removed.\n'
+                  f'   → Move it aside, check what it holds, then run this step again.')
+            return 1
         with zipfile.ZipFile(zip_path, 'a', compression=zipfile.ZIP_DEFLATED) as archive:
             present = set(archive.namelist())
             for path in loose:
@@ -205,6 +218,13 @@ class KrakenHistoryCommands:
         with zipfile.ZipFile(zip_path) as archive:
             bad = archive.testzip()
             stored = {info.filename: info.file_size for info in archive.infolist()}
+            # An archive that does not start at the file's first byte sits behind something else
+            starts_at = min((info.header_offset for info in archive.infolist()), default=0)
+        if starts_at:
+            print(f'❌ {zip_path.name} starts {starts_at:,} bytes into the file — something sits in '
+                  f'front of the archive. The loose copies stay.\n'
+                  f'   → Move the zip aside, check what it holds, then run this step again.')
+            return 1
         if bad or any(stored.get(path.name) != path.stat().st_size for path in loose):
             print(f'❌ {zip_path.name} does not hold every file intact ({bad or "size mismatch"}) '
                   f'— the loose copies stay.')

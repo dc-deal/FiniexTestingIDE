@@ -15,6 +15,7 @@ from python.configuration.market_config_manager import MarketConfigManager
 from python.configuration.sentiment_config_manager import SentimentConfigManager
 from python.framework.autotrader.dry_run_resolver import resolve_orders_to, session_orders_to
 from python.framework.autotrader.live_clipping_monitor import LiveClippingMonitor
+from python.framework.autotrader.run_record.session_run_index import write_run_index_for_session
 from python.framework.autotrader.startup.autotrader_account_model import AutotraderAccountModel
 from python.framework.autotrader.startup.autotrader_broker_config_setup import create_broker_config
 from python.framework.autotrader.startup.autotrader_data_preparer import build_scenario_from_config
@@ -31,6 +32,7 @@ from python.framework.constants.run_layout_constants import (
     SESSION_LOG_NAME,
 )
 from python.framework.decision_logic.abstract_decision_logic import AbstractDecisionLogic
+from python.framework.exceptions.file_lock_errors import FileLockHeldError
 from python.framework.exceptions.order_feature_errors import OrderFeatureRefusedError
 from python.framework.factory.decision_logic_factory import DecisionLogicFactory
 from python.framework.factory.live_trade_executor_factory import build_live_executor
@@ -38,10 +40,10 @@ from python.framework.factory.worker_factory import WorkerFactory
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.process.process_startup_preparation import inject_signal_providers
 from python.framework.reporting.io.run_header_io import data_windows_of
-from python.framework.reporting.store.run_index import RunIndex
 from python.framework.signal_data.signal_data_provider import SignalDataProvider
 from python.framework.signal_data.signal_source_resolver import SignalSourceResolver
 from python.framework.signal_data.transport.signal_boot_resolver import prepare_live_signal_boot
+from python.framework.store.abstract_store_index import SESSION_INDEX_LOCK_WAIT_S
 from python.framework.store.broker_config_freeze import freeze_broker_config
 from python.framework.store.entry_members.run_entry_members import run_member_folder
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
@@ -133,15 +135,17 @@ def _data_windows(config: AutoTraderConfig, run_timestamp: datetime) -> List[Dat
     return [DataWindow(unit_name=config.get_unit_name(), start_date=run_timestamp.isoformat())]
 
 
-def _register_profile_config(source: Optional[Path]) -> str:
+def _register_profile_config(source: Optional[Path], session_logger: ScenarioLogger) -> str:
     """
     Record which profile content this session is starting from, and return its identity.
 
     Never fatal, and never a reason not to trade: a store that cannot be written costs the run a
-    join key, and the session itself is unaffected.
+    join key, and the session itself is unaffected. The failure is said in the session's log,
+    because an empty id read afterwards cannot tell a store that failed from one never asked.
 
     Args:
         source: The profile file this session was commissioned with, or None
+        session_logger: Where a failed registration is reported
 
     Returns:
         The registered content id, or an empty string
@@ -150,16 +154,24 @@ def _register_profile_config(source: Optional[Path]) -> str:
         return ''
     try:
         store = RunConfigStore(Path(AppConfigManager().get_run_configs_path()))
+        store.set_index_lock_wait_s(SESSION_INDEX_LOCK_WAIT_S)
         entry = store.register(Path(source), RunConfigKind.AUTOTRADER_PROFILE)
         # Registration says the content exists; this says a RUN used it. Two steps on
         # purpose — a config listed by the finder is registered without being run.
         store.note_run(entry.config_id)
         return entry.config_id
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError, FileLockHeldError) as error:
+        session_logger.warning(
+            f'Run-config store: the profile {Path(source).name} was not registered '
+            f'({type(error).__name__}: {error}). This session carries no config_id, so the run '
+            f'index cannot join it to its profile; trading is not affected.')
         return ''
 
 
-def _register_rendered_profile(rendered_profile: Optional[Dict[str, Any]]) -> str:
+def _register_rendered_profile(
+    rendered_profile: Optional[Dict[str, Any]],
+    session_logger: ScenarioLogger,
+) -> str:
     """
     Freeze what this session RUNS with, and return its identity (#547).
 
@@ -168,6 +180,7 @@ def _register_rendered_profile(rendered_profile: Optional[Dict[str, Any]]) -> st
 
     Args:
         rendered_profile: The rendered document, or None when it could not be rendered
+        session_logger: Where a failed registration is reported
 
     Returns:
         The registered content id, or an empty string
@@ -176,10 +189,15 @@ def _register_rendered_profile(rendered_profile: Optional[Dict[str, Any]]) -> st
         return ''
     try:
         store = RunConfigStore(Path(AppConfigManager().get_run_configs_path()))
+        store.set_index_lock_wait_s(SESSION_INDEX_LOCK_WAIT_S)
         entry = store.register_document(rendered_profile, RunConfigKind.AUTOTRADER_RENDERED)
         store.note_run(entry.config_id)
         return entry.config_id
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError, FileLockHeldError) as error:
+        session_logger.warning(
+            f'Run-config store: the rendered configuration was not frozen '
+            f'({type(error).__name__}: {error}). This session carries no rendered_config_id, so '
+            f'a backtest of its window cannot read what it ran with; trading is not affected.')
         return ''
 
 
@@ -257,8 +275,8 @@ def create_autotrader_loggers(
         run_type=RUN_TYPE_AUTOTRADER
     )
 
-    # Session logger — tick loop, daily rotated in session_logs/ subdir
-    # Initial file logger is a placeholder — the tick loop swaps it on
+    # Session logger — event loop, daily rotated in session_logs/ subdir
+    # Initial file logger is a placeholder — the event loop swaps it on
     # the first tick to match the tick's date (avoids wallclock vs replay mismatch).
     session_logger = ScenarioLogger(
         scenario_set_name=session_name,
@@ -280,7 +298,7 @@ def create_autotrader_loggers(
     # costs ~2.0 s, and the header has no use for branch / dirty (§42). The dirty state
     # arrives with the code identity, which the caller has already paid for (#551).
     if run_dir:
-        rendered_config_id = _register_rendered_profile(rendered_profile)
+        rendered_config_id = _register_rendered_profile(rendered_profile, session_logger)
         header = RunHeader(
             run_id=run_id,
             start_time=run_timestamp,
@@ -303,7 +321,7 @@ def create_autotrader_loggers(
             # Which profile content this session started from (#538). Registered at the start,
             # like the header itself, and never fatal: a profile the store cannot record is a
             # profile the session can still trade with.
-            config_id=_register_profile_config(config.config_path),
+            config_id=_register_profile_config(config.config_path, session_logger),
             # What the session RUNS with (#547): the profile above with the app_config layer
             # merged in and every schema default filled. Frozen here, at the start, because
             # this header has no update path and a session that dies at its first tick is the
@@ -324,10 +342,10 @@ def create_autotrader_loggers(
             run_purpose=config.run_purpose,
             report_contract=API_CONTRACT_VERSION,
         )
-        RunIndex(AppConfigManager().get_file_logging_config_object().run_index).register_run(
-            header, run_dir)
+        write_run_index_for_session(
+            lambda index: index.register_run(header, run_dir), session_logger, 'this session')
 
-    # Create session_logs/ subdir (tick loop will create files there) — only when log files are
+    # Create session_logs/ subdir (event loop will create files there) — only when log files are
     # written: the run directory exists either way, the daily logs only with the switch on (#621)
     if run_dir and AppConfigManager().get_file_logging_config_object().scenario_enabled:
         create_directory(run_dir / run_member_folder(RunEntryMemberId.SESSION_DAY_LOG),
@@ -469,11 +487,9 @@ def setup_pipeline(
     # === Phase 10: LiveClippingMonitor ===
     clipping_monitor = LiveClippingMonitor(
         report_interval_s=config.clipping_monitor.report_interval_s,
-        strategy=config.clipping_monitor.strategy,
     )
     logger.debug(
-        f'✅ ClippingMonitor: strategy={config.clipping_monitor.strategy}, '
-        f'report_interval={config.clipping_monitor.report_interval_s}s'
+        f'✅ ClippingMonitor: report_interval={config.clipping_monitor.report_interval_s}s'
     )
 
     # === Phase 11: Planned tick-plane stale windows (#444) ===
@@ -722,6 +738,8 @@ def _build_executor(
         # at a number no file states.
         order_history_max=AppConfigManager().get_order_history_max(),
         trade_history_max=AppConfigManager().get_trade_history_max(),
+        # #653 — the reference mode a verification run compares the lazy marking against
+        portfolio_cache=config.execution.verification.portfolio_cache,
     )
     # The session log's event-time column pulls from the canonical clock. Attachable only
     # HERE: the logger goes INTO build_live_executor above, so it necessarily exists first.

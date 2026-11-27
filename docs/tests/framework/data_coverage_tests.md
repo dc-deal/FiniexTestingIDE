@@ -7,8 +7,9 @@ index records a `data_format_version` per file, and grouping consecutive files b
 per-file field into archive structure — which collector schema produced which period. The **file
 attribution** of a gap: which file holds the data on either side of it, and whose data that is. The
 **extent** of a gap as the report renders it. What the report **lists** — the newest gaps of each
-category — and how it **reads** a gap by its origin. The **timeline** a run asks the report by,
-and the cache **load** every run pays.
+category — and how it **reads** a gap by its origin. Which **side of the seam** a gap lies on,
+the judgment the validation shares. The **timeline** a run asks the report by, and the cache
+**load** every run pays.
 
 **Test Location:** `tests/framework/data_coverage/`
 **Units under test:** `python/framework/discoveries/data_coverage/data_format_version_spans.py`,
@@ -75,10 +76,22 @@ an icon, so a new data-gap category cannot be moved past by a run and left out o
 
 **TestTheSpan:** the end is shortened to what differs from the start — time, date, or year
 
+### test_seam_side.py
+
+Which side of a symbol's seam a gap lies on (#647), read from the bar index row alone — its origin
+classes and the instant our collection took over.
+
+**TestTheThreeSides:** a gap ending at or before the seam lies in the venue's history, one ending
+after it in collected data · a gap across the seam is judged as collected, never the side that admits
+more · bars from the venue's history alone have no seam and are external history · bars without
+external history are collected · no origin, an empty row, or external and collected data without a
+seam state nothing · a gap without an end states nothing
+
 ### test_gap_origin_reading.py
 
-Whose silence a gap is (#599). The gaps carry their files and origin classes already; the tick-index
-read is replaced.
+Whose silence a gap is (#599). The listing reads each gap by the files around it; whether a gap is an
+issue of ours is judged by the seam (#647). The gaps carry their files and origin classes already,
+each report its bars' origin; the tick-index read is replaced.
 
 **TestWhoseSilenceAGapIs:** a gap in the venue's history reads "no trades at the venue, nothing to
 re-collect", inside one file or between two · the seam is named as such · inside our own file the
@@ -91,7 +104,11 @@ of its own, last in its year
 
 **TestRecommendationsAreForOurOwnCollection:** the venue's history alone needs none and the report
 says why · a Kraken collection gets the collector advice, never MQL5 · an MT5 collection gets the
-MQL5 advice · an unattributed gap is not ours to judge
+MQL5 advice · a gap in bars rendered before the origin stamp is not ours to judge
+
+**TestValidateJudgesOurOwnCollection:** `data-coverage validate` asks `has_issues()` — the venue's
+history alone is no issue · a large gap after the seam is counted as ours · a gap no tick file was
+found for is still judged by the seam · bars rendered before the origin stamp are not judged
 
 **TestThePrintedReport:** the newest ten of a long category with its count · one line per gap with
 its origin · the yearly summary · no gap in the venue's history reads as a collector fault
@@ -119,7 +136,8 @@ a replaced one — a report fills its list after construction
 The column-wise read of a cached report (#599) — 480 ms for BTCUSD's 117,757 gaps where the
 row-by-row read took 3.4 s — hands back exactly what was written: every gap's length, category,
 reason and times, the times as UTC `datetime`, and a report without gaps as one without gaps rather
-than as an unreadable file that would be regenerated on every run.
+than as an unreadable file that would be regenerated on every run. A restored report reads its
+bars' origin from the bar index, so its gaps are judged by the same seam as a fresh one's (#647).
 
 ### test_gap_extent_rendering.py
 
@@ -142,6 +160,33 @@ refused. A new category without a kind fails here instead of being treated as ne
 - Every member answers to exactly one kind
 - Short, moderate and large are data gaps
 - Weekend and holiday are market closures
+
+### test_trade_id_gap_report.py
+
+**TestMissingTradesPerOrigin:** the coverage report's missing-trades section (#647) sums the
+tick index's trade-id gaps per origin, so our collection is read apart from a venue's published
+history, and names a stretch without trade ids as not measurable.
+- The measured files are summed per origin, in the classes' declared order; a file whose longest
+  run exceeds the limit counts as over it
+- A stretch without trade ids is named by its format version, never counted
+- No file with trade ids yields no summary — never a zero
+
+**TestTheSectionReads:** the section as the report prints it — one line per origin with its
+figures, and the stretch without trade ids named not measurable.
+
+### test_trade_completeness_check.py
+
+**TestTheComparison:** our trades against the venue's own trade list (#647), trade by trade.
+- The trades we lack are counted in runs, longest first, each with its first and last trade's time
+- A trade our files hold that the venue's list does not is counted apart
+
+**TestTheVenueSide:** a list that could not be read is reported as not read, never as a window
+without trades.
+- A reader that gave up leaves the venue side empty and names why
+- A venue without a trade list we read says so
+- A list that was read is compared
+- A window whose tick files carry no trade ids is named not measurable — every venue trade would
+  otherwise read as missing
 
 ---
 

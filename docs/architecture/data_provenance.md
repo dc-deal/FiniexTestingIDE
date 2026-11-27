@@ -162,9 +162,9 @@ if the identity survived; a resolved class alone is a conclusion whose premise h
 ```
 per-scenario lists at mount
       ▼
-run provenance ──► ledger row: input_plane · data_format_versions · origin_classes ·
-      ▼                        origin_evidence_grades · input_files ·
-                               unstamped_input_files · price_bases
+run provenance ──► ledger row: input_plane · data_format_versions · server_clock_rules ·
+      ▼                        origin_classes · origin_evidence_grades · input_files ·
+                               unstamped_input_files · price_bases · external_warmup_timeframes
 runs/ledger/ ─────► one fragment per run, ranked over by the optimizer
 ```
 
@@ -282,8 +282,24 @@ EXTERNAL DATA — the warmup history reached back before our collection, into a 
 
 It is said, not refused. Admission guards the ticks a scenario trades on; a warmup decides only
 where the indicators start, and a live session warms up from the venue's own bars anyway — the
-venue's record, not ours. The ledger does not carry it yet: that column arrives with the
-API surface that serves it.
+venue's record, not ours. The ledger row carries it as `external_warmup_timeframes` (#647), so a
+ranking over rows can tell a run whose indicators started from external bars from one that did not.
+
+### What the counts on a ledger row say
+
+`input_files` counts the files a run read, ticks and signals. `unstamped_input_files` counts those
+whose origin no stamp attests — evidence grade other than `stamped` — whatever their class. A
+venue's published history carries its converter's stamp, so it does not count there; it is still
+never admissible for a parity measurement, which reads only production data its producer stamped,
+and the run's `data_origin_external` finding says so. Ledger rows of `logic_version` 21 and older
+counted the files that were not production-and-stamped, so every external file counted there; the
+rows are not rewritten, and the version says which meaning a row holds (#647).
+
+`server_clock_rules` names the server clock rules the run's tick files' times were converted with
+(#562), read from each file's header through the tick index — the files of a broker whose server
+runs on New York time say `America/New_York+7h`, Kraken's `UTC+0h`. A file imported before the rule
+was written down states none and adds nothing: an empty value means no file read stated a rule,
+never a rule of its own.
 
 ## The gate, and why it starts open
 
@@ -361,11 +377,13 @@ what it was configured to run, and what it actually read:
 "data_provenance": {
   "input_plane": "archive",
   "data_format_versions": "1.5.0,1.7.0",
+  "server_clock_rules": "UTC+0h",
   "origin_classes": "production",
   "origin_evidence_grades": "attested,stamped",
   "input_files": 3,
   "unstamped_input_files": 2,
-  "price_bases": "order_driven"
+  "price_bases": "order_driven",
+  "external_warmup_timeframes": ""
 }
 ```
 
@@ -374,6 +392,11 @@ as a clean certificate, while `2 of 3 files unstamped` says how much of it may e
 
 It is derived through the same function the run ledger uses. A second derivation of one answer is
 the pair that eventually disagrees, and the half nobody reads is the one that decays.
+
+**It follows the ledger's meaning of the count, and records no version of its own.** A benchmark
+report generated before #647 counted in `unstamped_input_files` the files that were not
+production-and-stamped, so a stamped external file counted there; from #647 on it counts the files
+whose evidence grade is not `stamped`. The commit the report names says which side of that it is.
 
 **Nothing is written retroactively.** A report produced before the block existed FAILS its
 integrity check rather than being tolerated — the certificate suite already tells the reader to
@@ -393,6 +416,7 @@ and the check id its finding carries. A test holds the declarations complete aga
 | `no_quote` | bid equals ask on every row | whether a fill crossed a spread |
 | `no_arrival_time` | no `collected_msc` column, or only zeros | when a tick reached us |
 | `arrival_time_reconstructed` | the two reconstruction fingerprints: every multi-tick second ending on .999, or the arrival time copied from the event time | a recorded receive time |
+| `arrival_time_offset` | the median of arrival time minus event time outside 0–1,000 ms: a collector clock that drifted, not a delivery | when a tick reached us — a backtest orders the file by its event time |
 | `missing_trades` | gaps in the venue's trade ids — a count always, a deficiency above 1 % of the id span or one run longer than five minutes | every trade the venue printed |
 | `synthetic` | the producer's own `data_origin` on the signal envelope | anything about a market |
 
@@ -401,7 +425,7 @@ configured to declare, and the reconstructed arrival times run straight through 
 declared version. The tick index measures every file it scans — it reads each file in full anyway —
 so a file imported before the vocabulary existed is measured on the next rebuild, without being
 imported again. A file without an arrival time stores no `collected_msc` column at all; the reader
-restores the tick loop's own convention for "not recorded" (zero) when it loads one.
+restores the event loop's own convention for "not recorded" (zero) when it loads one.
 
 **Said once per run, counted.** The post-run validator gives one finding per deficiency present,
 over every input file of every scenario, grouped by where the files came from:

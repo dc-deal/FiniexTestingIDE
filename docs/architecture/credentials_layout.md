@@ -19,9 +19,10 @@ connection policy for reaching a peer, which is
 |---|---|---|---|---|
 | `consumer_tokens.json` | **inbound** — who may call us | we do | a consumer is locked out | a third party calls our API as that consumer, within its grants |
 | `accounts.json` | **inbound** — on whose behalf a token acts | the operator, from a CLI block | every live token refuses the boot | names the people and services that hold access — no credential |
-| `rag_credentials*.json` | **outbound** — a sibling project | they do | we cannot read their data | a third party reads as us |
-| `collector_credentials*.json` | **outbound** — a sibling project | they do | we cannot read their archive | a third party reads as us |
+| `rag_credentials*.json` | **outbound** — a sibling project: its signal stream and, for the import, its signal packages (`configs/sentiment_config.json` → `packages`, from the active producer endpoint) | they do | we cannot read their data, nor fetch or acknowledge a package | a third party reads as us, and could acknowledge a package |
+| `collector_credentials*.json` | **outbound** — a sibling project: its status routes and, for the import, its tick packages (`configs/data_collector_config.json`) | they do | we cannot read their archive, nor fetch or acknowledge a package | a third party reads as us, and could acknowledge a package it never imported |
 | `kraken_credentials.json` | **outbound** — a trading venue | the venue | no live trading | **a third party can move money** |
+| `kraken_ledger_credentials.json` | **outbound** — a trading venue, read only | the venue, with no right but to query the ledger and the closed orders and trades | the divergence report cannot read the account's movements | a third party reads the account's history; it cannot trade or withdraw |
 
 Every file exists twice: a **tracked** copy under `configs/credentials/` whose secrets are empty
 or switched off, and a **real** one under `user_configs/credentials/`, which is gitignored in
@@ -109,6 +110,9 @@ configs/credentials/
   inbound/   consumer_tokens.json, accounts.json       who may call us, and for whom
   peers/     rag_*, collector_*                        sibling projects, read-only
   venues/    kraken_credentials.json                   real money
+             kraken_ledger_credentials.json            read only: the account's ledger, its closed
+                                                       orders and trades — a key of its own, so it
+                                                       never shares a running bot's nonce
   services/  telegram_*, liveness_<bot_id>.json        outside services we call: the operator
                                                        alert channel and the liveness monitor,
                                                        one ping URL per bot

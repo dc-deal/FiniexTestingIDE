@@ -17,6 +17,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from python.framework.autotrader.run_record.money_record_streams import MoneyRecordStreams
 from python.framework.autotrader.run_record.order_event_stream_setup import (
     open_order_event_stream,
 )
@@ -34,6 +35,7 @@ from python.framework.logging.global_logger import GlobalLogger
 from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
 from python.framework.reporting.io.jsonl_stream_writer import JsonlStreamWriter
 from python.framework.reporting.io.order_event_stream_io import (
+    order_event_from_row,
     write_order_event_stream,
 )
 from python.framework.reporting.store.run_index import RunIndex
@@ -180,7 +182,8 @@ class TestASessionWhoseStreamCannotOpen:
 
         with pytest.raises(OSError):
             open_order_event_stream(executor, RunEntryWriter(tmp_path, RUN_TYPE_AUTOTRADER),
-                                    _RUN_ID, 'btc_session')
+                                    _RUN_ID, 'btc_session',
+                                    MoneyRecordStreams(executor, None, executor.logger, 1.0))
 
         assert listeners == [], 'no transition is recorded into a stream that does not exist'
 
@@ -195,6 +198,24 @@ class TestReadingItBack:
         writer(_event(2, OrderEventType.ACCEPTED))
         writer.close()
         return tmp_path / ORDER_EVENTS_FILE
+
+    def test_a_live_fill_keeps_its_three_times(self, tmp_path):
+        """The session's clock, our receipt and the venue's own time (#461), each read back."""
+        received = datetime(2026, 10, 6, 12, 0, 1, tzinfo=timezone.utc)
+        closed = datetime(2026, 10, 6, 11, 59, 59, 875_000, tzinfo=timezone.utc)
+        writer = open_test_order_event_writer(tmp_path / ORDER_EVENTS_FILE, _RUN_ID, 'btc_run', RecordingLogger())
+        filled = _event(1, OrderEventType.FILLED)
+        filled.ts_init = received
+        filled.ts_event = closed
+        writer(filled)
+        writer.close()
+
+        (row,), _, _ = read_order_event_file(tmp_path / ORDER_EVENTS_FILE)
+
+        assert (row.event_time, row.ts_init, row.ts_event) == (
+            _TIME.isoformat(), received.isoformat(), closed.isoformat())
+        event = order_event_from_row(row)
+        assert (event.event_time, event.ts_init, event.ts_event) == (_TIME, received, closed)
 
     def test_a_cut_off_last_line_is_left_out_and_reported(self, tmp_path):
         path = self._two_events(tmp_path)

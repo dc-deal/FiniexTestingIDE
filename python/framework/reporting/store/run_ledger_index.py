@@ -17,6 +17,10 @@ from typing import List, Optional
 
 import pandas as pd
 
+from python.framework.exceptions.store_errors import (
+    LedgerFragmentVanishedError,
+    StoreIndexReplacedError,
+)
 from python.framework.store.abstract_store_index import (
     AbstractStoreIndex,
     store_index_filename,
@@ -24,6 +28,12 @@ from python.framework.store.abstract_store_index import (
 from python.framework.types.store_types import StoreId
 
 LEDGER_INDEX_FILE = store_index_filename(StoreId.RUN_LEDGER)
+
+# A fragment is rewritten in place when a booking period is added (#537), and on a mount where a
+# replace is a delete followed by a rename a rebuild can read it in the gap. It is read again for this
+# long before it counts as gone: nothing deletes a fragment, the pruner included
+_FRAGMENT_REREAD_S = 1.0
+_FRAGMENT_REREAD_INTERVAL_S = 0.02
 
 
 class RunLedgerIndex(AbstractStoreIndex):
@@ -150,7 +160,20 @@ class RunLedgerIndex(AbstractStoreIndex):
     # from its header's code identity. Appended, no existing value changes; an older fragment
     # reads back None: no stand, never a change. Nothing is back-filled, because nothing needs the
     # old rows to say more.
-    LOGIC_VERSION: int = 21
+    # 21 → 22 (contract 59, #647): `unstamped_input_files` counts the files whose origin no stamp
+    # attests — evidence grade other than `stamped` — whatever their class. A fragment written
+    # before this version keeps the old meaning, the files not production-and-stamped, so every
+    # stamped external file counts there; its `logic_version` says which, and the sweep ranking's
+    # mixed-version advisory flags a ranking over both generations. `server_clock_rules`
+    # and `external_warmup_timeframes` appended; an older fragment reads them back ''. Nothing is
+    # back-filled: the old count is a different measure, not a wrong one.
+    # 22 → 23 (contract 62, #499): `exclusivity_violated_at` appended — when a session's start found
+    # its account's declared exclusivity false on its own instrument (held over, or accepted). An
+    # older fragment reads it back None: not recorded, never a clean start.
+    # 23 → 24 (contract 67, #529): `account_drawdown_periods` and `drawdown_started_at` appended —
+    # the five deepest drawdown periods of the account's curve at each seal, as JSON, and when that
+    # curve began. Written on period rows; an older fragment reads them back None: not recorded.
+    LOGIC_VERSION: int = 24
 
     def __init__(self, ledger_dir: Path, columns: List[str]):
         super().__init__(Path(ledger_dir) / LEDGER_INDEX_FILE)
@@ -213,16 +236,45 @@ class RunLedgerIndex(AbstractStoreIndex):
         # makes the mtime mean "the store as of this instant", which is what the comparison
         # already assumes, and the missed fragment shows up as stale on the next read.
         read_started_ns = time.time_ns()
+        frame = self.derive()
+        # The write and the date it carries are one step for every other reader
+        with self.updating():
+            self.write(frame)
+            self._stamp(read_started_ns)
+        return len(frame)
+
+    def derive(self) -> pd.DataFrame:
+        """
+        The union of the fragments, computed without writing it.
+
+        Returns:
+            Every fragment's rows in the canonical columns; empty with the columns when there is none
+        """
         fragments = self.fragments()
         if not fragments:
-            self.write(pd.DataFrame(columns=self.COLUMNS))
-            self._stamp(read_started_ns)
-            return 0
-        frame = pd.concat([pd.read_parquet(f) for f in fragments], ignore_index=True)
-        frame = frame.reindex(columns=self.COLUMNS)
-        self.write(frame)
-        self._stamp(read_started_ns)
-        return len(frame)
+            return pd.DataFrame(columns=self.COLUMNS)
+        frame = pd.concat([self._read_fragment(f) for f in fragments], ignore_index=True)
+        return frame.reindex(columns=self.COLUMNS)
+
+    @staticmethod
+    def _read_fragment(path: Path) -> pd.DataFrame:
+        """
+        One fragment, read again for a moment when it is caught between the two halves of its replace.
+
+        Args:
+            path: The fragment
+
+        Returns:
+            Its rows
+        """
+        deadline = time.monotonic() + _FRAGMENT_REREAD_S
+        while True:
+            try:
+                return pd.read_parquet(path)
+            except FileNotFoundError as error:
+                if time.monotonic() >= deadline:
+                    raise LedgerFragmentVanishedError(path, _FRAGMENT_REREAD_S) from error
+                time.sleep(_FRAGMENT_REREAD_INTERVAL_S)
 
     def _stamp(self, read_started_ns: int) -> None:
         """
@@ -232,4 +284,7 @@ class RunLedgerIndex(AbstractStoreIndex):
             read_started_ns: The instant the fragment read started
         """
         path = self.get_path()
-        os.utime(path, ns=(read_started_ns, read_started_ns))
+        try:
+            os.utime(path, ns=(read_started_ns, read_started_ns))
+        except FileNotFoundError as error:
+            raise StoreIndexReplacedError(path, 'dated after its rebuild') from error

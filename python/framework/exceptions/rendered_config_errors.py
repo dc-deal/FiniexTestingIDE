@@ -5,6 +5,9 @@ RenderedConfigMismatchError: the configuration a session recorded as what it RAN
 parameters its decision logic and workers were actually built with. Both come from the same factory
 helper, so a mismatch is a defect in our own code — and a record that misstates a real-money
 session is worse than no record, so the session refuses to start.
+
+RecordedScenarioRefusedError: a backtest of a session's window cannot be built from what the
+session recorded (#512) — a value the backtest cannot reproduce, or a document that lacks a block.
 """
 
 from python.framework.exceptions.finiex_error import FiniexError
@@ -21,3 +24,7 @@ class RenderedConfigMismatchError(FiniexError, RuntimeError):
             f'does not start. Both sides come from the same factory helper — this is a defect, '
             f'not a setting.'
         )
+
+
+class RecordedScenarioRefusedError(FiniexError, ValueError):
+    """A backtest cannot be built from a session's recorded configuration as it stands."""

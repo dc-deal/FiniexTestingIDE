@@ -2,7 +2,7 @@
 Block-Splitting Report Builder Tests.
 
 `build_block_splitting_report_from_batch` derives each block's edge facts from the raw material
-the tick loop hands over — the positions the edge left OPEN, the trades that closed naturally,
+the event loop hands over — the positions the edge left OPEN, the trades that closed naturally,
 the discarded pending orders — and aggregates them per symbol into disposition facts + ratios.
 Tested with REAL BatchExecutionSummary / ProcessResult / Position / TradeRecord fixtures (the
 generator-mode lookup is a trivial dict, tested via the 'unknown' fallback).
@@ -13,7 +13,7 @@ from python.framework.reporting.builders.block_splitting_report_builder import (
     build_block_splitting_report_from_batch,
 )
 from python.framework.types.batch_execution_types import BatchExecutionSummary
-from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessResult, ProcessEventLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.order_event_types import OrderEvent, OrderEventType
 from tests.shared.fixture_helpers import make_closed_trades, make_open_positions
@@ -59,7 +59,7 @@ def _result(name, open_trades=0, open_pnl=0.0, nat_trades=0, nat_pnl=0.0,
                                  order_id=order_id, submitted_seq=submitted))
     return ProcessResult(
         success=success, scenario_name=name, scenario_index=idx,
-        tick_loop_results=ProcessTickLoopResult(
+        event_loop_results=ProcessEventLoopResult(
             open_positions=make_open_positions(open_trades, open_pnl),
             trade_history=make_closed_trades(nat_trades, nat_pnl),
             order_events=events))

@@ -12,7 +12,8 @@ Not in this document: what each stream's lines hold (the order events in
 [order_event_stream.md](order_event_stream.md), the state frames in
 [live_telemetry_architecture.md](live_telemetry_architecture.md)), the ledger row a sealed day books
 ([accounting_periods.md](accounting_periods.md)), and how long day records are kept — nothing deletes
-them yet. A backtest writes its streams at its end and never seals one.
+them yet. A backtest writes its order events with its report and its state frames and indicator
+series as each scenario runs, and never seals one.
 
 ## What a session's run directory holds after two boundaries
 
@@ -39,7 +40,7 @@ once a trading day ended while it ran.
 
 ## How a day is sealed
 
-The seal runs where the booking period of the day is sealed — in the tick loop's boundary check,
+The seal runs where the booking period of the day is sealed — in the event loop's boundary check,
 before the first event of the new day is applied, right after the day's ledger row was written. So
 what the first tick of a day writes is already in the new day's file. Every stream the session opened
 through its run writer is sealed in the same pass, one after the other:
@@ -66,6 +67,12 @@ close the file ──► read it, write the day record ──► replace the fil
   record just written is removed again and the stream goes on being written. Only a file replaced
   but not reopened stops that stream, the way a failed write does; everything up to the boundary is
   sealed.
+- **The money record keeps what it could not write** (#632). The order events and the trades do not
+  stop at a failed write: their lines wait in memory and are written again at the cadence that
+  forces them to the disk, and the session holds its entries meanwhile — see
+  [Unattended Operation](../autotrader/unattended_operation.md#the-disk-under-the-records). A
+  boundary that finds such a stream failing does not seal it: its day stays in the file and is
+  sealed with the next one.
 - **A line is filed under the day in which the loop's check found it.** The tick stream is written
   from the socket's own thread, so a line it writes between the boundary and the check that notices
   the boundary is sealed with the day that ended. Its own time says when it happened; a time window
@@ -106,8 +113,9 @@ and latest record, the header line the day's file opened with, and whether a las
 mid-write was left out. The version of the day record's own layout stands there too.
 
 A stream declares its time fields in the run store's declaration: the order events their
-`event_time` on the canonical clock, the state frames their `frame_time`, the trades their
-`exit_time`, the tick stream `lost_at` or `received_at` by the kind of line. Diagnostics rows carry
+`event_time` on the canonical clock, the state frames their `frame_time`, an indicator series its
+`bar_time`, the trades their `exit_time`, the tick stream `lost_at` or `received_at` by the kind of
+line. Diagnostics rows carry
 whatever columns their strategy chose, so they declare none, and a time window reads them by day.
 
 ## How a stream is read

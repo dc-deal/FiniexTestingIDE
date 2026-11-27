@@ -65,8 +65,8 @@ def _sim_with(adapter: MockBrokerAdapter) -> TradeSimulator:
         account_currency='USD',
         logger=GlobalLogger('OrderTypeGate'),
         seeds={'inbound_latency_seed': 42},
-        inbound_latency_min_ms=0,
-        inbound_latency_max_ms=0,
+        inbound_latency_min_ms=1,
+        inbound_latency_max_ms=1,
     )
 
 

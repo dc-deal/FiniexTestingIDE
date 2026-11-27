@@ -1,10 +1,13 @@
 """Optimization analysis tests (#390) — ranking + one-factor sensitivity (typed rows)."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from python.framework.optimization.optimization_analysis import (
+    best_combinations,
+    compose_sweep_detail,
+    compose_sweep_list,
     degenerate_ranking_advisory,
     mixed_logic_version_advisory,
     rank,
@@ -14,6 +17,8 @@ from python.framework.optimization.optimization_analysis import (
     unranked_count,
 )
 from python.framework.reporting.store.run_ledger_index import RunLedgerIndex
+from python.framework.types.api.report_types import RunSummaryCurrency
+from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
 
 
 @pytest.fixture
@@ -211,6 +216,108 @@ def test_summarize_sweeps(tmp_ledger, make_run_summary, make_provenance):
     assert b.maximize is False
 
 
+class TestTheListNamesEachSweepsBestCombination:
+    """
+    A sweep's row in the list carries its first-ranked combination per account currency (#666) —
+    the head of what the sweep's detail ranks, by the same rule and the same tie-break.
+    """
+
+    @staticmethod
+    def _sweep(tmp_ledger, make_run_summary, make_provenance, combinations, objective='net_pnl',
+               maximize=True):
+        """
+        A sweep of the combinations given, read back as the list reads it.
+
+        Args:
+            tmp_ledger: The throwaway ledger
+            make_run_summary: The summary factory
+            make_provenance: The provenance factory
+            combinations: (run_id, currency, net_pnl, x) per combination
+            objective: The objective the sweep recorded
+            maximize: Its direction
+
+        Returns:
+            The sweep's rows
+        """
+        for run_id, currency, pnl, x in combinations:
+            tmp_ledger.append(make_run_summary(currency=currency, net_pnl=pnl), make_provenance(
+                run_id=run_id, scenario_set_name=f'base__sweep_C_{run_id}', sweep_id='sweep_C',
+                sweep_params={'decision_logic_config.x': x}, sweep_objective=objective,
+                sweep_maximize=maximize))
+        return tmp_ledger.read_rows(sweep_id='sweep_C')
+
+    def test_one_per_currency_and_each_the_detail_s_first(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        rows = self._sweep(tmp_ledger, make_run_summary, make_provenance, [
+            ('c0', 'USD', 5.0, 1), ('c1', 'EUR', 9.0, 2), ('c2', 'USD', 7.0, 3),
+            ('c3', 'EUR', 1.0, 4)])
+
+        best = best_combinations(rows)
+
+        assert [(b.currency, b.run_id, b.objective_value, b.sweep_params) for b in best] == [
+            ('EUR', 'c1', 9.0, {'decision_logic_config.x': 2}),
+            ('USD', 'c2', 7.0, {'decision_logic_config.x': 3})]
+        detail = compose_sweep_detail('sweep_C', rows).combinations
+        firsts = {}
+        for row in detail:
+            firsts.setdefault(row.currency, row.run_id)
+        assert {b.currency: b.run_id for b in best} == firsts
+
+    def test_a_tie_goes_as_the_detail_breaks_it(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        # Two combinations at 4.0: the ranking breaks the tie by run_id, and so does the list
+        rows = self._sweep(tmp_ledger, make_run_summary, make_provenance, [
+            ('c9', 'USD', 4.0, 1), ('c2', 'USD', 4.0, 2), ('c5', 'USD', -1.0, 3)])
+
+        best, = best_combinations(rows)
+
+        assert best.run_id == compose_sweep_detail('sweep_C', rows).combinations[0].run_id == 'c2'
+
+    def test_the_direction_the_sweep_recorded_ranks(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        rows = self._sweep(tmp_ledger, make_run_summary, make_provenance, [
+            ('c0', 'USD', 5.0, 1), ('c1', 'USD', -3.0, 2)], maximize=False)
+
+        assert [b.run_id for b in best_combinations(rows)] == ['c1']
+
+    def test_a_currency_no_combination_measured_has_none(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        # Ranked by the drawdown, which the EUR combination did not measure: USD has its best,
+        # EUR none — the detail ranks nothing there either
+        rows = self._sweep(tmp_ledger, make_run_summary, make_provenance, [
+            ('c0', 'USD', 5.0, 1), ('c1', 'EUR', 9.0, 2)],
+            objective='account_max_drawdown', maximize=False)
+        rows = [row.model_copy(update={'account_max_drawdown': None if row.currency == 'EUR'
+                                       else 12.5}) for row in rows]
+
+        assert [(b.currency, b.run_id, b.objective_value) for b in best_combinations(rows)] == [
+            ('USD', 'c0', 12.5)]
+
+    def test_the_sweep_line_carries_them(self, tmp_ledger, make_run_summary, make_provenance):
+        self._sweep(tmp_ledger, make_run_summary, make_provenance, [
+            ('c0', 'USD', 5.0, 1), ('c1', 'USD', 6.0, 2)])
+
+        summary, = compose_sweep_list(tmp_ledger.read_rows()).sweeps
+
+        assert [(b.currency, b.run_id) for b in summary.best_combinations] == [('USD', 'c1')]
+
+    def test_a_sweep_whose_objective_cannot_rank_has_none_and_the_list_stands(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        # A recorded objective nothing can rank by: its own detail refuses, the list does not
+        self._sweep(tmp_ledger, make_run_summary, make_provenance, [
+            ('c0', 'USD', 5.0, 1)], objective='no_such_figure')
+        tmp_ledger.append(make_run_summary(net_pnl=2.0), make_provenance(
+            run_id='d0', scenario_set_name='base__sweep_D_d0', sweep_id='sweep_D',
+            sweep_params={'decision_logic_config.x': 1}, sweep_objective='net_pnl'))
+
+        sweeps = {s.sweep_id: s for s in compose_sweep_list(tmp_ledger.read_rows()).sweeps}
+
+        assert sweeps['sweep_C'].best_combinations == []
+        assert [b.run_id for b in sweeps['sweep_D'].best_combinations] == ['d0']
+        with pytest.raises(ValueError, match='no_such_figure'):
+            compose_sweep_detail('sweep_C', tmp_ledger.read_rows(sweep_id='sweep_C'))
+
+
 def test_summarize_sweeps_ignores_non_sweep_runs(tmp_ledger, make_run_summary, make_provenance):
     """A plain (non-sweep) run is not a sweep → never appears in the sweep list."""
     tmp_ledger.append(make_run_summary(), make_provenance(run_id='plain'))  # no sweep_id
@@ -324,6 +431,21 @@ class TestARankingThatSpansLogicVersions:
             row.logic_version = version
         return rows
 
+    def test_the_two_generations_of_the_unstamped_count_are_flagged(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        """
+        `unstamped_input_files` counts something else from logic version 22 on (#647): files without
+        a stamp, where version 21 counted the files that were not production-and-stamped. A ranking
+        over a row of each is flagged rather than read as one measure.
+        """
+        current = RunLedgerIndex.LOGIC_VERSION
+        rows = self._sweep(tmp_ledger, make_run_summary, make_provenance, [current - 1, current])
+
+        advisory = mixed_logic_version_advisory(rows)
+
+        assert advisory is not None
+        assert advisory.versions == [current - 1, current]
+
     def test_one_version_is_not_a_warning(self, tmp_ledger, make_run_summary, make_provenance):
         rows = self._sweep(tmp_ledger, make_run_summary, make_provenance, [3, 3, 3])
 
@@ -387,11 +509,6 @@ class TestASweepRanksCandidatesNotDays:
     @staticmethod
     def _periods(tmp_ledger, make_run_summary, make_provenance):
         """Two combinations, each booking three periods that sum to its result."""
-        from datetime import datetime, timedelta, timezone
-
-        from python.framework.types.api.report_types import RunSummaryCurrency
-        from python.framework.types.run_results_types import BookingPeriod, PeriodCloseReason
-
         start = datetime(2026, 9, 21, tzinfo=timezone.utc)
         for run, parts in (('rA', (10.0, -4.0, 6.0)), ('rB', (1.0, 1.0, 1.0))):
             segments = [
@@ -443,6 +560,92 @@ class TestASweepRanksCandidatesNotDays:
         # One level per combination, each holding that combination's TOTAL — not a mean over
         # its days, which is what an unfolded input would have produced.
         assert effects[0].level_means == {'rA': 12.0, 'rB': 3.0}
+
+
+class TestASweepRanksByWhatItsAccountsHoldAtTheEnd:
+    """
+    #32-E: a sweep may rank its combinations by their end equity. `final_equity` is ONE account's
+    and empty over a run's several scenarios, so the run writes the sum over its accounts on every
+    row, and the ranking reads that. The end equity holds what is still open (#492), so it can
+    order two combinations differently from their realised P&L.
+    """
+
+    @staticmethod
+    def _sweep(tmp_ledger, make_run_summary, make_provenance, combinations):
+        """Combinations of two scenarios, one booking period each, the sweep ranking by end equity."""
+        start = datetime(2026, 9, 21, tzinfo=timezone.utc)
+        for run, pnl, closing in combinations:
+            periods = [
+                BookingPeriod(
+                    period_no=1, unit_name=unit, opened_at=start,
+                    closed_at=start + timedelta(days=1),
+                    reason=PeriodCloseReason.ANCHOR, trade_count=1,
+                    figures=RunSummaryCurrency(
+                        currency='USD', net_pnl=pnl / 2, profit_factor=None, win_rate=1.0,
+                        account_max_drawdown=0.0, total_fees=0.0, total_trades=1,
+                        winning_trades=1, losing_trades=0, expectancy=0.0, avg_win_r=None,
+                        avg_loss_r=None, r_trade_count=0, final_equity=10_000.0 + pnl / 2))
+                for unit in ('week_1', 'week_2')]
+            tmp_ledger.append(
+                make_run_summary(net_pnl=pnl, total_final_equity=closing,
+                                 total_initial_balance=None if closing is None else 20_000.0),
+                make_provenance(param_hash=f'h_{run}', run_id=run, scenario_set_name=f's__{run}',
+                                sweep_id='sweep_E', sweep_params={'x': run},
+                                sweep_objective='total_final_equity', sweep_maximize=True),
+                periods)
+        return tmp_ledger.read_rows(sweep_id='sweep_E')
+
+    def test_the_end_equity_and_the_realised_pnl_rank_apart(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        # A closed +50 and holds nothing: 20,050. B closed +80 and still holds a position 120 under
+        # water: 19,960. By P&L B is first, by what the accounts hold A is
+        rows = self._sweep(tmp_ledger, make_run_summary, make_provenance,
+                           [('rA', 50.0, 20_050.0), ('rB', 80.0, 19_960.0)])
+
+        assert [r.run_id for r in rank(rows, 'net_pnl')] == ['rB', 'rA']
+        assert [(r.run_id, r.total_final_equity, r.total_initial_balance)
+                for r in rank(rows, 'total_final_equity')] == [
+            ('rA', 20_050.0, 20_000.0), ('rB', 19_960.0, 20_000.0)]
+
+    def test_one_account_s_equity_has_no_value_over_two(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        rows = self._sweep(tmp_ledger, make_run_summary, make_provenance,
+                           [('rA', 50.0, 20_050.0), ('rB', 80.0, 19_960.0)])
+
+        assert [r.final_equity for r in rank(rows, 'total_final_equity')] == [None, None]
+
+    def test_a_run_from_before_the_columns_is_left_out_and_counted(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        rows = self._sweep(tmp_ledger, make_run_summary, make_provenance,
+                           [('rA', 50.0, 20_050.0), ('rB', 80.0, 19_960.0), ('rC', 99.0, None)])
+
+        assert [r.run_id for r in rank(rows, 'total_final_equity')] == ['rA', 'rB']
+        assert unranked_count(rows, 'total_final_equity') == 1
+
+    def test_the_sweep_list_names_the_best_by_it(
+            self, tmp_ledger, make_run_summary, make_provenance):
+        rows = self._sweep(tmp_ledger, make_run_summary, make_provenance,
+                           [('rA', 50.0, 20_050.0), ('rB', 80.0, 19_960.0)])
+
+        assert [(best.run_id, best.objective_value) for best in best_combinations(rows)] == [
+            ('rA', 20_050.0)]
+
+
+class TestAnObjectiveThatIsNoNumberIsRefused:
+    """A name, a flag or a structure is a row field too, and sorting by it orders nothing."""
+
+    @pytest.mark.parametrize('objective', ['run_id', 'git_dirty', 'worker_versions'])
+    def test_it_is_refused(self, sweep_rows, objective):
+        with pytest.raises(ValueError, match='is not a number'):
+            rank(sweep_rows, objective)
+
+    def test_the_refusal_lists_only_what_can_rank(self, sweep_rows):
+        with pytest.raises(ValueError) as refused:
+            rank(sweep_rows, 'nonexistent_kpi')
+
+        assert 'total_final_equity' in str(refused.value)
+        assert 'run_id' not in str(refused.value)
+        assert 'profit_factor' not in str(refused.value)
 
 
 class TestAFigureSomeRunsDidNotMeasure:

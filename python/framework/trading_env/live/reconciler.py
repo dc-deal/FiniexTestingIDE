@@ -6,7 +6,7 @@ it logs and counts divergences but does not mutate state and does not halt.
 Correction (AUTO_CORRECT) and HALT_TRADING land in #349 (V1.4).
 
 Live-only by design (Design Decision #9 — sim's PortfolioManager IS the truth).
-Poll-based: the tick loop calls is_due() on a hybrid cadence (every N ticks OR
+Poll-based: the event loop calls is_due() on a hybrid cadence (every N ticks OR
 every M wall-clock seconds) and then reconcile(). The outcome-listener path is
 Phase 4 (#349), not here.
 
@@ -145,17 +145,24 @@ class Reconciler:
 
     def is_due(self, tick_counter: int) -> bool:
         """
-        Whether a reconcile is due — hybrid cadence (ticks OR wall-clock).
+        Whether a reconcile is due by the tick count. Its time part is a timer on the session's
+        timeline (#461), which `get_min_interval_seconds` schedules — checked here as well, it
+        would fire twice, on two clocks.
 
         Args:
-            tick_counter: Current tick-loop counter
+            tick_counter: Current event-loop counter
 
         Returns:
-            True if interval_ticks elapsed OR min_interval_seconds elapsed
+            True if interval_ticks elapsed since the last reconcile
         """
-        if tick_counter - self._last_reconcile_tick >= self._config.interval_ticks:
-            return True
-        return (time.monotonic() - self._last_reconcile_time) >= self._config.min_interval_seconds
+        return tick_counter - self._last_reconcile_tick >= self._config.interval_ticks
+
+    def get_min_interval_seconds(self) -> float:
+        """
+        Returns:
+            How long after a reconcile the next one falls due by time — the timeline's timer
+        """
+        return self._config.min_interval_seconds
 
     # ============================================
     # Reconcile
@@ -168,11 +175,11 @@ class Reconciler:
         The broker pull is the one step that reaches outside the process, and a venue
         answering 502 for a moment must not end a thirty-day session (#473). On a TRANSIENT
         failure the cycle is SKIPPED and reported: this method is already cadenced, so
-        `is_due` is the ladder and no wait belongs in the tick loop. A TERMINAL failure
+        `is_due` is the ladder and no wait belongs in the event loop. A TERMINAL failure
         still propagates — a refused credential is not something to keep quiet about.
 
         Args:
-            current_tick: Current tick-loop counter (updates the cadence tracker)
+            current_tick: Current event-loop counter (updates the cadence tracker)
 
         Returns:
             ReconciliationResult for this cycle, or a skipped one when broker truth was
@@ -225,7 +232,7 @@ class Reconciler:
         a cadence for a hat. The next attempt comes at the normal interval.
 
         Args:
-            current_tick: Current tick-loop counter
+            current_tick: Current event-loop counter
             error: The transport failure that ended the pull
 
         Returns:

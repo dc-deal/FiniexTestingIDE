@@ -8,8 +8,9 @@ is written by the test that needs it.
 
 `ArchiveTree.simulate_import` stands in for `data_index_cli.py import --override`: it rewrites
 the parquet of each inbox file, updates its index row and moves the file to the finished
-directory — or, on request, refuses a file (left in the inbox, old parquet kept) or moves it
-without rewriting its parquet.
+directory — or, on request, refuses a file (moved to the refused directory, old parquet kept) or
+moves it on without rewriting its parquet, as an import without --override does with a
+duplicate.
 """
 
 import json
@@ -80,9 +81,10 @@ class ArchiveTree:
         self.finished_dir = root / 'finished'
         self.archives_dir = self.finished_dir / 'Archives'
         self.raw_dir = root / 'raw'
+        self.refused_dir = root / 'refused'
         self.processed_dir = root / 'processed'
         self.manifest_path = self.raw_dir / MANIFEST_FILE_NAME
-        for directory in (self.archives_dir, self.raw_dir, self.processed_dir):
+        for directory in (self.archives_dir, self.raw_dir, self.refused_dir, self.processed_dir):
             directory.mkdir(parents=True)
         self._rows: Dict[str, Dict[str, Any]] = {}
 
@@ -174,7 +176,7 @@ class ArchiveTree:
         """
         return RawArchiveReimport(
             catalog=self.build_catalog(known_broker_types), raw_dir=self.raw_dir,
-            manifest_path=self.manifest_path)
+            manifest_path=self.manifest_path, refused_dir=self.refused_dir)
 
     def build_catalog(self, known_broker_types: Optional[List[str]] = None) -> RawArchiveCatalog:
         """
@@ -198,16 +200,17 @@ class ArchiveTree:
 
         Args:
             shift: How far each rewritten file's start and end move
-            refused: Names the importer refuses: the file stays in the inbox and its old
-                parquet and index row stay as they were
+            refused: Names the importer refuses: the file moves to the refused directory and
+                its old parquet and index row stay as they were
             not_rewritten: Names moved to the finished directory while their parquet keeps
-                its old processed_at
+                its old processed_at — a duplicate in an import without --override
         """
         refused_names = set(refused)
         stale_names = set(not_rewritten)
         for source in sorted(self.raw_dir.glob('*_ticks.json')):
             name = source.name
             if name in refused_names:
+                os.replace(source, self.refused_dir / name)
                 continue
             if name not in stale_names:
                 row = self._rows[name]

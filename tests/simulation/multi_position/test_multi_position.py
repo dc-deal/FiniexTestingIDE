@@ -19,7 +19,7 @@ from typing import Dict, List
 from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
 from python.framework.types.portfolio_types.portfolio_trade_record_types import TradeRecord
 from python.framework.types.probe_metadata_types import ProbeMetadata
-from python.framework.types.process_data_types import ProcessTickLoopResult
+from python.framework.types.process_data_types import ProcessEventLoopResult
 from python.framework.types.trading_env_types.order_types import OrderDirection
 
 # =============================================================================
@@ -531,10 +531,10 @@ class TestMultiPositionMetadata:
         )
 
     def test_no_rejected_orders(
-        self, tick_loop_results: ProcessTickLoopResult
+        self, event_loop_results: ProcessEventLoopResult
     ):
         """All multi-position orders should execute without rejection."""
-        exec_stats = tick_loop_results.execution_stats
+        exec_stats = event_loop_results.execution_stats
         assert exec_stats.orders_rejected == 0, (
             f'Rejected orders: {exec_stats.orders_rejected}'
         )
@@ -546,11 +546,10 @@ class TestMultiPositionMetadata:
 
     def test_tick_count_matches_config(
         self,
-        probe_metadata: ProbeMetadata,
+        event_loop_results: ProcessEventLoopResult,
         scenario_config: Dict
     ):
-        """Tick count should match config max_ticks."""
+        """Every configured tick reaches the algo path; a pass counts each tick of its slice (#460)."""
         expected = scenario_config['scenarios'][0]['max_ticks']
-        assert probe_metadata.tick_count == expected, (
-            f'Expected {expected} ticks, got {probe_metadata.tick_count}'
-        )
+        actual = event_loop_results.coordination_statistics.ticks_processed
+        assert actual == expected, f'Expected {expected} ticks, got {actual}'

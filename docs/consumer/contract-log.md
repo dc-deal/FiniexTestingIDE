@@ -33,130 +33,114 @@ reads downwards from the version their fixtures hold until they reach the one be
 A test holds the newest heading in this log to the number the server answers with, so a version
 cannot ship without its entry.
 
-## Version 48 — 2026-11-01
+## Version 69 — 2026-11-26 (#652)
 
-A consumer can tell which installation answers, now that this API exists on more than one system.
+A session also holds its entries when its start finds an order of its own that the venue filled while no
+session was there to book it.
 
-- [Server](/api/v1/docs/server), `/health`: `host_id`, the identity of the installation answering, the
-  same value as `origin_host` on [activities](/api/v1/docs/activities) and [runs](/api/v1/docs/runs). It
-  stays when an address changes, so key a system by it. Null where the server cannot read it; `/health`
-  keeps answering.
-- `/health`: `host_name`, a name for people to read, from the installation's configuration; null where
-  none is set. Two installations may carry the same one, so it is no key.
+- [Order history](/api/v1/docs/order-history): **`rejection_reason: entries_held`** (a broadened
+  meaning) — a third cause: the session's start read the venue's closed orders since its record was last
+  written and found a fill of its own the record does not hold — a session stopped between sending an
+  order and its fill leaves the coins at the venue — or could not finish that read. Opening anything
+  then could buy the same position twice. The hold lasts until an operator lifts it at a start they
+  watch; the session manages and closes what it has meanwhile, and closing and cancelling are never
+  refused for it.
 
-Two fields added on an open route; nothing removed or renamed.
+One value's meaning broadened; nothing added or removed.
 
-## Version 47 — 2026-10-30 (#559)
+## Version 68 — 2026-11-24 (#605)
 
-A deployment notices when its sessions ran different code, in a strategy's repository as much as in
-this application's.
+A broker row says how its venue decides a resting order — the price that fires a stop, and what
+proves a resting limit filled — because the backtest and a dry run now simulate stops and limits
+that way.
 
-- [Deployments](/api/v1/docs/deployments), a changed meaning: `changed` on a list row is also true
-  when only the code moved. **`changed: true` with `advisory: null` is a new state:** the advisory
-  still speaks of the profile alone and stays null for a code change. `configuration_changed`, new
-  on the list row, says what `changed` said so far.
-- Deployments, the session rows: `code_changes`, one entry per repository whose code differs from the
-  previous session's: `repository_label`, `old_commit`, `new_commit`, `commits_between`,
-  `change_direction` (`forward`, `back`, `unknown`, `uncommitted`, `added`, `removed`) and `subject`.
-  Empty when nothing moved, and on a session recorded before this contract. `code_changes_key` on
-  the detail is empty: an entry's identity is its place in the list, and `repository_label` can repeat.
-- Deployments, the list rows and the detail: `code_summary`, with `code_stands`, `sessions`,
-  `last_change_at` and `age_days`; null under two code stands.
-- [Run header](/api/v1/docs/run-header): a repository in `code_identity` carries `commit_subject` and
-  `recent_commits`, filled for a session of a deployment and null on every other run.
-- [Sweeps](/api/v1/docs/sweeps): a combination carries `code_stand`, null on every one, because only
-  a session records it.
+- [Broker](/api/v1/docs/broker): **`stop_trigger_basis`** (new) — `last`, the last traded price
+  (Kraken), or `bid_ask`, the quote: a sell stop on the bid, a buy stop on the ask (MT5).
+- [Broker](/api/v1/docs/broker): **`limit_fill_evidence`** (new) — `public_trade`, a public trade
+  through the limit's price, or `quote`, only the quote crossing it. The quote crossing a limit
+  fills it under both.
 
-Nothing removed or renamed; one meaning changed: `changed`.
+**A row recorded before this contract** carries neither: null. Kraken data recorded before the
+collector kept the quote (before format 1.6.0) carries the trade as its quote; there stops and limits
+now follow the trade, as Kraken's do, so a backtest of that data can move.
 
-## Version 46 — 2026-10-30 (#625)
+Two fields added; nothing changed or removed.
 
-A session holds no stop or target for a position any more, so the fields and values that said who held
-one are gone.
+## Version 67 — 2026-11-23 (#529)
 
-- [Portfolio](/api/v1/docs/portfolio) and the state frames: `protective_level_enforcement` and
-  `take_profit_enforcement` are removed from the open-position rows. `stop_loss` and `take_profit`
-  stay: a backtest's position may carry one.
-- [Order history](/api/v1/docs/order-history) and [order events](/api/v1/docs/order-events): the
-  `end_reason` `protection_released` is no longer produced. A run recorded before this contract may
-  still hold it, and it stays served. The `rejection_reason` `close_withheld` is removed; no recorded
-  run holds it.
-- Every report route answers `409 artifact_unreadable` for a stored artifact that no longer matches
-  its model. Some answered 500 before. See [errors](/api/v1/docs/errors).
-- A close's `order_id` is its position's on every row. A rebuilt stop's own id, `protect_` and the
-  position's id, is no longer produced.
-- `expectancy` can be null, on [run summaries](/api/v1/docs/run-summary), [trade analytics](/api/v1/docs/trade-history),
-  booking periods, ledger rows and robustness windows, where no trade has an R. It used to read `0.0`.
-  A run recorded before this contract keeps its `0.0` beside `r_trade_count` 0.
-- [Sweeps](/api/v1/docs/sweeps): a sweep ranked by `expectancy` leaves such a run out and counts it in
-  `unranked`, and a sweep that recorded no objective ranks by `net_pnl`. The sweep list carries
-  `features_beyond_venue`. It is not on the run list: the run header holds it.
+How long each of the five deepest drawdown periods took, the five over a deployment, and the
+account's drawdown on every state frame.
 
-## Version 45 — 2026-10-30 (#625)
+- [Portfolio](/api/v1/docs/portfolio): **`to_trough_s`** and **`duration_s`** on each entry of
+  `account_drawdown_periods` (new) — seconds from its start to its trough and to its recovery;
+  `duration_s` is null while the period is still open, both are null where an instant is unknown.
+- [Deployments](/api/v1/docs/deployments): **`account_drawdown_periods`** (new, keyed by `rank` in
+  `account_drawdown_periods_key`) and **`drawdown_started_at`** (new) on a row of the list — the
+  deployment's five deepest drawdown periods in that currency, those of its newest session that
+  recorded them, and when their curve began — and on a session row of the detail, that session's
+  own reading at its last seal. Null where nothing recorded them.
+- [State frames](/api/v1/docs/state-frames) and the [recorded streams](/api/v1/docs/recorded-streams):
+  **`account_drawdown_pct`** (new) — how far the frame's equity lies below the account's running
+  peak, in percent of that peak. Not `safety_drawdown_pct`, the circuit breaker's reading against its
+  own baseline.
 
-A venue's API decides which levels a run can use, and a level a strategy keeps itself is named on
-the trade.
+**A row recorded before this contract** carries `logic_version` 23 or older and no drawdown periods
+on its session; a frame recorded before it carries no `account_drawdown_pct`.
 
-- [Trade history](/api/v1/docs/trade-history): every row carries `exit_level`, the level a stop-loss
-  or take-profit exit fired at. A strategy that keeps its own stop leaves `stop_loss` and
-  `take_profit` null, so this is where that level is read. Null for every other exit, and on a row
-  recorded before this contract.
-- **A change of meaning in a backtest:** such an own exit fills at the next price after the level,
-  as a close the strategy sends does, so its `exit_slippage` is no longer 0. A level the position
-  carries still fills at the level.
-- [Run header](/api/v1/docs/run-header): `features_beyond_venue`,
-  the order features a backtest was allowed beyond what its venue's API holds, as its scenario set
-  declared. Empty for every other run, a session always; null on a run recorded before this contract.
-  Ledger rows carry the same, comma-joined, and empty for every other row.
-- [Order history](/api/v1/docs/order-history): `rejection_reason` gains
-  `order_feature_not_declared`, an order that carries a level its strategy did not declare.
-- [Validation checks](/api/v1/validation-checks): `order_feature_refused`,
-  `order_feature_undeclared`, `feature_beyond_venue_unneeded` and `features_beyond_venue`.
+Nine fields added, two of them row keys; nothing changed or removed.
 
-## Version 44 — 2026-10-27 (#631)
+## Version 66 — 2026-11-23 (#529)
 
-What every live session knows about its venue is recorded for every session now, and every fill says
-how far it landed from the price it is measured against.
+The portfolio report lists the five deepest drawdown periods of a unit's account, not only the
+deepest.
 
-- `GET /api/v1/reports/runs/{run_id}/venue-api-performance`, new: how the venue's REST API answered a
-  live session, one row per endpoint (`key: ["venue_endpoint"]`) — `calls`, `avg_ms`, `min_ms`,
-  `max_ms`, `slow_calls` and `failed_calls` — with the session's `slow_calls` and `failed_calls` and
-  the `slow_call_threshold_ms` a call was judged against. AutoTrader only, written when the session ran
-  its monitor; `venue_endpoint` is the label the session's adapter gives the call. Its document is
-  [venue API performance](/api/v1/docs/venue-api-performance).
-- [Venue account](/api/v1/docs/venue-account): every row carries `reconciliation` — `enabled`, and
-  over the whole session `cycles_compared`, `cycles_skipped` and `divergences_seen`, summed over the
-  cycles, so a divergence that stood for three cycles counts three. The counts are null when the
-  reconciliation was switched off. A session that reconciled without writing a broker-truth line has
-  a row now too.
-- [Broker](/api/v1/docs/broker): every row carries `fee_report` — where the venue reports a fill's
-  fee, as its adapter declares — and `venue_fee_expected`, whether the run's fills carry the venue's
-  own fee: false in a backtest and in a dry run.
-- [Order history](/api/v1/docs/order-history): every row carries `order_event_seq`, its key into the
-  order-event stream, and a fill's slippage — `slippage_measured_against` (`submission_mid` for a
-  market order, `limit_price`, `trigger_price` for a stop or a stop-limit, `protective_level` for a
-  stop-loss or take-profit close), `slippage_reference_price`, `slippage` in price units with a cost
-  positive, and `slippage_pct`.
-- [Execution statistics](/api/v1/docs/execution-stats): `fill_slippage` — per unit and reference kind
-  `fills`, `fills_measured`, `adverse_pct_mean` and `adverse_pct_max` — and `fill_slippage_totals`
-  over every unit's fills, re-derived over the fills themselves; `keys` names the row key of each of
-  the three lists.
-- [Trade history](/api/v1/docs/trade-history), a changed meaning: `exit_slippage` and
-  `exit_slippage_pct` of a stop-loss or take-profit exit are measured against the level that fired —
-  the percent a share of the level — no longer against the submission mid: a backtest fills such an
-  exit at its level, and the mid of the tick that crossed it made the overshoot read as slippage.
-  `exit_slippage_measured_against` says which reference a row used.
-- The run list: `venue_api_performance.json` joins `artifacts`.
+- [Portfolio](/api/v1/docs/portfolio): **`account_drawdown_periods`** on a unit row (new) — the five
+  deepest drawdown periods of the account curve, deepest first by their share of the peak: `rank`,
+  `peak`, `depth`, `depth_pct`, `started_at`, `trough_at` and `recovered_at`, null while the period was
+  still open. **`account_drawdown_periods_key`** (new) declares that `rank` makes a row unique.
 
-Nothing removed or renamed; one meaning changed — `exit_slippage` and `exit_slippage_pct` of a
-protective exit.
+One list and its key added; nothing changed or removed.
 
-## Versions 43 and earlier
+## Version 65 — 2026-11-23 (#632)
+
+A session also holds its entries while it cannot write its own record of its orders and trades.
+
+- [Order history](/api/v1/docs/order-history): **`rejection_reason: entries_held`** (a broadened
+  meaning) — a new entry refused while the session held its entries now has a second cause: its
+  record of its orders and trades could not be written, a full disk say, and the session keeps what
+  it could not write in memory until it can. Before, only orders of another owner that its start
+  found on its instrument held the entries. The session manages and closes what it has meanwhile;
+  closing and cancelling are never refused for it.
+
+One value's meaning broadened; nothing added or removed.
+
+## Versions 64 and earlier
 
 One line each. Every one of these moved a shape or a meaning; what they moved is summarised here
 rather than spelled out, because a consumer this far behind needs the list of steps, not each step's
 reasoning. The full text of a compressed version is in this repository's history.
 
+- **Version 64** — 2026-11-22 (#632): The machine view says how much room is left under an AutoTrader session's records — `disks` (new) on `/machine-resources` in [server](/api/v1/docs/server), one row per filesystem that holds a store the session writes into, with `keys` (new) naming what makes a row unique.
+- **Version 63** — 2026-11-22 (#627): A spot position whose holding an operator sold outside the bot can end, booked as closed — `close_reason: closed_externally` (new value) and `exit_observed` (new) on [trade history](/api/v1/docs/trade-history), `external_closes` in its trade totals (with `manual_closes` no longer counting them), `origin.book_closed_externally` in the [run](/api/v1/docs/runs) header.
+- **Version 62** — 2026-11-21 (#499): A session whose start found orders of another owner on its own instrument, on an account declared exclusive, starts and holds its entries — `rejection_reason: entries_held` and `end_reason: entries_held` (new values) on [order history](/api/v1/docs/order-history) and [order events](/api/v1/docs/order-events), `exclusivity_violated_at` (new) on a session row of [deployments](/api/v1/docs/deployments) and on a [sweep](/api/v1/docs/sweeps) combination; a row with `logic_version` 22 or older reads it null.
+- **Version 61** — 2026-11-21 (#650): A request that meets a store index another process is writing waits for it — [errors](/api/v1/docs/errors): `503 store_index_busy` (new) with `Retry-After`, on every route that reads a store index, where a bare `500` used to come.
+- **Version 60** — 2026-11-20 (#647): Coverage and the scenario details say whose data was there and whose was read — `origin_classes` and `collected_since` (new) on a symbol's coverage in [market data](/api/v1/docs/market-data), `origin_classes` (new) on each entry of `data_brokers` in the [scenario details](/api/v1/docs/scenario-details).
+- **Version 59** — 2026-11-19 (#647): What a run read says more — on [sweeps](/api/v1/docs/sweeps) `unstamped_input_files` counts the files no stamp attests (a changed meaning: before, every external file counted), `server_clock_rules` and `external_warmup_timeframes` (new); a mock session reports what its replay read in [warnings and errors](/api/v1/docs/warnings-errors), as a backtest does. A row with `logic_version` 21 or older keeps the old meaning.
+- **Version 58** — 2026-11-16 (#461): An AutoTrader session runs on a timeline — `ts_event` (new) on [order events](/api/v1/docs/order-events), the venue's own stamp of a step where it reports one; every time a session records is when a tick or an answer reached it, no longer the venue's stamp of the tick; a backlog is one slice and a session's `ticks_processed` no longer counts its older ticks; a live `in_flight_ms` ends when the answer is read right after it arrives. A session recorded before it can differ from one of the same data recorded now.
+- **Version 57** — 2026-11-16 (#460): A backtest runs on its timeline — `algo_passes` and `ghost_passes` on [scenario details](/api/v1/docs/scenario-details), the [worker and decision](/api/v1/docs/worker-decision) rows and [profiling](/api/v1/docs/profiling), with the per-pass time beside the per-tick one, several shares and budget figures taken per pass, the `instant_resolution` operation and the `data_arrival_time_offset` [validation check](/api/v1/docs/validation-checks); a backtest recorded before it carries null counts.
+- **Version 56** — 2026-11-15 (#666): A list says what a reader opens a run or a sweep to find out — `total_units`, `failed_count` and `succeeded_count` on every row of [runs](/api/v1/docs/runs) and on a [sweep](/api/v1/docs/sweeps)'s combinations, `best_combinations` on the sweep list, `total_final_equity` and `total_initial_balance` on a combination; a sweep whose objective cannot rank its combinations is refused with `409 sweep_objective_unrankable`.
+- **Version 55** — 2026-11-12 (#379): A worker draws its outputs on a run's chart as [indicator series](/api/v1/docs/indicator-series) — the open `GET /api/v1/drawing-types` schema route, an `indicator_series` row per drawing worker on the [recorded streams](/api/v1/docs/recorded-streams) timeline and the series in its window, whose `limit`, `matched`, `returned` and `next_from` now count over every stream; `stream_files` on [runs](/api/v1/docs/runs) names the series files.
+- **Version 54** — 2026-11-12 (#497): `drawdown_started_at` on the [portfolio](/api/v1/docs/portfolio) is the instant the equity curve began on the run's own clock — the replayed time in a backtest — where it was the wall clock; empty when a session ended before its first pass.
+- **Version 53** — 2026-11-09 (#557): `entry_tick_index` and `duration_ticks` on [trade history](/api/v1/docs/trade-history) are null on a trade whose position a session restored at boot, because no tick of the closing session is its entry; `duration_s` still answers.
+- **Version 52** — 2026-11-09 (#557): Every figure a console printed is a field the API serves — `duration_ticks` and the per-trade analytics on [trade history](/api/v1/docs/trade-history), the failed counts on [order history](/api/v1/docs/order-history), `open_position_count` and the active pending counts, `total_costs` on the [aggregated portfolio](/api/v1/docs/aggregated-portfolio), `execution_rate_pct` on the [run summary](/api/v1/docs/run-summary), the worker and decision totals, the profiling figures, `keys` on the lists and the check `usable_funds_negative`; a figure folded over rows an older run does not keep is null there.
+- **Version 51** — 2026-11-05 (#646): A deployment no longer reads twice in the list: the sessions without booked figures stand in no row of their own, each booked row of [deployments](/api/v1/docs/deployments) counts them as `sessions_without_figures` and `sessions_failed`, and the row with `currency: null` is served only for a deployment that has booked nothing.
+- **Version 50** — 2026-11-04 (#646): A run that failed before it measured anything no longer reads like a session that traded and broke even — such a [deployments](/api/v1/docs/deployments) session serves no figure and no currency (null, not `0.0` and the empty string), every session in the detail carries `booking_state` (`booked`, `failed`, `not_booked_yet`), and a [sweep](/api/v1/docs/sweeps) combination's figures are nullable in the schema while a ranked one never carries null.
+- **Version 49** — 2026-11-02 (#645): A deployment is listed from its first session's start — sessions without a sealed day stand in the list and the detail without figures, in a row of their own with `currency: null`; `net_pnl` and `currency` nullable; `/deployments/{deployment_id}` and its booking periods answer 200 for such a deployment, and `deployment_not_found` means no run and no ledger row names it.
+- **Version 48** — 2026-11-01: The installation answering names itself on `/health` — `host_id`, the key, the same value as `origin_host` on activities and runs, and `host_name`, for people to read and no key.
+- **Version 47** — 2026-10-30 (#559): A deployment notices when its sessions ran different code — `changed` also true when only the code moved, `configuration_changed` beside it, `code_changes` on the session rows, `code_summary` on the list rows and the detail, `commit_subject` and `recent_commits` on the run header's repositories, `code_stand` on a sweep's combinations.
+- **Version 46** — 2026-10-30 (#625): A session holds no stop or target for a position any more — `protective_level_enforcement` and `take_profit_enforcement` removed from the open-position rows, `protection_released` and `close_withheld` no longer produced, `409 artifact_unreadable` for a stored artifact that no longer matches its model, `expectancy` null where no trade has an R, and a sweep ranked by `expectancy` counts such runs in `unranked`.
+- **Version 45** — 2026-10-30 (#625): A venue's API decides which levels a run can use — `exit_level` on every [trade history](/api/v1/docs/trade-history) row, `features_beyond_venue` on the [run header](/api/v1/docs/run-header), `order_feature_not_declared` as a `rejection_reason`, four new validation checks, and an exit a strategy keeps itself fills in a backtest at the next price after its level.
+- **Version 44** — 2026-10-27 (#631): What every live session knows about its venue is recorded — `GET /api/v1/reports/runs/{run_id}/venue-api-performance` (new), `reconciliation` on the [venue account](/api/v1/docs/venue-account), `fee_report` and `venue_fee_expected` on [broker](/api/v1/docs/broker), a fill's slippage on [order history](/api/v1/docs/order-history) and in `fill_slippage` on [execution statistics](/api/v1/docs/execution-stats), and a protective exit's `exit_slippage` measured against the level that fired.
 - **Version 43** — 2026-10-27 (#580): A unit's recorded streams can be read over time: a timeline to draw the axis from, and a window to read them a page at a time — a finished run's and a running session's alike. Its document is [recorded streams](/api/v1/docs/recorded-streams).
 - **Version 42** — 2026-10-27 (#476): A booking period counts the orders it handled, so a run's order counts can be read from its periods again — on a [sweep](/api/v1/docs/sweeps) combination, a changed meaning: every `orders_*` field and `sl_tp_triggered` is the sum of its periods' own counts, null before.
 - **Version 41** — 2026-10-26 (#626): What a carry-over may carry across a change: a rehearsal's readings never reach real money, and a start that continues an open position under a changed configuration says so.

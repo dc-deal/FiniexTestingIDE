@@ -55,6 +55,9 @@ class RunConfigIndex(AbstractStoreIndex):
         'first_seen', 'last_seen', 'param_hash', 'scope_hash', 'run_count',
     ]
     LOGIC_VERSION: int = 1
+    # Which file each version came from, when it was first seen and how often it ran exist only
+    # here (the store's `rebuild_loses`), so a crash of the machine must not empty it (#632)
+    WRITES_DURABLY: bool = True
 
     def __init__(self, root: Path):
         super().__init__(Path(root) / RUN_CONFIG_INDEX_FILE)
@@ -199,9 +202,6 @@ class RunConfigIndex(AbstractStoreIndex):
         Args:
             entry: The version to record
         """
-        frame = self.read()
-        if not frame.empty:
-            frame = frame[frame['config_id'] != entry.config_id]
         row = pd.DataFrame([{
             'config_id': entry.config_id, 'kind': str(entry.kind),
             'frozen_file': entry.frozen_file, 'source_name': entry.source_name,
@@ -210,7 +210,13 @@ class RunConfigIndex(AbstractStoreIndex):
             'last_seen': entry.last_seen, 'param_hash': entry.param_hash,
             'scope_hash': entry.scope_hash, 'run_count': entry.run_count,
         }])
-        self.write_incremental(pd.concat([frame, row], ignore_index=True))
+        # The read and the write are one step: this index alone holds a version's history, so a
+        # row written back without another process's update is lost for good (#650)
+        with self.updating():
+            frame = self.read()
+            if not frame.empty:
+                frame = frame[frame['config_id'] != entry.config_id]
+            self.write_incremental(pd.concat([frame, row], ignore_index=True))
 
 
 def _to_entry(row) -> RunConfigEntry:

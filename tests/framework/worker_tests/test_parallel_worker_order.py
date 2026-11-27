@@ -60,7 +60,8 @@ def _orchestrator(workers: List[_SlowWorker], parallel: bool) -> WorkerOrchestra
     orchestrator.workers = {worker.name: worker for worker in workers}
     orchestrator._worker_results = {}
     orchestrator._thread_pool = ThreadPoolExecutor(max_workers=len(workers)) if parallel else None
-    orchestrator._coordination_stats = SimpleNamespace(parallel_time_saved_ms=0.0, ticks_processed=0)
+    orchestrator._coordination_stats = SimpleNamespace(parallel_time_saved_ms=0.0, ticks_processed=0,
+                                                       algo_passes=0)
     orchestrator.logger = MagicMock()
     orchestrator._worker_needs_recompute = lambda *args: True
     orchestrator._filter_bar_history_for_worker = lambda worker, bar_history: bar_history
@@ -114,9 +115,9 @@ def _run(parallel_workers: bool) -> Dict[str, Any]:
     names = [scenario.name for scenario in loaded.scenarios]
     for result in summary.process_result_list:
         # The comparison proves something only if the parallel run took the parallel path.
-        assert result.tick_loop_results.coordination_statistics.parallel_workers is parallel_workers
-    return {name: (extract_trade_history(result.tick_loop_results),
-                   extract_portfolio_stats(result.tick_loop_results))
+        assert result.event_loop_results.coordination_statistics.parallel_workers is parallel_workers
+    return {name: (extract_trade_history(result.event_loop_results),
+                   extract_portfolio_stats(result.event_loop_results))
             for name, result in zip(names, summary.process_result_list)}
 
 

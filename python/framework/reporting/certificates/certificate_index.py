@@ -60,13 +60,24 @@ class CertificateIndex(AbstractStoreIndex):
         """
         Rebuild the index by reading every certificate.
 
+        Returns:
+            How many certificates were indexed
+        """
+        frame = self.derive()
+        self.write(frame)
+        return len(frame)
+
+    def derive(self) -> pd.DataFrame:
+        """
+        Every certificate's row, read from the files without writing the index.
+
         The FAMILY is derived from where the file lies, never from what the document claims:
         certificates written before `record_kind` existed carry no family of their own, and a
         store that could not index its own older entries would be answering a different question
         than the one asked.
 
         Returns:
-            How many certificates were indexed
+            One row per certificate file
         """
         rows = []
         for path in self.certificate_files():
@@ -86,8 +97,7 @@ class CertificateIndex(AbstractStoreIndex):
                 'valid_until': data.get('valid_until', ''),
                 'git_commit': data.get('git_commit', ''),
             })
-        self.write(pd.DataFrame(rows, columns=self.COLUMNS))
-        return len(rows)
+        return pd.DataFrame(rows, columns=self.COLUMNS)
 
     def staleness_reason(self) -> Optional[str]:
         """
@@ -122,9 +132,7 @@ class CertificateIndex(AbstractStoreIndex):
         Returns:
             The current index table
         """
-        if not self.is_valid():
-            self.rebuild()
-        return self.read()
+        return self.read_valid()
 
     def find_latest(self, family: str) -> Optional[Path]:
         """

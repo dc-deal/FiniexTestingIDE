@@ -44,12 +44,14 @@ from python.framework.types.trading_env_types.broker_types import (
 )
 from python.framework.types.trading_env_types.order_types import (
     FeeReport,
+    LimitFillEvidence,
     LimitOrder,
     MarketOrder,
     OrderCapabilities,
     OrderDirection,
     OrderSide,
     OrderType,
+    StopTriggerBasis,
 )
 from python.framework.utils.trading_math.price_trigger import taken_price
 
@@ -212,6 +214,8 @@ class MockBrokerAdapter(AbstractAdapter):
         # tests via set_broker_* — independent of the local shadow side.
         self._divergence_mode: MockDivergenceMode = MockDivergenceMode.NONE
         self._broker_orders: List[BrokerOrder] = []
+        # #652 — the orders the venue finished, read by the boot read and by #487's resolution
+        self._closed_broker_orders: List[BrokerOrder] = []
         self._broker_positions: List[BrokerPosition] = []
         self._broker_balances: Dict[str, float] = {}
 
@@ -260,6 +264,15 @@ class MockBrokerAdapter(AbstractAdapter):
             # fee model charges one per fill at all; a spread broker's does not (#508).
             fee_report=(FeeReport.STATUS_ANSWER if self._charges_fee_per_fill()
                         else FeeReport.NOT_REPORTED),
+            # The rule of the venue it stands in for (#605) — Kraken's for a kraken_spot profile,
+            # held equal to KrakenAdapter's by a test — so what a mock session's broker report
+            # says matches the venue it rehearses. It carries market orders only, so no fill on
+            # it reads the rule.
+            stop_trigger_basis=(StopTriggerBasis.LAST if self._broker_type is BrokerType.KRAKEN_SPOT
+                                else StopTriggerBasis.BID_ASK),
+            limit_fill_evidence=(LimitFillEvidence.PUBLIC_TRADE
+                                 if self._broker_type is BrokerType.KRAKEN_SPOT
+                                 else LimitFillEvidence.QUOTE),
             # It stands in for Kraken, whose API holds no level for a position (#625).
             offered_order_features=frozenset(),
         )
@@ -703,7 +716,7 @@ class MockBrokerAdapter(AbstractAdapter):
     def parse_submit_response(
         self,
         raw: Dict[str, Any],
-        timestamp: datetime,
+        ts_init: datetime,
         direction: Optional[OrderDirection] = None,
         order_type: Optional[OrderType] = None,
     ) -> BrokerResponse:
@@ -718,14 +731,14 @@ class MockBrokerAdapter(AbstractAdapter):
             filled_lots=raw.get('filled_lots'),
             fill_fee=raw.get('fill_fee'),
             rejection_reason=raw.get('rejection_reason'),
-            timestamp=timestamp,
+            ts_init=ts_init,
         )
 
     def parse_query_response(
         self,
         raw: Dict[str, Any],
         broker_ref: str,
-        timestamp: datetime,
+        ts_init: datetime,
         market: Optional[TickData] = None,
     ) -> BrokerResponse:
         return BrokerResponse(
@@ -735,22 +748,22 @@ class MockBrokerAdapter(AbstractAdapter):
             filled_lots=raw.get('filled_lots'),
             fill_fee=raw.get('fill_fee'),
             rejection_reason=raw.get('rejection_reason'),
-            timestamp=timestamp,
+            ts_init=ts_init,
         )
 
-    def parse_cancel_response(self, raw: Dict[str, Any], broker_ref: str, timestamp: datetime) -> BrokerResponse:
+    def parse_cancel_response(self, raw: Dict[str, Any], broker_ref: str, ts_init: datetime) -> BrokerResponse:
         return BrokerResponse(
             broker_ref=raw['broker_ref'],
             status=self._STATUS_MAP[raw['status']],
-            timestamp=timestamp,
+            ts_init=ts_init,
         )
 
-    def parse_modify_response(self, raw: Dict[str, Any], original_broker_ref: str, timestamp: datetime) -> BrokerResponse:
+    def parse_modify_response(self, raw: Dict[str, Any], original_broker_ref: str, ts_init: datetime) -> BrokerResponse:
         return BrokerResponse(
             broker_ref=raw['broker_ref'],
             status=self._STATUS_MAP[raw['status']],
             rejection_reason=raw.get('rejection_reason'),
-            timestamp=timestamp,
+            ts_init=ts_init,
         )
 
     def parse_trades_query_response(
@@ -1019,6 +1032,18 @@ class MockBrokerAdapter(AbstractAdapter):
         """
         self._broker_orders = list(orders)
 
+    def set_closed_broker_orders(self, orders: List[BrokerOrder]) -> None:
+        """
+        Seed the orders the venue finished, returned by the closed-orders reads.
+
+        An order whose fill arrived after its session was killed is seeded here, with its
+        `ts_event` as the instant the venue closed it (#652).
+
+        Args:
+            orders: Broker closed-order truth
+        """
+        self._closed_broker_orders = list(orders)
+
     def set_broker_positions(self, positions: List[BrokerPosition]) -> None:
         """
         Seed the broker-side positions returned by get_broker_positions.
@@ -1065,21 +1090,25 @@ class MockBrokerAdapter(AbstractAdapter):
         client_order_id: Optional[str] = None,
     ) -> List[BrokerOrder]:
         """
-        The mock venue keeps no history of closed orders, so it answers with none.
+        The orders the venue finished, as seeded, narrowed the way a venue narrows them.
 
-        The resolution that reads them (#487) is tested with an adapter double of its own, which
-        holds the closed orders each test needs: `tests/autotrader/live_executor/conftest.py`.
+        A seeded order with a close instant is in the answer when it closed inside the range
+        (start exclusive, end inclusive, the close time alone); one seeded without a close
+        instant is always in it. The resolution that reads them (#487) is tested with an adapter
+        double of its own: `tests/autotrader/live_executor/conftest.py`.
 
         Args:
-            start: Range start (accepted, unused)
-            end: Range end (accepted, unused)
-            client_order_id: The key a venue narrows to (accepted, unused)
+            start: Range start (exclusive)
+            end: Range end (inclusive)
+            client_order_id: Narrow the answer to one wire key
 
         Returns:
-            An empty list
+            The seeded closed orders inside the range (empty when none was seeded)
         """
         self._raise_injected_fault('closedorders')
-        return []
+        return [order for order in self._closed_broker_orders
+                if (client_order_id is None or order.client_order_id == client_order_id)
+                and (order.ts_event is None or start < order.ts_event <= end)]
 
     def get_broker_balances(self) -> Dict[str, float]:
         """

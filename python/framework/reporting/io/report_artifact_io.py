@@ -13,7 +13,7 @@ keep it in `report_csv_io.py` and `report_filters.py`.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generic, Type, TypeVar
+from typing import Generic, Optional, Type, TypeVar
 
 from pydantic import BaseModel
 
@@ -33,19 +33,19 @@ class ArtifactSpec(Generic[T]):
     model: Type[T]
 
 
-def write_artifact(report: T, run_dir: Path, spec: ArtifactSpec[T]) -> Path:
+def write_artifact(report: T, io_dir: Path, spec: ArtifactSpec[T]) -> Path:
     """
-    Persist a report as JSON in the run directory (the API's source).
+    Persist a report as JSON in the run's io/ directory (the API's source).
 
     Args:
         report: The built report
-        run_dir: The run's io/ directory
+        io_dir: The run's io/ directory — not the run directory itself, where no reader looks
         spec: Which artifact this is
 
     Returns:
         Path of the written artifact
     """
-    path = Path(run_dir) / spec.filename
+    path = Path(io_dir) / spec.filename
     path.write_text(report.model_dump_json(indent=2), encoding='utf-8')
     return path
 
@@ -62,3 +62,18 @@ def read_artifact(path: Path, spec: ArtifactSpec[T]) -> T:
         The decoded report
     """
     return spec.model.model_validate_json(Path(path).read_bytes())
+
+
+def read_artifact_in(folder: Path, spec: ArtifactSpec[T]) -> Optional[T]:
+    """
+    Read a report artifact from the folder `write_artifact` wrote it to.
+
+    Args:
+        folder: The folder holding the artifact
+        spec: Which artifact this is
+
+    Returns:
+        The decoded report, or None when the folder holds no such artifact
+    """
+    path = Path(folder) / spec.filename
+    return read_artifact(path, spec) if path.is_file() else None

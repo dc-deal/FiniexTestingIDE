@@ -22,6 +22,11 @@ class CarriedLevelError(FiniexError):
     pass
 
 
+class SessionStorageError(FiniexError):
+    """A store the session writes into cannot be written, or its disk is below the floor (#632)."""
+    pass
+
+
 class BotIdRequiredError(FiniexError):
     """
     An AutoTrader profile does not declare the identity its state is filed under.

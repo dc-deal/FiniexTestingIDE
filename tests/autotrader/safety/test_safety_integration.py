@@ -3,7 +3,7 @@ FiniexTestingIDE - Safety Circuit Breaker Integration Tests
 
 End-to-end tests through a mock AutoTrader session.
 Validates that safety checks use equity (spot) and balance (margin)
-correctly during a real tick loop session.
+correctly during a real event loop session.
 
 Uses btcusd_mock_safety.json as base profile, overrides safety config
 programmatically. max_ticks=15000 (profile default) ensures warmup
@@ -39,7 +39,7 @@ def _run_with_safety(safety: SafetyConfig) -> AutoTraderResult:
     trader = AutotraderMain(config)
     result = trader.run()
     # Clean up log directory
-    remove_run_dir(trader._run_dir)
+    remove_run_dir(trader.get_run_dir())
     return result
 
 

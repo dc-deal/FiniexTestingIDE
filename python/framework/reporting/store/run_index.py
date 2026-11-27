@@ -402,8 +402,6 @@ class RunIndex(AbstractStoreIndex):
             run_dir: The run's own directory
         """
         write_run_header(header, run_dir)
-        frame = self.read()
-        frame = frame[frame['run_id'] != header.run_id]
         row = pd.DataFrame([{
             'run_id': header.run_id,
             'start_time': header.start_time.isoformat(),
@@ -426,7 +424,12 @@ class RunIndex(AbstractStoreIndex):
             'stream_files': [],
             **_purpose_columns(header, {}),
         }])
-        self.write_incremental(pd.concat([frame, row], ignore_index=True))
+        # The read and the write are one step: a run registering in between would otherwise be
+        # written back without its row (#650)
+        with self.updating():
+            frame = self.read()
+            frame = frame[frame['run_id'] != header.run_id]
+            self.write_incremental(pd.concat([frame, row], ignore_index=True))
 
     def record_artifacts(self, run_id: str, run_dir: Path) -> None:
         """
@@ -446,18 +449,23 @@ class RunIndex(AbstractStoreIndex):
             run_id: The run whose reports were just persisted
             run_dir: The run's own directory, whose io/ subfolder is listed
         """
-        frame = self.read()
-        if frame.empty or run_id not in set(frame['run_id']):
-            return
+        # Measured before the index is taken: the walk reads the run's directory, the index waits
+        # for nobody's disk
         names = _artifact_names(run_dir)
-        frame.loc[frame['run_id'] == run_id, 'size_bytes'] = dir_size(run_dir)
-        # A cell holding a list needs an object column, and `.apply` is the assignment form
-        # pandas accepts for one — a plain `.loc[mask] = names` would broadcast its elements.
-        mask = frame['run_id'] == run_id
-        frame['artifacts'] = frame['artifacts'].astype(object)
-        frame.loc[mask, 'artifacts'] = frame.loc[mask, 'artifacts'].apply(lambda _: names)
-        self._stamp_streams(frame, mask, _stream_names(run_dir))
-        self.write_incremental(frame)
+        size_bytes = dir_size(run_dir)
+        streams = _stream_names(run_dir)
+        with self.updating():
+            frame = self.read()
+            if frame.empty or run_id not in set(frame['run_id']):
+                return
+            frame.loc[frame['run_id'] == run_id, 'size_bytes'] = size_bytes
+            # A cell holding a list needs an object column, and `.apply` is the assignment form
+            # pandas accepts for one — a plain `.loc[mask] = names` would broadcast its elements.
+            mask = frame['run_id'] == run_id
+            frame['artifacts'] = frame['artifacts'].astype(object)
+            frame.loc[mask, 'artifacts'] = frame.loc[mask, 'artifacts'].apply(lambda _: names)
+            self._stamp_streams(frame, mask, streams)
+            self.write_incremental(frame)
 
     def record_streams(self, run_id: str, run_dir: Path) -> None:
         """
@@ -471,11 +479,13 @@ class RunIndex(AbstractStoreIndex):
             run_id: The run whose stream was just opened
             run_dir: The run's own directory, whose io/ subfolder is listed
         """
-        frame = self.read()
-        if frame.empty or run_id not in set(frame['run_id']):
-            return
-        self._stamp_streams(frame, frame['run_id'] == run_id, _stream_names(run_dir))
-        self.write_incremental(frame)
+        streams = _stream_names(run_dir)
+        with self.updating():
+            frame = self.read()
+            if frame.empty or run_id not in set(frame['run_id']):
+                return
+            self._stamp_streams(frame, frame['run_id'] == run_id, streams)
+            self.write_incremental(frame)
 
     @staticmethod
     def _stamp_streams(frame: pd.DataFrame, mask: pd.Series, names: List[str]) -> None:

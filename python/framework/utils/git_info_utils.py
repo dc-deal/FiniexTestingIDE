@@ -15,14 +15,17 @@ lever is calling it less. Two consequences, neither optional:
   - the full read is CACHED per process (below)
 """
 
+import io
 import os
 import shutil
 import subprocess
+import tarfile
 import tempfile
+import time
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 from python.framework.types.git_info_types import GitInfo, RepoCommitHistory, RepoStatus
 
@@ -47,6 +50,15 @@ _PINNED_CONFIG = (
 # named `configs/*` or `:(icase)configs` widened a path list back onto the credential files the
 # patch had excluded. Literal pathspecs turn that off for every call.
 _LITERAL_PATHSPECS = '--literal-pathspecs'
+
+# How long reading a whole directory of a commit may take — about 7 s for the release's Python tree
+# on this mount, so a loaded machine still has room
+_ARCHIVE_TIMEOUT_S = 120
+
+# How long a clone or its checkout may take before it counts as hanging — a guard, not an estimate:
+# on this mount a checkout of the framework took 13–29 s alone and exceeded two minutes under the
+# load of a full suite, because it reads each loose object of the source as a file
+_CLONE_TIMEOUT_S = 600
 
 # Environment variables that are dropped before every call, for the same reason the settings are
 # pinned: `GIT_DIFF_OPTS` and `GIT_EXTERNAL_DIFF` override the rendering (measured: zero context, a
@@ -76,6 +88,17 @@ _PATCH_FORMAT = (
 # one clone and `5d9b401` in another; a fixed prefix of the full hash reads it alike in both.
 _RECENT_COMMITS_LIMIT = 50
 _COMMIT_PREFIX_LENGTH = 12
+
+# A read about HEAD that did not resolve it is read once more after a pause. Where the tree sits
+# on the bridged Windows drive, a ref another process is rewriting — a commit, an amend, a rebase,
+# a fast-forward of a shared branch — is missing for an instant: renaming the new ref into place
+# is not atomic for a reader there. Measured 2026-11-11 on a throwaway repository while a second
+# process moved its branch back and forth: 7 of 217 `rev-list HEAD` reads failed with "ambiguous
+# argument 'HEAD': unknown revision", and 7 `log -1` reads with "does not have any commits yet";
+# on the container's own disk 0 of 1,570. A HEAD that is truly missing fails both reads.
+_UNRESOLVED_HEAD_MARKERS = ('unknown revision', 'does not have any commits yet',
+                            'needed a single revision')
+_UNRESOLVED_HEAD_PAUSE_S = 0.1
 
 
 @lru_cache(maxsize=1)
@@ -250,8 +273,178 @@ def changed_paths_since(commit: str) -> Optional[List[str]]:
     return [line for line in output.splitlines() if line]
 
 
+def resolve_commit(root: str, revision: str) -> Optional[str]:
+    """
+    The full hash a revision names in a repository — a branch, a tag or an abbreviation.
+
+    Args:
+        root: The repository's top-level directory
+        revision: What the caller wrote
+
+    Returns:
+        The commit's full hash; None when git is unavailable or the revision names no commit there
+    """
+    try:
+        return _checked(root, ['rev-parse', '--verify', '--quiet',
+                               f'{revision}^{{commit}}']) or None
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+
+
+def changed_paths_between(root: str, old: str, new: str) -> Optional[List[str]]:
+    """
+    The paths that differ between two commits of a repository, by name — a rename names both its
+    old and its new path, so neither side of it is lost to a classification of the paths.
+
+    Args:
+        root: The repository's top-level directory
+        old: The commit compared from
+        new: The commit compared to
+
+    Returns:
+        The repository-relative paths, empty when nothing differs; None when git is unavailable or
+        either commit is not in the repository's history
+    """
+    try:
+        output = _checked(root, ['diff', '--name-only', '--no-renames', old, new])
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    return [line for line in output.splitlines() if line]
+
+
+def clone_at_commit(source_root: str, commit: str, target: Path) -> str:
+    """
+    A checkout of one commit, made as a clone that borrows the source repository's objects.
+
+    `--shared` points the clone at the source's object store instead of copying it, so the source's
+    `.git` is never written — unlike a worktree, which registers itself there (measured 2026-11-24:
+    every file of the source's `.git` the same before and after). The clone stays readable only
+    while the source keeps the commit's objects: a commit amended away can be pruned by the
+    source's gc while a clone uses it, which is why a clone of this kind is kept for one
+    comparison and no longer.
+
+    Args:
+        source_root: The repository to clone from
+        commit: The commit to check out, detached — a full hash, as resolve_commit gives it
+        target: Where the clone is made; it must not exist yet
+
+    Returns:
+        '' when the clone stands at the commit; otherwise why it does not, in a sentence — git
+        unavailable, a step that took longer than the guard, or git's own last line of complaint
+    """
+    step = 'the clone'
+    try:
+        cloned = _git(source_root, ['clone', '--quiet', '--shared', '--no-checkout', source_root,
+                                    str(target)], timeout_s=_CLONE_TIMEOUT_S)
+        if cloned.returncode != 0:
+            return f'the clone failed: {_last_line(cloned.stderr)}'
+        step = 'the checkout'
+        checked_out = _git(str(target), ['checkout', '--quiet', '--detach', commit],
+                           timeout_s=_CLONE_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        return f'{step} took longer than {_CLONE_TIMEOUT_S} s'
+    except FileNotFoundError:
+        return 'git is not available'
+    if checked_out.returncode != 0:
+        return f'the checkout failed: {_last_line(checked_out.stderr)}'
+    return ''
+
+
+def _last_line(stderr: Optional[str]) -> str:
+    """
+    The last line git wrote to stderr, which is where it says what went wrong.
+
+    Args:
+        stderr: What git wrote; None or empty where it wrote nothing
+
+    Returns:
+        That line, stripped; 'no message' where there is none
+    """
+    lines = [line.strip() for line in (stderr or '').splitlines() if line.strip()]
+    return lines[-1] if lines else 'no message'
+
+
+def read_tree_at_commit(root: str, commit: str, directory: str,
+                        suffix: str = '') -> Optional[Dict[str, str]]:
+    """
+    The files of a directory as a commit holds them, without a checkout.
+
+    Read as one `git archive` stream: on this mount an object costs about 40 ms to read one by one,
+    so a release's Python tree of some 740 files took over 30 s that way and takes about 7 s as an
+    archive (measured 2026-11-09).
+
+    Args:
+        root: The repository's top-level directory
+        commit: The commit, or a tag naming one
+        directory: The directory, relative to the repository's top level
+        suffix: Keep only files whose name ends in it; '' keeps every file
+
+    Returns:
+        Repository-relative path → its text; None when git is unavailable or the commit is not in
+        the repository's history
+    """
+    try:
+        archived = _git(root, ['archive', '--format=tar', commit, '--', directory], text=False,
+                        timeout_s=_ARCHIVE_TIMEOUT_S)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    if archived.returncode != 0:
+        return None
+    sources: Dict[str, str] = {}
+    with tarfile.open(fileobj=io.BytesIO(archived.stdout), mode='r:') as archive:
+        for member in archive.getmembers():
+            if not member.isfile() or not member.name.endswith(suffix):
+                continue
+            content = archive.extractfile(member)
+            if content is not None:
+                sources[member.name] = content.read().decode('utf-8', 'replace')
+    return sources
+
+
+def read_files_at_commits(root: str, wanted: Sequence[Tuple[str, str]]
+                          ) -> Optional[Dict[Tuple[str, str], Optional[str]]]:
+    """
+    Files as given commits hold them, without a checkout, in one read.
+
+    Read as one `git cat-file --batch` stream, for the same reason as `read_tree_at_commit`: on
+    this mount every object read on its own costs a git process and its start.
+
+    Args:
+        root: The repository's top-level directory
+        wanted: (commit, repository-relative path) pairs
+
+    Returns:
+        Each pair → the file's text, None where the commit holds no such file; None when git is
+        unavailable
+    """
+    if not wanted:
+        return {}
+    request = ''.join(f'{commit}:{path}\n' for commit, path in wanted).encode('utf-8')
+    try:
+        batch = _git(root, ['cat-file', '--batch'], text=False, timeout_s=_ARCHIVE_TIMEOUT_S,
+                     stdin=request)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    if batch.returncode != 0:
+        return None
+    found: Dict[Tuple[str, str], Optional[str]] = {}
+    output, offset = batch.stdout, 0
+    for pair in wanted:
+        line_end = output.index(b'\n', offset)
+        header = output[offset:line_end].split()
+        offset = line_end + 1
+        if len(header) != 3 or header[1] != b'blob':
+            found[pair] = None
+            continue
+        size = int(header[2])
+        found[pair] = output[offset:offset + size].decode('utf-8', 'replace')
+        offset += size + 1
+    return found
+
+
 def _git(root: str, args: List[str], text: bool = True,
-         env: Optional[dict] = None) -> subprocess.CompletedProcess:
+         env: Optional[dict] = None,
+         timeout_s: int = 30, stdin: Optional[bytes] = None) -> subprocess.CompletedProcess:
     """
     Run one git command inside a given repository, with the pinned configuration.
 
@@ -261,15 +454,46 @@ def _git(root: str, args: List[str], text: bool = True,
         text: Decode stdout as text; False keeps the raw bytes a binary patch needs
         env: Variables handed to git on purpose — a temporary index is handed over this way;
             the inherited variables in `_DROPPED_GIT_ENV` are dropped
+        timeout_s: How long the command may take; a whole tree read as an archive needs longer
+        stdin: Bytes handed to the command's standard input; None hands it nothing
 
     Returns:
-        The completed process; the caller decides what a non-zero exit means
+        The completed process; the caller decides what a non-zero exit means. A read that could
+        not resolve HEAD is run once more first (`_UNRESOLVED_HEAD_MARKERS`)
     """
     clean_env = {key: value for key, value in os.environ.items()
                  if key not in _DROPPED_GIT_ENV and not key.startswith(_DROPPED_GIT_ENV_PREFIXES)}
     clean_env.update(env or {})
-    return subprocess.run(['git', '-C', root, _LITERAL_PATHSPECS, *_PINNED_CONFIG, *args],
-                          capture_output=True, text=text, timeout=30, env=clean_env)
+    command = ['git', '-C', root, _LITERAL_PATHSPECS, *_PINNED_CONFIG, *args]
+    result = subprocess.run(command, capture_output=True, text=text, timeout=timeout_s,
+                            env=clean_env, input=stdin)
+    if result.returncode != 0 and _head_did_not_resolve(args, result.stderr):
+        time.sleep(_UNRESOLVED_HEAD_PAUSE_S)
+        result = subprocess.run(command, capture_output=True, text=text, timeout=timeout_s,
+                                env=clean_env, input=stdin)
+    return result
+
+
+def _head_did_not_resolve(args: List[str], stderr: Optional[Union[str, bytes]]) -> bool:
+    """
+    Whether a failed git read failed because HEAD did not resolve.
+
+    Said by git's own message, or by the command itself where it asks about HEAD quietly
+    (`rev-parse --verify --quiet HEAD` writes nothing to stderr).
+
+    Args:
+        args: The git arguments that were run
+        stderr: What git wrote to stderr, as text or bytes
+
+    Returns:
+        True when the failure is one a ref being rewritten produces
+    """
+    if 'HEAD' in args:
+        return True
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode('utf-8', errors='replace')
+    message = (stderr or '').lower()
+    return any(marker in message for marker in _UNRESOLVED_HEAD_MARKERS)
 
 
 def _checked(root: str, args: List[str]) -> str:

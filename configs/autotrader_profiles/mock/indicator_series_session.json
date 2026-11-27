@@ -1,0 +1,95 @@
+{
+  "profile_name": "indicator_series_session",
+  "run_purpose": "fixture",
+  "bot_id": "series01",
+  "symbol": "BTCUSD",
+  "broker_type": "kraken_spot",
+  "adapter_type": "mock",
+  "deployment": {
+    "_comment": "A test profile: every session stands alone.",
+    "continuous": false
+  },
+  "strategy_config": {
+    "_comment": "Every CORE worker that draws (#379), so a chart has each kind of indicator pane: RSI in its own 0-100 pane with lines at 30/70, Bollinger on the candles, MACD as a histogram and two lines, the tide-and-wave worker on two timeframes, the moving-average trend on the candles, OBV in volume format.",
+    "decision_logic_type": "CORE/simple_consensus",
+    "worker_instances": {
+      "rsi_fast": "CORE/rsi",
+      "bollinger_main": "CORE/bollinger",
+      "obv_volume": "CORE/obv",
+      "macd_main": "CORE/macd",
+      "tide_wave": "CORE/tide_and_wave",
+      "trend_ema": "CORE/ma_trend"
+    },
+    "workers": {
+      "rsi_fast": {
+        "periods": {
+          "M5": 14
+        }
+      },
+      "bollinger_main": {
+        "periods": {
+          "M30": 20
+        },
+        "deviation": 2
+      },
+      "obv_volume": {
+        "periods": {
+          "M5": 20
+        }
+      },
+      "macd_main": {
+        "periods": {
+          "M5": 35
+        },
+        "fast_period": 12,
+        "slow_period": 26,
+        "signal_period": 9
+      },
+      "tide_wave": {
+        "periods": {
+          "M5": 14,
+          "M30": 26
+        }
+      },
+      "trend_ema": {
+        "periods": {
+          "M30": 20
+        },
+        "ma_type": "ema",
+        "neutral_band": 0.05
+      }
+    },
+    "decision_logic_config": {
+      "rsi_oversold": 30,
+      "rsi_overbought": 70,
+      "bollinger_lower_threshold": 0.3,
+      "bollinger_upper_threshold": 0.7,
+      "min_confidence": 0.5,
+      "lot_size": 0.1,
+      "min_entry_capital": 1000
+    }
+  },
+  "tick_source": {
+    "type": "mock"
+  },
+  "display": {
+    "enabled": false
+  },
+  "state_frames": {
+    "_comment": "Recorded beside the series, so the recorded-streams window merges both kinds.",
+    "enabled": true,
+    "cadence_timeframe": "M1"
+  },
+  "indicator_series": {
+    "_comment": "Every drawing worker's series, one value per closed bar of its timeframe (#379).",
+    "enabled": true
+  },
+  "scenario_settings": {
+    "start_date": "2026-01-25T02:19:46+00:00",
+    "end_date": "2026-01-25T08:00:00+00:00",
+    "balances": {
+      "USD": 10000.0,
+      "BTC": 0.0
+    }
+  }
+}

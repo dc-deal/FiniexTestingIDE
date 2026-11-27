@@ -40,6 +40,8 @@ from python.framework.types.import_types.external_history_types import (
     ConvertedFile,
     ExternalFetchManifest,
 )
+from python.framework.types.store_types import StoreId
+from python.framework.utils.atomic_file_utils import write_text_atomic
 from python.framework.utils.file_utils import create_directory
 
 # The identity this converter states in every file it writes — registered in
@@ -249,9 +251,8 @@ class KrakenTradeHistoryConverter:
         }
         create_directory(
             self._raw_dir, holds='the converted history files waiting for their import')
-        partial = self._raw_dir / f'{name}.part'
-        partial.write_text(json.dumps(document, separators=(',', ':')), encoding='utf-8')
-        partial.replace(self._raw_dir / name)
+        write_text_atomic(self._raw_dir / name, json.dumps(document, separators=(',', ':')),
+                          StoreId.RAW_INBOX)
 
     @staticmethod
     def _external_source(manifest: ExternalFetchManifest, member: str) -> Dict:

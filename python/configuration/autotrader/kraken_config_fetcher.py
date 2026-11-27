@@ -40,6 +40,7 @@ from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.trading_env.adapters.kraken_error_codes import raise_for_kraken_errors
 from python.framework.types.config_types.connection_policy_config_types import ConnectionPolicy
 from python.framework.types.connection_types import GiveUpAction
+from python.framework.types.store_types import StoreId
 from python.framework.types.trading_env_types.broker_types import FeeTierInfo
 from python.framework.utils.atomic_file_utils import write_text_atomic
 from python.framework.utils.connection_ladder import ConnectionLadder, run_with_ladder
@@ -836,7 +837,7 @@ def _write_cache(config_dict: Dict[str, Any], cache_path: Path) -> None:
         config_dict: Broker config dict to write
         cache_path: Destination path
     """
-    write_text_atomic(cache_path, json.dumps(config_dict, indent=2))
+    write_text_atomic(cache_path, json.dumps(config_dict, indent=2), StoreId.BROKER_RUNTIME)
 
 
 def _set_aside_unreadable_cache(

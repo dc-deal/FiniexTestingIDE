@@ -19,7 +19,7 @@ raised somewhere, no route raises a literal, and the error table in `docs/consum
 lists exactly these codes.
 """
 
-from typing import Tuple
+from typing import Dict, Optional, Tuple
 
 from python.framework.exceptions.api_errors import ApiException
 from python.framework.types.api.api_error_types import ApiErrorKind
@@ -52,14 +52,17 @@ INVALID_TIMESTAMP = ApiErrorKind(
 STATE_FRAMES_NOT_RECORDED = ApiErrorKind(
     404, 'state_frames_not_recorded',
     "Run '{run_id}' records no state frames — a session from before they were recorded, one with "
-    "the recording switched off (state_frames.enabled in its profile), or a backtest")
+    "the recording switched off (state_frames.enabled in its profile), or a backtest, whose frames "
+    "are not served even where its scenario records them")
 STATE_FRAME_NOT_WRITTEN_YET = ApiErrorKind(
     404, 'state_frame_not_written_yet',
-    "Run '{run_id}' has not written its first state frame yet — ask again after one cadence")
+    "Run '{run_id}' has opened its streams and not written their first lines yet — its first "
+    "state frame, or an indicator series' header — ask again after one cadence")
 STREAMS_NOT_RECORDED = ApiErrorKind(
     404, 'streams_not_recorded',
-    "Run '{run_id}' records no stream over time — a backtest records none yet, and neither does a "
-    "session from before its streams were recorded or one with the recording switched off")
+    "Run '{run_id}' records no stream over time — neither state frames nor an indicator series. "
+    "A backtest's streams are not served yet, and a session from before its streams were recorded "
+    "or with the recording switched off has none")
 UNIT_NOT_FOUND = ApiErrorKind(
     404, 'unit_not_found', "Run '{run_id}' records no unit named '{unit_name}'")
 
@@ -90,9 +93,15 @@ MARKET_TYPE_NOT_CONFIGURED = ApiErrorKind(
 # --- Ledger: deployments and sweeps ----------------------------------------------------------
 
 DEPLOYMENT_NOT_FOUND = ApiErrorKind(
-    404, 'deployment_not_found', "No deployment '{deployment_id}' in the run-results ledger")
+    404, 'deployment_not_found',
+    "No deployment '{deployment_id}': no session in the run index and no row in the run-results "
+    'ledger names it')
 SWEEP_NOT_FOUND = ApiErrorKind(
     404, 'sweep_not_found', "No sweep '{sweep_id}' in the run-results ledger")
+SWEEP_OBJECTIVE_UNRANKABLE = ApiErrorKind(
+    409, 'sweep_objective_unrankable',
+    "Sweep '{sweep_id}' recorded '{objective}' as the figure to rank by, and that figure cannot "
+    "order its combinations: it is not a number, or a run can leave it undefined")
 
 # --- Directory: every configuration that can start a run --------------------------------------
 
@@ -118,6 +127,13 @@ ACTIVITY_REGISTRY_UNREADABLE = ApiErrorKind(
     'The list of what runs on this machine could not be read ({reason}) — the server cannot say '
     'what runs, which is not the same as nothing running')
 
+# --- Stores: an index another process is writing ----------------------------------------------
+
+STORE_INDEX_BUSY = ApiErrorKind(
+    503, 'store_index_busy',
+    'The {index} is being written by another process and did not come free in time; try again in '
+    'a few seconds')
+
 # --- Identity ---------------------------------------------------------------------------------
 
 IDENTITY_UNBOUND = ApiErrorKind(
@@ -132,23 +148,26 @@ API_ERRORS: Tuple[ApiErrorKind, ...] = (
     BROKER_NOT_FOUND, SYMBOL_NOT_FOUND, NO_BARS_INDEXED, TIMEFRAME_NOT_RENDERED,
     COVERAGE_REPORT_UNAVAILABLE, NO_BARS_IN_RANGE, INVALID_TIMEFRAME, INVALID_LIMIT,
     INVALID_PERIOD, INVALID_RANGE, MARKET_TYPE_NOT_CONFIGURED,
-    DEPLOYMENT_NOT_FOUND, SWEEP_NOT_FOUND,
+    DEPLOYMENT_NOT_FOUND, SWEEP_NOT_FOUND, SWEEP_OBJECTIVE_UNRANKABLE,
     CONFIG_FILE_NOT_FOUND,
     DOCUMENT_NOT_FOUND, EMPTY_QUERY, QUERY_TOO_LONG,
     ACTIVITY_REGISTRY_UNREADABLE,
+    STORE_INDEX_BUSY,
     IDENTITY_UNBOUND,
 )
 
 
-def api_error(kind: ApiErrorKind, **values: object) -> ApiException:
+def api_error(kind: ApiErrorKind, headers: Optional[Dict[str, str]] = None,
+              **values: object) -> ApiException:
     """
     The exception a route raises for one catalog entry.
 
     Args:
         kind: The catalog entry
+        headers: Response headers the answer needs to be actionable, such as `Retry-After`
         values: The placeholders its message names
 
     Returns:
         The ApiException carrying the entry's status, code and filled sentence
     """
-    return ApiException(kind.status, kind.code, kind.message.format(**values))
+    return ApiException(kind.status, kind.code, kind.message.format(**values), headers=headers)

@@ -1,7 +1,7 @@
 """
 Operator Alert Dispatcher — the queue and thread between the session and its channel (#235).
 
-The tick loop must never wait on a network, the channel must never be flooded, a request to
+The event loop must never wait on a network, the channel must never be flooded, a request to
 slow down must be honoured, and the two kinds of failure must end differently: an outage costs
 one message, a refusal closes the channel for the session — said once, never silently.
 """

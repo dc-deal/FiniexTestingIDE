@@ -13,6 +13,18 @@
       }
     }
   },
+  "packages": {
+    "_comment": "The producer's package service (#120): its signal packages, one pipeline per zip, fetched by an import run with --fetch from the active producer endpoint's address with its credential — the host and the token stand once, above. Tracked switched off, so nothing is fetched until a workspace copy switches it on. The ladder of its reads is the collector's: a few attempts, then the import goes on without it.",
+    "enabled": false,
+    "connection": {
+      "initial_delay_s": 2.0,
+      "max_delay_s": 30.0,
+      "jitter": true,
+      "attempt_budget": 3,
+      "request_timeout_s": 60.0,
+      "on_give_up": "degrade"
+    }
+  },
   "stream": {
     "enabled": false,
     "pipeline_id": "",

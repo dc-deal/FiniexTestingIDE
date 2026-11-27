@@ -9,6 +9,11 @@ import pytest
 
 from python.framework.constants.run_layout_constants import RUN_TYPE_AUTOTRADER, RUN_TYPE_SIMULATION
 from python.framework.exceptions.store_errors import LedgerRowUnreadableError
+from python.framework.reporting.aggregation.aggregation_fold import aggregate_ledger_rows
+from python.framework.reporting.aggregation.figure_catalog import (
+    COLUMN_NULL_MEANING,
+    COLUMN_REDUCTION,
+)
 from python.framework.reporting.builders.booking_period_builder import (
     PeriodSnapshot,
     derive_booking_period,
@@ -17,23 +22,19 @@ from python.framework.reporting.builders.deployment_history_builder import (
     build_deployment_histories,
     deployment_code_summary,
 )
-from python.framework.reporting.store.ledger_aggregation import aggregate_ledger_rows
+from python.framework.reporting.store.run_ledger_index import RunLedgerIndex
 from python.framework.reporting.store.run_results_ledger import (
-    COLUMN_NULL_MEANING,
-    COLUMN_REDUCTION,
     LEDGER_COLUMNS,
     RUN_END_COLUMNS,
     RunResultsLedger,
 )
+from python.framework.types.aggregation_types import FigureKind, Reduction
 from python.framework.types.api.report_types import RunResultRow, RunSummary
 from python.framework.types.run_kind_types import OrdersTo
 from python.framework.types.run_origin_types import CodeStand, RepositoryStand
 from python.framework.types.run_outcome_types import RunOutcome
-from python.framework.types.run_results_types import (
-    FigureKind,
-    PeriodCloseReason,
-    Reduction,
-)
+from python.framework.types.portfolio_types.portfolio_aggregation_types import DrawdownPeriod
+from python.framework.types.run_results_types import PeriodCloseReason
 from python.framework.types.trading_env_types.trading_env_stats_types import (
     EXECUTION_COUNT_FIELDS,
     ExecutionStats,
@@ -162,6 +163,19 @@ def test_where_the_orders_went_round_trips(tmp_ledger, make_run_summary, make_pr
     assert rows['r2'].orders_to is None
 
 
+def test_a_start_that_found_the_exclusivity_false_says_so_on_its_rows(
+        tmp_ledger, make_run_summary, make_provenance):
+    """#499 — the instant comes back as written; a session whose start found nothing reads None."""
+    tmp_ledger.append(make_run_summary(), make_provenance(
+        run_id='r1', exclusivity_violated_at='2026-11-24T01:05:00+00:00'))
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='r2'))
+
+    rows = {row.run_id: row for row in tmp_ledger.read_rows()}
+
+    assert rows['r1'].exclusivity_violated_at == '2026-11-24T01:05:00+00:00'
+    assert rows['r2'].exclusivity_violated_at is None
+
+
 def test_sweep_objective_persisted(tmp_ledger, make_run_summary, make_provenance):
     """The sweep spec's objective + direction round-trip so report can default to them."""
     tmp_ledger.append(make_run_summary(net_pnl=1.0), make_provenance(
@@ -224,6 +238,57 @@ def test_the_figureless_error_row_writes_no_figure(tmp_ledger, make_provenance):
     assert tmp_ledger.read_rows()[0].account_max_drawdown is None
 
 
+def _is_numeric(annotation) -> bool:
+    """
+    Whether a row field is typed as a number, bare or as `X | None`.
+
+    Args:
+        annotation: The field's annotation
+
+    Returns:
+        True when int or float is among its types
+    """
+    return any(arg in (int, float) for arg in (get_args(annotation) or (annotation,)))
+
+
+def test_a_run_that_measured_nothing_reads_back_no_figure_at_all(tmp_ledger, make_provenance):
+    """
+    What the writer left empty stays empty on the way back (#646). Some figures default to a
+    number, and a P&L of 0.0 on a failed start reads like a session that traded and broke even.
+    Held over every numeric figure column, so a new one typed as a bare number cannot read back as
+    its default on this row.
+    """
+    tmp_ledger.append(RunSummary(run_id=_RUN_ID, currencies=[]), make_provenance(run_id='r1'))
+
+    row = tmp_ledger.read_rows()[0]
+    figures = [column for column in LEDGER_COLUMNS
+               if COLUMN_REDUCTION[column].figure_kind() is not FigureKind.DESCRIPTION
+               and _is_numeric(RunResultRow.model_fields[column].annotation)]
+    assert figures, 'no numeric figure column found'
+    held = {column: getattr(row, column) for column in figures if getattr(row, column) is not None}
+    assert not held, f'a run that measured nothing reads figures back: {held}'
+
+
+def test_an_older_error_row_reads_its_stored_zeros_as_nothing(tmp_path, tmp_ledger):
+    """
+    The writer before the figureless error row stored a literal zero in every figure column. A
+    run that measured nothing reads back without a figure either way (#646).
+    """
+    old = pd.DataFrame([{
+        'param_hash': 'old', 'run_id': 'old', 'run_timestamp': '2026-01-01T00:00:00+00:00',
+        'scenario_set_name': 's__old', 'status': 'error', 'error': 'boom', 'currency': '',
+        'net_pnl': 0.0, 'win_rate': 0.0, 'total_fees': 0.0, 'total_trades': 0,
+        'account_max_drawdown': 0.0, 'final_equity': 0.0}])
+    (tmp_path / 'run_results').mkdir(parents=True, exist_ok=True)
+    old.to_parquet(tmp_path / 'run_results' / 's__old_old.parquet', index=False)
+
+    row = tmp_ledger.read_rows()[0]
+    assert row.status == 'error'
+    for field in ('net_pnl', 'win_rate', 'total_fees', 'total_trades', 'account_max_drawdown',
+                  'final_equity'):
+        assert getattr(row, field) is None, f'{field} reads {getattr(row, field)!r}'
+
+
 def test_read_handles_schema_evolution(tmp_path, tmp_ledger, make_run_summary, make_provenance):
     """Fragments written before a column existed (no 'status') still read — never collapse the
     whole read to a stripped common schema (the bug that hid error rows). Old → defaults 'ok'."""
@@ -256,7 +321,8 @@ def test_what_a_run_consumed_reaches_the_row(tmp_ledger, make_run_summary, make_
     prov = make_provenance(
         run_id='r1', input_plane='archive', data_format_versions='1.5.0,1.7.0',
         origin_classes='production', origin_evidence_grades='attested,stamped',
-        input_files=41, unstamped_input_files=3, price_bases='order_driven')
+        input_files=41, unstamped_input_files=3, price_bases='order_driven',
+        server_clock_rules='America/New_York+7h', external_warmup_timeframes='D1')
     tmp_ledger.append(make_run_summary(), prov)
 
     row = tmp_ledger.read().iloc[0]
@@ -267,6 +333,20 @@ def test_what_a_run_consumed_reaches_the_row(tmp_ledger, make_run_summary, make_
     assert row['input_files'] == 41
     assert row['unstamped_input_files'] == 3
     assert row['price_bases'] == 'order_driven'
+    assert row['server_clock_rules'] == 'America/New_York+7h'
+    assert row['external_warmup_timeframes'] == 'D1'
+
+
+def test_the_clock_rules_and_the_external_warmup_read_back_typed(tmp_ledger, make_run_summary,
+                                                                 make_provenance):
+    """The two #647 columns reach the served row, and the row says which ledger version wrote it."""
+    tmp_ledger.append(make_run_summary(), make_provenance(
+        run_id='r_647', server_clock_rules='UTC+0h', external_warmup_timeframes='D1,H4'))
+
+    row = tmp_ledger.read_rows()[0]
+    assert row.server_clock_rules == 'UTC+0h'
+    assert row.external_warmup_timeframes == 'D1,H4'
+    assert row.logic_version == RunLedgerIndex.LOGIC_VERSION
 
 
 def test_a_failed_run_still_records_what_it_read(tmp_ledger, make_run_summary, make_provenance):
@@ -581,6 +661,62 @@ def test_an_older_fragment_claims_no_trial_count(tmp_path, tmp_ledger, make_run_
     assert tmp_ledger.read_rows()[0].trial_count is None
 
 
+def test_an_older_fragment_counts_no_units(tmp_path, tmp_ledger, make_run_summary,
+                                           make_provenance):
+    # Written before #666's columns existed: the run's units are not known, never 0 of 0
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='old', total_units=3,
+                                                          failed_count=1))
+    fragment = next(Path(tmp_path / 'run_results').glob('*_old.parquet'))
+    frame = pd.read_parquet(fragment).drop(columns=['total_units', 'failed_count'])
+    frame.to_parquet(fragment, index=False)
+    tmp_ledger._index.rebuild()
+    row = tmp_ledger.read_rows()[0]
+    assert (row.total_units, row.failed_count, row.succeeded_count) == (None, None, None)
+
+
+def test_a_row_counts_the_units_that_did_not_fail(tmp_ledger, make_run_summary, make_provenance):
+    # The run list's three names, on the row a sweep's combination is served from (#666)
+    tmp_ledger.append(make_run_summary(), make_provenance(run_id='two_of_three', total_units=3,
+                                                          failed_count=1))
+    row = tmp_ledger.read_rows()[0]
+    assert (row.total_units, row.failed_count, row.succeeded_count) == (3, 1, 2)
+
+
+def test_every_row_of_a_run_carries_what_its_accounts_held_at_the_end(
+        tmp_ledger, make_run_summary, make_provenance):
+    # #32-E: two scenarios, two accounts. Each period row keeps its own account's equity, and
+    # every row repeats the run's sum over both beside the capital they started from
+    periods = [
+        derive_booking_period(
+            unit, 1, _MON, _MON + timedelta(days=1), PeriodCloseReason.ANCHOR, [],
+            PeriodSnapshot(currency='USD', final_equity=equity, account_max_drawdown=0.0,
+                           max_equity=equity, account_max_dd_pct=0.0),
+            tick_count=10)
+        for unit, equity in (('week_1', 10_020.0), ('week_2', 10_030.0))]
+    tmp_ledger.append(
+        make_run_summary(total_final_equity=20_050.0, total_initial_balance=20_000.0),
+        make_provenance(run_id='two_scenarios'), periods)
+
+    rows = tmp_ledger.read_rows()
+
+    assert [(row.unit_name, row.final_equity, row.total_final_equity, row.total_initial_balance)
+            for row in rows] == [('week_1', 10_020.0, 20_050.0, 20_000.0),
+                                 ('week_2', 10_030.0, 20_050.0, 20_000.0)]
+
+
+def test_an_older_fragment_records_no_closing_sums(tmp_path, tmp_ledger, make_run_summary,
+                                                   make_provenance):
+    # Written before #32-E's columns existed: not measured, never an account worth nothing
+    tmp_ledger.append(make_run_summary(total_final_equity=20_050.0, total_initial_balance=20_000.0),
+                      make_provenance(run_id='old'))
+    fragment = next(Path(tmp_path / 'run_results').glob('*_old.parquet'))
+    frame = pd.read_parquet(fragment).drop(columns=['total_final_equity', 'total_initial_balance'])
+    frame.to_parquet(fragment, index=False)
+    tmp_ledger._index.rebuild()
+    row = tmp_ledger.read_rows()[0]
+    assert (row.total_final_equity, row.total_initial_balance) == (None, None)
+
+
 def test_a_fresh_row_claims_no_pruning(tmp_ledger, make_run_summary, make_provenance):
     tmp_ledger.append(make_run_summary(), make_provenance())
     assert tmp_ledger.read_rows()[0].records_pruned_at == ''
@@ -719,8 +855,8 @@ def test_a_sealed_row_leaves_exactly_the_run_end_columns_empty(
     """
     prov = make_provenance(run_id='live', run_type=RUN_TYPE_AUTOTRADER, status='error',
                            error='boom', run_outcome=RunOutcome.FAILED, error_count=1,
-                           warning_count=2, log_warning_count=3)
-    summary = make_run_summary()
+                           warning_count=2, log_warning_count=3, total_units=1, failed_count=1)
+    summary = make_run_summary(total_final_equity=1_000.0, total_initial_balance=1_000.0)
     summary.signal_fresh_ratio = 0.9
     summary.tick_timespan_seconds = 86_400.0
     sealed = RunResultsLedger(tmp_path / 'sealed')
@@ -740,17 +876,28 @@ def test_every_nullable_figure_declares_what_its_null_means():
     An empty cell means one of two things, and a ranking decides on it: a figure that can be
     undefined for a run is refused as an objective, one that was only not measured is ranked over
     the rows that carry it. Held both ways, so a figure widened to Optional cannot arrive without
-    an answer, and the map cannot outlive a field.
+    an answer, and the map cannot outlive a field. A description declares one only where a ranking
+    may order by it, a run-level total repeated on each row (#32-E).
     """
-    nullable_figures = {
+    nullable = {
         name for name, field in RunResultRow.model_fields.items()
-        if type(None) in get_args(field.annotation) and name in COLUMN_REDUCTION
-        and COLUMN_REDUCTION[name].figure_kind() is not FigureKind.DESCRIPTION}
+        if type(None) in get_args(field.annotation) and name in COLUMN_REDUCTION}
+    nullable_figures = {
+        name for name in nullable
+        if COLUMN_REDUCTION[name].figure_kind() is not FigureKind.DESCRIPTION}
+
+    # A description a ranking may order by is a number; a name or a set declaring a null meaning
+    # would only widen what the ranking takes
+    numeric = {
+        name for name in nullable
+        if set(get_args(RunResultRow.model_fields[name].annotation)) - {type(None)} <= {int, float}}
 
     undeclared = sorted(nullable_figures - set(COLUMN_NULL_MEANING))
-    stale = sorted(set(COLUMN_NULL_MEANING) - nullable_figures)
+    stale = sorted(set(COLUMN_NULL_MEANING) - nullable)
+    not_a_number = sorted(set(COLUMN_NULL_MEANING) - nullable_figures - numeric)
     assert undeclared == [], f'{undeclared} can be null and do not say what their null means'
-    assert stale == [], f'{stale} declare a null meaning and are no nullable figure'
+    assert stale == [], f'{stale} declare a null meaning and cannot be null'
+    assert not_a_number == [], f'{not_a_number} are descriptions no ranking can order by'
 
 
 def test_a_code_stand_reads_back_typed(tmp_ledger, make_run_summary, make_provenance):
@@ -827,3 +974,85 @@ def test_a_sealed_day_carries_the_code_stand(tmp_path, make_provenance):
     ledger.write_sealed_periods(make_provenance(run_id='live', code_stand=_CODE_STAND), [_day(1)])
 
     assert ledger.read_rows()[0].code_stand == _CODE_STAND
+
+
+# --- The five deepest drawdown periods a seal read, and when their curve began (#529)
+
+_PERIODS = [
+    DrawdownPeriod(peak=1_050.0, depth=80.0, depth_pct=80 / 10.5, started_at='2026-09-21T10:00:00+00:00',
+                   trough_at='2026-09-21T12:00:00+00:00', recovered_at='2026-09-22T09:00:00+00:00',
+                   to_trough_s=7_200.0, duration_s=82_800.0),
+    DrawdownPeriod(peak=1_100.0, depth=30.0, depth_pct=30 / 11.0, started_at='2026-09-23T08:00:00+00:00',
+                   trough_at='2026-09-23T08:30:00+00:00', to_trough_s=1_800.0),
+]
+
+
+def _day_with_periods(no: int, periods, started_at: Optional[str] = '2026-09-21T00:05:00+00:00'):
+    """A trading day whose seal read the curve's deepest drawdown periods."""
+    return derive_booking_period(
+        'session', no, _MON + timedelta(days=no - 1), _MON + timedelta(days=no),
+        PeriodCloseReason.ANCHOR, [],
+        PeriodSnapshot(currency='USD', final_equity=1_000.0, account_max_drawdown=80.0,
+                       max_equity=1_100.0, account_max_dd_pct=80 / 10.5,
+                       account_drawdown_periods=periods, drawdown_started_at=started_at),
+        tick_count=10)
+
+
+class TestASealCarriesTheDeepestDrawdownPeriods:
+
+    def test_they_read_back_ranked_with_their_curve_start(self, tmp_path, make_provenance):
+        ledger = RunResultsLedger(tmp_path / 'sealed')
+        ledger.write_sealed_periods(make_provenance(run_id='live'), [_day_with_periods(1, _PERIODS)])
+
+        (row,) = ledger.read_rows()
+        assert [(p.rank, p.depth, p.duration_s) for p in row.account_drawdown_periods] == [
+            (1, 80.0, 82_800.0), (2, 30.0, None)]
+        assert row.drawdown_started_at == '2026-09-21T00:05:00+00:00'
+
+    def test_a_curve_that_never_fell_is_a_reading_and_none_is_not(self, tmp_path, make_provenance):
+        ledger = RunResultsLedger(tmp_path / 'sealed')
+        ledger.write_sealed_periods(make_provenance(run_id='live'), [
+            _day_with_periods(1, []), _day_with_periods(2, None, started_at=None)])
+
+        by_day = {row.period_no: row for row in ledger.read_rows()}
+        assert by_day[1].account_drawdown_periods == []
+        assert by_day[2].account_drawdown_periods is None
+
+    def test_a_session_folds_to_its_newest_reading(self, tmp_path, make_provenance):
+        ledger = RunResultsLedger(tmp_path / 'sealed')
+        ledger.write_sealed_periods(make_provenance(run_id='live'), [
+            _day_with_periods(1, _PERIODS[:1]), _day_with_periods(2, _PERIODS),
+            _day_with_periods(3, None, started_at=None)])
+
+        (session,) = aggregate_ledger_rows(ledger.read_rows(), by=('run_id', 'currency'))
+        assert len(session.account_drawdown_periods) == 2, (
+            'the newest day that read the curve, past a day that read none')
+
+    def test_they_are_not_served_on_a_row(self, tmp_path, make_provenance):
+        """A sweep serves run-summary rows, which span accounts and hold none."""
+        ledger = RunResultsLedger(tmp_path / 'sealed')
+        ledger.write_sealed_periods(make_provenance(run_id='live'), [_day_with_periods(1, _PERIODS)])
+
+        served = ledger.read_rows()[0].model_dump()
+        assert 'account_drawdown_periods' not in served and 'drawdown_started_at' not in served
+
+    def test_a_fragment_written_before_the_columns_reads_none(self, tmp_path, make_provenance):
+        ledger_dir = tmp_path / 'sealed'
+        ledger = RunResultsLedger(ledger_dir)
+        ledger.write_sealed_periods(make_provenance(run_id='live'), [_day_with_periods(1, _PERIODS)])
+        (fragment,) = list(ledger_dir.glob('*.parquet'))
+        frame = pd.read_parquet(fragment)
+        frame.drop(columns=['account_drawdown_periods', 'drawdown_started_at']).to_parquet(
+            fragment, index=False)
+        ledger._index.rebuild()
+
+        (row,) = ledger.read_rows()
+        assert (row.account_drawdown_periods, row.drawdown_started_at) == (None, None)
+
+    def test_a_row_without_them_reads_none(self, tmp_path, make_provenance):
+        """A seal that read no curve writes empty cells, as an older fragment has none at all."""
+        ledger = RunResultsLedger(tmp_path / 'sealed')
+        ledger.write_sealed_periods(make_provenance(run_id='live'), [_day(1)])
+
+        (row,) = ledger.read_rows()
+        assert (row.account_drawdown_periods, row.drawdown_started_at) == (None, None)

@@ -721,7 +721,7 @@ class ScenarioValidator:
 
         # --- Decision logic params ---
         try:
-            logic_class, logic_source = decision_factory.resolve_logic_class(logic_type)
+            logic_class, _ = decision_factory.resolve_logic_class(logic_type)
         except Exception:
             return errors  # resolution failures reported by requirements/factory
 
@@ -730,12 +730,10 @@ class ScenarioValidator:
         except ValueError as e:
             errors.append(str(e))
 
-        # --- Worker params (USER refs resolve against the logic's source dir) ---
-        worker_base_path = logic_source.parent if logic_source else None
+        # --- Worker params (the set names its workers from the project root, as the run does) ---
         for instance_name, worker_type in worker_instances.items():
             try:
-                worker_class, _ = worker_factory.resolve_worker_class(
-                    worker_type, base_path=worker_base_path)
+                worker_class, _ = worker_factory.resolve_configured_worker_class(worker_type)
             except Exception:
                 continue  # resolution failures reported by requirements/factory
             try:

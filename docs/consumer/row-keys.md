@@ -20,6 +20,11 @@ It is machine-readable on purpose. You can assert against it rather than read it
 changes shape is then something your tests see on the day it happens rather than something your
 aggregates quietly absorb.
 
+A part of a key can be null, and it is then a value like any other. On `/deployments` a deployment
+that has booked nothing — its sessions not booked yet, or failed before they measured anything —
+stands in one row with `currency: null`. A deployment with booked rows counts such sessions on
+those rows instead. See [deployments](/api/v1/docs/deployments).
+
 ## A response serving several lists declares one key per list
 
 A single key over two row types would name fields one of them does not have, so a response with
@@ -35,18 +40,20 @@ more than one list carries `keys` instead:
 `["scenario_name", "seq"]` — because `seq` runs across both lists within a unit.
 [Execution statistics](/api/v1/docs/execution-stats) keys its counts on `name`, the slippage of each
 unit's fills on `name` and `measured_against`, and the slippage of all of them on
-`measured_against`.
+`measured_against`. [Profiling](/api/v1/docs/profiling) keys its units, its warmup phases and its
+worker/decision breakdowns on `name`.
 
 ## An empty key is a declaration too
 
 It means the row's identity **is** its position in the list. A warning is an event; nothing folds
 two identical ones into one, and a session that logs the same message twice has two rows with the
 same text. In [warnings and errors](/api/v1/docs/warnings-errors), `errors` keys on `name` and
-`warnings` declares `[]`.
+`warnings` declares `[]`. [Order history](/api/v1/docs/order-history) declares `[]` for `orders` —
+a row is an event in an order's life, appended in its unit's order — beside the keys of its two
+count lists; a field that names an order row is still to come.
 
 A list with **no** key declared at all is a different statement: no field combination is unique
-yet, and the work to give it one is still open. [Order history](/api/v1/docs/order-history) is in
-that state.
+yet, and the work to give it one is still open.
 
 ## A trade is not a position
 

@@ -15,6 +15,8 @@ from python.framework.reporting.console.feed_stability_summary import format_dis
 from python.framework.reporting.console.order_counts_line import order_endings_text
 from python.framework.types.api.report_types import (
     ColdStartReport,
+    OrderHistoryReport,
+    PortfolioReport,
     ReconcileDivergenceRow,
     RunSummary,
     SafetyReport,
@@ -46,6 +48,8 @@ class AutotraderSessionSummary:
         cold_start_report: Optional[ColdStartReport] = None,
         safety_report: Optional[SafetyReport] = None,
         venue_account_report: Optional[VenueAccountReport] = None,
+        portfolio_report: Optional[PortfolioReport] = None,
+        order_report: Optional[OrderHistoryReport] = None,
     ):
         """
         Args:
@@ -62,6 +66,9 @@ class AutotraderSessionSummary:
             venue_account_report: What the venue held at the start and the end, and what the
                 reconciliation recorded between (#362) — absent when the session asked its
                 venue nothing
+            portfolio_report: Unified portfolio report — the balance, the realised P&L and what
+                was still open, from the session's row
+            order_report: Unified order-history report — how many orders the event log holds
         """
         self._result = result
         self._trade_report = trade_report
@@ -71,12 +78,15 @@ class AutotraderSessionSummary:
         self._cold_start_report = cold_start_report
         self._safety_report = safety_report
         self._venue_account_report = venue_account_report
+        self._portfolio_report = portfolio_report
+        self._order_report = order_report
 
     def render(self, renderer: ConsoleRenderer) -> None:
         """Render the closing block (session stats + cold start + safety + venue + locations)."""
         self._render_stats(renderer)
         self._render_cold_start(renderer)
         self._render_safety(renderer)
+        self._render_entry_holds(renderer)
         self._render_venue_account(renderer)
         self._render_output_locations(renderer)
 
@@ -103,14 +113,14 @@ class AutotraderSessionSummary:
             print(renderer.red('🧬 Cold Start — NOT APPLIED (the boot refused to start)'))
         verb = 'adopted' if report.applied else 'would have been adopted'
         if report.adopted:
-            print(f'  Orders {verb}:  {len(report.adopted)}')
+            print(f'  Orders {verb}:  {report.adopted_count}')
             for row in report.adopted:
                 filled = f' ({row.filled_lots} filled)' if row.filled_lots else ''
                 print(f'    {row.order_id}  {row.direction} {row.lots} @ {row.price}'
                       f'{filled}  ref={row.broker_ref}')
         if report.restored_positions:
             restored = 'restored' if report.applied else 'would have been restored'
-            print(f'  Positions {restored}: {len(report.restored_positions)} '
+            print(f'  Positions {restored}: {report.restored_count} '
                   f'(entry prices remembered, fees charged to the earlier run)')
             for row in report.restored_positions:
                 print(f'    {row.position_id}  {row.direction} {row.lots} '
@@ -119,8 +129,17 @@ class AutotraderSessionSummary:
             print(renderer.red(
                 f'  ⚠ Book shortfall: {report.book_shortfall} — the account held less than '
                 f'the restored book claimed'))
+        if report.boot_read_done:
+            # #652 — what the venue finished under our keys since the book was written
+            state = ('complete' if report.boot_read_complete
+                     else renderer.red(f'INCOMPLETE — {report.boot_read_incomplete_reason}'))
+            print(f'  Closed orders:   read from {report.boot_read_from} ({state}), '
+                  f'{report.boot_fill_count} fill(s) of ours')
+            for row in report.boot_fills:
+                print(f"    {row.fill_class}  {row.direction} {row.filled_lots} {row.symbol}  "
+                      f"ref={row.broker_ref}  closed {row.closed_at or '—'}  ({row.reason})")
         if report.skipped:
-            print(f'  Left alone:      {len(report.skipped)} '
+            print(f'  Left alone:      {report.skipped_count} '
                   f'({", ".join(report.skipped_reasons)})')
         if report.decision_logic_class and report.decision_logic_accounted_for is not None:
             verdict = ('accounted for' if report.decision_logic_accounted_for
@@ -184,7 +203,7 @@ class AutotraderSessionSummary:
         if report.days:
             hit = (f', {report.days_limit_hit} over a daily limit'
                    if report.days_limit_hit else '')
-            print(f'  Daily:          {len(report.days)} day(s), worst {report.worst_day} '
+            print(f'  Daily:          {report.day_count} day(s), worst {report.worst_day} '
                   f'{-report.worst_day_loss_abs:.2f} '
                   f'({-report.worst_day_loss_pct:.2f}% of that day){hit}')
             for row in report.days:
@@ -209,6 +228,30 @@ class AutotraderSessionSummary:
                 print(renderer.red(
                     f'     NOT confirmed flat — still open at the venue: {still}. '
                     f'Check the account by hand.'))
+
+    def _render_entry_holds(self, renderer: ConsoleRenderer) -> None:
+        """
+        Every time the session held its entries (#499), and whether one still stood at its end.
+
+        Its own block rather than part of the safety block above: a start that held its entries can
+        end before it ever measured a baseline, and the hold is what the operator must find then.
+        """
+        report = self._safety_report
+        if report is None or not report.entry_holds:
+            return
+
+        print()
+        state = (renderer.red('STILL HELD at session end') if report.entries_held_at_end
+                 else 'lifted')
+        print(f'⏸️ Entries held: {report.entry_hold_count}x, {state}')
+        for row in report.entry_holds:
+            since = row.held_at or 'the start'
+            if row.lifted_by is None:
+                ended = 'still held'
+            else:
+                ended = f'lifted ({row.lifted_by.value}) at {row.lifted_at or "the start"}'
+            print(f'  {row.reason.value} since {since}, {ended}')
+            print(f'    {row.detail}')
 
     def _render_venue_account(self, renderer: ConsoleRenderer) -> None:
         """
@@ -277,19 +320,21 @@ class AutotraderSessionSummary:
                 '  ⚠️  FINISHED WITH ERRORS — '
                 f'{result.count_logged(LogLevel.ERROR)} error(s) logged during the session'))
 
-        if result.portfolio_stats:
-            pnl = result.portfolio_stats.total_profit - result.portfolio_stats.total_loss
-            print(f'  Balance:        {result.portfolio_stats.current_balance:.2f} '
-                  f'(P&L: {pnl:+.2f} realised)')
+        # The session's portfolio row — there is one exactly when the session kept portfolio stats
+        unit = (self._portfolio_report.units[0]
+                if self._portfolio_report and self._portfolio_report.units else None)
+        if unit is not None:
+            print(f'  Balance:        {unit.current_balance:.2f} '
+                  f'(P&L: {unit.net_profit:+.2f} realised)')
             # #492: a session may END holding something. The headline is what an operator
             # reads first, so a position left standing by policy has to appear HERE and not
             # only in the portfolio section further down — otherwise the one figure they
             # look at describes a flat account that is not flat.
-            if result.open_positions:
-                print(f'  Still open:     {len(result.open_positions)} position(s) '
-                      f'({result.portfolio_stats.unrealized_pnl:+.2f} unrealized)'
-                      + (f' · policy {result.session_end_policy}'
-                         if result.session_end_policy else ''))
+            if unit.open_positions:
+                print(f'  Still open:     {unit.open_position_count} position(s) '
+                      f'({unit.unrealized_pnl:+.2f} unrealized)'
+                      + (f' · policy {unit.session_end_policy}'
+                         if unit.session_end_policy else ''))
 
         if result.execution_stats:
             stats = result.execution_stats
@@ -312,7 +357,14 @@ class AutotraderSessionSummary:
         if clipping.total_ticks > 0:
             print(f'  Clipping ratio: {clipping.clipping_ratio:.1%} '
                   f'(max stale: {clipping.max_stale_ms:.1f}ms, '
-                  f'avg proc: {clipping.avg_processing_ms:.2f}ms)')
+                  f'avg proc: {clipping.avg_processing_ms:.2f}ms a pass, '
+                  f'{clipping.total_passes:,} passes)')
+        intake = result.intake_stats
+        if intake is not None and intake.instants > 0:
+            print(f'  Timeline:       {intake.instants:,} instants · '
+                  f'{intake.coalesced_slices:,} coalesced (max {intake.max_slice_ticks:,} ticks) · '
+                  f'{intake.execution_arrivals:,} venue answers · '
+                  f'{intake.timers_fired:,} timers · {intake.reordered_stamps:,} reordered')
 
         # Feed disturbance (#451) — a session that ran through an outage must say so here.
         disturbance = (
@@ -324,12 +376,11 @@ class AutotraderSessionSummary:
         """Output-file locations (log dir + event log)."""
         if self._run_dir is None:
             return
-        result = self._result
         print('-' * 60)
         print(f'  Log directory:  {self._run_dir}')
-        if result.trade_history or result.order_history:
-            trades_n = len(result.trade_history) if result.trade_history else 0
-            orders_n = len(result.order_history) if result.order_history else 0
+        trades_n = self._trade_report.count if self._trade_report else 0
+        orders_n = self._order_report.count if self._order_report else 0
+        if trades_n or orders_n:
             print(f'  Event log:      events.csv ({trades_n} trades, {orders_n} orders)')
         print('=' * 60)
 

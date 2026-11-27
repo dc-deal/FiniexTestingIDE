@@ -7,9 +7,15 @@ from typing import Optional
 
 from python.framework.constants.run_layout_constants import RUN_TYPE_SIMULATION
 from python.framework.logging.scenario_logger import ScenarioLogger
+from python.framework.process.indicator_series_recorder import (
+    IndicatorSeriesRecorder,
+    open_indicator_series,
+)
 from python.framework.process.process_live_queue_helper import send_status_update_process
+from python.framework.process.process_pipeline_bundle import ProcessPipelineBundle
 from python.framework.process.process_startup_preparation import process_startup_preparation
-from python.framework.process.process_tick_loop import execute_tick_loop
+from python.framework.process.process_event_loop import execute_event_loop
+from python.framework.process.state_frame_recorder import StateFrameRecorder
 from python.framework.reporting.diagnostics_csv_sink import flush_decision_diagnostics
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
@@ -23,6 +29,7 @@ from python.framework.types.process_data_types import (
 )
 from python.framework.types.store_member_types import RunEntryMemberId
 from python.framework.utils.file_utils import file_name_for_scenario, scenario_log_names
+from python.framework.utils.timeframe_config_utils import TimeframeConfig
 
 
 def process_main(
@@ -34,7 +41,7 @@ def process_main(
     Main process entry point.
 
     TOP-LEVEL FUNCTION: Can be called by ProcessPoolExecutor.
-    Creates all objects, runs tick loop, returns results.
+    Creates all objects, runs event loop, returns results.
 
     Args:
         config: Serializable scenario configuration
@@ -90,17 +97,24 @@ def process_main(
             logger=scenario_logger,
         )
 
+        # === STATE FRAMES (#579 part B item 3) ===
+        # Only when the scenario asks: a backtest of a session's window records the session's frame
+        # on the session's slots, so the divergence report can lay the two side by side (#512).
+        state_frames = _open_state_frames(config, pipeline, scenario_logger)
+        # === INDICATOR SERIES (#379) === only when the scenario asks
+        indicator_series = _open_indicator_series(config, pipeline, scenario_logger)
+
         # === STATUS: RUNNING ===
         send_status_update_process(live_queue, config, ScenarioStatus.RUNNING)
 
-        # === TICK LOOP EXECUTION ===
-        tick_loop_results = execute_tick_loop(
+        # === EVENT LOOP EXECUTION ===
+        event_loop_results = execute_event_loop(
             config, worker_coordinator, trade_simulator,
             bar_rendering_controller, decision_logic,
             scenario_logger, ticks, live_queue,
-            decision_event_dispatcher)
+            decision_event_dispatcher, state_frames, indicator_series)
         scenario_logger.debug(
-            '🔄 Execute tick loop finished')
+            '🔄 Execute event loop finished')
 
         # === DIAGNOSTICS CSV (#376) ===
         # Flush algo-declared diagnostics sinks next to events_<scenario>.csv.
@@ -121,23 +135,23 @@ def process_main(
         errors_in_buffer = scenario_logger.get_records(LogLevel.ERROR)
         scenario_logger.close()
 
-        # === Tick loop Error Check ===
-        tick_loop_error = tick_loop_results.tick_loop_error
-        if (tick_loop_error is not None):
-            # tick loop failed, pare error, sucess is false.
+        # === Event loop Error Check ===
+        event_loop_error = event_loop_results.event_loop_error
+        if (event_loop_error is not None):
+            # event loop failed, pare error, sucess is false.
             success = False
-            error_type = type(tick_loop_error).__name__
-            error_message = str(tick_loop_error)
+            error_type = type(event_loop_error).__name__
+            error_message = str(event_loop_error)
             error_traceback = ''.join(traceback.format_exception(
-                type(tick_loop_error),
-                tick_loop_error,
-                tick_loop_error.__traceback__
+                type(event_loop_error),
+                event_loop_error,
+                event_loop_error.__traceback__
             ))
             send_status_update_process(live_queue, config,
                                        ScenarioStatus.FINISHED_WITH_ERROR)
 
         # === Errors in Buffer check ===
-        if len(errors_in_buffer) > 0 and tick_loop_error is None:
+        if len(errors_in_buffer) > 0 and event_loop_error is None:
             # Logged errors WITHOUT exception
             success = False
             error_type = LOGGED_ERRORS_TYPE
@@ -155,7 +169,7 @@ def process_main(
             scenario_name=config.name,
             scenario_index=config.scenario_index,
             execution_time_ms=(time.perf_counter() - start_monotonic) * 1000.0,
-            tick_loop_results=tick_loop_results,
+            event_loop_results=event_loop_results,
             scenario_logger_buffer=log_buffer,
             error_type=error_type,
             error_message=error_message,
@@ -183,3 +197,78 @@ def process_main(
             traceback=traceback.format_exc(),
             scenario_logger_buffer=log_buffer
         )
+
+
+def _open_indicator_series(
+    config: ProcessScenarioConfig,
+    pipeline: ProcessPipelineBundle,
+    scenario_logger: ScenarioLogger,
+) -> Optional[IndicatorSeriesRecorder]:
+    """
+    Open the scenario's indicator series streams when the scenario asks for them (#379) — one per
+    drawing worker, in the run's `io/` beside its state frames.
+
+    Args:
+        config: The scenario's configuration — whether it records indicator series
+        pipeline: The scenario's objects — workers, bars
+        scenario_logger: The scenario's logger, which knows the run directory
+
+    Returns:
+        The recorder, or None when the scenario records none or no worker draws
+    """
+    if not config.indicator_series_enabled:
+        return None
+    run_dir = scenario_logger.get_log_dir()
+    if not run_dir:
+        scenario_logger.warning(
+            '📈 Indicator series were asked for, but this scenario writes into no run directory '
+            '— none are recorded')
+        return None
+    return open_indicator_series(
+        RunEntryWriter(run_dir, RUN_TYPE_SIMULATION), RunEntryMemberId.SCENARIO_INDICATOR_SERIES,
+        config.run_id, config.name, pipeline.worker_coordinator,
+        pipeline.bar_rendering_controller, config.symbol, scenario_logger, scenario=config.name)
+
+
+def _open_state_frames(
+    config: ProcessScenarioConfig,
+    pipeline: ProcessPipelineBundle,
+    scenario_logger: ScenarioLogger,
+) -> Optional[StateFrameRecorder]:
+    """
+    Open the scenario's state-frame stream when the scenario asks for one (#579 part B item 3).
+
+    The stream lies in the run's `io/`, one file per scenario, beside its events table. The frames
+    describe the simulated account: no reconciler, no circuit breaker, and no memory reading; they
+    re-mark no position, so recording them changes nothing the backtest computes.
+
+    Args:
+        config: The scenario's configuration — whether it records frames, and on which cadence
+        pipeline: The scenario's objects — executor, workers, bars
+        scenario_logger: The scenario's logger, which knows the run directory
+
+    Returns:
+        The recorder, or None when the scenario records no frames
+    """
+    if not config.state_frames_enabled:
+        return None
+    run_dir = scenario_logger.get_log_dir()
+    if not run_dir:
+        scenario_logger.warning(
+            '📼 State frames were asked for, but this scenario writes into no run directory — '
+            'none are recorded')
+        return None
+    appender = RunEntryWriter(run_dir, RUN_TYPE_SIMULATION).open_stream(
+        RunEntryMemberId.SCENARIO_STATE_FRAMES, config.run_id, scenario_logger,
+        stops="The scenario's state is no longer recorded",
+        header_fields={'unit_name': config.name,
+                       'cadence_timeframe': config.state_frames_cadence,
+                       'cadence_s': TimeframeConfig.get_minutes(config.state_frames_cadence) * 60.0},
+        scenario=config.name)
+    scenario_logger.info(
+        f'📼 State frames: one per {config.state_frames_cadence} period of the simulated clock, '
+        f'at a closed bar and at an order → {appender.get_path()}')
+    return StateFrameRecorder(
+        appender, config.state_frames_cadence, config.symbol, pipeline.trade_simulator,
+        pipeline.worker_coordinator, pipeline.bar_rendering_controller, config.trading_model,
+        replayed=False, logger=scenario_logger, memory_reader=None, refresh_positions=False)

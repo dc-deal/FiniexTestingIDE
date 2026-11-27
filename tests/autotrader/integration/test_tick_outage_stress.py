@@ -3,7 +3,7 @@ FiniexTestingIDE - AutoTrader Planned Tick-Outage Drill (#444)
 
 One session over `tick_outage_stress_test.json`, which declares a single stale window on
 its TICK source. Until #444 that window was expressible on an AutoTrader profile and driven
-by nobody — the status-plane driver lived in the simulation tick loop alone, so the one
+by nobody — the status-plane driver lived in the simulation event loop alone, so the one
 market-data drill the live loop could rehearse was the transport-real freeze.
 
 The contract under test is the one the simulation has always honoured: the ticks KEEP
@@ -37,7 +37,7 @@ def stress_session():
     trader = AutotraderMain(config)
     result = trader.run()
     yield result
-    remove_run_dir(trader._run_dir)
+    remove_run_dir(trader.get_run_dir())
 
 
 def _count(result, needle: str) -> int:

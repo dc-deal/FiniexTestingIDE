@@ -14,6 +14,7 @@ from enum import Enum
 from pathlib import Path
 from typing import List, Optional
 
+from python.framework.types.import_types.import_inbox_types import InboxZipContent, InboxZipMember
 from python.framework.types.log_level import LogLevel
 
 
@@ -33,15 +34,19 @@ class ImportStepId(Enum):
     Every step an import can run, in the order it runs them. The frame holds the steps the
     import asked for; one whose inbox turned out empty is shown as skipped, not dropped.
     """
+    PACKAGES_FETCH = 'packages_fetch'
     SCAN = 'scan'
+    TICKS_UNPACK = 'ticks_unpack'
     TICKS_IMPORT = 'ticks_import'
     TICKS_INDEX = 'ticks_index'
     TICKS_ORDER = 'ticks_order'
     BARS_RENDER = 'bars_render'
     BARS_INDEX = 'bars_index'
+    SIGNALS_UNPACK = 'signals_unpack'
     SIGNALS_IMPORT = 'signals_import'
     SIGNALS_INDEX = 'signals_index'
     CACHES = 'caches'
+    PACKAGES_RECEIPT = 'packages_receipt'
 
 
 class ImportStepStatus(Enum):
@@ -79,6 +84,8 @@ class ImportRateUnit(Enum):
     """
     MB = 'mb'
     FILE = 'file'
+    # The tick files this import writes: what an index update reads in full
+    IMPORTED_FILE = 'imported_file'
     MILLION_TICKS = 'million_ticks'
     BAR_FILE = 'bar_file'
 
@@ -232,32 +239,70 @@ class ImportProgressFrame:
 @dataclass
 class InboxFile:
     """
-    One file the scan found in an inbox, read from its size and — for a tick file — the
+    One file the scan found in the import inbox, read from its size and — for a tick file — the
     metadata block at its head. Only for the screen and the estimate: the import itself
     parses every file in full.
 
     Args:
-        path: The file
-        size_bytes: Its size
+        path: The file — for a zip member, the zip that holds it
+        size_bytes: Its size — for a zip member, its size unpacked
         broker_type: Broker type from the metadata head, None for a signal file or when the
             head did not show it
+        zip_member: The member this entry stands for, None for a loose file
     """
     path: Path
     size_bytes: int
     broker_type: Optional[str] = None
+    zip_member: Optional[InboxZipMember] = None
 
 
 @dataclass
 class InboxScan:
     """
-    What both inboxes hold at the start of an import.
+    What the inbox holds at the start of an import, by kind.
 
     Args:
-        tick_files: The tick JSON files
-        signal_files: The signal JSONL files
+        tick_files: The tick JSON files, loose ones first, then the members of each tick zip
+        signal_files: The signal JSONL files, loose ones first, then the members of each
+            signal zip
+        tick_zips: The zips of tick exports whose members are imported; a zip refused as a
+            whole at the scan is not among them
+        signal_zips: The zips of signal files whose members are imported, likewise
     """
     tick_files: List[InboxFile] = field(default_factory=list)
     signal_files: List[InboxFile] = field(default_factory=list)
+    tick_zips: List[InboxZipContent] = field(default_factory=list)
+    signal_zips: List[InboxZipContent] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class InboxByHand:
+    """
+    What the inbox held at the scan that no package service delivered in this import — what came
+    by hand. A package zip fetched now, or found in the inbox under its own name and hash, is not
+    among it: it is counted with the packages.
+
+    Args:
+        loose_tick_files: Tick exports lying loose in the inbox
+        loose_signal_files: Signal files lying loose in the inbox
+        zips_without_manifest: The zips that came without a package manifest, by name
+        zips_with_manifest: Package zips lying with their manifest that no service delivered in
+            this import — carried in by hand, or left by an earlier import — by name
+    """
+    loose_tick_files: int = 0
+    loose_signal_files: int = 0
+    zips_without_manifest: List[str] = field(default_factory=list)
+    zips_with_manifest: List[str] = field(default_factory=list)
+
+    def file_count(self) -> int:
+        """
+        How many files and zips came by hand.
+
+        Returns:
+            Loose files and zips together
+        """
+        return (self.loose_tick_files + self.loose_signal_files
+                + len(self.zips_without_manifest) + len(self.zips_with_manifest))
 
 
 @dataclass
@@ -286,21 +331,23 @@ class ImportPaths:
     temporary tree.
 
     Args:
-        tick_source: The tick inbox
+        inbox: The one import inbox — tick exports and signal files, loose or in zips
         tick_target: The processed-data root the tick and bar archives live in
-        tick_finished: Where imported tick files move, None when they stay
-        signal_source: The signal inbox
+        finished: Where the raw files and zips the import took move, None when they stay
+        unpacking: Where the members of a zip of the inbox are unpacked for their import, one
+            folder per zip
+        refused: Where the files and zips the import refused go, each with its reason beside
+            it; None when they stay in the inbox
         signal_target: The signal archive root
-        signal_finished: Where imported signal files move, None when they stay
         log_dir: Where the import's own log file goes
         timings_file: The measured step durations
     """
-    tick_source: Path
+    inbox: Path
     tick_target: Path
-    tick_finished: Optional[Path]
-    signal_source: Path
+    finished: Optional[Path]
+    unpacking: Path
+    refused: Optional[Path]
     signal_target: Path
-    signal_finished: Optional[Path]
     log_dir: Path
     timings_file: Path
 

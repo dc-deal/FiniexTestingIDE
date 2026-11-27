@@ -64,7 +64,7 @@ class SharedReportCoordinator:
     """The shared units-derived DERIVE+PERSIST core (#403). Stateless — both pipelines delegate."""
 
     @staticmethod
-    def record_run_artifacts(run_dir: Path) -> None:
+    def record_run_artifacts(run_dir: Path, run_index: Optional[RunIndex] = None) -> None:
         """
         Record the run's persisted artifacts in the index — called LAST, by each pipeline.
 
@@ -75,12 +75,15 @@ class SharedReportCoordinator:
 
         Args:
             run_dir: The run's own directory
+            run_index: The index to record in; the configured one when None. A session hands one that
+                waits only briefly for the index lock (#650)
         """
         directory = RunDirReader(run_dir)
         if not directory.has(RunEntryMemberId.HEADER):
             return
-        RunIndex(AppConfigManager().get_file_logging_config_object().run_index) \
-            .record_artifacts(directory.read_header().run_id, run_dir)
+        if run_index is None:
+            run_index = RunIndex(AppConfigManager().get_file_logging_config_object().run_index)
+        run_index.record_artifacts(directory.read_header().run_id, run_dir)
 
     @staticmethod
     def derive_and_persist(

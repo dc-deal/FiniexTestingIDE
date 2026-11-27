@@ -2,7 +2,7 @@
 FiniexTestingIDE - Worker Parameter Tests
 Shared fixtures for parameter validation testing
 
-No data dependencies. No tick loop. No bars.
+No data dependencies. No event loop. No bars.
 Only mock logger and config dicts.
 """
 

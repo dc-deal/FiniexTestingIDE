@@ -33,6 +33,8 @@ from python.framework.types.config_types.host_identity_config_types import (
     TEST_HOST_ID,
     HostIdentityRecord,
 )
+from python.framework.types.store_types import StoreId
+from python.framework.utils.atomic_file_utils import sync_file, sync_folder
 from python.framework.utils.config_merge_utils import is_config_isolation_active
 from python.framework.utils.file_utils import create_directory
 
@@ -193,7 +195,9 @@ class HostIdentityManager:
 
     def _publish(self, tmp_path: Path) -> bool:
         """
-        Give the written record its final name, first writer wins.
+        Give the written record its final name, first writer wins — durably, because an identity
+        lost to a crash of the machine is a new installation (#632). Not the shared atomic writer:
+        that one replaces, and a mint must never replace another process's identity.
 
         Args:
             tmp_path: The fully written temporary record
@@ -201,12 +205,17 @@ class HostIdentityManager:
         Returns:
             True when this record became the file, False when another process's already was
         """
+        durable = StoreId.HOST_IDENTITY.writes_durably()
+        if durable:
+            sync_file(tmp_path)
         try:
             os.link(tmp_path, self._path)
         except FileExistsError:
             return False
         except OSError:
             os.replace(tmp_path, self._path)
+        if durable:
+            sync_folder(self._path.parent)
         return True
 
     def _refusal(self, reason: str) -> HostIdentityError:

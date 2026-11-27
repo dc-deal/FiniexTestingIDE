@@ -20,7 +20,7 @@ tests/autotrader/order_guard/
 
 ### Level 1 — Unit Tests
 
-Direct tests against `OrderGuard` with no executor, no tick loop, no scenario runner. The guard is
+Direct tests against `OrderGuard` with no executor, no event loop, no scenario runner. The guard is
 clock-agnostic — all time-dependent methods take an explicit `now: datetime` parameter, so tests
 simply pass fixed or advanced timestamps instead of patching `datetime.now()`.
 
@@ -31,13 +31,28 @@ simply pass fixed or advanced timestamps instead of patching `datetime.now()`.
 | `TestConfigurableThreshold` | Custom `max_consecutive_rejections`, cooldown duration in message |
 | `TestTheDenialIdsAreReproducible` | A guard numbers its denials `guard_1`, `guard_2`, … and two fresh guards number the same denials the same way — two identical backtests write identical order-event streams (#362) |
 
+`test_money_record_hold.py` — the entry hold over the money record (#632), with a disk the test
+fills:
+
+| Class | What it validates |
+|-------|-------------------|
+| `TestTheHold` | a failed write of the order events or the trades holds the entries at once, as `record_unwritable` on the session's clock, naming the stream and the cause, with one *Entries held* alert; a second failing stream holds nothing twice; the hold stands while the disk stays full |
+| `TestTheLift` | once every kept line is on the disk the hold lifts as observed, with *Entries lifted*; one stream still failing keeps it; a record that writes holds nothing |
+
+`test_entry_holds.py` — the entry holds of a session (#499), the register the guard reads:
+
+| Class | What it validates |
+|-------|-------------------|
+| `TestTheRegister` | a hold stands until it is lifted and stays in the record after; a second hold of a standing reason keeps the first one's start; lifting nothing answers nothing; a lifted reason can hold again |
+| `TestEveryReasonDeclaresHowItEnds` | every reason declares at least one lift route; a lift by an undeclared route is refused; every declared route is performed somewhere in the framework, and every lift the framework performs is declared — the declaration held in both directions by a walk over the source |
+
 ### Level 2 — Scenario Integration Tests
 
 End-to-end tests that run full backtesting scenarios through the DecisionTradingApi + OrderGuard + TradeSimulator pipeline. Uses `margin_stress_probe` decision logic with `trade_sequence` support.
 
 | Class | Scenario Config | What it validates |
 |-------|-----------------|-------------------|
-| `TestRejectionCooldown` | `order_guard_cooldown_test.json` | Margin rejection arms cooldown, subsequent order blocked as REJECTION_COOLDOWN, stats counted |
+| `TestRejectionCooldown` | `order_guard_cooldown_test.json` | Margin rejection arms cooldown, subsequent order blocked as REJECTION_COOLDOWN, stats counted; each margin rejection names the share of its requirement the free margin covered |
 
 ---
 
@@ -91,8 +106,8 @@ No shared fixtures — each test creates its own `OrderGuard` instance directly.
 
 | Fixture | Scope | Description |
 |---------|-------|-------------|
-| `cooldown_tick_loop` | module | Runs `order_guard_cooldown_test` scenario once |
-| `cooldown_order_history` | module | Extracts order history from tick loop results |
-| `cooldown_execution_stats` | module | Extracts ExecutionStats from tick loop results |
+| `cooldown_event_loop` | module | Runs `order_guard_cooldown_test` scenario once |
+| `cooldown_order_history` | module | Extracts order history from event loop results |
+| `cooldown_execution_stats` | module | Extracts ExecutionStats from event loop results |
 
 All scenario fixtures use `run_scenario()` from `tests/shared/fixture_helpers.py`.

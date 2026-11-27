@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 from python.framework.types.config_types.data_origin_config_types import OriginClass
+from python.framework.types.data_origin_types import SymbolDataOrigin
 from python.framework.utils.time_utils import format_duration
 
 
@@ -36,6 +37,21 @@ class GapCategory(Enum):
         return self in (GapCategory.WEEKEND, GapCategory.HOLIDAY)
 
 
+class SeamSide(Enum):
+    """
+    Which side of a symbol's seam a gap lies on, as its bar file records it (#647).
+
+    The seam is where a venue's published history ends and collected data begins. A gap in the
+    venue's history is the venue's own silence — its record is the complete list of its trades,
+    so an hour without one is an hour nobody traded there, and nothing is missing. A gap in
+    collected data may be data a collector lost, and is judged by its category.
+    """
+    EXTERNAL_HISTORY = 'external_history'
+    COLLECTED = 'collected'
+    # The bar file was rendered before origins were stamped: which side is not stated
+    UNSTATED = 'unstated'
+
+
 @dataclass
 class IndexEntry:
     """
@@ -66,6 +82,97 @@ class DataFormatVersionSpan:
     end_time: datetime
     file_count: int
     tick_count: int
+
+
+@dataclass
+class TradeIdGapSummary:
+    """
+    The venue's trade ids one origin's tick files of a symbol do not hold, summed over its files.
+
+    Args:
+        origin_class: Whose files these are — our collection, or a venue's published history
+        measured_files: Files whose trade ids were measured
+        span: Ids from each file's first to its last trade, summed
+        missing: Ids in those spans the files do not hold, summed
+        longest_run: Ids in the longest run of one file
+        longest_run_seconds: Event time around that run
+        files_over_limit: Files whose gaps amount to a hole (decision 7 of #561)
+    """
+    origin_class: str
+    measured_files: int
+    span: int
+    missing: int
+    longest_run: int
+    longest_run_seconds: float
+    files_over_limit: int
+
+
+@dataclass
+class TradeIdGapReport:
+    """
+    A symbol's missing trades per origin, and where they cannot be measured (#647).
+
+    Measured only where every trade carries its id (collector format 1.7.0 on, and a venue's
+    published history); a file without ids is named in an unmeasured span, never counted as
+    complete.
+
+    Args:
+        summaries: One per origin class with measured files, in the classes' declared order
+        unmeasured_spans: The stretches whose files carry no trade ids, by data format version
+    """
+    summaries: List[TradeIdGapSummary]
+    unmeasured_spans: List[DataFormatVersionSpan]
+
+
+@dataclass
+class MissingTradeRun:
+    """
+    Consecutive trades of the venue's list our files do not hold.
+
+    Args:
+        trades: How many trades the run holds
+        first_at: When its first trade executed, as the venue stamps it
+        last_at: When its last trade executed
+    """
+    trades: int
+    first_at: datetime
+    last_at: datetime
+
+
+@dataclass
+class TradeCompletenessResult:
+    """
+    Our files' trades against the venue's own trade list over one window (#647).
+
+    The venue's list, not the run of trade ids, says which trades there were: a venue may allocate
+    ids that never become public trades, so a missing id is an upper bound and a missing trade is a
+    fact.
+
+    Args:
+        broker_type: The broker
+        symbol: The symbol
+        start: The window's start, included
+        end: The window's end, excluded
+        our_trades: Trades our files hold in the window
+        venue_trades: Trades the venue published in the window; None where its list could not be read
+        missing_trades: The venue's trades our files lack; None where the list could not be read
+        extra_trades: Trades our files hold that the venue's list does not; None likewise
+        runs: The runs of missing trades, longest first
+        not_read_because: Why the venue's list was not read, '' where it was
+        not_measurable_because: Why our side cannot be compared — tick files in the window carry no
+            trade ids, so every venue trade would read as missing; '' where every file carries them
+    """
+    broker_type: str
+    symbol: str
+    start: datetime
+    end: datetime
+    our_trades: int
+    venue_trades: Optional[int]
+    missing_trades: Optional[int]
+    extra_trades: Optional[int]
+    runs: List[MissingTradeRun]
+    not_read_because: str = ''
+    not_measurable_because: str = ''
 
 
 @dataclass
@@ -115,6 +222,34 @@ class Gap:
         return (self.origin_class_before is not None
                 and self.origin_class_after is not None
                 and self.origin_class_before != self.origin_class_after)
+
+    def seam_side(self, data_origin: Optional[SymbolDataOrigin]) -> SeamSide:
+        """
+        Which side of the seam this gap lies on, judged from the bar index row alone.
+
+        The batch validation reads it, so it never opens the tick index: the bar file states its
+        origin classes and the instant our collection took over. A gap lies in external history
+        where that file holds nothing but external data, or where the gap ends at or before the
+        seam. A file holding external and other data without a seam cannot place a gap, so it
+        says unstated rather than guess the side that admits more.
+
+        Args:
+            data_origin: The origins the symbol's bars were rendered from, None where not read
+
+        Returns:
+            The side; unstated where the row carries no origin or the gap has no end
+        """
+        if data_origin is None or not data_origin.origin_classes or self.gap_end is None:
+            return SeamSide.UNSTATED
+        if OriginClass.EXTERNAL not in data_origin.origin_classes:
+            return SeamSide.COLLECTED
+        if data_origin.collected_since is None:
+            if data_origin.origin_classes == [OriginClass.EXTERNAL]:
+                return SeamSide.EXTERNAL_HISTORY
+            return SeamSide.UNSTATED
+        if self.gap_end <= data_origin.collected_since:
+            return SeamSide.EXTERNAL_HISTORY
+        return SeamSide.COLLECTED
 
     @property
     def gap_hours(self) -> float:

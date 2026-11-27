@@ -42,7 +42,7 @@ def print_volatility_profile(profile: SymbolVolatilityProfile) -> None:
 
     # Divider
     print('\n' + '─' * 60)
-    print('📈 VOLATILITY DISTRIBUTION (ATR-based)')
+    print('📈 VOLATILITY DISTRIBUTION (ATR over close, each period against the trailing 365 days)')
     print('─' * 60)
 
     # Total coverage time

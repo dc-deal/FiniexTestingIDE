@@ -26,7 +26,7 @@ from python.framework.acceptance_studies.acceptance_study_setup import (
     open_acceptance_study,
 )
 from python.framework.activities.activity_registry import ActivityRegistry
-from python.framework.autotrader.autotrader_tick_loop import AutotraderTickLoop
+from python.framework.autotrader.event_loop.autotrader_event_loop import AutotraderEventLoop
 from python.framework.autotrader.cold_start.carried_readings import (
     carried_readings_verdict,
     describe_readings_verdict,
@@ -53,6 +53,10 @@ from python.framework.autotrader.operator_alerts.operator_alerts_setup import (
 from python.framework.autotrader.run_record.autotrader_report_coordinator import (
     AutotraderReportCoordinator,
 )
+from python.framework.autotrader.run_record.indicator_series_stream_opener import (
+    open_indicator_series_streams,
+)
+from python.framework.autotrader.run_record.money_record_streams import MoneyRecordStreams
 from python.framework.autotrader.run_record.order_event_stream_setup import (
     open_order_event_stream,
     read_back_order_event_stream,
@@ -67,10 +71,10 @@ from python.framework.autotrader.run_record.session_records import (
     record_restored_algo_state,
     stream_diagnostics_rows,
 )
-from python.framework.autotrader.run_record.state_frame_recorder import (
-    StateFrameRecorder,
-    open_state_frame_stream,
-)
+from python.framework.autotrader.run_record.state_frame_stream_opener import open_state_frame_stream
+from python.framework.autotrader.safety.boot_entry_hold import hold_entries_at_boot
+from python.framework.autotrader.safety.unbooked_fill_hold import hold_entries_over_unbooked_fills
+from python.framework.autotrader.safety.boot_premise_lifter import BootPremiseLifter
 from python.framework.autotrader.safety.risk_baseline_tracker import RiskBaselineTracker
 from python.framework.autotrader.shutdown_status_holder import ShutdownStatusHolder
 from python.framework.autotrader.startup.autotrader_data_preparer import prepare_mock_session_data
@@ -91,11 +95,13 @@ from python.framework.decision_logic.abstract_decision_logic import AbstractDeci
 from python.framework.discoveries.signal_coverage.signal_scenario_info import SignalScenarioInfo
 from python.framework.exceptions.code_identity_errors import CodeIdentityCaptureError
 from python.framework.exceptions.live_execution_errors import StartupRefusedError
-from python.framework.exceptions.persistence_errors import CarriedLevelError
+from python.framework.exceptions.persistence_errors import CarriedLevelError, SessionStorageError
 from python.framework.exceptions.swap_errors import SwapModeNotImplementedError
 from python.framework.exceptions.warmup_history_errors import WarmupHistoryRefusedError
 from python.framework.logging.scenario_logger import ScenarioLogger
 from python.framework.persistence.algo_state_store import AlgoStateStore
+from python.framework.process.indicator_series_recorder import IndicatorSeriesRecorder
+from python.framework.process.state_frame_recorder import StateFrameRecorder
 from python.framework.reporting.acceptance_study_recorder import AcceptanceStudyRecorder
 from python.framework.reporting.api_perf_monitor import ApiPerfMonitor
 from python.framework.reporting.io.order_event_stream_writer import OrderEventStreamWriter
@@ -109,6 +115,7 @@ from python.framework.signal_data.transport.abstract_signal_transport import (
 from python.framework.signal_data.transport.signal_inbox import SignalInbox
 from python.framework.signal_data.transport.signal_transport_setup import setup_signal_transport
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
+from python.framework.store.session_store_roots import session_store_roots
 from python.framework.stress_test.stale_data_stress_driver import StaleDataStressDriver
 from python.framework.trading_env.abstract_trade_executor import AbstractTradeExecutor
 from python.framework.trading_env.decision_event_dispatcher import DecisionEventDispatcher
@@ -139,8 +146,10 @@ from python.framework.types.config_types.autotrader_defaults_config_types import
 from python.framework.types.decision_event_types import SessionEndSeverity
 from python.framework.types.live_types.broker_truth_types import BrokerTruthReadReason
 from python.framework.types.persistence_types import (
+    AcceptedForeignOrders,
     AccountDrawdownCarryOver,
     BaselineKind,
+    BootReadHoldCarryOver,
     CarryOverLoad,
     ColdStartPayload,
     ConfigurationCarryOver,
@@ -155,10 +164,12 @@ from python.framework.types.scenario_types.scenario_set_types import SingleScena
 from python.framework.types.signal_data_types import (
     SignalObservedSeries,
 )
+from python.framework.types.trading_env_types.entry_hold_types import EntryHoldReason
 from python.framework.types.trading_env_types.order_types import OrderResult
 from python.framework.types.validation_types import ValidationFinding, ValidationResult
 from python.framework.utils.code_identity_builder import verify_component_digests
 from python.framework.utils.file_lock import FileLock
+from python.framework.utils.machine_resources_reader import MachineResourcesReader
 from python.framework.utils.run_origin_builder import build_run_origin, capture_code_identity
 from python.framework.utils.trading_math.price_trigger import mid_price
 from python.framework.validators.algo_clock_validator import validate_algo_clock
@@ -173,6 +184,7 @@ from python.framework.validators.carry_over_identity_validator import (
 from python.framework.validators.component_metadata_advisory import check_market_fit
 from python.framework.validators.session_end_validator import resolve_session_end_policy
 from python.framework.validators.session_post_run_validator import SessionPostRunValidator
+from python.framework.validators.session_storage_validator import check_session_storage
 from python.framework.validators.stop_budget_validator import check_stop_budget
 from python.framework.validators.uncommitted_code_validator import (
     describe_uncommitted_code,
@@ -187,7 +199,7 @@ class AutotraderMain:
     """
     AutoTrader runner for FiniexTestingIDE.
 
-    Mirrors the backtesting process_tick_loop but for live execution:
+    Mirrors the backtesting process_event_loop but for live execution:
     - Tick source runs in a separate thread (Threading model 8.a)
     - Main thread processes ticks synchronously: on_tick → bars → workers → decision
     - Workers and DecisionLogic are the same classes as in backtesting
@@ -217,6 +229,7 @@ class AutotraderMain:
         allow_dirty: bool = False,
         first_start: bool = False,
         accept_composite_change: Optional[str] = None,
+        book_closed_externally: Optional[List[str]] = None,
     ):
         self._config = config
         # #355: a human DECLARED that they are watching this start (CLI --attended). Cold-start
@@ -243,6 +256,10 @@ class AutotraderMain:
         # composite, so a flag left behind can never accept a later change; lands in the header's
         # origin as typed.
         self._accept_composite_change = accept_composite_change
+        # #627: the position notes the operator declares closed outside the bot for THIS start
+        # (`--book-closed-externally <id>`). Position ids never come back, so a flag left behind
+        # can close no later note; lands in the header's origin as typed.
+        self._book_closed_externally = list(book_closed_externally or [])
         # #598: this bot's lock, held from before the first carry-over read until after the
         # last write; and whether a failed start had a passing cause (exit 75)
         self._bot_lock: Optional[FileLock] = None
@@ -257,7 +274,7 @@ class AutotraderMain:
         # uncommitted code. Read by the post-run validation, which reports it as a Tier-1 warning.
         self._uncommitted_code_allowed = False
         self._shutdown_mode = 'normal'
-        self._tick_loop_started = False
+        self._event_loop_started = False
         # #492: resolved at startup by the session-end validator, read by the shutdown.
         self._session_end: Optional[SessionEndDefaults] = None
         self._emergency_reason: Optional[str] = None
@@ -310,7 +327,7 @@ class AutotraderMain:
         self._signal_inbox: Optional[SignalInbox] = None
         self._signal_transport: Optional[AbstractSignalTransport] = None
         self._tick_thread = None
-        self._tick_loop: Optional[AutotraderTickLoop] = None
+        self._event_loop: Optional[AutotraderEventLoop] = None
 
         # Pipeline components (created during run())
         self._executor: Optional[AbstractTradeExecutor] = None
@@ -340,6 +357,16 @@ class AutotraderMain:
         # session may write it, and the keys the venue is holding. An empty setup means the
         # step did not run (disabled, Field Study, or a simulation executor).
         self._cold_start: ColdStartSetup = ColdStartSetup()
+        # #499 — what an attended start accepted when it lifted the entry hold, for the boot's
+        # carry-over write; and what lifts the hold once its orders are gone
+        self._accepted_foreign_orders: Optional[AcceptedForeignOrders] = None
+        # #652 — the boot read's finding that holds the entries, for every carry-over write while the
+        # hold stands; None when the start holds nothing over a fill
+        self._boot_read_hold: Optional[BootReadHoldCarryOver] = None
+        # When this session's start found the declared exclusivity false — its start, ISO-8601 UTC —
+        # for the risk baseline and the ledger rows; None when it found nothing
+        self._exclusivity_violated_at: Optional[str] = None
+        self._boot_premise_lifter: Optional[BootPremiseLifter] = None
         # #356 — built only once the cold start has decided the session may proceed, because
         # it reads the predecessor's record through that store. Every abort BEFORE that point
         # still reaches _shutdown, which persists the carry-over, so None is a state the
@@ -362,8 +389,11 @@ class AutotraderMain:
         self._order_event_stream: Optional[OrderEventStreamWriter] = None
         # #579 part A — what the session holds and decides, moment by moment
         self._state_frames: Optional[StateFrameRecorder] = None
+        self._indicator_series: Optional[IndicatorSeriesRecorder] = None
         # #476 — every trade the session closes and every diagnostics row, written as they happen
         self._trade_stream: Optional[RunStreamAppender] = None
+        # The money record's streams and the entry hold over them (#632)
+        self._money_record: Optional[MoneyRecordStreams] = None
         self._diagnostics_streams: List[RunStreamAppender] = []
 
         # Loggers (created during run())
@@ -411,6 +441,15 @@ class AutotraderMain:
         finally:
             self._bot_lock.release()
 
+    def get_run_dir(self) -> Optional[Path]:
+        """
+        The session's run directory, where its logs and records are written.
+
+        Returns:
+            The directory, or None before `run()` created it
+        """
+        return self._run_dir
+
     def _run(self) -> AutoTraderResult:
         """
         The session itself, run while this bot's lock is held.
@@ -418,7 +457,7 @@ class AutotraderMain:
         Flow:
         1. Setup: create loggers, print startup banner, create pipeline objects
         2. Start tick source thread
-        3. Tick loop: queue.get → on_tick → bars → workers → decision
+        3. Event loop: queue.get → on_tick → bars → workers → decision
         4. Shutdown: finish orders per the session-end policy, collect statistics
 
         Returns:
@@ -448,7 +487,8 @@ class AutotraderMain:
         # identity. The HostIdentityError travels to the CLI, which reports it as a refusal.
         origin = build_run_origin(self._channel, allow_dirty=self._allow_dirty,
                                   first_start=self._first_start,
-                                  accept_composite_change=self._accept_composite_change)
+                                  accept_composite_change=self._accept_composite_change,
+                                  book_closed_externally=self._book_closed_externally)
         # Then the code identity: before the loggers, because the header written in there records
         # it, and held here, because the startup guard asks it — which must not depend on a header
         # having been written. A capture that FAILS is held too, and refused inside the startup
@@ -553,6 +593,19 @@ class AutotraderMain:
             if self._carried_load is not None and self._carried_load.level_refusal:
                 raise CarriedLevelError(self._carried_load.level_refusal)
 
+            # === THE STORES CAN BE WRITTEN (#632) ===
+            # Before the first order: a session that cannot record would trade without a record.
+            # Refused like the two above — STARTUP FAILED, an alert, exit 2. The run directory and
+            # its header are written by now, so the run store's own refusal ends earlier and louder.
+            storage_refusal = check_session_storage(
+                session_store_roots(self._config.cold_start.path,
+                                    self._config.state_persistence.path),
+                self._config.storage.min_free_gb_to_start, MachineResourcesReader())
+            if storage_refusal is not None:
+                raise SessionStorageError(
+                    f'This session cannot record its trading: {storage_refusal}. Free the disk or '
+                    f'fix the store, then start again.')
+
             self._setup_signal_handlers()
 
             # === DATA PACKAGE (mock replay, #438) ===
@@ -597,9 +650,14 @@ class AutotraderMain:
 
             # === ORDER-EVENT STREAM (#362) ===
             # Before the cold start: an order the boot takes over is the first step a session
-            # records.
+            # records. It and the trade stream are the money record (#632): a write that fails
+            # keeps its lines and holds the entries until they are on the disk.
+            self._money_record = MoneyRecordStreams(
+                self._executor, self._operator_alerts, self._session_logger,
+                self._config.storage.stream_sync_interval_s)
             self._order_event_stream = open_order_event_stream(
-                self._executor, self._run_writer, self._run_id, self._config.get_unit_name())
+                self._executor, self._run_writer, self._run_id, self._config.get_unit_name(),
+                self._money_record)
 
             self._restore_algo_state()
 
@@ -666,10 +724,15 @@ class AutotraderMain:
                     profile_path=self._config.config_path,
                     broker_type=self._config.broker_type),
                 accept_composite_change=self._accept_composite_change,
+                book_closed_externally=self._book_closed_externally,
             )
             if self._cold_start.configuration_finding is not None:
                 # Held like the market-fit advisory: the record's channel lives on the result
                 self._startup_findings.append(self._cold_start.configuration_finding)
+            if self._cold_start.closed_externally_finding is not None:
+                # #627: on the record, and before the first order for the person at the terminal
+                self._startup_findings.append(self._cold_start.closed_externally_finding)
+                print(f'  ⚠️  {self._cold_start.closed_externally_finding.message}')
             if self._cold_start.acceptance_notice:
                 # The person at the terminal sees it before the first order, as with --allow-dirty
                 print(f'  {self._cold_start.acceptance_notice}')
@@ -678,6 +741,15 @@ class AutotraderMain:
                 # rather than returned, so the one guarded shutdown below runs it.
                 raise StartupRefusedError(
                     self._cold_start.refusal or 'The cold start refused the boot.')
+
+            # === ENTRY HOLD AT THE START (#499) ===
+            # Orders of another owner on this bot's instrument while the account is declared
+            # exclusive: the session starts and holds its entries. Before the first carry-over write
+            # below, which records what an attended start accepted.
+            self._hold_entries_at_boot(attended)
+            # #652 — a fill of ours the book does not hold: the session holds its entries rather
+            # than buy it a second time. Before the first carry-over write, which records the hold
+            self._hold_entries_over_unbooked_fills(attended)
 
             # === RISK BASELINE (#356) ===
             # Built BEFORE the first carry-over write below, which now carries the record.
@@ -765,14 +837,14 @@ class AutotraderMain:
             )
             self._print_startup_phase('Tick source running')
 
-            # Read by BOTH the display and the tick loop, so it is resolved here rather
+            # Read by BOTH the display and the event loop, so it is resolved here rather
             # than inside either of them.
             dry_run = self._is_dry_run()
             self._start_display(dry_run)
 
-            # === TICK LOOP ===
-            self._global_logger.info('🔄 Entering tick loop...')
-            self._print_startup_phase('Entering tick loop')
+            # === EVENT LOOP ===
+            self._global_logger.info('🔄 Entering event loop...')
+            self._print_startup_phase('Entering event loop')
 
             # A Ctrl+C or SIGTERM during the start is a stop the loop honours before its first
             # pass — the executor that records it may not have existed when the signal came
@@ -781,7 +853,7 @@ class AutotraderMain:
             # keeps them
             self._trade_stream = open_trade_stream(
                 self._run_writer, self._run_id, self._config.get_unit_name(),
-                self._executor.portfolio, self._session_logger)
+                self._executor.portfolio, self._session_logger, self._money_record)
             self._diagnostics_streams = stream_diagnostics_rows(
                 self._run_writer, self._run_id, self._decision_logic, self._session_logger)
             # === STATE FRAMES (#579 part A) ===
@@ -790,15 +862,19 @@ class AutotraderMain:
                 self._config, self._run_writer, self._run_id, self._executor,
                 self._worker_orchestrator, self._bar_controller, self._trading_model,
                 self._reconciler, self._session_logger)
-            self._tick_loop = self._build_tick_loop(run_timestamp, dry_run)
-            self._tick_loop_started = True
+            # === INDICATOR SERIES (#379) === one per drawing worker, when the profile asks
+            self._indicator_series = open_indicator_series_streams(
+                self._config, self._run_writer, self._run_id, self._worker_orchestrator,
+                self._bar_controller, self._session_logger)
+            self._event_loop = self._build_event_loop(run_timestamp, dry_run)
+            self._event_loop_started = True
             self._operator_alerts.start_liveness()
             title, detail = session_started_text(
                 self._config, dry_run, self._run_id,
                 self._code_identity.labelled_commits() if self._code_identity else [])
             self._operator_alerts.send(
                 OperatorAlertKind.SESSION_STARTED, OperatorAlertLevel.INFO, title, detail)
-            ticks_processed, ticks_clipped = self._tick_loop.run()
+            ticks_processed, ticks_clipped = self._event_loop.run()
 
             # #348: an EMERGENCY session-end request escalates the shutdown mode.
             if (self._executor.is_session_end_requested()
@@ -811,8 +887,11 @@ class AutotraderMain:
             ticks_clipped = 0
         except Exception as e:
             self._report_abort(e)
-            ticks_processed = 0
-            ticks_clipped = 0
+            # What the loop counted before it fell: the counts live on the loop, so the exception
+            # that ended it does not take them along (#636). A loop that was never built counted
+            # nothing, and a refusal above happens before it is.
+            ticks_processed, ticks_clipped = (
+                self._event_loop.get_tick_counts() if self._event_loop is not None else (0, 0))
 
         # #235: the loop is over — from here a pass that no longer comes is the shutdown, not a
         # stall, and the liveness watch must not report one
@@ -833,7 +912,7 @@ class AutotraderMain:
     def _report_abort(self, error: Exception) -> None:
         """
         Record and show why the session ended early: a refusal at its first tick, a crash
-        inside the tick loop, or a startup failure.
+        inside the event loop, or a startup failure.
 
         Args:
             error: The exception that ended the session
@@ -843,7 +922,7 @@ class AutotraderMain:
         """
         self._emergency_reason = str(error)
         self._emergency_error_type = type(error).__name__
-        if self._tick_loop_started and isinstance(error, WarmupHistoryRefusedError):
+        if self._event_loop_started and isinstance(error, WarmupHistoryRefusedError):
             # #588: the warmup seam could not be closed at the first tick. That is a refusal
             # rather than a crash, and the console, the session log and the summary say so.
             # The seam closes where the tick's bars are rendered, after any heartbeat pass before
@@ -862,12 +941,17 @@ class AutotraderMain:
             self._print_first_tick_refusal(str(error), sent)
             self._alert_abort(OperatorAlertKind.REFUSED_AT_FIRST_TICK,
                               'REFUSED AT THE FIRST TICK', f'{error}\n{sent}')
-        elif self._tick_loop_started:
-            # Runtime error inside the tick loop — NOT a startup failure.
-            self._global_logger.error(f'❌ AutoTrader runtime error in tick loop: {error}')
+        elif self._event_loop_started:
+            # Runtime error inside the event loop — NOT a startup failure.
+            self._global_logger.error(f'❌ AutoTrader runtime error in event loop: {error}')
             self._print_runtime_error(str(error))
+            # How far it got: the abort is the session's one message, so it carries the count
+            # the closing message would have (#636)
+            ticks_processed = (self._event_loop.get_tick_counts()[0]
+                               if self._event_loop is not None else 0)
             self._alert_abort(OperatorAlertKind.RUNTIME_ERROR,
-                              'RUNTIME ERROR — session aborted', str(error))
+                              'RUNTIME ERROR — session aborted',
+                              f'{error}\nTicks: {ticks_processed:,}')
         else:
             # #598: a passing cause — the venue did not answer within its budget — leaves with
             # exit 75, which a supervisor restarts after its pause; anything else stays down
@@ -1046,6 +1130,50 @@ class AutotraderMain:
             self._session_logger.warning(f'⚠️  {warning}')
             print(f'  ⚠️  {warning}')
 
+    def _hold_entries_at_boot(self, attended: bool) -> None:
+        """
+        Hold the session's entries over what the cold start found against the account's exclusivity
+        (#499), and record that the premise was false.
+
+        Args:
+            attended: Whether a human declared they are watching this start, with a terminal
+        """
+        violation = self._cold_start.boot_premise_violation
+        if violation is None and not self._cold_start.accepted_foreign_refs:
+            return
+        # The premise is false either way — the orders are held over, or an operator accepted
+        # them — so every account-level figure measures a denominator that is not this bot's alone
+        self._exclusivity_violated_at = self._run_timestamp.isoformat() if self._run_timestamp else None
+        if violation is None or not isinstance(self._executor, LiveTradeExecutor):
+            return
+        self._accepted_foreign_orders = hold_entries_at_boot(
+            violation, self._executor, attended, reconciled=self._reconciler is not None,
+            operator_alerts=self._operator_alerts, logger=self._session_logger)
+        if (self._reconciler is not None
+                and self._executor.get_entry_holds().is_held(EntryHoldReason.BOOT_PREMISE)):
+            self._boot_premise_lifter = BootPremiseLifter(
+                violation, self._executor, self._operator_alerts, self._session_logger)
+
+    def _hold_entries_over_unbooked_fills(self, attended: bool) -> None:
+        """
+        Hold the session's entries over a fill the start found that the book does not hold (#652).
+
+        Args:
+            attended: Whether a human declared they are watching this start, with a terminal
+        """
+        boot_read = self._cold_start.boot_read
+        if (boot_read is None or not boot_read.holds_entries()
+                or not isinstance(self._executor, LiveTradeExecutor)):
+            return
+        held = hold_entries_over_unbooked_fills(
+            boot_read, self._executor, attended,
+            operator_alerts=self._operator_alerts, logger=self._session_logger)
+        self._boot_read_hold = BootReadHoldCarryOver(
+            written_at_utc=boot_read.written_at.isoformat(),
+            read_from_utc=boot_read.read_from.isoformat(),
+            client_order_ids=[fill.client_order_id for fill in boot_read.get_holding_fills()],
+        ) if held else None
+
     def _check_stop_budget(self, attended: bool) -> None:
         """
         Say at the start where this session's stop cannot keep what its settings promise (#630).
@@ -1126,7 +1254,7 @@ class AutotraderMain:
         """
         Build and wire the three observation subsystems, each gated by config and live-only.
 
-        None of them can end the session; all three are read by the tick loop.
+        None of them can end the session; all three are read by the event loop.
         """
         # === DRIFT AUDIT (#327) ===
         # Gated by config; live-only by design — DRYRUN orders auto-skipped
@@ -1139,7 +1267,7 @@ class AutotraderMain:
             )
 
         # === RECONCILIATION (#151, ALERT_ONLY) ===
-        # Gated by config; live-only. Polled on a hybrid cadence by the tick loop.
+        # Gated by config; live-only. Polled on a hybrid cadence by the event loop.
         if self._config.reconciliation.enabled and isinstance(self._executor, LiveTradeExecutor):
             self._reconciler = Reconciler(
                 executor=self._executor,
@@ -1247,18 +1375,18 @@ class AutotraderMain:
             self._global_logger.info('📺 Live display stopped')
         self._shutdown_status.set_lines_on_console(True)
 
-    def _build_tick_loop(self, run_timestamp: datetime, dry_run: bool) -> AutotraderTickLoop:
+    def _build_event_loop(self, run_timestamp: datetime, dry_run: bool) -> AutotraderEventLoop:
         """
-        Assemble the tick loop from everything the boot has built.
+        Assemble the event loop from everything the boot has built.
 
         Args:
             run_timestamp: This session's start, used as the loop's session start
             dry_run: Whether this session places no real orders
 
         Returns:
-            The tick loop, wired but not yet running
+            The event loop, wired but not yet running
         """
-        return AutotraderTickLoop(
+        return AutotraderEventLoop(
             config=self._config,
             tick_queue=self._tick_queue,
             tick_source=self._tick_source,
@@ -1280,6 +1408,7 @@ class AutotraderMain:
             # every live-adapter session, so the loop runs exactly as it did before.
             stale_stress_driver=self._stale_stress_driver,
             operator_alerts=self._operator_alerts,
+            money_record=self._money_record,
             display_label_cache=self._display_label_cache,
             drift_auditor=self._drift_auditor,
             decision_event_dispatcher=self._decision_event_dispatcher,
@@ -1304,13 +1433,18 @@ class AutotraderMain:
             persist_carry_over=(
                 (lambda: self._persist_cold_start_carry_over(refresh_index=False))
                 if self._cold_start.persist else None),
+            # #499 — the start's entry hold lifts on the reconcile cycle that shows its orders gone
+            on_reconciled=(self._boot_premise_lifter.observe
+                           if self._boot_premise_lifter is not None else None),
             state_frames=self._state_frames,
+            indicator_series=self._indicator_series,
             # #476: each sealed trading day reaches the ledger when it seals, so a session that
             # dies on day 29 leaves the 28 days behind it
             book_sealed_periods=SealedPeriodBooker(
                 self._config, self._run_id, run_timestamp, self._deployment_id, self._run_dir,
                 self._session_logger, self._replayed_scenario,
-                broker_config_id=self._executor.broker.get_frozen_config_id()).book,
+                broker_config_id=self._executor.broker.get_frozen_config_id(),
+                exclusivity_violated_at=self._exclusivity_violated_at).book,
             # #476: and its streams' day moves into their day records at the same boundary
             seal_streams=self._stream_sealer.seal,
             open_stop_budget=self._open_stop_budget,
@@ -1378,7 +1512,7 @@ class AutotraderMain:
                 f'check what the venue holds before a restart.')
 
     def _print_runtime_error(self, message: str) -> None:
-        """Print a tick-loop runtime error to console. Aborts via emergency shutdown."""
+        """Print an event-loop runtime error to console. Aborts via emergency shutdown."""
         print(f"\n{'=' * 60}")
         print('  ❌ RUNTIME ERROR — SESSION ABORTED (emergency shutdown)')
         print(f'  {message}')
@@ -1393,7 +1527,7 @@ class AutotraderMain:
         Execute shutdown sequence and collect results.
 
         Args:
-            ticks_processed: Total ticks processed in tick loop
+            ticks_processed: Total ticks processed in event loop
             ticks_clipped: Total ticks that experienced clipping
 
         Returns:
@@ -1469,9 +1603,9 @@ class AutotraderMain:
         # #630: the display stays on through every wait of the stop, the operator's one view of
         # it, and stops here because the reports print to the console from now on. Its last frame
         # shows the book as the cleanup and the venue's read left it, which the report describes.
-        if self._tick_loop is not None:
+        if self._event_loop is not None:
             try:
-                self._tick_loop.push_last_display_frame(ticks_processed)
+                self._event_loop.push_last_display_frame(ticks_processed)
             except Exception as e:
                 self._session_logger.error(f"The display's last frame could not be built: {e}")
         self._stop_display()
@@ -1497,12 +1631,14 @@ class AutotraderMain:
         # next, at the same price. Its own try, like the order-event stream's.
         if self._state_frames:
             try:
-                if self._tick_loop is not None:
-                    self._tick_loop.write_final_state_frame(ticks_processed)
+                if self._event_loop is not None:
+                    self._event_loop.write_final_state_frame(ticks_processed)
                 else:
                     self._state_frames.close()
             except Exception as e:
                 self._session_logger.error(f'Error writing the last state frame: {e}')
+        if self._indicator_series:
+            self._indicator_series.close()
 
         # #327 — Drift auditor cleanup (surfaces unfinished audits + final summary)
         if self._drift_auditor:
@@ -1552,7 +1688,8 @@ class AutotraderMain:
             result, self._config,
             uncommitted_code_allowed=self._uncommitted_code_allowed,
             code_identity=self._code_identity,
-            readings_note=self._readings_note).validate()
+            readings_note=self._readings_note,
+            replayed_scenario=self._replayed_scenario).validate()
         self._generate_reports(result)
         return result
 
@@ -1572,6 +1709,10 @@ class AutotraderMain:
         result = AutoTraderResult(
             cold_start_situation=self._cold_start.situation,
             cold_start_verdict=self._cold_start.verdict,
+            # #499 — read from the executor whether or not a loop ran: a start that held its
+            # entries and then failed still held them
+            entry_holds=(list(self._executor.get_entry_holds().get_all())
+                         if isinstance(self._executor, LiveTradeExecutor) else []),
             session_duration_s=session_duration,
             ticks_processed=ticks_processed,
             ticks_clipped=ticks_clipped,
@@ -1588,9 +1729,10 @@ class AutotraderMain:
                 order_record_opened=self._order_event_stream is not None,
                 capture_opened=self._study_recorder is not None,
                 tick_source_started=self._tick_source is not None,
-                tick_loop_entered=self._tick_loop_started,
-                day_log_opened=self._tick_loop is not None and self._tick_loop.has_opened_day_log(),
+                event_loop_entered=self._event_loop_started,
+                day_log_opened=self._event_loop is not None and self._event_loop.has_opened_day_log(),
                 algo_state_found=self._algo_state_found,
+                indicator_series_opened=self._indicator_series is not None,
                 sealed_day_records=(self._stream_sealer.get_due_day_members()
                                     if self._stream_sealer is not None else frozenset())),
         )
@@ -1683,18 +1825,19 @@ class AutotraderMain:
 
         # #451: the tick-domain episodes + counters; the signal domain is collected
         # from the orchestrator, so both staleness domains travel as ONE list.
-        if self._tick_loop:
-            result.disturbance_episodes = self._tick_loop.get_disturbance_episodes()
-            result.market_data_tick_stats = self._tick_loop.get_market_data_tick_stats()
-            result.first_tick_time, result.last_tick_time = self._tick_loop.get_tick_span()
+        if self._event_loop:
+            result.intake_stats = self._event_loop.get_intake_stats()
+            result.disturbance_episodes = self._event_loop.get_disturbance_episodes()
+            result.market_data_tick_stats = self._event_loop.get_market_data_tick_stats()
+            result.first_tick_time, result.last_tick_time = self._event_loop.get_tick_span()
             # #356 — the risk denominator and how far the account moved against it. Read
             # from the loop rather than re-derived, because the running maxima only exist
             # there: the portfolio knows what the account is worth NOW, not what the
             # deepest excursion was thirty days ago.
-            result.safety_session = self._tick_loop.get_safety_session()
+            result.safety_session = self._event_loop.get_safety_session()
             # Seals the period that was still running, so the final and necessarily
             # incomplete one is filed like every other (#537).
-            result.booking_periods = self._tick_loop.get_booking_periods()
+            result.booking_periods = self._event_loop.get_booking_periods()
             # Directly after the seal, and inside this block for the reason the next comment
             # gives: the floor can only be final once the last period is sealed, and a failed
             # write has to reach the error pot that is taken a few lines below.
@@ -1756,6 +1899,7 @@ class AutotraderMain:
             replayed_scenario=self._replayed_scenario,
             observed_feed=self._collect_observed_feed(),
             deployment_id=self._deployment_id,
+            exclusivity_violated_at=self._exclusivity_violated_at,
         ).generate_and_log()
 
         self._shutdown_status.enter_step(ShutdownStep.ALERTS)
@@ -1884,9 +2028,9 @@ class AutotraderMain:
         # leaves open positions where they are (#492).
         _write_from_signal_handler(
             '\n⚠️  Shutdown initiated — finishing orders (Ctrl+C again within 3s to force)\n')
-        # Stop tick loop if running
-        if self._tick_loop:
-            self._tick_loop.stop()
+        # Stop event loop if running
+        if self._event_loop:
+            self._event_loop.stop()
         # No log line here: a handler interrupts the main thread, which may be inside the same
         # logger's write. The stop's first step says what asked for it.
 
@@ -1899,9 +2043,9 @@ class AutotraderMain:
             self._shutdown_mode = 'normal'
         self._signal_end_reason = self._signal_end_reason or 'termination signal (SIGTERM)'
         self._request_signal_end()
-        # Stop tick loop if running
-        if self._tick_loop:
-            self._tick_loop.stop()
+        # Stop event loop if running
+        if self._event_loop:
+            self._event_loop.stop()
         # No log line here, for the reason _handle_interrupt gives
 
     def _note_stop_asked(self, asked_by: str, signalled: bool = False) -> None:
@@ -1932,7 +2076,7 @@ class AutotraderMain:
             if self._executor.get_session_end_severity() is SessionEndSeverity.EMERGENCY:
                 return 'hard stop'
             return "strategy's request"
-        return 'end of input' if self._tick_loop_started else 'refused start'
+        return 'end of input' if self._event_loop_started else 'refused start'
 
     def _session_end_cancels_orders(self) -> bool:
         """
@@ -2003,7 +2147,7 @@ class AutotraderMain:
         Without it the decision logic heard "tick source exhausted" on an operator's Ctrl+C and
         a supervisor's SIGTERM alike, and so did the closing message. A request already made
         is kept — a hard stop's EMERGENCY, a strategy's own end: its reason is the truer one,
-        and its severity decides the shutdown mode. Called again right before the tick loop
+        and its severity decides the shutdown mode. Called again right before the event loop
         starts, for a signal that arrived before the executor existed.
         """
         if (not self._signal_end_reason or self._executor is None
@@ -2079,6 +2223,8 @@ class AutotraderMain:
             restored=restored,
             spot_mode=self._executor.portfolio.is_spot_mode(),
             exclusive_account=self._config.capital.exclusive_account,
+            # #499 — what this session's start found against that declaration, stamped beside it
+            exclusivity_violated_at_utc=self._exclusivity_violated_at,
             # Answers None before the first event, which is what makes the boot-balances
             # stamp honest provenance rather than an invented canonical time (§9).
             clock_fn=self._executor.get_current_time_if_set,
@@ -2142,7 +2288,7 @@ class AutotraderMain:
         Args:
             refresh_index: Whether the store rebuilds its index afterwards. The default is for
                 the writes that BOUND a session; the in-session writes pass False, because the
-                rebuild reads every bot's document and has no business in a tick loop (§42)
+                rebuild reads every bot's document and has no business in an event loop (§42)
 
         Returns:
             True when the carry-over is on disk, False when there was nothing to write or the
@@ -2176,7 +2322,7 @@ class AutotraderMain:
                 # store treats the value as a FLOOR, so a zero leaves the stored count alone
                 # rather than resetting a deployment's period numbering to the start.
                 highest_period_no=(
-                    self._tick_loop.get_highest_period_no() if self._tick_loop else 0),
+                    self._event_loop.get_highest_period_no() if self._event_loop else 0),
                 keys_in_use=self._cold_start.keys_in_use if venue else None,
                 # SPOT only. A spot holding is a balance the venue cannot describe as a
                 # position, so it only survives a restart if WE write it down; a margin
@@ -2217,6 +2363,17 @@ class AutotraderMain:
                 # alone — a debugging start of a deployed profile must not end the deployment
                 # it was asked to stay out of.
                 deployment_id=self._deployment_id or None,
+                # #499 — the orders of another owner an attended start accepted, so the next start
+                # holds nothing over them. None leaves what an earlier start accepted
+                accepted_foreign_orders=self._accepted_foreign_orders,
+                # #652 — the orders open at this write, so the next start reads back to the oldest
+                # of them; and while a hold over a fill stands, the write it was measured against.
+                # Claims about the venue, spot only, like the book
+                open_orders_at_write=(
+                    self._executor.get_open_orders_at_write()
+                    if venue and portfolio.is_spot_mode() else None),
+                write_boot_read_hold=venue,
+                boot_read_hold=self._boot_read_hold,
                 refresh_index=refresh_index,
             )
             self._replace_readings_pending = False
@@ -2235,7 +2392,7 @@ class AutotraderMain:
 
     def _carry_over_final_figures(self) -> None:
         """
-        Carry over the two figures that were not final when the carry-over was written.
+        Carry over the figures that were not final when the carry-over was written.
 
         The write above happens BEFORE the position cleanup, because the venue claims it
         carries describe the state at that instant (#355/#492). The period floor cannot ride
@@ -2256,6 +2413,13 @@ class AutotraderMain:
         period numbered 6, which is precisely the "number already in the books" the store's own
         floor comment warns against.
 
+        The open book is the third of the same shape (#542). It IS a claim about the venue, and
+        it was written before the cleanup for that reason — but each position in it carries its
+        excursion extrema, and `get_portfolio_statistics()` above marks the positions once more
+        and can deepen them. So the book is projected again here, under the same gate as the first
+        write: a dry run holds nothing at any venue, and a margin book comes back from the venue
+        (#209). A session that is flat writes the empty list, as the write after the cleanup does.
+
         A partial write is what the store is built for, so this second write cannot contradict
         the first: a FLOOR for the counters, and "leave alone" for everything the venue owns.
         A failure is logged and swallowed for the same reason as the write above — a carry-over
@@ -2264,19 +2428,26 @@ class AutotraderMain:
         if not (self._cold_start.persist
                 and self._cold_start.store
                 and isinstance(self._executor, LiveTradeExecutor)
-                and self._tick_loop):
+                and self._event_loop):
             return
         try:
             readings = self._may_write_readings
             replace = self._replace_readings_pending
+            portfolio = self._executor.portfolio
             self._cold_start.store.save(
-                # Everything the venue owns stays untouched: '' appends no key, 0 is a floor
-                # that cannot lower the stored counter, and the omitted arguments default to
-                # None, which the store reads as "not supplied" for the book, the baseline,
-                # the drawdown curve and the deployment identity.
+                # What the venue owns stays untouched but the book: '' appends no key, 0 is a
+                # floor that cannot lower the stored counter, and the omitted arguments default
+                # to None, which the store reads as "not supplied" for the baseline, the drawdown
+                # curve and the deployment identity.
                 session_key='',
                 highest_position_counter=0,
-                highest_period_no=self._tick_loop.get_highest_period_no(),
+                highest_period_no=self._event_loop.get_highest_period_no(),
+                # #542 — the book once more, with the extrema the session reported. Gated as the
+                # first write is: a claim about the venue, and spot only.
+                open_positions=(
+                    portfolio.get_position_book()
+                    if self._cold_start.persist_venue_claims and portfolio.is_spot_mode()
+                    else None),
                 # A replacement still pending — no earlier write went through — carries the
                 # baseline as well, or replacing the readings would erase it (#626)
                 risk_baseline=(self._risk_baseline.get_baseline()
@@ -2284,10 +2455,15 @@ class AutotraderMain:
                 # OUR OWN record, like the floor above — never a claim about the venue — so it
                 # rides this write without the dry-run split the first one needs. Only the run
                 # kind decides it: a rehearsal over real money's readings writes none (#626).
-                account_drawdown=(self._executor.portfolio.get_account_drawdown_carry_over()
+                account_drawdown=(portfolio.get_account_drawdown_carry_over()
                                   if readings else None),
                 readings_orders_to=self._readings_stamp if readings else None,
                 replace_readings=replace,
+                # #652 — the orders still open at the end, gated as the book above is
+                open_orders_at_write=(
+                    self._executor.get_open_orders_at_write()
+                    if self._cold_start.persist_venue_claims and portfolio.is_spot_mode()
+                    else None),
             )
             self._replace_readings_pending = False
         except Exception as e:
@@ -2296,7 +2472,8 @@ class AutotraderMain:
             # would share an identity.
             self._session_logger.error(
                 f'Final carry-over figures not written: {e} — the next session would reuse '
-                f'a period number already in the books and continue a shallower drawdown')
+                f'a period number already in the books, continue a shallower drawdown and '
+                f'inherit excursion extrema one mark older than this session reported')
 
     def _collect_observed_feed(self) -> Optional[SignalObservedSeries]:
         """

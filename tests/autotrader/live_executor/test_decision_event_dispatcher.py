@@ -24,6 +24,7 @@ from python.framework.types.decision_event_types import (
     OrderUnaccountedEvent,
     PartialCloseEvent,
     SessionEndEvent,
+    SessionEndOrderOutcomeEvent,
     SessionEndSeverity,
 )
 from python.framework.types.trading_env_types.order_types import (
@@ -52,6 +53,14 @@ class _FakeExecutor:
         self.outcome_listeners: List[Callable] = []
         self.decision_event_sink: Optional[Callable] = None
         self.end_request: Optional[Tuple[str, SessionEndSeverity]] = None
+        self.sent_after_session_end: Optional[Set[str]] = None
+
+    def begin_session_end(self) -> None:
+        self.sent_after_session_end = set()
+
+    def was_sent_after_session_end(self, order_id: str) -> bool:
+        return (self.sent_after_session_end is not None
+                and order_id in self.sent_after_session_end)
 
     def is_session_end_requested(self) -> bool:
         return self.end_request is not None
@@ -87,6 +96,7 @@ class _RecordingLogic:
         self.cancelled: List[OrderCancelledEvent] = []
         self.partial_closes: List[PartialCloseEvent] = []
         self.session_ends: List[SessionEndEvent] = []
+        self.session_end_outcomes: List[SessionEndOrderOutcomeEvent] = []
         self.order: List[str] = []
 
     def on_order_filled(self, event: OrderFilledEvent) -> None:
@@ -112,6 +122,10 @@ class _RecordingLogic:
     def on_session_end(self, event: SessionEndEvent) -> None:
         self.session_ends.append(event)
         self.order.append(f'session_end:{event.reason}')
+
+    def on_session_end_order_outcome(self, event: SessionEndOrderOutcomeEvent) -> None:
+        self.session_end_outcomes.append(event)
+        self.order.append(f'session_end_order:{event.order_id}:{event.status.value}')
 
 
 def _make_logic(subscribed: Set[DecisionEventType]) -> _RecordingLogic:
@@ -162,6 +176,7 @@ _ALL = {
     DecisionEventType.ORDER_CANCELLED,
     DecisionEventType.PARTIAL_CLOSE,
     DecisionEventType.SESSION_END,
+    DecisionEventType.SESSION_END_ORDER_OUTCOME,
 }
 
 
@@ -350,3 +365,54 @@ def test_a_session_nobody_ended_ran_out_of_input():
     dispatcher.emit_session_end()
     assert [(e.reason, e.severity) for e in logic.session_ends] == [
         ('tick source exhausted', SessionEndSeverity.NORMAL)]
+
+
+class TestTheOrdersSentAtTheSessionEnd:
+    """
+    After the session-end event, only an order the strategy sent from its session-end hooks is
+    reported, as its session-end outcome (#642); an order sent before is not, as it never was.
+    """
+
+    def _ended(self) -> Tuple[_RecordingLogic, _FakeExecutor, DecisionEventDispatcher]:
+        logic = _make_logic(_ALL)
+        executor = _FakeExecutor()
+        dispatcher = DecisionEventDispatcher.create_if_subscribed(logic, executor, GlobalLogger())
+        dispatcher.emit_session_end()
+        return logic, executor, dispatcher
+
+    def test_an_order_sent_from_the_event_is_reported_as_its_outcome(self):
+        logic, executor, dispatcher = self._ended()
+        executor.sent_after_session_end.add('pos_9')
+
+        executor.fire_outcome(OrderDirection.LONG, _executed_result('pos_9'))
+        dispatcher.emit_session_end_orders()
+
+        assert logic.filled == []
+        assert [(e.order_id, e.status) for e in logic.session_end_outcomes] == [
+            ('pos_9', OrderStatus.EXECUTED)]
+        assert logic.order[-1] == 'session_end_order:pos_9:executed'
+
+    def test_an_order_sent_before_the_event_is_not_reported_after_it(self):
+        """A resting order a live venue fills during the stop's second wait, say."""
+        logic, executor, dispatcher = self._ended()
+
+        executor.fire_outcome(OrderDirection.LONG, _executed_result('pos_1'))
+        dispatcher.emit_session_end_orders()
+
+        assert logic.filled == [] and logic.session_end_outcomes == []
+
+    def test_a_close_that_ended_without_a_fill_names_its_position(self):
+        logic, executor, dispatcher = self._ended()
+        executor.sent_after_session_end.add('pos_9')
+        withdrawn = OrderResult(order_id='pos_9', status=OrderStatus.CANCELLED,
+                                action=OrderAction.CLOSE,
+                                initiator=OrderInitiator.FRAMEWORK,
+                                end_reason=OrderEndReason.SESSION_END)
+
+        executor.decision_event_sink(OrderCancelledEvent(
+            order_id='pos_9', direction=None, result=withdrawn))
+        dispatcher.emit_session_end_orders()
+
+        outcome, = logic.session_end_outcomes
+        assert (outcome.position_id, outcome.status) == ('pos_9', OrderStatus.CANCELLED)
+

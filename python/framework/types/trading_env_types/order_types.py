@@ -182,6 +182,18 @@ FAILED_ORDER_STATUSES = frozenset({
 })
 
 
+@dataclass
+class FailedOrderOfReason:
+    """
+    A failed order as the order history counts it: its status and the reason its row names.
+
+    A fold row (#557) — the reason is resolved from the row once, so the failed orders can be
+    grouped by it.
+    """
+    status: OrderStatus
+    reason: str
+
+
 class OrderInitiator(Enum):
     """
     Who ended an order that did not fill — on a cancelled, expired or unaccounted row.
@@ -203,6 +215,7 @@ class OrderEndReason(Enum):
     ORDER_TIMEOUT = 'order_timeout'              # No fill within the order timeout
     RESOLUTION_CEILING = 'resolution_ceiling'    # Its answer was lost, and the venue never named it however long we asked
     SESSION_END = 'session_end'                  # The live session ended with the order still out
+    ENTRIES_HELD = 'entries_held'                # It would have opened a position while the session held its entries (#499)
     SCENARIO_END = 'scenario_end'                # The backtest's data ended with the order still out
     VENUE_CANCELLED = 'venue_cancelled'          # The venue cancelled it on its own
     VENUE_EXPIRED = 'venue_expired'              # The venue let it expire
@@ -255,6 +268,11 @@ class RejectionReason(Enum):
     # sent, neither open nor closed. It may be resting there. New ENTRIES stop while that
     # is true; closing and protecting what is already held do not.
     UNACCOUNTED_ORDER = 'unaccounted_order'
+    # #499 — the session holds its entries: a cause it cannot settle by itself stands, such as
+    # orders of another owner on this bot's instrument on an account declared exclusive. Like
+    # UNACCOUNTED_ORDER a refusal of our own and no broker's answer, so it feeds no cooldown;
+    # closing and protecting the open position stay free.
+    ENTRIES_HELD = 'entries_held'
     # A close for a position this bot does not hold. The simulation's venue also refuses a
     # close whose position was closed while the close was on its way.
     POSITION_NOT_FOUND = 'position_not_found'
@@ -291,11 +309,40 @@ class FeeReport(Enum):
     NOT_REPORTED = 'not_reported'
 
 
+class StopTriggerBasis(Enum):
+    """
+    Which price a venue watches to trigger a stop (#605) — declared per venue, never inferred
+    from its market type.
+
+    LAST: the last traded price. Kraken spot triggers a stop-loss on it by default. On a tick
+        without a traded price the quote answers instead
+    BID_ASK: the quote — a sell stop on the bid, a buy stop on the ask. A quote-driven venue has
+        no traded price, so there the quote is the only evidence
+    """
+    LAST = 'last'
+    BID_ASK = 'bid_ask'
+
+
+class LimitFillEvidence(Enum):
+    """
+    What a venue counts as evidence that a resting limit order filled (#605).
+
+    PUBLIC_TRADE: a public trade THROUGH the limit price — a print below a buy limit, above a sell
+        limit — proves the order was met, while the quote may still stand away from it. The rule
+        of a central order book with price-time priority, Kraken's. The quote crossing the limit
+        fills it too
+    QUOTE: only the quote crossing the limit fills it — a buy limit when the ask falls to it, a
+        sell limit when the bid rises to it
+    """
+    PUBLIC_TRADE = 'public_trade'
+    QUOTE = 'quote'
+
+
 # ============================================
 # Order Capability System
 # ============================================
 
-@dataclass
+@dataclass(frozen=True)
 class OrderCapabilities:
     """
     Runtime capability checks for broker-specific order types.
@@ -342,6 +389,14 @@ class OrderCapabilities:
     # fill is booked: a venue that reports it in the status answer and whose answer comes
     # without one is booked from the estimate, and that is said in the session's log.
     fee_report: FeeReport = FeeReport.NOT_REPORTED
+
+    # Resting orders (#605)
+    # stop_trigger_basis / limit_fill_evidence: which price fires a stop, and what fills a resting limit — see
+    # StopTriggerBasis and LimitFillEvidence. The simulation and a dry run decide by them, so a backtest
+    # fills where the venue would. The defaults are the quote's rule, which is also what applies
+    # on any tick that carries no traded price.
+    stop_trigger_basis: StopTriggerBasis = StopTriggerBasis.BID_ASK
+    limit_fill_evidence: LimitFillEvidence = LimitFillEvidence.QUOTE
 
     # Order features (#625)
     # offered_order_features: what the venue's API holds for a position. Required, so an adapter
@@ -742,7 +797,8 @@ class ModificationResult:
         success: True if modification was accepted (PENDING or SUCCESS).
                  Backward-compatible — algos checking `if result.success`
                  keep working under the post-#318 async path where the
-                 modification is queued and resolves on the next tick / drain.
+                 modification is queued and resolves when it comes due — in a
+                 backtest at its own instant, live on a later drain.
         status: Lifecycle status (PENDING for async-queued, SUCCESS for
                 synchronous fallback or post-resolve, REJECTED on reject). A refusal
                 that states none reads REJECTED: success and status never disagree.

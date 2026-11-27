@@ -66,8 +66,11 @@ def test_the_computed_column_reaches_the_file(sweep_root):
 
     header = csv.DictReader(path.open()).fieldnames
     assert 'run_kind' in header
-    assert len(header) == len(RunResultRow.model_fields) + 1, (
-        'the header should carry every declared field plus the computed one')
+    # A field the row keeps for reading the ledger and does not serve — the drawdown periods a
+    # period row recorded (#529) — is left out of the export as it is out of every served answer
+    served = {name for name, field in RunResultRow.model_fields.items() if not field.exclude}
+    assert set(header) == served | set(RunResultRow.model_computed_fields), (
+        'the header should carry every served field and every computed one')
 
 
 def test_an_empty_ranking_still_writes_a_header(sweep_root):

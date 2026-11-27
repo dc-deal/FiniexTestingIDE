@@ -199,10 +199,10 @@ class AppConfigManager:
 
     def get_default_tick_loop_profiling(self) -> bool:
         """
-        Get default tick-loop profiling setting (Layer B).
+        Get default event-loop profiling setting (Layer B).
 
         Returns:
-            True if operation-level timers in the tick loop are enabled by default
+            True if operation-level timers in the event loop are enabled by default
         """
         return self._app_config.backtesting.execution.default_scenario_execution_config.performance_tracking.tick_loop_profiling
 
@@ -295,6 +295,15 @@ class AppConfigManager:
             One command per entry, as its argument list; empty when nothing is set up
         """
         return [list(command) for command in self._app_config.docs_search.extra_commands]
+
+    def get_docs_search_snapshot_stamps(self) -> Dict[str, str]:
+        """
+        Where a searched folder records when its contents were fetched.
+
+        Returns:
+            Folder → '<file>::<key>'; empty when no folder is a snapshot
+        """
+        return dict(self._app_config.docs_search.snapshot_stamps)
 
     # ============================================
     # Development Config

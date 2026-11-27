@@ -525,7 +525,7 @@ MockOrderExecution
         +-- close_position()   → register_pending_close(broker_ref=None) + submit_close_order_async
         +-- modify_limit_order → processor.modify_order_sync
         +-- cancel_limit_order → processor.cancel_order_sync
-        +-- on_tick(tick):
+        +-- on_tick(tick)       (a session reaches the same through apply_tick + resolve_due, #461):
               Phase 0: processor.drain_inbox()    (worker responses)
               Phase 1: query_order_sync per pending  (MARKET in processor)
               Phase 2: query_order_sync per active   (LIMIT in _active_limit_orders)
@@ -830,6 +830,7 @@ NEXT drain, so a hook that reacts by placing an order cannot extend the pass it 
 | `test_drain_empty_buffer_is_noop` | Draining nothing does nothing |
 | `test_the_session_end_names_the_request_that_ended_it` | `emit_session_end()` — the one call both loops end through — carries the request's reason and severity |
 | `test_a_session_nobody_ended_ran_out_of_input` | Without a request the event says `tick source exhausted`, NORMAL |
+| `TestTheOrdersSentAtTheSessionEnd` (#642) | After the session-end event an order the logic sent from its session-end hooks arrives as its session-end outcome — not as `ORDER_FILLED` — once `emit_session_end_orders()` delivers it; the ending of an order sent before the event is not delivered; a close that ended without a fill names its position |
 
 ---
 
@@ -962,6 +963,31 @@ blank column; reported as a wall-clock difference it costs an investigation into
 did nothing wrong. This mirrors the rule that a missing injected clock raises instead of
 falling back.
 
+### test_live_instant_resolution.py — how a session's instant resolves what the venue answered (#461)
+
+The session hands its executor one instant at a time: the clock moves to its stamp, every tick of
+the slice applies, then what the venue answered resolves once. After a tick that is the tick's own
+order processing, with its synchronous status read of a MARKET order or a close in transit — so a
+market fill the venue already made is booked in the instant of its tick, as before the timeline.
+Without a tick it is the heartbeat's work.
+
+| Class | Description |
+|---|---|
+| `TestTheTwoFormsOfResolution` | after a tick, `resolve_due` takes the tick's order processing; in the next instant without a tick, the heartbeat's — the tick of the instant before does not count; `begin_instant` sets the clock to the instant's stamp |
+| `TestAFailingArrivalListener` | the arrival listener runs on the request processor's worker thread; one that raises costs the wake, never the worker — two MARKET orders in a row both reach the venue and are booked, and the failure is logged once into the error pot |
+
+### test_answer_receipt_stamp.py — an answer's stamp is its receipt (#461)
+
+A venue's answer carries `ts_init`, when this process received it. It is read as the answer comes
+back, after the venue call — never when the request left, which would be the send time under a
+receipt's name — and a failed call is stamped when the failure surfaced. Each test gives a fake
+venue a 50 ms round trip and checks the stamp lies past it.
+
+| Class | Description |
+|---|---|
+| `TestAnAnswersStampIsItsReceipt` | a status answer and a cancel answer read synchronously, a failed status read (`UNRESOLVED`), and a submit answered on the worker are each stamped after the round trip; the submit's stamp is no later than the moment the loop is told it arrived |
+| `TestEveryCallThatStampsAnAnswer` | every dispatcher on the worker — submit, edit, cancel, position modify, status query — answered and failed, and the synchronous modify and a failed synchronous cancel, each stamped after the round trip. The order-resolve dispatcher is not among them: the answer it puts in the inbox carries no stamp |
+
 ## test_write_identity.py — every write carries an identity we can ask about (#487)
 
 A write whose answer is lost can only be resolved by asking the venue what became of it, and the
@@ -983,6 +1009,16 @@ drops it into the abandoned bucket — the false alarm measured twice in five fi
 |---|---|
 | `TestTheKeyIsUniquePerWrite` | a close does not reuse its entry's key, two partial closes send two different keys, and the close key still parses as one of ours |
 | `TestTheKeyIsRecorded` | a resting order carries the key it sent, and an in-flight close is not reported as abandoned |
+
+## test_entry_hold_gate.py — a held session opens nothing new (#499)
+
+The gate sits where the unaccounted-order latch already sits: only an order that would open is
+refused. Both account models.
+
+| Class | What it validates |
+|---|---|
+| `TestTheGuardRefusesEntriesWhileHeld` | a standing hold refuses a market and a resting entry with `entries_held` and its detail; no hold refuses nothing |
+| `TestAHeldSessionManagesWhatItHas` | a new entry is denied, never submitted and booked as a guard refusal; the open position is still closed; entries are free again once the hold is lifted |
 
 ## test_unresolved_write_resolution.py — asking, and what the answer may become (#487)
 
@@ -1049,6 +1085,25 @@ nothing, its operation stays in flight, and the resolution decides.
 | Class | Description |
 |---|---|
 | `TestAFullCloseReachesTheLogic` | a full close emits `PositionClosedEvent` once, a partial close only `PartialCloseEvent`, and the simulation emits it too |
+
+## test_crashed_worker_job.py — the request worker survives a job that raises (#669)
+
+One worker thread sends every write and read to the venue. A job that raised outside its dispatcher's
+`try` ended it without a word, and every later order waited unsent; an answer we could not read, after
+the venue executed, was booked as the venue's refusal. Against the real `LiveTradeExecutor` on
+`AcknowledgingVenueMock` (which executes first and can fail while its answer is read), the fill cases in
+both account models; the read and position-modify cases against the processor alone.
+
+| Class | What it pins |
+|---|---|
+| `TestAWriteThatRaisesAfterTheVenueExecuted` | an answer that cannot be parsed, an answer object that fails as it is built, and an unreadable body the call raises are each kept `UNRESOLVED`, resolved by asking and the fill booked, with no rejection; one ERROR names the crash; the worker sends the next order |
+| `TestOnlyTheVenuesRefusalIsARefusal` | a refusal the venue call raises stays `REJECTED` and leaves no pending |
+| `TestAnAmendOrCancelThatCrashes` | a crashed amend leaves the order at its old price with the modify in flight and the resolution armed; a crashed cancel keeps the order and arms the resolution; an unreadable answer to the synchronous cancel (fill timeout, session end) is `UNRESOLVED`, not a refusal |
+| `TestTheLoopsOwnCallsToTheVenue` | at the fill timeout, a cancel answer and a status answer that cannot be read hand the order to the resolution instead of ending the heartbeat with an exception, in both account models; the synchronous cancel and modify answer an unreadable answer `UNRESOLVED` |
+| `TestAPositionModifyThatCrashes` | on a venue holding a position's levels (margin), an answer that cannot be read leaves the levels unapplied, says so at ERROR, and drops the tracker so the next change is taken — nothing can ask about a position |
+| `TestAWriteThatWasNeverSent` | a cancel whose request cannot be built is answered `REJECTED`, "not sent", and nothing reaches the venue |
+| `TestAReadThatRaises` | a trades query whose parse raises is one failed read with no trades list; a resolve whose answer fails as it is built is answered once, as a failed read; a status query that crashes is one `UNRESOLVED` answer and the next read is still sent |
+| `TestAPositionModifyWithNoAdapterBehindIt` | refused as not supported before anything is sent, with one ERROR |
 
 ## test_active_order_snapshot.py — what the ORDERS panel's partial-fill row reads (#586)
 

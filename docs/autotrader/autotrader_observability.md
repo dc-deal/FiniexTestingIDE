@@ -15,7 +15,7 @@ purposes.
 
 ## Live Console UI (#228)
 
-Real-time dashboard rendered via `rich.live` in a dedicated display thread. Receives `AutoTraderDisplayStats` snapshots from the tick loop via `queue.Queue`, drains and renders every `update_interval_ms` (default 300ms).
+Real-time dashboard rendered via `rich.live` in a dedicated display thread. Receives `AutoTraderDisplayStats` snapshots from the event loop via `queue.Queue`, drains and renders every `update_interval_ms` (default 300ms).
 
 ### Layout — Responsive
 
@@ -69,7 +69,7 @@ snapshot and pushes it to the display queue (`put_nowait` — dropped if full, d
 state). The snapshot contains only primitives, lists, and dataclasses — safe for queue transport and
 future JSON serialization.
 
-At shutdown, the tick loop drains stale snapshots from the queue and pushes one **final** snapshot
+At shutdown, the event loop drains stale snapshots from the queue and pushes one **final** snapshot
 via blocking `put(timeout=1.0)`. This guarantees the display shows the terminal pipeline state
 (post-close balances, final trade count) regardless of refresh timing. The display thread performs
 its own final drain after the loop exits, then renders the last frame before the `Live` context
@@ -82,7 +82,7 @@ and `spot_balances` (per-currency holdings). The PORTFOLIO panel branches on `tr
 render a dual-balance layout (spot) or the standard balance view (margin).
 
 ```
-Tick Loop (Thread 2)                Display Thread (Thread 3)
+Event Loop (Thread 2)                Display Thread (Thread 3)
 ────────────────────                ──────────────────────────
 AutotraderDisplayExporter.build()   while running:
   → AutoTraderDisplayStats            drain queue (up to 100)
@@ -116,7 +116,7 @@ graded as finished with errors and exits 3, although trading was unaffected:
 ```
 
 The same failure is not reported again, and one place reports only a few distinct failures.
-Should the display thread end all the same, the session trades on: the tick loop hands its
+Should the display thread end all the same, the session trades on: the event loop hands its
 snapshots over without waiting. The mechanics are in
 [live_telemetry_architecture.md](../architecture/live_telemetry_architecture.md).
 
@@ -138,27 +138,33 @@ snapshots over without waiting. The mechanics are in
 
 **Core question:** Can the algo process ticks fast enough, or is it falling behind the market?
 
-Clipping occurs when tick processing time exceeds the inter-tick arrival interval — the next tick arrives before the current one is finished.
+Clipping occurs when ticks arrive while a pass is still running. They wait on the queue, and the
+next pass takes the whole backlog as one slice (#461): the broker path and the bars see every tick,
+the algo computes once, on the newest. The tick queue holds one item per arrival — one venue
+message, whose trades came in together — and the ticks of every arrival before the newest are the
+clipped ones: the algo never computed on them. The trades of one message are never clipped against
+each other, however the parser's per-trade stamps fall. This is the live side of a backtest's
+clipping, observed rather than simulated, and a replay, which is never behind, never clips.
 
 ```
-Tick N arrives        Tick N+1 arrives
-    │                     │
-    ├── processing_ms ────┤
-    │                     │
-    ├── tick_delta_ms ──► │
-    │                     │
-    If processing_ms > tick_delta_ms → CLIPPED (stale by the difference)
+pass N running ──────────────────────┐
+   tick a arrives ─┐  tick b ─┐  tick c ─┐
+                   ▼          ▼          ▼
+               queue: a, b, c            pass N+1: one slice [a, b, c]
+                                          broker path + bars: a, b, c
+                                          algo: c          → a, b CLIPPED
+                                          stale: how long a waited
 ```
 
 ### Metrics
 
 | Metric | What it measures | Why it matters |
 |--------|-----------------|----------------|
-| `processing_ms` | Algo time per tick (Workers + Decision + Execution) | Baseline — how fast are we? |
-| `tick_delta_ms` | Market-side interval between consecutive ticks | How much time did we have? |
-| `stale_ms` | Overshoot: `processing_ms - tick_delta_ms` | Severity — 1ms late vs. 500ms late |
-| `queue_depth` | Ticks waiting in queue (`queue.qsize()`) | Growing queue = falling behind permanently |
-| `clipping_ratio` | Fraction of clipped ticks over session | Overall health: 0.1% = fine, 30% = problem |
+| `processing_ms` | Time of a pass (broker path, bars, workers, decision, execution) over its slice | Baseline — how fast are we? |
+| `ticks_clipped` | Ticks of the arrivals before a slice's newest — the algo did not compute on them | How much did the algo miss? |
+| `stale_ms` | How long a clipped slice's oldest arrival waited, on the monotonic clock | Severity — 1ms late vs. 500ms late |
+| `queue_depth` | Arrivals waiting in queue (`queue.qsize()`), not ticks — one venue message each live, one arrival millisecond in a replay, plus one wake marker per venue answer not yet taken | Growing queue = falling behind permanently |
+| `clipping_ratio` | Clipped ticks over all ticks of the session | Overall health: 0.1% = fine, 30% = problem |
 
 All metrics are tracked in two scopes: **session totals** (end-of-session summary) and **interval** (periodic report every N seconds, then reset). This shows *when* clipping occurs, not just *if*.
 
@@ -182,12 +188,14 @@ The sim has no counterpart: it judges clipping against a *configured* `tick_proc
 
 | Phase | What | Status |
 |-------|------|--------|
-| 1 | Per-tick processing time (`perf_counter_ns`) | ✅ |
-| 2 | Clipping detection (processing > tick delta) | ✅ |
+| 1 | Per-pass processing time (`perf_counter_ns`) | ✅ |
+| 2 | Clipping — the ticks of a coalesced slice's arrivals before its newest (#461) | ✅ |
 | 3 | Counters (ticks_clipped, max_stale_ms, avg) | ✅ |
 | 4 | Periodic reports (configurable interval) | ✅ |
 | 5 | Queue depth monitoring (`queue.qsize()`) | ✅ |
-| 6 | Strategy selection (queue_all / drop_stale) | ✅ Config, drop_stale execution in #232 |
+
+A backlog is always coalesced; the former `clipping_monitor.strategy` key, which named a choice no
+code ever made, is gone (#461).
 
 ## Logging
 

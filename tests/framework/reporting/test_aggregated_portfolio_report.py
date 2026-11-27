@@ -300,3 +300,43 @@ class TestSeveralAccountsAddUpOnlyAsATotal:
         row = _build([_pf('a', max_dd=0.0, max_dd_pct=0.0)]).currencies[0].combined
 
         assert row.account_max_dd_pct == 0.0
+
+
+class TestWhatTheConsolesPrintIsOnTheModel:
+    """
+    The cost total, the estimated spot P&L and the resting-order counts the consoles print are
+    on the model (#557) — derived once, never in a renderer.
+    """
+
+    def test_the_cost_total_adds_every_category(self):
+        c = _build([_pf('s1', spread=3.0, maker=1.5, taker=2.5)]).currencies[0].combined
+        assert c.total_costs == 3.0 + 0.0 + 0.0 + 0.0 + 1.5 + 2.5
+
+    def test_an_unmeasured_spread_stays_out_of_the_cost_total(self):
+        c = _build([_pf('s1', spread=None, maker=1.5, taker=2.5)]).currencies[0].combined
+        assert c.total_spread_cost is None and c.total_costs == 4.0
+
+    def test_a_valued_spot_holding_has_an_estimated_pnl(self):
+        c = _build([_pf('s1', symbol='BTCUSD', spot=True, last_price=100.0,
+                        balances={'USD': 500.0, 'BTC': 2.0},
+                        initial_balances={'USD': 1000.0, 'BTC': 0.0})]).currencies[0].combined
+        # 700 now against 1000 at the start
+        assert c.spot_total_est_pnl == -300.0
+        assert c.spot_total_est_pnl_pct == -30.0
+
+    def test_without_a_valued_holding_the_estimate_is_absent(self):
+        c = _build([_pf('s1', symbol='BTCUSD', spot=True, last_price=100.0,
+                        balances={'USD': 900.0, 'BTC': 0.0},
+                        initial_balances={'USD': 1000.0})]).currencies[0].combined
+        assert c.spot_total_est_pnl is None and c.spot_total_est_pnl_pct is None
+
+    def test_a_margin_group_has_no_estimate(self):
+        c = _build([_pf('s1')]).currencies[0].combined
+        assert c.spot_total_est_pnl is None
+
+    def test_the_rows_count_what_they_list(self):
+        unit = _pf('s1')
+        assert unit.open_position_count == 0 and unit.model_dump()['open_position_count'] == 0
+        pending = _pe('s1')
+        assert (pending.active_limit_count, pending.active_stop_count,
+                pending.active_order_count) == (0, 0, 0)

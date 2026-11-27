@@ -45,6 +45,7 @@ from python.framework.types.portfolio_types.portfolio_trade_record_types import 
 from python.framework.types.portfolio_types.portfolio_types import Position
 from python.framework.types.trading_env_types.broker_types import BrokerType, FeeType
 from python.framework.types.trading_env_types.order_types import OrderDirection, OrderType
+from tests.shared.null_logger import NullLogger
 
 _MT5_CONFIG = 'configs/brokers/mt5/mt5_broker_config.json'
 _KRAKEN_SEED = 'configs/brokers/kraken/kraken_spot_broker_config.json'
@@ -60,16 +61,6 @@ _PF_SYMBOL = 'EURUSD'
 _PF_ENTRY = 1.10
 _PF_EXIT = 1.11
 _PF_LOTS = 1.0
-
-
-class _NullLogger:
-    """Minimal duck-typed logger — the arithmetic under test does not log."""
-
-    def verbose(self, *args, **kwargs): pass
-    def debug(self, *args, **kwargs): pass
-    def info(self, *args, **kwargs): pass
-    def warning(self, *args, **kwargs): pass
-    def error(self, *args, **kwargs): pass
 
 
 def _executor(model: str) -> LiveTradeExecutor:
@@ -113,7 +104,7 @@ def _portfolio(spot_mode: bool = False) -> PortfolioManager:
         A PortfolioManager with a fixed clock
     """
     return PortfolioManager(
-        logger=_NullLogger(), initial_balance=10_000.0, account_currency='USD',
+        logger=NullLogger(), initial_balance=10_000.0, account_currency='USD',
         broker_config=BrokerConfigFactory.build_broker_config(_MT5_CONFIG),
         leverage=500, margin_call_level=50.0, stop_out_level=20.0,
         spot_mode=spot_mode,
@@ -302,6 +293,57 @@ class TestTheExitFeeLeavesTheMoney:
             exit_fee=None, close_reason=CloseReason.MANUAL)
 
         assert realized == pytest.approx(marked)
+
+
+class TestACloseBooksThePriceItFilledAt:
+    """
+    A close books the price it filled at, in both account models and for a partial close too
+    (#629). The last mark is the price before the close: a fill away from it — a venue's
+    slippage, a target at its level — used to be recorded at the fill and booked at the mark.
+    """
+
+    _FILL = 1.105   # half a cent below the last mark of 1.11
+
+    @pytest.mark.parametrize('spot_mode', [False, True], ids=['margin', 'spot'])
+    def test_a_full_close_away_from_the_mark(self, spot_mode):
+        portfolio = _portfolio(spot_mode=spot_mode)
+        if spot_mode:
+            portfolio._balances['EUR'] = _PF_LOTS
+        before = portfolio.balance
+        _open(portfolio, entry_fee_cost=2.0)
+
+        realized = portfolio.close_position_portfolio(
+            position_id='p1', exit_price=self._FILL, exit_tick_value=1.0, exit_tick_index=10,
+            exit_fee=None, close_reason=CloseReason.MANUAL)
+
+        record = portfolio.get_trade_history()[-1]
+        assert record.exit_price == pytest.approx(self._FILL)
+        # 500 points of 1.0 on one lot, from the entry at 1.10 to the fill at 1.105
+        assert record.gross_pnl == pytest.approx(500.0)
+        assert record.net_pnl == pytest.approx(record.gross_pnl - record.total_fees)
+        assert realized == pytest.approx(record.net_pnl)
+        if not spot_mode:
+            assert portfolio.balance - before == pytest.approx(record.net_pnl)
+
+    @pytest.mark.parametrize('spot_mode', [False, True], ids=['margin', 'spot'])
+    def test_a_partial_close_away_from_the_mark(self, spot_mode):
+        portfolio = _portfolio(spot_mode=spot_mode)
+        if spot_mode:
+            portfolio._balances['EUR'] = 3.0
+        before = portfolio.balance
+        _open(portfolio, entry_fee_cost=2.0, lots=3.0)
+
+        realized = portfolio.partial_close_position(
+            position_id='p1', close_lots=1.0, exit_price=self._FILL, exit_tick_value=1.0,
+            exit_tick_index=10, exit_fee=None, close_reason=CloseReason.MANUAL)
+
+        record = portfolio.get_trade_history()[-1]
+        assert record.exit_price == pytest.approx(self._FILL)
+        # the closed lot alone: 500 points of 1.0, not a third of the marked position's 3,000
+        assert record.gross_pnl == pytest.approx(500.0)
+        assert realized == pytest.approx(record.net_pnl)
+        if not spot_mode:
+            assert portfolio.balance - before == pytest.approx(record.net_pnl)
 
 
 class TestAPartialCloseChargesOnlyTheClosedLots:

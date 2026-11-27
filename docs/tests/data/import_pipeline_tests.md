@@ -181,7 +181,9 @@ checksum list — so nothing binary is committed.
   deficiencies `no_quote` and `no_arrival_time` in the index
 - **TestTheArchiveStepProvesBeforeItRemoves** — an imported conversion is zipped intact and its
   loose copies removed, the record marked; a conversion not yet imported is refused, nothing is
-  zipped and nothing removed
+  zipped and nothing removed; a zip a failed write left behind is refused rather than appended to —
+  mode `'a'` would write a new archive behind it that still passes `testzip` — and an archive that
+  already sits behind a fragment is caught after the write by where its first member starts (#647)
 
 ---
 
@@ -194,7 +196,10 @@ What a tick file LACKS, measured from its rows when the tick index scans it (#56
 - **TestWhatAFileLacksIsMeasured** — a recorded, quoted file lacks nothing; bid = ask throughout is
   `no_quote`; an absent or zeroed arrival column is `no_arrival_time`; both reconstruction
   fingerprints (every multi-tick second ending on .999, the arrival copied from the event time) are
-  `arrival_time_reconstructed`
+  `arrival_time_reconstructed`; a median arrival lag outside 0–1,000 ms — seconds behind the event,
+  or before it — is `arrival_time_offset`, a lag of milliseconds is none (#460)
+- **TestWhichDeficienciesLeaveTheArrivalUntrusted** — exactly the three arrival deficiencies make a
+  backtest order a file by its event time (#460)
 - **TestMissingTradesAreCountedAlways** — a few missing trade ids are a count, not a deficiency; a
   run of missing ids spanning more than five minutes is one; no trade ids means "not measurable"
 - **TestTheIndexCarriesThem** — a file imported without a quote and without an arrival time is
@@ -212,7 +217,7 @@ Tests for the `collected_msc` field (V1.3.0), `time_msc` offset consistency, tic
 
 **TestCollectedMscBackwardCompat:**
 - JSON without `collected_msc` imports WITHOUT the column (no zero is written); the reader adds the
-  tick loop's zero when it loads the file
+  event loop's zero when it loads the file
 
 **TestCollectedMscValues:**
 - V1.3.0 data preserves `collected_msc` values through import
@@ -301,8 +306,42 @@ Validates that `data_format_version` survives the tick index write/read cycle �
 - A manager loading the index sees the real version, not `'unknown'`
 - The empty-schema branch declares the same columns as a populated index
 
-**TestLegacyIndexTolerance:**
-- An index file without the version column still loads (entries intact) and reads as `'unknown'` — never an exception that silently empties the index
+**TestAnIndexWrittenUnderAnOlderSchema:**
+- An index file without the schema stamp is rebuilt rather than read, so its entries carry the real version
+- A rebuild restores the columns the old index lacked — the origin columns read `'unknown'` only where the file states none
+
+**TestArrivalBoundsRoundTrip:**
+- `collected_start` and `collected_end` survive the write/read cycle; the empty-schema branch declares them too
+
+**TestAnchorCountersRoundTrip:**
+- The anchor counters a raw file reports survive the write/read cycle
+
+**TestServerClockRuleRoundTrip:**
+- The server clock rule in a file's header reaches its index entry (#647)
+- A file that states no rule reads back as None — `''` is only the storage form
+
+### test_tick_index_update.py
+
+An import used to rebuild the tick index by reading every tick file in full. It now updates the
+index: it reads only the files that changed and keeps every other entry, and it rebuilds in full
+only where it must. These tests pin which files an update reads and that its index equals a full
+rebuild's.
+
+**TestAnUpdateReadsOnlyWhatChanged:**
+- A second import reads only its own file; an update with nothing changed reads none
+- A file whose modification time moved is read again; a removed file leaves the index
+
+**TestAnUpdateFallsBackToAFullRebuild:**
+- No index, or one written under an older schema version, means a full rebuild, with the reason
+- An index written before the file identities existed is rebuilt in full once, with that reason, and updated after
+
+**TestAnUpdateEqualsAFullRebuild:**
+- After new, rewritten and removed files, the updated index equals a full rebuild row for row
+- Size and modification time are stored as exact integers, so a nanosecond time does not drift
+
+**TestTheImportShowsWhichMethodRan:**
+- The summary names the method, a full rebuild its reason, and the counts
+- An update is estimated per file the import writes, a full rebuild per file of the archive; every rebuild reason has its words
 
 ### test_tick_index_lookup.py
 
@@ -346,6 +385,11 @@ given, and a bar file is proven readable at the moment it is written.
 - `origin_classes` and the seam `collected_from` survive a reload; a file from before the stamp answers nothing
 - The seam is the start of the first tick file not from a venue's published history; one origin alone has no seam
 - A warmup whose first bar opens before the seam is external; a file of external history only is external throughout; collected data alone never is
+- A symbol's origin is read once over its timeframes — the classes in their declared order, and the seam; an unstamped symbol has neither (#647)
+
+**TestAServerWithoutABarArchive** (#647):
+- A missing bar index is said once per process, as an info line, and never warned on each request — a server that renders no bars reads the index on every broker and bar route
+- An index file that exists and cannot be read is still a warning
 
 Uses `RecordingLogger` (`tests/shared/recording_logger.py`): the project's loggers do not
 route through the stdlib `logging` module, so `caplog` cannot see them, and these cases
@@ -354,11 +398,14 @@ assert what was REPORTED rather than what was returned.
 
 ### test_import_coordinator.py
 
-The one import over both import inboxes (`ImportCoordinator`, #175), run against a temporary
+The one import over the import inbox (`ImportCoordinator`, #175), run against a temporary
 tree:
 
 - **TestBothArchives** — ticks and signals are imported, moved and rendered; every step ends
-  done, except the caches, which a scoped import shows skipped as `not the production archive`;
+  done, except the caches, which a scoped import shows skipped as `not the production archive`,
+  the zip unpacking, shown skipped as `no zip in the inbox`, and the package fetch and receipt,
+  shown skipped as `not asked for — an import fetches with --fetch`; the frame's first step is the
+  package fetch;
   the import's own log holds both importers' lines, the summary and the line naming itself; the
   frame serializes to JSON; the scan names the broker from each file's metadata head
 - **TestPinnedIssue** — a duplicate is counted and pinned as the bottom line; an `--override` run,
@@ -390,6 +437,95 @@ tree:
 - `test_bar_files_carry_the_render_after_a_complete_import` — a complete import leaves only
   finished bar files, each readable in full
 
+### test_inbox_zip_import.py
+
+Every import drains the one import inbox, and a zip there is imported like loose files (#120). Run
+through the coordinator against a temporary tree with its own finished, unpacking and refused
+directories:
+
+- **TestTheOutcomes** — exactly IMPORTED, ALREADY_ARCHIVED and EMPTY count as taken
+- **TestAnEmptyExport** — a valid export with no tick writes nothing, leaves for finished/, and is
+  counted apart in the summary and named as a warning (F2-263)
+- **TestLooseFilesLeaveTheInbox** — a file the validation refuses (an overlap) and one that cannot
+  be read go to the refused directory, unchanged, with a note naming the reason, and the summary
+  lists them; a duplicate is counted as before and leaves the inbox — the identical file already in
+  finished/ makes its copy go; a different file of the same name in finished/ is never overwritten
+  and keeps the file in the inbox, counted as an error
+- **TestAZipIsImported** — a zip's files are imported and the zip moves to finished/ byte-identical,
+  with no loose copy beside it and the unpacking directory gone with its folder — but kept while
+  another zip's folder still lies in it; loose files and a zip in one import; a
+  Deflate64 zip (a Deflate zip relabelled — the package reads that method but cannot write it, and a
+  Deflate stream without a 258-byte match is also valid Deflate64); the unpacking is a step of its
+  own whose rate is per MB of zip, and the scan names the zip
+- **TestAZipWithFilesTheImportRefuses** — a zip with one refused file still moves to finished/, the
+  refused file's copy goes to refused/ with a note naming the zip; a zip with nothing of use goes to
+  refused/ itself, its note naming every file, and no copy of its files is left
+- **TestAZipFedAgain** — the same zip twice leaves the inbox the second time (its files are
+  duplicates; the identical zip in finished/ makes the copy go); a package holding a file the
+  archive has already moves to finished/ with its new file imported; `--override` re-imports a
+  zip's files; a different zip of the same name in finished/ is never overwritten
+- **TestAZipRefusedAsAWhole** — a foreign file, a file in a folder, a name also lying loose in the
+  inbox, a name twice in one zip and a damaged file (a CRC that no longer matches, found while
+  unpacking) each send the zip to refused/ with nothing written; a zip too large for the disk stays
+  in the inbox for the next import, nothing refused
+- **TestASignalZip** — a zip of one pipeline's flat day files reaches the signal archive, keyed by
+  the pipeline in the envelopes, and moves to finished/ byte-identical in its own unpack step; two
+  pipelines' zips may both hold one day's name; members named `<pipeline_id>_<YYYY-MM-DD>.jsonl`
+  write the parquet of their day, one whose name gives another pipeline is refused; ticks and
+  signals, loose and zipped, in one import;
+  a zip mixing the two kinds is refused whole; a signal file refused from a zip goes to a folder of
+  refused/ named after the zip; `--only` leaves the other kind's zip in the inbox; a member whose
+  size differs from its manifest refuses the zip before anything is unpacked
+
+### test_package_fetch.py
+
+An import run with `--fetch` fetches the packages of every switched-on package service and
+acknowledges each to the service it came from (#120). Run through the coordinator against stub
+package services on local ports (`ThreadingHTTPServer`), each serving the list, a manifest, the zip
+with `Range` support, and the receipt:
+
+- **TestAPackageIsFetchedImportedAndAcknowledged** — the whole exchange: the zip and its manifest end
+  in finished/, the inbox is empty, the receipt carries the zip's SHA-256 and what the import did; a
+  download that breaks off is resumed with a `Range` request (the client reads small chunks here, so
+  a break-off leaves something to resume from); a delivered package is left alone; a source the
+  import never saw, such as an experimental collector line, is fetched and acknowledged like the others
+- **TestWhatArrivesIsProven** — a zip that does not match its hash is removed and nothing imported or
+  acknowledged; a zip whose files differ from its manifest, or one file whose SHA-256 does, is refused
+  whole with its manifest beside it, and not acknowledged
+- **TestWhatLiesHereAlready** — a zip in finished/ already is not downloaded again, only acknowledged;
+  a zip in refused/ is neither fetched nor acknowledged
+- **TestTheReceipt** — a 409 is an error and nothing is marked; a receipt whose answer is lost is sent
+  once and settled by reading the package back
+- **TestAServiceThatFails** — a refused token is asked once, not retried, and the import goes on with
+  the inbox; an import not asked to fetch shows the step skipped with its reason
+- **TestSeveralServices** — each receipt goes to the service its package came from; one service
+  failing leaves the other's packages fetched and acknowledged; an import of the signals reaches
+  the signal service alone; switched-off services name their state on the skipped step
+- **TestAPackageAlreadyInTheInbox** — a listed package's zip lying in the inbox under its own name
+  and hash is taken without a download (`in inbox`) and acknowledged
+- **TestWhatCameByHand** — the summary names the loose files and the zips without a manifest that
+  no service delivered; an import with nothing by hand prints no such line
+- **TestTheConfiguration** — the tracked file mirrors the model's defaults, switched off; an address
+  and the switch in the workspace copy make a source; switched on without an address it says so
+- **TestTheContractsFields** — a listing's source is read from `source`; a manifest's member
+  sizes are read beside their hashes
+
+### test_package_services.py
+
+Every package service is declared in its own peer's file and listed by one registry and one
+command (#120). Run against configuration copies in a temporary directory and stub lists:
+
+- **TestTheRagEnginesService** — switched off in the tracked file; switched on, it fetches from the
+  active producer endpoint with its credential file's name and the collector's ladder; switched on
+  without an address it says so; the tracked block mirrors the model
+- **TestTheRegistry** — the registry lists exactly the peers whose configuration models carry a
+  package block, found by walking the configuration types; each service has a name of its own
+- **TestTheStatusRows** — without a check no list is read; a check counts what waits and what was
+  acknowledged and names the last package listed; a switched-off or silent service's list is not
+  read and says why, and only the silent switched-on one fails the check (the exit code); one
+  service's malformed list fails its own row only; the table shows each service and never a token
+- **TestTheCommand** — `data_index_cli.py package-sources` lists the tracked services, switched off
+
 ### test_bar_render_replace.py
 
 - **TestReplaceAndClean** — a second render replaces every file and leaves no `.partial`; a new
@@ -417,6 +553,8 @@ estimate and past it extrapolates its own progress, pinned with exact numbers on
 moves by hand, and the step carries the same figure the header sums; a pending step carries its
 estimate, a finished one none; the frame carries the whole import's estimated duration and end
 time while it runs; the comparison holds each step's estimate at the start against its duration,
+the package fetch's too although it is done before the plan completes (the scan, never
+estimated, stays out),
 and its total sums only the steps that ran and had an estimate, saying so when that is not every
 planned step; only finished steps yield a rate to store; the newest counted issue is pinned by its
 first line, without the emoji variation selector; worker lines follow their events, leave with

@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from python.configuration.data_home import workspace_path
 from python.framework.logging.bootstrap_logger import get_global_logger
+from python.framework.types.config_types.suite_runner_config_types import SuiteRunnerConfig
 from python.framework.utils.config_merge_utils import deep_merge
 
 vLog = get_global_logger()
@@ -20,6 +21,9 @@ class TestConfigLoader:
 
     Loads configs/test_config.json without caching.
     Supports user overrides from user_configs/test_config.json.
+
+    The merged section is handed to the model as a whole, so a default exists once — on the
+    model — and a key this loader does not know about is a hard error rather than a silent drop.
     """
 
     def __init__(self,
@@ -36,7 +40,7 @@ class TestConfigLoader:
         self.config_path = Path(config_path)
         self.user_config_path = (Path(user_config_path) if user_config_path is not None
                                  else workspace_path('test_config.json'))
-        self.config = self._load()
+        self.config = SuiteRunnerConfig(**self._load())
 
     def get_excluded(self) -> List[str]:
         """
@@ -45,7 +49,7 @@ class TestConfigLoader:
         Returns:
             List of directory names to exclude from test runs
         """
-        return self.config.get('excluded', [])
+        return self.config.excluded
 
     def get_ignored(self) -> List[str]:
         """
@@ -54,7 +58,7 @@ class TestConfigLoader:
         Returns:
             List of directory names to ignore silently
         """
-        return self.config.get('ignored', [])
+        return self.config.ignored
 
     def is_fail_fast(self) -> bool:
         """
@@ -63,7 +67,26 @@ class TestConfigLoader:
         Returns:
             True if runner should abort on first suite failure
         """
-        return self.config.get('fail_fast', True)
+        return self.config.fail_fast
+
+    def get_lanes(self) -> int:
+        """
+        Get the ceiling on suites running side by side.
+
+        Returns:
+            The configured ceiling; the runner starts the smaller of this and what the machine
+            has free
+        """
+        return self.config.lanes
+
+    def get_suite_timeout_seconds(self) -> int:
+        """
+        Get how long one suite may run before the runner gives up on it.
+
+        Returns:
+            The timeout in seconds
+        """
+        return self.config.suite_timeout_seconds
 
     def _load(self) -> Dict[str, Any]:
         """
@@ -90,7 +113,7 @@ class TestConfigLoader:
                     user_override = json.load(f)
 
                 # Merge user overrides into base config
-                merged_config = self._deep_merge(base_config, user_override)
+                merged_config = deep_merge(base_config, user_override)
                 vLog.debug(
                     f'Merged user test config from {self.user_config_path}')
                 return merged_config
@@ -108,5 +131,3 @@ class TestConfigLoader:
         # No user config - return base config
         return base_config
 
-    def _deep_merge(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-        return deep_merge(base, override)

@@ -28,7 +28,7 @@ class OperatorAlerts:
         dispatcher: The Telegram alert dispatcher, None when alerts are off
         pinger: The liveness pinger, None when both channels are off — with the ping off and
             Telegram on it pings nothing and only watches the loop
-        loop_progress: The tick loop's most recent pass — stamped by the loop either way
+        loop_progress: The event loop's most recent pass — stamped by the loop either way
     """
 
     def __init__(
@@ -61,7 +61,7 @@ class OperatorAlerts:
 
     def get_loop_progress(self) -> LoopProgress:
         """
-        The loop progress the tick loop stamps on every pass.
+        The loop progress the event loop stamps on every pass.
 
         Returns:
             The shared LoopProgress
@@ -70,7 +70,7 @@ class OperatorAlerts:
 
     def start_liveness(self) -> None:
         """
-        Start the liveness ping — at the tick loop's entry, when there is a loop to vouch for.
+        Start the liveness ping — at the event loop's entry, when there is a loop to vouch for.
 
         Returns:
             None

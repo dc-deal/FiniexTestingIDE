@@ -127,6 +127,18 @@ class TestTheSessionStatesItsOrigin:
 
         assert received['origin'].accept_composite_change == '7f3a9c2e'
         assert received['origin'].first_start is False
+        assert received['origin'].book_closed_externally == []
+
+    def test_the_notes_declared_closed_reach_the_header(self, stopped_session):
+        """#627: the notes one start was told were closed outside the bot, as typed."""
+        _, received = stopped_session
+        trader = AutotraderMain(load_autotrader_config(PROFILE),
+                                book_closed_externally=['pos_btcusd_7', 'pos_btcusd_9'])
+
+        with pytest.raises(_StopAtLoggers):
+            trader.run()
+
+        assert received['origin'].book_closed_externally == ['pos_btcusd_7', 'pos_btcusd_9']
 
     def test_the_identity_is_captured_over_the_profile_before_the_header(
             self, stopped_session):
@@ -249,6 +261,12 @@ class TestTheCommandLineDeclaresItself:
     def test_accept_composite_change_is_carried_through(self, monkeypatch):
         assert _run_cli(monkeypatch, '--accept-composite-change', '7f3a9c2e') == 0
         assert _RecordingTrader.constructed['accept_composite_change'] == '7f3a9c2e'
+
+    def test_book_closed_externally_is_carried_through_and_repeatable(self, monkeypatch):
+        assert _run_cli(monkeypatch, '--book-closed-externally', 'pos_btcusd_7',
+                        '--book-closed-externally', 'pos_btcusd_9') == 0
+        assert _RecordingTrader.constructed['book_closed_externally'] == [
+            'pos_btcusd_7', 'pos_btcusd_9']
 
     def test_first_start_is_carried_through(self, monkeypatch):
         assert _run_cli(monkeypatch, '--first-start') == 0

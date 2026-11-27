@@ -12,7 +12,8 @@ rarely to be the only guard on how our payloads reach the venue.
 | `test_client_order_id.py` | the key WE choose, on the wire and read back (#473) |
 | `test_conditional_order_payloads.py` | stop / stop-limit price semantics, both directions (#500) |
 | `test_venue_fee_report.py` | the fee in the status answer, the fee currency on every order, the declared capability (#508) |
-| `test_cancel_response_parsing.py` · `test_closed_orders_read.py` | what a cancel answer and a closed-orders read actually say (#487) |
+| `test_venue_close_time.py` | the venue's own time of a closed order in the status answer, beside our receipt (#461) |
+| `test_cancel_response_parsing.py` · `test_closed_orders_read.py` | what a cancel answer and a closed-orders read actually say (#487), and the start's paged read of everything closed since the carry-over (#652) |
 | `test_kraken_error_codes.py` | the venue's documented "not now" inside an answer is transient, every other code its answer (#598) |
 
 ## Nonce — `test_nonce.py`
@@ -102,6 +103,10 @@ kraken_spot, so a dry run reported a stop that had fired at zero.
 | `TestARestingOrderWaitsForItsPrice` | a limit or stop the market never reaches never fills, twenty polls or not; a triggered stop fills at the MARKET rather than at its trigger; and a stop-limit the market gapped past never fills at all, which is the real risk of one |
 | `TestWhatItCannotDecideItRefuses` | no quote, an order type nothing models, or a reference it never issued → PENDING plus a reason, never an invented price |
 | `TestTheLifecycleShapeIsUnchanged` | the ref format, non-colliding refs, idempotent cancel, in-place amend, and a re-query after the fill still reading FILLED |
+| `TestAVenueThatTradesIsRehearsedOnItsTrades` (#605) | on Kraken's declared rule a resting buy limit fills on a trade THROUGH its price and not on one at it, the same tick leaves it resting on the quote's rule, and a sell stop waits for a trade at it while the bid is already below; on the poll a limit arrives, and on the poll a stop-limit's stop fires, only the quote decides its limit, and from the next poll on the trade counts |
+
+The simulator is built with its venue's rule (`stop_trigger_basis`, `limit_fill_evidence`) — the
+Kraken adapter hands it its own declaration — and the cases above build it on the quote's rule.
 
 Neither the comparison nor the book side is duplicated here: both live in
 `utils/trading_math/price_trigger.py`, the same module the backtest uses, so a dry run and a
@@ -135,6 +140,7 @@ our key without a txid, so for an unresolved submit — the case where no txid e
 | `TestThePayload` | the range goes out as unix seconds, an absent key sends no field, a key narrows the range, and a long key is truncated to the venue's 18 characters |
 | `TestTheAnswer` | a filled order is visible where the open pull is blind, a cancelled one is not a filled one, TWO orders can answer to one key, and an unmappable status becomes UNKNOWN rather than "still working" |
 | `TestDryRun` | in a dry run the query reaches no venue and answers nothing, rather than something |
+| `TestTheBootRead` | the start's read of everything closed since the carry-over (#652): it filters on the close time alone (`closetime=close`) and asks for a cursor, never the deprecated offset, while #487's resolution keeps the default filter; it follows `cursor.next` to the last page and reads one that reaches the page cap as incomplete; a closed order carries the instant the venue closed it (`closetm`), and a dry run is one empty, complete page |
 
 ## The fee in the status answer — `test_venue_fee_report.py`
 
@@ -151,6 +157,16 @@ and the executor knows a dry run's answers come from our own simulator, which re
 | `TestEveryOrderAsksForTheFeeInTheQuote` | `oflags=fciq` on market, limit, stop and stop-limit, buy and sell |
 | `TestTheCapabilityIsDeclared` | `status_answer` with dry run off, and in a dry run too — the capability describes the venue |
 
+## The venue's time of a closed order — `test_venue_close_time.py`
+
+QueryOrders names when the venue closed an order — `closetm`, epoch seconds, on an order it reports
+closed, cancelled or expired. The adapter carries it as the answer's `ts_event`, beside `ts_init`,
+our receipt of the answer; the executor hands it to a fill in full (#461).
+
+| Test class | Asserts |
+|---|---|
+| `TestTheVenuesCloseTime` | a closed order carries its close time and keeps our receipt beside it; a cancelled and an expired order carry it too; an open order (`closetm` 0) and an answer without the field carry none |
+
 ## The venue's "not now" — `test_kraken_error_codes.py`
 
 Kraken answers most failures with HTTP 200 and an `error` list, so the transport never sees them.
@@ -162,7 +178,7 @@ and the date it was read are in `kraken_error_codes.py`.
 | Test class | Asserts |
 |---|---|
 | `TestWhatTheCodesMean` | each not-now code, with or without a numeric suffix, is TRANSIENT · an order refusal, a refused key, a lockout and a cancel-only market stay TERMINAL · an answer beside a not-now keeps the whole answer terminal · an empty list passes · the reader's label stays in the message |
-| `TestTheAdapterAppliesThem` | the adapter's one private-call method raises a deadline on an order as transient — asked about, never refused — and insufficient funds as the venue's answer |
+| `TestTheAdapterAppliesThem` | the adapter's one private-call method raises a deadline on an order as transient — asked about, never refused — and insufficient funds as the venue's answer; a body that is not JSON, or JSON that is no object, raises `UnreadableVenueAnswerError`, neither a refusal nor a transport fault (#669) |
 
 ## Run
 

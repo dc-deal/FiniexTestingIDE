@@ -6,7 +6,7 @@ its millisecond name until the process measured it on the monotonic clock in mil
 rewrites the stored `scenario_details.json` artifacts of the runs that STARTED before that fix,
 multiplying the value by 1000 — and only those, because a multiplication applied twice is not
 undone by anything. A file is rewritten only when it still carries EVIDENCE of seconds: a unit with
-ticks whose value is below one microsecond per tick, which no Python tick loop reaches. After the
+ticks whose value is below one microsecond per tick, which no Python event loop reaches. After the
 first run no file carries that evidence, so a second run changes nothing. Each file is rewritten in
 the layout the report writer uses (two-space JSON, UTF-8 as is).
 

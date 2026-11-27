@@ -36,8 +36,8 @@ def sentiment_session():
     config = load_autotrader_config(MOCK_PROFILE)
     trader = AutotraderMain(config)
     result = trader.run()
-    yield result, trader._run_dir
-    remove_run_dir(trader._run_dir)
+    yield result, trader.get_run_dir()
+    remove_run_dir(trader.get_run_dir())
 
 
 @pytest.fixture(scope='module')
@@ -49,8 +49,8 @@ def outage_session():
     config = load_autotrader_config(OUTAGE_PROFILE)
     trader = AutotraderMain(config)
     result = trader.run()
-    yield result, trader._run_dir
-    remove_run_dir(trader._run_dir)
+    yield result, trader.get_run_dir()
+    remove_run_dir(trader.get_run_dir())
 
 
 def _worker_stats(result, worker_name: str):

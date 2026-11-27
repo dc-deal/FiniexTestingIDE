@@ -2,7 +2,7 @@
 FiniexTestingIDE - Documentation Search Configuration Types
 Pydantic model for app_config.json::docs_search.
 """
-from typing import List
+from typing import Dict, List
 
 from python.framework.types.config_types.strict_config_model import StrictConfigModel
 
@@ -18,3 +18,8 @@ class DocsSearchConfig(StrictConfigModel):
     default, so a fresh clone searches the documentation and nothing else.
     """
     extra_commands: List[List[str]] = []
+    # Where a searched folder records when its contents were fetched: folder → '<file>::<key>', a JSON
+    # file inside the folder and the key holding an ISO-8601 instant. A folder searched on its own
+    # (`--root`) then prints its snapshot's age, so a copy that stopped being kept current shows
+    # where it is read. Empty by default — no folder of the repository is a snapshot
+    snapshot_stamps: Dict[str, str] = {}

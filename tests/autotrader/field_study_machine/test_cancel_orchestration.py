@@ -14,19 +14,16 @@ and never reached active_limit_count == 0.
 from unittest.mock import MagicMock
 
 from python.framework.decision_logic.core.live_field_study.live_field_study import LiveFieldStudy
-from python.framework.types.trading_env_types.latency_simulator_types import (
-    PendingOrderExecutionState,
-)
+from python.framework.trading_env.algo_masks.algo_order import AlgoOrder
+from python.framework.types.trading_env_types.latency_simulator_types import PendingOrder
 from python.framework.types.trading_env_types.order_types import OrderType
 
 
-class _Order:
-    def __init__(self, order_id: str, broker_ref: str = 'REF',
-                 order_type: OrderType = OrderType.LIMIT):
-        self.pending_order_id = order_id
-        self.broker_ref = broker_ref
-        self.order_type = order_type
-        self.execution_state = PendingOrderExecutionState()
+def _Order(order_id: str, broker_ref: str = 'REF',
+           order_type: OrderType = OrderType.LIMIT) -> AlgoOrder:
+    """A resting order as the study receives it from get_active_orders — the mask (#654)."""
+    return AlgoOrder(PendingOrder(pending_order_id=order_id, broker_ref=broker_ref,
+                                  order_type=order_type))
 
 
 class _FakeApi:

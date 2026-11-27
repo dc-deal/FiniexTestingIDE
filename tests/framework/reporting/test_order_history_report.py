@@ -18,6 +18,7 @@ from python.framework.reporting.builders.order_history_report_builder import (
 )
 from python.framework.reporting.builders.run_unit import RunUnit
 from python.framework.reporting.io.report_csv_io import write_order_history_csv
+from python.framework.reporting.io.report_filters import filter_order_history_report
 from python.framework.store.entry_members.run_entry_writer import RunEntryWriter
 from python.framework.types.fill_slippage_types import SlippageReference
 from python.framework.types.trading_env_types.broker_types import FeeSource
@@ -264,3 +265,46 @@ class TestHowFarTheFillLanded:
                      for row in csv.DictReader(handle)]
 
         assert cells == [('submission_mid', '100.0'), ('submission_mid', '100.0'), ('', '')]
+
+
+class TestTheFailedOrdersAreCountedOnTheModel:
+    """
+    The failed orders the history lists are counted once, on the report (#557): per unit, per
+    status and reason, and in all — the console reads them and counts none itself.
+    """
+
+    def _units_of_two(self):
+        return [
+            RunUnit(name='a', symbol='EURUSD', order_history=[
+                _order(order_id='o1'), _rejected(order_id='o2'), _rejected(order_id='o3')]),
+            RunUnit(name='b', symbol='EURUSD', order_history=[
+                OrderResult(order_id='o4', status=OrderStatus.DENIED, symbol='EURUSD',
+                            direction=OrderDirection.LONG, requested_lots=0.1,
+                            rejection_reason=RejectionReason.INSUFFICIENT_FUNDS),
+                _rejected(order_id='o5')]),
+        ]
+
+    def test_per_unit_per_reason_and_in_all(self):
+        report = build_order_history_report(_RUN_ID, self._units_of_two())
+        assert report.failed_listed == 4
+        assert [(u.scenario_name, u.listed) for u in report.failed_by_unit] == [('a', 2), ('b', 2)]
+        # The most frequent first, first appearance among equals
+        assert [(r.status, r.reason, r.count) for r in report.failed_by_reason] == [
+            (OrderStatus.REJECTED, 'insufficient_margin', 3),
+            (OrderStatus.DENIED, 'insufficient_funds', 1)]
+
+    def test_a_row_without_a_reason_names_its_status(self):
+        undelivered = OrderResult(order_id='o6', status=OrderStatus.UNDELIVERED, symbol='EURUSD',
+                                  direction=OrderDirection.LONG, requested_lots=0.1)
+        report = build_order_history_report(_RUN_ID, _units([undelivered]))
+        assert [(r.reason, r.count) for r in report.failed_by_reason] == [('undelivered', 1)]
+
+    def test_a_filter_counts_them_again_over_what_it_kept(self):
+        report = build_order_history_report(_RUN_ID, self._units_of_two())
+        kept = filter_order_history_report(report, status='denied')
+        assert kept.failed_listed == 1
+        assert [(u.scenario_name, u.listed) for u in kept.failed_by_unit] == [('b', 1)]
+
+    def test_nothing_failed_counts_nothing(self):
+        report = build_order_history_report(_RUN_ID, _units([_order()]))
+        assert (report.failed_listed, report.failed_by_unit, report.failed_by_reason) == (0, [], [])

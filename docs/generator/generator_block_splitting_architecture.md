@@ -204,9 +204,10 @@ but must not be manually edited (documented convention, not enforced via hash).
 }
 ```
 
-**A profile is derived from its own range.** The volatility profile measures every hour against
-the symbol's whole history; a generated profile re-measures the hours of its range against that
-range, so `regime_at_split` and `atr_at_split` depend on the range alone. Where the split points
+**A profile is derived from its own range.** The volatility profile measures every hour's ATR
+over close against the trailing year; a generated profile re-measures the absolute ATR of the hours
+of its range against that range, so `regime_at_split` and `atr_at_split` depend on the range alone —
+and neither moved when the volatility profile's reference did (#647). Where the split points
 fall does not change — they compare hours with each other. The reason is the archive's reach:
 once a venue's published history precedes our own collection, the whole history spans prices two
 orders of magnitude apart (ETHUSD's mean daily range was $0.89 in 2016 and $174.54 in 2025), and
@@ -313,7 +314,11 @@ market open via `MarketCalendar.next_market_open` (the single source of truth fo
 The boundary arithmetic (`region_start + k·block_size`) regularly lands on a weekend for multi-day
 Forex blocks, so this snap is what keeps generated robustness/blocks sets runnable.
 
-Only **moderate** and **large** gaps (real data collection issues) cause region splits — blocks never span across them.
+Only **moderate** and **large** gaps in collected data (real data collection issues) cause region
+splits — blocks never span across them. A gap in a venue's published history never splits: the
+venue's record lists every trade, so such a gap is an hour nobody traded there (#647). Measured
+2026-11-20 under the default categories: ETHUSD's history from 2015 on fell into 3,337 regions
+before and 7 after — the six cuts left are gaps in our own collection.
 
 The `GapCategory` classification (weekend, holiday, short, moderate, large) exists primarily for the
 **Data Coverage Report** to distinguish expected market closures from actual data problems. For

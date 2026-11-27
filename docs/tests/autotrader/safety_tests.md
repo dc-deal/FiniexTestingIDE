@@ -4,7 +4,7 @@
 
 The safety circuit breaker test suite validates the account-level protection mechanism of an
 AutoTrader session — `SafetyCircuitBreaker` in `python/framework/autotrader/safety/`, which the
-tick loop feeds on every tick. It covers the equity-based evaluation for spot mode, balance-based evaluation
+event loop feeds on every tick. It covers the equity-based evaluation for spot mode, balance-based evaluation
 for margin mode, the config split (`min_balance` / `min_equity`), and the live display state
 tracking.
 
@@ -24,13 +24,13 @@ Two-level coverage:
 
 ```
 tests/autotrader/safety/
-├── test_safety_unit.py                  ← Level 1: check_safety isolated (stub, no tick loop)
+├── test_safety_unit.py                  ← Level 1: check_safety isolated (stub, no event loop)
 ├── test_risk_baseline.py                ← Level 1: the denominator, and its survival of a restart
 ├── test_emergency_flatten.py            ← Level 1: the HARD stop — close, drain, then end
 ├── test_safety_report.py                ← Level 1: what the session RECORDED, capture + derive
 ├── test_safety_integration.py           ← Level 2: Spot mock sessions (kraken_spot/BTCUSD)
 ├── test_margin_safety_integration.py    ← Level 2: Margin mock sessions (mt5/EURUSD)
-└── test_hard_stop_integration.py        ← Level 2: the hard stop through the real tick loop
+└── test_hard_stop_integration.py        ← Level 2: the hard stop through the real event loop
 ```
 
 The quantity all of them measure against lives one suite away:
@@ -64,7 +64,7 @@ forgotten. A thirty-day unattended run will restart.
 | `TestTheHighWaterMark` | rises with a peak, never falls with a drawdown, ignored entirely by a fixed baseline, and every advance carries its own date |
 | `TestASpotRecordCanBeReDerived` | `value == quote + base × mark_price`; a margin record carries no price, because a cash-denominated account has none |
 | `TestTheOperatorIsTold` | a restore is said out loud; a mode changed between runs is a warning and the RECORD wins |
-| `TestTheExclusivityDeclarationTravelsWithIt` | the #489 declaration is stamped on the record — a drawdown percentage without it is a number about somebody else's deposits too |
+| `TestTheExclusivityDeclarationTravelsWithIt` | the #489 declaration is stamped on the record — a drawdown percentage without it is a number about somebody else's deposits too; and beside it, when the session's start found the declaration false and held its entries (#499), since when — empty when the start found nothing |
 | `TestARestoredKindGovernsTheBehaviourToo` | the restored kind becomes the session's MODE, both directions. Keeping the label while running the configured mode would convert the record on its first advance — the silent conversion one step later |
 
 ### Level 1 — The Hard Stop (`test_emergency_flatten.py`, #356)
@@ -80,10 +80,11 @@ and waits for a human, this CLOSES. Driven against the real `check_emergency_fla
 | `TestTheSessionEndsOnlyAfterTheFillsArrive` | it does not end while positions are open (EMERGENCY means immediate exit, and the fills arrive later); it ends once the book is flat (`complete`); it ends anyway at the drain ceiling and NAMES what is still open (`unconfirmed`); it ends once, not on every later tick |
 | `TestSpotIsGatedAndTheAsymmetryIsDeliberate` | a spot holding is not sold by default and the operator hears why; the session still ends — without a second "check the account by hand" alarm, since nothing was sent, and the record says `holdings_kept`; with the switch on it is sold |
 | `TestACloseThatCannotBeSent` | every position is attempted and each failure is named — a close that failed silently is still open at the venue |
+| `TestTheDrainWindowCountsPasses` | #461: the drain window counts tick passes, not ticks — a coalesced backlog is one pass, so one burst cannot use up the window in a single instant. Driven through a real AutoTrader loop (`booking_day_harness.autotrader_loop`), not the stub |
 
 ### Level 1 — The Session Record (`test_safety_report.py`, #356 Phase C / #314)
 
-Split the way the pipeline is (#391): the CAPTURE half runs against the real tick-loop methods
+Split the way the pipeline is (#391): the CAPTURE half runs against the real event-loop methods
 bound to a stub, the DERIVE half against the real builder. Nothing here renders.
 
 | Class | What it validates |
@@ -99,6 +100,18 @@ bound to a stub, the DERIVE half against the real builder. Nothing here renders.
 | `TestHowCloseItCame` | the share of the configured limit; `None` rather than 0.0 when no limit is configured; the NEARER of the percentage and absolute limits wins; the hard threshold is measured separately |
 | `TestTheFloorIsOneQuantityWithTwoSpellings` | the report names the config key the account model writes, so one limit is not read as two |
 | `TestTheWorstDayIsChosenInTheBuilder` | it names the DAY, not only the number; limit-hit days are counted; a session shorter than a day has no worst day |
+
+### Level 1 — The Entry Hold at the Start (`test_entry_holds_at_boot.py`, #499)
+
+A start that finds orders of another owner on the bot's instrument, while the account is declared
+exclusive, starts and holds its entries. Both account models where money moves.
+
+| Class | What it validates |
+|-------|-------------------|
+| `TestTheStartHoldsItsEntries` | an unattended start holds, dated from the start rather than by the wall clock, sends a critical alert and logs into the error pot; without a reconcile the alert says only `--attended` lifts it; the session's resting entries are cancelled with the hold, ended by the framework with `entries_held` and never "by the strategy" |
+| `TestAnAttendedStartMayLiftIt` | a no keeps the hold; a yes lifts it as the operator's, sends the lifted alert and returns the orders it accepted for the carry-over — beside the ones accepted at an earlier start that still rest, because the carry-over holds one set |
+| `TestTheHoldLiftsWhenItsOrdersAreGone` | a cycle that still shows those orders keeps the hold, and so does one that could not read the venue; a completed cycle without them lifts it on the session's clock, whatever other owner's order rests elsewhere; a lifted hold is not lifted twice |
+| `TestTheRecordNamesEveryHold` | a held session's safety report names every hold beside the figures it measured, with its declared key; a lifted hold states how and when |
 
 ### Level 2 — Integration Tests: Spot
 
@@ -133,7 +146,7 @@ immediately, validating that the margin path correctly checks `min_balance`.
 
 The unit tests drive the hard stop's methods against a stub; this drives the path a session
 takes. A real `LiveTradeExecutor` on the INSTANT_FILL mock adapter, the deterministic probe
-opening one position before a price drop, and the real tick loop: the loop values the account,
+opening one position before a price drop, and the real event loop: the loop values the account,
 the breaker sees the drawdown pass `max_drawdown_abs_hard`, sends the closes, the fills arrive
 through the executor's ordinary drain, and the session ends as an EMERGENCY before its input
 runs out. No mock-session profile, so it runs in seconds.

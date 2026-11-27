@@ -465,7 +465,8 @@ class TestEachFillIsFoundAndMeasured:
             SlippageReference.TRIGGER_PRICE, _BUY_STOP)
 
     @ACCOUNT_MODELS
-    def test_a_stop_loss_exit_reads_zero_where_the_simulation_fills_it(self, spot_mode):
+    def test_a_stop_loss_exit_reads_the_gap_it_filled_through(self, spot_mode):
+        """A stop fills at the breaching tick's market (#629): the gap below the level is paid."""
         sim = make_simulator(spot_mode)
         events = record_events(sim)
         sim.open_order(market_order(stop_loss=49000.0))
@@ -477,7 +478,9 @@ class TestEachFillIsFoundAndMeasured:
         assert sim.get_protective_fill_levels() == {exit_fill.seq: 49000.0}
         slip = derive_fill_slippage(events, sim.get_protective_fill_levels())[exit_fill.seq]
         assert slip.measured_against is SlippageReference.PROTECTIVE_LEVEL
-        assert (slip.reference_price, slip.slippage) == (49000.0, 0.0)
+        assert slip.reference_price == 49000.0
+        # a long's stop sold at the bid of 48,900: 100 worse than its level
+        assert slip.slippage == pytest.approx(100.0)
 
     def test_a_stop_loss_exit_the_capped_trade_history_dropped_still_finds_its_level(self):
         """The trade history keeps its newest records only; the level is kept per fill."""

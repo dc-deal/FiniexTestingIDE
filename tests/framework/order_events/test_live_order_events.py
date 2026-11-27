@@ -176,7 +176,7 @@ class TestARestingOrder:
             broker_response=BrokerResponse(
                 broker_ref=resting.broker_ref, status=BrokerOrderStatus.CANCELLED,
                 filled_lots=0.004, fill_price=40000.0,
-                timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc)),
+                ts_init=datetime(2026, 1, 1, tzinfo=timezone.utc)),
         ))
 
         assert order_steps(events) == [['submitted', 'accepted', 'partially_filled', 'cancelled']]
@@ -194,6 +194,45 @@ class TestARestingOrder:
 
         assert order_steps(events) == [['submitted', 'accepted', 'cancel_requested', 'cancelled']]
         assert {e.end_reason for e in events[-2:]} == {OrderEndReason.SESSION_END}
+
+
+class TestTheVenuesOwnStamp:
+    """
+    #461: a fill keeps the venue's own time beside the session's clock and our receipt — where the
+    answer gives one, and only for a fill in full, whose order the venue closed with it.
+    """
+
+    _RECEIVED = datetime(2026, 1, 1, 12, 0, 1, tzinfo=timezone.utc)
+    _CLOSED = datetime(2026, 1, 1, 12, 0, 0, 250_000, tzinfo=timezone.utc)
+
+    def _answer(self, status: BrokerOrderStatus, filled_lots: float):
+        mock, executor, events = live_session(mode=MockExecutionMode.TIMEOUT)
+        order_id = executor.open_order(limit_order()).order_id
+        mock.await_submit_confirmation(executor)
+        resting = executor.get_active_orders()[0]
+        executor._handle_query_response(QueryResponse(
+            order_id=order_id,
+            broker_response=BrokerResponse(
+                broker_ref=resting.broker_ref, status=status, filled_lots=filled_lots,
+                fill_price=40000.0, ts_init=self._RECEIVED, ts_event=self._CLOSED),
+        ))
+        return events
+
+    def test_a_fill_in_full_carries_when_the_venue_closed_the_order(self):
+        events = self._answer(BrokerOrderStatus.FILLED, 0.01)
+
+        assert order_steps(events) == [['submitted', 'accepted', 'filled']]
+        filled = events[-1]
+        assert filled.ts_event == self._CLOSED
+        assert filled.event_time is not None and filled.ts_init is not None, 'all three times'
+        assert [event.ts_event for event in events[:-1]] == [None, None]
+
+    def test_a_partial_fill_does_not_take_the_time_the_venue_ended_the_rest(self):
+        """The venue closed the order when it cancelled the rest, not when the part executed."""
+        events = self._answer(BrokerOrderStatus.CANCELLED, 0.004)
+
+        assert order_steps(events) == [['submitted', 'accepted', 'partially_filled', 'cancelled']]
+        assert [event.ts_event for event in events] == [None, None, None, None]
 
 
 class TestALostAnswer:
@@ -265,7 +304,7 @@ class TestAnAdoptedOrder:
             broker_response=BrokerResponse(
                 broker_ref='MOCK-ADOPTED', status=BrokerOrderStatus.FILLED,
                 filled_lots=0.01, fill_price=40000.0,
-                timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc)),
+                ts_init=datetime(2026, 1, 1, tzinfo=timezone.utc)),
         ))
 
         assert order_steps(events) == [['adopted', 'filled']]
@@ -332,7 +371,7 @@ class TestTheStreamItself:
         executor._handle_query_response(QueryResponse(
             order_id=order_id, broker_response=BrokerResponse(
                 broker_ref=ref, status=BrokerOrderStatus.CANCELLED,
-                timestamp=datetime.now(timezone.utc))))
+                ts_init=datetime.now(timezone.utc))))
 
         printed = capsys.readouterr().out
         assert f'it had already ended as cancelled (seq {cancelled.seq})' in printed

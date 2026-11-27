@@ -3,12 +3,13 @@ Portfolio Report Builder Tests (#391).
 
 One builder feeds the array model (units + per-currency aggregates), the roll-up derived from
 the unit rows via the shared aggregator. Tested against a **real** BatchExecutionSummary /
-ProcessResult / ProcessTickLoopResult / SingleScenario (not stand-ins), extracted into
+ProcessResult / ProcessEventLoopResult / SingleScenario (not stand-ins), extracted into
 RunUnits — so it exercises the actual attribute access of the persist path (the symbol comes
 from the index-synced SingleScenario, since ProcessResult carries none). The same real batch
 also covers the RunUnit record extraction. The live builder uses a real AutoTraderResult.
 """
 
+from dataclasses import replace
 from datetime import datetime, timezone
 
 import pytest
@@ -25,8 +26,11 @@ from python.framework.types.api.report_types import PortfolioReport
 from python.framework.types.autotrader_types.autotrader_result_types import AutoTraderResult
 from python.framework.types.batch_execution_types import BatchExecutionSummary
 from python.framework.types.data_deficiency_types import DataDeficiency
-from python.framework.types.portfolio_types.portfolio_aggregation_types import PortfolioStats
-from python.framework.types.process_data_types import ProcessResult, ProcessTickLoopResult
+from python.framework.types.portfolio_types.portfolio_aggregation_types import (
+    DrawdownPeriod,
+    PortfolioStats,
+)
+from python.framework.types.process_data_types import ProcessResult, ProcessEventLoopResult
 from python.framework.types.scenario_types.scenario_set_types import SingleScenario
 from python.framework.types.trading_env_types.broker_types import BrokerType, FeeSource
 from python.framework.types.trading_env_types.order_event_types import (
@@ -83,7 +87,7 @@ def _order(order_id: str, symbol: str) -> OrderResult:
 def _process_result(name, idx, stats, orders) -> ProcessResult:
     return ProcessResult(
         success=True, scenario_name=name, scenario_index=idx,
-        tick_loop_results=ProcessTickLoopResult(portfolio_stats=stats, order_history=orders))
+        event_loop_results=ProcessEventLoopResult(portfolio_stats=stats, order_history=orders))
 
 
 def _scenario(name, idx, symbol) -> SingleScenario:
@@ -105,6 +109,36 @@ def _batch(extra_results=None) -> BatchExecutionSummary:
     return BatchExecutionSummary(
         batch_execution_time=0.0, batch_warmup_time=0.0, batch_tickrun_time=0.0,
         process_result_list=results, single_scenario_list=scenarios)
+
+
+class TestTheDrawdownPeriods:
+    """The five deepest declines reach the served unit row, ranked and keyed (#529)."""
+
+    def test_they_are_served_ranked_and_keyed_by_rank(self):
+        periods = [
+            DrawdownPeriod(peak=1_100.0, depth=110.0, depth_pct=10.0,
+                           started_at='2025-10-13T10:00:00+00:00',
+                           trough_at='2025-10-13T11:00:00+00:00',
+                           recovered_at='2025-10-13T12:00:00+00:00'),
+            DrawdownPeriod(peak=1_100.0, depth=55.0, depth_pct=5.0,
+                           started_at='2025-10-13T13:00:00+00:00',
+                           trough_at='2025-10-13T14:00:00+00:00'),
+        ]
+        stats = replace(_stats(), account_drawdown_periods=periods)
+        batch = BatchExecutionSummary(
+            batch_execution_time=0.0, batch_warmup_time=0.0, batch_tickrun_time=0.0,
+            process_result_list=[_process_result('s1', 0, stats, [])],
+            single_scenario_list=[_scenario('s1', 0, 'EURUSD')])
+
+        row = build_portfolio_report(_RUN_ID, run_units_from_batch(batch)).units[0]
+
+        assert [(p.rank, p.depth_pct, p.recovered_at) for p in row.account_drawdown_periods] == [
+            (1, 10.0, '2025-10-13T12:00:00+00:00'), (2, 5.0, None)]
+        assert row.account_drawdown_periods_key == ['rank']
+
+    def test_a_unit_that_never_fell_serves_none(self):
+        row = build_portfolio_report(_RUN_ID, run_units_from_batch(_batch())).units[0]
+        assert row.account_drawdown_periods == []
 
 
 class TestBatch:
@@ -145,7 +179,7 @@ class TestBatch:
 
     def test_skips_scenarios_without_stats(self):
         bad = ProcessResult(
-            success=False, scenario_name='bad', scenario_index=2, tick_loop_results=None)
+            success=False, scenario_name='bad', scenario_index=2, event_loop_results=None)
         report = build_portfolio_report(_RUN_ID, run_units_from_batch(_batch(extra_results=[bad])))
         assert [u.name for u in report.units] == ['s1', 's2']
 
@@ -176,7 +210,7 @@ class TestBatchExtraction:
         assert [r.order_id for r in records] == ['o1', 'o2', 'o3']
 
     def test_trade_records_flatten_empty_when_no_trades(self):
-        # tick_loop_results carry no trade_history in this fixture → empty, no crash
+        # event_loop_results carry no trade_history in this fixture → empty, no crash
         units = run_units_from_batch(_batch())
         assert [t for u in units for t in u.trade_history] == []
 
@@ -404,6 +438,14 @@ class TestTheFillFeesBySource:
         assert (totals[FeeSource.ESTIMATE].fill_count,
                 totals[FeeSource.ESTIMATE].fill_fees) == (1, 0.0)
 
+    def test_a_fill_without_a_fee_figure_is_counted_and_adds_nothing(self):
+        no_figure = OrderEvent(seq=2, event_type=OrderEventType.FILLED, order_id='pos_btcusd_2',
+                               submitted_seq=2, fee_source=FeeSource.VENUE)
+        totals = fill_fees_by_source([_fill(1, FeeSource.VENUE, 0.05), no_figure])
+
+        assert (totals[FeeSource.VENUE].fill_count,
+                totals[FeeSource.VENUE].fill_fees) == (2, 0.05)
+
     def test_both_pipelines_fold_their_units_order_events(self):
         events = [_fill(1, FeeSource.VENUE, 0.05), _fill(2, FeeSource.ESTIMATE, 0.01)]
         session = build_portfolio_report(_RUN_ID, run_units_from_session(
@@ -413,7 +455,7 @@ class TestTheFillFeesBySource:
             batch_execution_time=0.0, batch_warmup_time=0.0, batch_tickrun_time=0.0,
             process_result_list=[ProcessResult(
                 success=True, scenario_name='s1', scenario_index=0,
-                tick_loop_results=ProcessTickLoopResult(
+                event_loop_results=ProcessEventLoopResult(
                     portfolio_stats=_stats(), order_events=events))],
             single_scenario_list=[_scenario('s1', 0, 'BTCUSD')])
         scenario = build_portfolio_report(_RUN_ID, run_units_from_batch(batch)).units[0]
@@ -427,12 +469,12 @@ class TestTheFillFeesBySource:
         """Counts and fees both add up across accounts; a source one unit lacks is still summed."""
         results = [
             ProcessResult(success=True, scenario_name='s1', scenario_index=0,
-                          tick_loop_results=ProcessTickLoopResult(
+                          event_loop_results=ProcessEventLoopResult(
                               portfolio_stats=_stats(), order_events=[
                                   _fill(1, FeeSource.VENUE, 0.30),
                                   _fill(2, FeeSource.ESTIMATE, 0.05)])),
             ProcessResult(success=True, scenario_name='s2', scenario_index=1,
-                          tick_loop_results=ProcessTickLoopResult(
+                          event_loop_results=ProcessEventLoopResult(
                               portfolio_stats=_stats(), order_events=[
                                   _fill(1, FeeSource.VENUE, 0.20)])),
         ]

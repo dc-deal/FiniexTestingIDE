@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Optional, Set, Tuple
+from typing import List, Optional, Sequence, Set, Tuple
 
 
 @dataclass(frozen=True)
@@ -63,7 +63,7 @@ class TickData:
 
         Deliberately inline rather than delegating to `trading_math.price_trigger.mid_price`,
         which answers the same question for callers holding a raw (bid, ask) pair: this sits
-        in the tick loop, and delegating was measured at +30 % on the access.
+        in the event loop, and delegating was measured at +30 % on the access.
         """
         return (self.bid + self.ask) / 2.0
 
@@ -98,13 +98,100 @@ class TickData:
         }
 
 
-@dataclass
+# One arrival on a live session's tick queue: the ticks that came in together — one venue message
+# live, one arrival millisecond in a replay — put as one item, never split (#461)
+TickArrival = Tuple[TickData, ...]
+
+# The epoch and one millisecond, for converting a tick's `timestamp` exactly rather than through a
+# float
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+_ONE_MS = timedelta(milliseconds=1)
+
+
+def tick_event_msc(tick: TickData) -> int:
+    """
+    A tick's source stamp — when it happened at its venue, in UTC epoch milliseconds (`ts_event`).
+
+    The venue's own stamp, `time_msc`; a backtest's clock follows the same value, since a replayed
+    tick's `timestamp` is derived from it. A tick that carries none (0 = not available) falls back
+    to its `timestamp`, which every source sets, converted exactly rather than through a float.
+
+    Args:
+        tick: The tick
+
+    Returns:
+        Its source stamp
+    """
+    if tick.time_msc > 0:
+        return tick.time_msc
+    return (tick.timestamp - _EPOCH) // _ONE_MS
+
+
+def tick_receipt_msc(tick: TickData) -> int:
+    """
+    A tick's receipt stamp, in UTC epoch milliseconds (`ts_init`).
+
+    `collected_msc`, whose clock depends on where the tick came from:
+    - an archived tick — every tick of a backtest or a mock session — carries the receipt of the
+      collector that recorded it, not the clock of the run replaying it;
+    - a live tick carries the session's own wall clock, read once per trade while a message is
+      parsed, so one message holding several trades can carry more than one millisecond.
+
+    A tick recorded without one (0 = not recorded, as in files written before the arrival time was
+    kept) has no receipt of its own, and its source stamp stands in, so the two agree.
+
+    Args:
+        tick: The tick
+
+    Returns:
+        Its receipt stamp
+    """
+    if tick.collected_msc > 0:
+        return tick.collected_msc
+    return tick_event_msc(tick)
+
+
+def arrival_slices(ticks: Sequence[TickData]) -> List[TickArrival]:
+    """
+    The ticks of a recording, cut into what arrived together: one slice per arrival millisecond.
+
+    A tick received after the slice's millisecond opens the next one; a tick received before it —
+    a straggler two files can produce where they meet — joins the running slice, as a live clock
+    moves forward only. A mock session's replay puts each slice on its tick queue as one item, so
+    the loop can never read one millisecond in two parts (#461). The backtest's own walk applies
+    the same rule as it goes, between its timers.
+
+    Args:
+        ticks: Ticks in arrival order
+
+    Returns:
+        The slices, each a tuple of ticks; none for no ticks
+    """
+    slices: List[TickArrival] = []
+    group: List[TickData] = []
+    stamp = 0
+    for tick in ticks:
+        receipt = tick_receipt_msc(tick)
+        if group and receipt > stamp:
+            slices.append(tuple(group))
+            group = []
+        if not group:
+            stamp = receipt
+        group.append(tick)
+    if group:
+        slices.append(tuple(group))
+    return slices
+
+
+@dataclass(frozen=True, slots=True)
 class Bar:
     """
-    Standard bar structure for all timeframes.
+    One finished bar of a timeframe — a value.
 
-    OPTIMIZATION: Uses __slots__ to reduce memory footprint and pickle overhead.
-    Removes __dict__ from each instance (~15% pickle size reduction).
+    The warmup history, the renderer's archive and every worker's bar history hold it, and every
+    worker reads the same objects, so it is frozen: nothing that reads a bar can change it for the
+    next reader (#654). The bar of the period still running is a FormingBar; the renderer turns it
+    into a Bar when the period closes.
     """
 
     symbol: str
@@ -122,20 +209,6 @@ class Bar:
     def ohlc(self) -> Tuple[float, float, float, float]:
         """OHLC tuple"""
         return (self.open, self.high, self.low, self.close)
-
-    def update_with_tick(self, tick_price: float, tick_volume: float = 0):
-        """Update bar with new tick data"""
-        if self.open == 0:
-            self.open = tick_price
-            self.high = tick_price
-            self.low = tick_price
-        else:
-            self.high = max(self.high, tick_price)
-            self.low = min(self.low, tick_price)
-
-        self.close = tick_price
-        self.volume += tick_volume
-        self.tick_count += 1
 
     def to_dict(self) -> dict:
         """
@@ -163,6 +236,72 @@ class Bar:
             'tick_count': self.tick_count,
             'is_complete': self.is_complete
         }
+
+
+@dataclass(slots=True)
+class FormingBar:
+    """
+    The bar of the period still running — the renderer updates it on every tick.
+
+    It changes with every tick, so it stays the renderer's own: a worker reads it through an
+    `AlgoBar`, and the history receives a frozen Bar when the period closes (`to_bar`). Its fields
+    are Bar's, a test holds the two to the same set.
+    """
+
+    symbol: str
+    timeframe: str
+    timestamp: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    tick_count: int = 0
+    is_complete: bool = False
+
+    @property
+    def ohlc(self) -> Tuple[float, float, float, float]:
+        """OHLC tuple"""
+        return (self.open, self.high, self.low, self.close)
+
+    def update_with_tick(self, tick_price: float, tick_volume: float = 0) -> None:
+        """
+        Update bar with new tick data
+
+        Args:
+            tick_price: The tick's price
+            tick_volume: The tick's volume
+        """
+        if self.open == 0:
+            self.open = tick_price
+            self.high = tick_price
+            self.low = tick_price
+        else:
+            self.high = max(self.high, tick_price)
+            self.low = min(self.low, tick_price)
+
+        self.close = tick_price
+        self.volume += tick_volume
+        self.tick_count += 1
+
+    def to_bar(self) -> Bar:
+        """
+        The bar as it stands, as a frozen value.
+
+        Returns:
+            A Bar with every field of this one
+        """
+        return Bar(self.symbol, self.timeframe, self.timestamp, self.open, self.high, self.low,
+                   self.close, self.volume, self.tick_count, self.is_complete)
+
+    def to_dict(self) -> dict:
+        """
+        Convert the bar to a dictionary for serialization, as Bar.to_dict() does.
+
+        Returns:
+            Dict with all bar fields
+        """
+        return self.to_bar().to_dict()
 
 
 @dataclass

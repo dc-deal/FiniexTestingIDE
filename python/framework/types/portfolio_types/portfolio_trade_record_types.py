@@ -33,11 +33,17 @@ class CloseReason(Enum):
         venue and in simulation it invented a trade the strategy never chose. It is kept
         for the real session-end close that #487 makes buildable — deleting it and
         re-adding it later would be two API contract changes for one value.
+    CLOSED_EXTERNALLY: The holding left the account outside the bot — an operator sold it at
+        the venue while the bot was down — and a start declared so (`--book-closed-externally`,
+        #627). A spot position only: its note is the bot's own record, and nothing else could
+        end it. Booked at the entry price, because the bot never saw the exit
+        (`TradeRecord.exit_observed`)
     """
     MANUAL = ''
     SL_TRIGGERED = 'sl_triggered'
     TP_TRIGGERED = 'tp_triggered'
     SCENARIO_END = 'scenario_end'
+    CLOSED_EXTERNALLY = 'closed_externally'
 
     def fired_level(self, stop_loss: Optional[float],
                     take_profit: Optional[float]) -> Optional[float]:
@@ -112,7 +118,7 @@ class TradeRecord:
     exit_tick_value: float
 
     # === Tick Index (for backtesting analysis) ===
-    entry_tick_index: int  # tick_counter at position open
+    entry_tick_index: Optional[int]  # tick_counter at position open; None when restored at boot
     exit_tick_index: int   # tick_counter at position close
 
     # === Symbol Properties (for formula verification) ===
@@ -155,6 +161,12 @@ class TradeRecord:
     # exit, the logic's (#625), which the position does not carry. None for every other close.
     # The exit's slippage is measured against it (#631).
     exit_level: Optional[float] = None
+    # Whether the bot saw this trade's exit (#627). False only for a close made outside the bot:
+    # the record then carries the entry price as its exit price, so its gross P&L is zero by
+    # construction, not measured, and its fees are the ones the bot paid — the sale's own fee was
+    # paid outside it. The sum of such trades' P&L therefore differs from the account's balance
+    # change by the result of that sale, and this is the field that says so.
+    exit_observed: bool = True
 
     # === Entry Type ===
     entry_type: EntryType = EntryType.MARKET

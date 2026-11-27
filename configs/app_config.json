@@ -73,8 +73,9 @@
     }
   },
   "docs_search": {
-    "_comment": "The terminal search (docs_search_cli.py) searches the documentation tree. Each entry here is one more command it runs afterwards, with the search term appended as the last argument - for collections a maintainer keeps outside the repository. Empty in a fresh clone.",
-    "extra_commands": []
+    "_comment": "The terminal search (docs_search_cli.py) searches the documentation tree. Each entry here is one more command it runs afterwards, with the search term appended as the last argument - for collections a maintainer keeps outside the repository. snapshot_stamps maps such a folder to '<file>::<key>', the JSON file inside it and the key holding when its contents were fetched; the folder's search then prints the snapshot's age. Both empty in a fresh clone.",
+    "extra_commands": [],
+    "snapshot_stamps": {}
   },
   "autotrader": {
     "tick_source": {
@@ -108,11 +109,14 @@
       },
       "performance_tracking": {
         "worker_decision_tracking": true
+      },
+      "verification": {
+        "_comment": "Switches that change no result by design (#653): portfolio_cache true marks open positions lazily, only when something asks; false keeps every position current at every event, the reference a run compares the lazy marking against. Turned off only to compare.",
+        "portfolio_cache": true
       }
     },
     "clipping_monitor": {
       "report_interval_s": 60.0,
-      "strategy": "queue_all",
       "warn_above_ratio": 0.05
     },
     "display": {
@@ -173,11 +177,16 @@
       "enabled": true,
       "cadence_timeframe": "M1"
     },
+    "indicator_series": {
+      "_comment": "Each drawing worker's outputs, one value per closed bar of its timeframe (#379), in io/indicator_series_{worker}.jsonl, for the run's chart. Reads what the workers computed anyway and changes nothing they compute.",
+      "enabled": false
+    },
     "cold_start": {
       "enabled": true,
       "path": "data/runtime/cold_start_state",
       "adoption_mode": "operator_confirm",
-      "book_drift_interval_ticks": 500
+      "book_drift_interval_ticks": 500,
+      "boot_read_skew_s": 5.0
     },
     "session_end": {
       "orders": "cancel",
@@ -192,6 +201,12 @@
       "alert_flush_s": 15.0,
       "supervisor_kill_after_s": null,
       "reserve_for_records_s": 15.0
+    },
+    "storage": {
+      "min_free_gb_to_start": 1.0,
+      "warn_free_gb": 2.0,
+      "check_interval_s": 60.0,
+      "stream_sync_interval_s": 1.0
     },
     "capital": {
       "exclusive_account": false
@@ -243,7 +258,20 @@
         },
         "strict_parameter_validation": true,
         "tick_processing_budget_ms": 0.0,
-        "heartbeat_interval_ms": 1000
+        "heartbeat_interval_ms": 1000,
+        "state_frames": {
+          "_comment": "A backtest scenario's state frames (#579 part B item 3), in io/state_frames_{scenario}.jsonl: off unless a scenario asks; a backtest of a live session's window (#512) switches them on with the session's cadence.",
+          "enabled": false,
+          "cadence_timeframe": "M1"
+        },
+        "indicator_series": {
+          "_comment": "A backtest scenario's indicator series (#379), in io/indicator_series_{scenario}/{worker}.jsonl: each drawing worker's outputs, one value per closed bar; off unless a scenario asks.",
+          "enabled": false
+        },
+        "verification": {
+          "_comment": "Switches that change no result by design (#653): portfolio_cache true marks open positions lazily, only when something asks; false keeps every position current at every event, the reference a run compares the lazy marking against. Turned off only to compare.",
+          "portfolio_cache": true
+        }
       }
     },
     "default_trade_simulator_config": {

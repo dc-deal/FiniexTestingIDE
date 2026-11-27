@@ -130,6 +130,19 @@ once the seam has closed.
 | `test_a_live_session_records_the_history_after_the_seam` | the boot read, then the re-read timeframes and the bars after the seam |
 | `test_without_a_path_nothing_is_written` | no path, no file |
 
+### `test_warmup_from_record.py`
+
+A backtest of a session's window starts from the bars the session recorded (#512): the record read
+back through its JSON and fed to the renderer.
+
+| Test | Description |
+|------|-------------|
+| `test_the_record_survives_its_json` | what the reader parses equals what the writer built |
+| `test_fed_back_it_holds_the_archive_history` | fed back for the same first tick, the history equals the archive path's, timeframe by timeframe |
+| `test_a_first_tick_in_a_later_period` | a first tick in a later period than the record reaches is refused at that tick — the bars in between exist nowhere |
+| `test_a_record_that_names_no_instant` | a record with no selection instant is refused |
+| `test_a_record_missing_a_key` | a record from another version of the writer is not read with a guess |
+
 ### `test_first_tick_refusal.py`
 
 A session that cannot close its warmup seam says it refused, not that it crashed — console, session
@@ -140,10 +153,10 @@ sent by then.
 
 | Test | Description |
 |------|-------------|
-| `test_a_seam_refusal_in_the_tick_loop_is_a_refusal` | the `⛔ REFUSED AT THE FIRST TICK` block, not `RUNTIME ERROR`, and its line saying nothing was sent |
+| `test_a_seam_refusal_in_the_event_loop_is_a_refusal` | the `⛔ REFUSED AT THE FIRST TICK` block, not `RUNTIME ERROR`, and its line saying nothing was sent |
 | `test_the_refusal_reaches_the_session_log` | the reason as an error and what was sent in the session log, nothing in the global log |
-| `test_a_crash_in_the_tick_loop_still_reads_as_one` | any other exception keeps `RUNTIME ERROR — SESSION ABORTED` |
-| `test_the_same_refusal_before_the_tick_loop_is_a_startup_failure` | the boot refusals keep `STARTUP FAILED` |
+| `test_a_crash_in_the_event_loop_still_reads_as_one` | any other exception keeps `RUNTIME ERROR — SESSION ABORTED` |
+| `test_the_same_refusal_before_the_event_loop_is_a_startup_failure` | the boot refusals keep `STARTUP FAILED` |
 | `test_a_refused_session_is_still_failed_and_exits_75` | the grading is unchanged, and the exit code lets a supervisor start it again |
 | `test_the_result_carries_the_refusal` | the flag reaches `AutoTraderResult`, where the summary reads it |
 | `test_an_order_sent_before_the_first_tick_is_named` | an order sent before the first tick, on a real executor in the loop's order: the block names it and asks to check the venue |

@@ -2,7 +2,7 @@
 Run Results Ledger (#390) — the persistent accumulating store the Parameter
 Optimization system ranks over.
 
-A flat directory of parquet fragments, ONE file per run (`<run_id>.parquet`):
+A flat directory of parquet fragments, ONE file per run (`<scenario_set_name>_<run_id>.parquet`):
 parquet is immutable, so "one file per run" is the lock-free append. Read the whole
 directory back as a single logical table. All identity (param_hash, sweep_id,
 scenario_set_name, …) is COLUMNS, never folder structure — the free-text config name
@@ -17,22 +17,25 @@ for ranking is `param_hash`; filter by any column.
 
 import json
 import math
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple, get_args
 
 import pandas as pd
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.framework.exceptions.store_errors import LedgerRowUnreadableError
+from python.framework.reporting.aggregation.figure_catalog import COLUMN_REDUCTION
 from python.framework.reporting.store.run_ledger_index import RunLedgerIndex
-from python.framework.types.api.report_types import RunResultRow, RunSummary
-from python.framework.types.run_results_types import (
-    BookingPeriod,
-    NullMeaning,
-    Reduction,
-    RunProvenance,
+from python.framework.types.aggregation_types import FigureKind
+from python.framework.types.api.report_types import (
+    RunResultRow,
+    RunSummary,
+    RunSummaryCurrency,
 )
+from python.framework.types.run_results_types import BookingPeriod, RunProvenance
+from python.framework.types.store_types import StoreId
 from python.framework.types.trading_env_types.trading_env_stats_types import EXECUTION_COUNT_FIELDS
 from python.framework.utils.atomic_file_utils import write_file_atomic
 from python.framework.utils.file_utils import create_directory
@@ -112,15 +115,27 @@ LEDGER_COLUMNS: List[str] = [
     # and then traded real money reads as one series, and its P&L adds simulated fills to real
     # ones. Appended, so older fragments read back None: not recorded.
     'orders_to',
+    # When the session's start found its account's declared exclusivity false on its own
+    # instrument and held its entries (#499) — its start, ISO-8601 UTC. The money figures on the
+    # row stand, but their denominator is not provably the bot's own. None where the start found
+    # nothing, on every backtest, and on an older fragment: not recorded.
+    'exclusivity_violated_at',
     # How the run ENDED and what its warnings-errors channels held, from the outcome the report
     # counted once for both pipelines — so a run list can say whether a run is worth opening
     # without opening it. Run-level values, repeated on every row of the run. Appended, so older
     # fragments read back None: not recorded, never a clean run.
     'run_outcome', 'error_count', 'warning_count', 'log_warning_count',
+    # How many units the run had and how many of them failed (#666), from the same outcome —
+    # so a run list can read "2 of 3" without opening the run. Run-level like the four above.
+    'total_units', 'failed_count',
     # The market time the run processed — its units' tick timespans covered together, overlap
     # once (contract 17). Run-level like the four above, so the run list serves it from the
     # same read. None where it was not recorded.
     'tick_timespan_seconds',
+    # What the run's accounts in this currency held at its end and started with, summed (#32-E):
+    # a TOTAL over separate accounts, so a sweep can rank its combinations by their end equity —
+    # `final_equity` is one account's and empty over several. Run-level like the counts above.
+    'total_final_equity', 'total_initial_balance',
     # WHAT the run ran with (#547): the run-config store ids of its rendered configuration and of
     # the broker configuration it froze. On every row since a session books its trading days
     # while it runs (#476): a session killed on day 29 names its configuration in the rows it
@@ -132,6 +147,11 @@ LEDGER_COLUMNS: List[str] = [
     # cannot: a strategy from another repository moves neither that nor `git_dirty`. None on a
     # backtest and on a fragment written before the column existed: no stand, never a change.
     'code_stand',
+    # More of WHICH DATA the row was produced over (#647): the server clock rules its tick files'
+    # times were converted with (#562), and the bar timeframes whose warmup reached into a venue's
+    # published history (decision 4 of #561). Joined-distinct like the #518 block above. Appended,
+    # so older fragments read back ''.
+    'server_clock_rules', 'external_warmup_timeframes',
     # WHEN this row was written, which is within seconds of when the run ENDED — the reports
     # are persisted at its close and the append is the last step. The ledger had no end of any
     # kind, and `SweepSummary.duration_s` says so in its own comment ("last - first run start,
@@ -185,179 +205,13 @@ LEDGER_COLUMNS: List[str] = [
     # Excursion, holding time and streaks — what a period looks like beyond its net result.
     'avg_mae_winners', 'avg_mae_losers', 'avg_mfe_losers', 'largest_mae', 'largest_mfe',
     'avg_trade_duration_s', 'max_consecutive_wins', 'max_consecutive_losses',
+    # The five deepest drawdown periods of the account's curve at the seal, and when that curve
+    # began (#529) — JSON like `code_stand`, CUMULATIVE like the drawdown trio, so the newest row of
+    # a deployment holds its five and the span they cover. Written on period rows only: the
+    # run-summary row of a backtest spans several accounts, where a reading of one account has no
+    # value. Appended, so older fragments read back None: not recorded.
+    'account_drawdown_periods', 'drawdown_started_at',
 ]
-
-
-# HOW each column combines when several rows are read as one — declared, not remembered.
-#
-# `deployment_history_builder` already carries the reasoning for ONE of these in a comment
-# ("max(), never sum(): each live row carries the RUNNING decline against the inherited peak"),
-# and nothing said it for the other fifty-six. A reader combining rows has to know per column,
-# and the dangerous pairs look identical: `net_pnl` and `win_rate` are both aggregates, one
-# sums and the other cannot be combined at all (CLAUDE.md §48).
-#
-# A test holds this map and LEDGER_COLUMNS to the same key set, so a column cannot be added
-# without an answer.
-
-COLUMN_REDUCTION: Dict[str, Reduction] = {
-    # --- identity, provenance: must agree across the rows, or they are not comparable
-    'logic_version': Reduction.IDENTITY,
-    'param_hash': Reduction.IDENTITY,
-    'status': Reduction.IDENTITY,
-    'error': Reduction.IDENTITY,
-    'run_id': Reduction.IDENTITY,
-    'sweep_id': Reduction.IDENTITY,
-    'sweep_params': Reduction.IDENTITY,
-    'sweep_objective': Reduction.IDENTITY,
-    'sweep_maximize': Reduction.IDENTITY,
-    'scenario_set_name': Reduction.IDENTITY,
-    'app_version': Reduction.IDENTITY,
-    'git_commit': Reduction.IDENTITY,
-    'git_branch': Reduction.IDENTITY,
-    'git_dirty': Reduction.IDENTITY,
-    'decision_logic_type': Reduction.IDENTITY,
-    'decision_version': Reduction.IDENTITY,
-    'worker_versions': Reduction.IDENTITY,
-    'strategy_config_json': Reduction.IDENTITY,
-    'data_broker_type': Reduction.IDENTITY,
-    'currency': Reduction.IDENTITY,
-    'input_plane': Reduction.IDENTITY,
-    'deployment_id': Reduction.IDENTITY,
-    'bot_id': Reduction.IDENTITY,
-    'profile_hash': Reduction.IDENTITY,
-    'run_type': Reduction.IDENTITY,
-    # One answer per run. Across a deployment's runs a disagreement is exactly the case worth
-    # reporting: simulated and real money in one history.
-    'orders_to': Reduction.IDENTITY,
-    # One configuration per run, on each of its rows. Across a deployment's sessions a
-    # disagreement says the configuration moved between them — reported, as `profile_hash` is.
-    'rendered_config_id': Reduction.IDENTITY,
-    'broker_config_id': Reduction.IDENTITY,
-    # One stand per session, on each of its rows. Across a deployment's sessions a disagreement
-    # says the code moved between them.
-    'code_stand': Reduction.IDENTITY,
-    # One run's outcome and counts, repeated on each of its rows — so they agree within a run.
-    # Across runs a combined row has no single outcome, and summing counts that every period row
-    # repeats would multiply them.
-    'run_outcome': Reduction.IDENTITY,
-    'error_count': Reduction.IDENTITY,
-    'warning_count': Reduction.IDENTITY,
-    'log_warning_count': Reduction.IDENTITY,
-    'tick_timespan_seconds': Reduction.IDENTITY,
-    # Every row of one sweep was selected from the same search, so the rows agree by
-    # construction. Across sweeps the figure is not combinable at all — two searches of 500 are
-    # not a search of 1000, and adding them would claim a selection nobody performed.
-    'trial_count': Reduction.IDENTITY,
-    # Counts of what ONE run read. Identical across that run's currency rows; across RUNS they
-    # are not additive, because a file two sessions both read would be counted twice.
-    'input_files': Reduction.IDENTITY,
-    'unstamped_input_files': Reduction.IDENTITY,
-
-    # --- an instant, and WHICH END belongs in a combined row
-    'run_timestamp': Reduction.SPAN_START,
-    'recorded_at_utc': Reduction.SPAN_END,
-    # An instant like the two above: over a set of rows the earliest and the latest both mean
-    # something — when this history first lost evidence, and when it last did.
-    'records_pruned_at': Reduction.SPAN_END,
-
-    # --- comma-joined sets: union, never concatenation
-    'symbols': Reduction.UNION,
-    'data_format_versions': Reduction.UNION,
-    'origin_classes': Reduction.UNION,
-    'origin_evidence_grades': Reduction.UNION,
-    'price_bases': Reduction.UNION,
-    'features_beyond_venue': Reduction.UNION,
-
-    # --- flows and counters: the rows partition them, so adding is correct
-    'net_pnl': Reduction.SUM,
-    'total_fees': Reduction.SUM,
-    'gross_profit': Reduction.SUM,
-    'gross_loss': Reduction.SUM,
-    'total_trades': Reduction.SUM,
-    'winning_trades': Reduction.SUM,
-    'losing_trades': Reduction.SUM,
-    'r_trade_count': Reduction.SUM,
-    'r_win_count': Reduction.SUM,
-    'r_loss_count': Reduction.SUM,
-    'orders_submitted': Reduction.SUM,
-    'orders_adopted': Reduction.SUM,
-    'orders_executed': Reduction.SUM,
-    'orders_denied': Reduction.SUM,
-    'orders_rejected': Reduction.SUM,
-    'orders_cancelled': Reduction.SUM,
-    'orders_expired': Reduction.SUM,
-    'orders_undelivered': Reduction.SUM,
-    'orders_unaccounted': Reduction.SUM,
-    'sl_tp_triggered': Reduction.SUM,
-
-    # --- cumulative extrema. Summing counts one decline once per row that was still inside it.
-    # The trio reduces TOGETHER: `account_max_drawdown` leads, and the other two are taken from
-    # the row that won it. Reducing them separately pairs one row's trough with another's peak,
-    # which is the defect #497 removed one layer down (report_aggregators.py:160-163).
-    'account_max_drawdown': Reduction.MAX_ABS,
-    'max_equity': Reduction.COMPANION,              # follows account_max_drawdown
-    'account_max_drawdown_pct': Reduction.COMPANION,  # follows account_max_drawdown
-
-    # --- stocks: read at an instant, so the most recent row is the answer
-    'unrealized_pnl': Reduction.LAST,
-    'final_equity': Reduction.LAST,
-    'open_position_count': Reduction.LAST,
-
-    # --- rates, means, quotients: NOT combinable. A difference or an average of two of these
-    # is not one of these — they are re-derived over the records of the wider window
-    'expectancy': Reduction.DERIVE,
-    'profit_factor': Reduction.DERIVE,
-    'win_rate': Reduction.DERIVE,
-    'avg_win_r': Reduction.DERIVE,
-    'avg_loss_r': Reduction.DERIVE,
-    'signal_fresh_ratio': Reduction.DERIVE,
-
-    # --- the booking period (#537)
-    # Identical across the rows of one unit; across units it is what separates them, the same
-    # way `currency` does.
-    'unit_name': Reduction.IDENTITY,
-    'period_no': Reduction.SPAN_END,
-    'period_opened_at': Reduction.SPAN_START,
-    'period_closed_at': Reduction.SPAN_END,
-    # The LAST period's reason is the one that says whether the books are complete: only a
-    # `session_end` means nothing was left open. An earlier row's `anchor` says nothing about it.
-    'period_close_reason': Reduction.LAST,
-    # The band of the widest period, and the deepest single-period decline. NOT the band or the
-    # decline of the UNION — a fall that runs across a boundary is deeper than either period's
-    # own, and `account_max_drawdown` above is the column that carries that.
-    # A PEAK, so a plain maximum — this one is not a magnitude, and under MAX_ABS a negative
-    # equity would outrank a positive one. Nothing had noticed because no account here has gone
-    # negative; the two meanings simply shared a name.
-    'period_max_equity': Reduction.MAX,
-    'period_min_equity': Reduction.MIN,
-    # A MAGNITUDE since #539, like `account_max_drawdown` and the excursion columns beside it.
-    # It used to be the one SIGNED figure among them, and rows of both ages sit in this store —
-    # which is exactly what MAX_ABS is for. What the sign cost was never arithmetic but
-    # READING: a consumer renders this table beside the portfolio block, and one shared
-    # formatter turns one of the two into its own opposite without anything going red. The
-    # sign is a DISPLAY decision and lives in the renderers.
-    'period_max_drawdown': Reduction.MAX_ABS,
-    # The earliest period's opening — what the window began with.
-    'period_opening_equity': Reduction.FIRST,
-    'period_commission_cost': Reduction.SUM,
-    'period_swap_cost': Reduction.SUM,
-    'period_spread_cost': Reduction.SUM,
-    'period_modelled_spread_cost': Reduction.SUM,
-    # The periods partition the run's ticks, so their counts add up
-    'period_tick_count': Reduction.SUM,
-    # The worst single excursion combines by magnitude; its MEANS do not.
-    'largest_mae': Reduction.MAX_ABS,
-    'largest_mfe': Reduction.MAX_ABS,
-    'avg_mae_winners': Reduction.DERIVE,
-    'avg_mae_losers': Reduction.DERIVE,
-    'avg_mfe_losers': Reduction.DERIVE,
-    'avg_trade_duration_s': Reduction.DERIVE,
-    # DERIVE, and this is the one where the obvious answer is wrong. A streak can CROSS a
-    # period boundary, so `max()` of two periods understates the truth: 2 and 3 in adjacent
-    # periods can be a run of 5. It has to be re-derived over the records of the wider window.
-    'max_consecutive_wins': Reduction.DERIVE,
-    'max_consecutive_losses': Reduction.DERIVE,
-}
 
 
 # What a run knows only when it ENDS (#476). A session writes its booking periods into the ledger
@@ -370,81 +224,18 @@ COLUMN_REDUCTION: Dict[str, Reduction] = {
 # ended is the row its close wrote (`run_completion_audit.closes_its_run`), never its status.
 RUN_END_COLUMNS: Tuple[str, ...] = (
     'status', 'error', 'run_outcome', 'error_count', 'warning_count', 'log_warning_count',
-    'signal_fresh_ratio', 'tick_timespan_seconds',
+    'total_units', 'failed_count', 'signal_fresh_ratio', 'tick_timespan_seconds',
+    'total_final_equity', 'total_initial_balance',
 )
 
 
-# WHICH column a COMPANION follows. The comments beside the trio said this in prose and nothing
-# could read it — so the first caller that actually reduced the columns would have had to know
-# it by heart, which is precisely the state §49 exists to end. A test holds this map and the
-# COMPANION entries of `COLUMN_REDUCTION` to the same key set.
-COLUMN_COMPANION_OF: Dict[str, str] = {
-    'max_equity': 'account_max_drawdown',
-    'account_max_drawdown_pct': 'account_max_drawdown',
-}
-
-
-# What the EMPTY cell of a nullable figure means. A ranking reads it: it refuses a figure that can be
-# undefined for a run, and ranks one that was only not measured over the rows that carry it, saying
-# how many it left out. A test holds the keys to the nullable figures of the typed row, both ways.
-# Where a null can mean both — a set that can be empty, or a row from before the column — it is
-# declared UNDEFINED, because leaving out the runs that never lost is the worse mistake.
-COLUMN_NULL_MEANING: Dict[str, NullMeaning] = {
-    # The trades had no R on record: a logic keeps its stop itself, so the position carries none. A
-    # ranking leaves such a run out and counts it. A row from before this column could be empty
-    # reads 0.0 with `r_trade_count` 0, and a fold of it reads empty like this one
-    'expectancy': NullMeaning.UNMEASURED,
-    # The period's own band, ticks and costs: a row that books no period, a period that could value
-    # nothing, a row written before the column existed
-    'period_max_equity': NullMeaning.UNMEASURED,
-    'period_min_equity': NullMeaning.UNMEASURED,
-    'period_max_drawdown': NullMeaning.UNMEASURED,
-    'period_tick_count': NullMeaning.UNMEASURED,
-    'period_commission_cost': NullMeaning.UNMEASURED,
-    'period_swap_cost': NullMeaning.UNMEASURED,
-    'period_spread_cost': NullMeaning.UNMEASURED,
-    'period_modelled_spread_cost': NullMeaning.UNMEASURED,
-    # The opening of ONE account: no value over the rows of several
-    'period_opening_equity': NullMeaning.UNDEFINED,
-    # Means, extremes and runs over a set of trades that can be empty
-    'avg_mae_winners': NullMeaning.UNDEFINED,
-    'avg_mae_losers': NullMeaning.UNDEFINED,
-    'avg_mfe_losers': NullMeaning.UNDEFINED,
-    'largest_mae': NullMeaning.UNDEFINED,
-    'largest_mfe': NullMeaning.UNDEFINED,
-    'avg_trade_duration_s': NullMeaning.UNDEFINED,
-    'max_consecutive_wins': NullMeaning.UNDEFINED,
-    'max_consecutive_losses': NullMeaning.UNDEFINED,
-    'profit_factor': NullMeaning.UNDEFINED,          # no losing trade
-    'avg_win_r': NullMeaning.UNDEFINED,              # an empty R subset
-    'avg_loss_r': NullMeaning.UNDEFINED,
-    'signal_fresh_ratio': NullMeaning.UNDEFINED,     # no signal worker in the run
-    # The drawdown trio: a reading taken before the account's first valuation, or a row written
-    # before the column existed
-    'account_max_drawdown': NullMeaning.UNMEASURED,
-    'max_equity': NullMeaning.UNMEASURED,
-    'account_max_drawdown_pct': NullMeaning.UNMEASURED,
-    # A reading of ONE account at its close: no value over the rows of several
-    'unrealized_pnl': NullMeaning.UNDEFINED,
-    'final_equity': NullMeaning.UNDEFINED,
-    'open_position_count': NullMeaning.UNDEFINED,
-    # Flows and counts a row written before the column existed does not carry — and a booking
-    # period's row never carries the order counts
-    'gross_profit': NullMeaning.UNMEASURED,
-    'gross_loss': NullMeaning.UNMEASURED,
-    'r_win_count': NullMeaning.UNMEASURED,
-    'r_loss_count': NullMeaning.UNMEASURED,
-    'orders_submitted': NullMeaning.UNMEASURED,
-    'orders_adopted': NullMeaning.UNMEASURED,
-    'orders_executed': NullMeaning.UNMEASURED,
-    'orders_denied': NullMeaning.UNMEASURED,
-    'orders_rejected': NullMeaning.UNMEASURED,
-    'orders_cancelled': NullMeaning.UNMEASURED,
-    'orders_expired': NullMeaning.UNMEASURED,
-    'orders_undelivered': NullMeaning.UNMEASURED,
-    'orders_unaccounted': NullMeaning.UNMEASURED,
-    'sl_tp_triggered': NullMeaning.UNMEASURED,
-}
+# The figures a run that measured nothing leaves empty: every column the ledger declares a figure —
+# its reduction is no description — that the row model lets be empty. A test holds every numeric
+# figure column to that, so a new one cannot read back as its default on such a row.
+_FIGURE_COLUMNS: Tuple[str, ...] = tuple(
+    column for column in LEDGER_COLUMNS
+    if COLUMN_REDUCTION[column].figure_kind() is not FigureKind.DESCRIPTION
+    and type(None) in get_args(RunResultRow.model_fields[column].annotation))
 
 
 class RunResultsLedger:
@@ -575,7 +366,7 @@ class RunResultsLedger:
             path: Where the finished fragment belongs
         """
         write_file_atomic(path, lambda temporary: frame.to_parquet(temporary, index=False),
-                          durable=True)
+                          StoreId.RUN_LEDGER)
 
     def mark_records_pruned(self, run_ids: Iterable[str]) -> int:
         """
@@ -647,9 +438,7 @@ class RunResultsLedger:
         """
         if not self._index.fragments():
             return pd.DataFrame(columns=LEDGER_COLUMNS)
-        if not self._index.is_valid():
-            self._index.rebuild()
-        df = self._index.read()
+        df = self._index.read_valid()
         if sweep_id is not None:
             df = df[df['sweep_id'] == sweep_id]
         if scenario_set_name is not None:
@@ -702,7 +491,17 @@ class RunResultsLedger:
         if sweep_params is not None:
             data['sweep_params'] = sweep_params
         data['code_stand'] = _json_or(record.get('code_stand'), None, run_id, 'code_stand')
-        return RunResultRow(**data)
+        data['account_drawdown_periods'] = _json_or(
+            record.get('account_drawdown_periods'), None, run_id, 'account_drawdown_periods')
+        row = RunResultRow(**data)
+        # The row of a run that measured nothing reads every figure as None: the writer leaves
+        # those cells empty on purpose, and the writer before it stored a literal zero there
+        # (#646). A model default must not turn either back into a number. Told apart by the
+        # row's own status and currency, never by its empty cells: the fragments are read as one
+        # table, so a fragment from before a column existed is empty there too.
+        if row.measured_nothing():
+            return row.model_copy(update=dict.fromkeys(_FIGURE_COLUMNS, None))
+        return row
 
     def _provenance_fields(self, p: RunProvenance) -> Dict[str, Any]:
         """The shared provenance columns (identical for ok + error rows)."""
@@ -739,16 +538,21 @@ class RunResultsLedger:
             'run_type': p.run_type,
             # A parquet column holds the enum's VALUE; reading it back restores the enum.
             'orders_to': p.orders_to.value if p.orders_to else None,
+            'exclusivity_violated_at': p.exclusivity_violated_at,
             'trial_count': p.trial_count,
             # A parquet column holds the enum's VALUE; reading it back restores the enum.
             'run_outcome': p.run_outcome.value if p.run_outcome else None,
             'error_count': p.error_count,
             'warning_count': p.warning_count,
             'log_warning_count': p.log_warning_count,
+            'total_units': p.total_units,
+            'failed_count': p.failed_count,
             'rendered_config_id': p.rendered_config_id,
             'broker_config_id': p.broker_config_id,
             'code_stand': (json.dumps(p.code_stand.model_dump(), sort_keys=True)
                            if p.code_stand is not None else None),
+            'server_clock_rules': p.server_clock_rules,
+            'external_warmup_timeframes': p.external_warmup_timeframes,
             # Empty at birth: the records exist, because the run that wrote this row just
             # produced them. Only `mark_records_pruned` ever fills it.
             'records_pruned_at': '',
@@ -806,6 +610,7 @@ class RunResultsLedger:
             # different fresh ratios compares runs that saw different signal.
             'signal_fresh_ratio': run_summary.signal_fresh_ratio,
             'tick_timespan_seconds': run_summary.tick_timespan_seconds,
+            **_run_end_equity(currency),
         }
 
     def _period_row(
@@ -837,10 +642,14 @@ class RunResultsLedger:
             'status': p.status,
             'error': p.error,
             **period_ledger_fields(period),
+            **_drawdown_period_columns(period),
             # Run-level and therefore identical on every period of this run: the data quality
             # the whole run saw, and the market time it covered, are not properties of one day.
             'signal_fresh_ratio': run_summary.signal_fresh_ratio,
             'tick_timespan_seconds': run_summary.tick_timespan_seconds,
+            # The run's closing sums in this period's currency — of the run, never of the period
+            **_run_end_equity(next((currency for currency in run_summary.currencies
+                                    if currency.currency == period.figures.currency), None)),
         }
 
     def _sealed_period_row(self, p: RunProvenance, period: BookingPeriod) -> Dict[str, Any]:
@@ -854,7 +663,8 @@ class RunResultsLedger:
         Returns:
             The row as a column → value mapping, every run-end column empty
         """
-        row = {**self._provenance_fields(p), **period_ledger_fields(period)}
+        row = {**self._provenance_fields(p), **period_ledger_fields(period),
+               **_drawdown_period_columns(period)}
         for column in RUN_END_COLUMNS:
             row[column] = None
         return row
@@ -881,6 +691,22 @@ class RunResultsLedger:
             'error': error,
             'currency': '',
         }
+
+
+def _run_end_equity(currency: Optional[RunSummaryCurrency]) -> Dict[str, Any]:
+    """
+    The run's closing equity and starting capital in one currency, each summed over its accounts.
+
+    Args:
+        currency: The run summary's row for the currency, or None when it has none
+
+    Returns:
+        The two run-level columns, empty when the run summary holds no row for the currency
+    """
+    return {
+        'total_final_equity': currency.total_final_equity if currency else None,
+        'total_initial_balance': currency.total_initial_balance if currency else None,
+    }
 
 
 def period_ledger_fields(period: BookingPeriod) -> Dict[str, Any]:
@@ -949,6 +775,31 @@ def period_ledger_fields(period: BookingPeriod) -> Dict[str, Any]:
         **{field_name: (getattr(period.execution, field_name)
                         if period.execution is not None else None)
            for field_name in EXECUTION_COUNT_FIELDS},
+    }
+
+
+def _drawdown_period_columns(period: BookingPeriod) -> Dict[str, Any]:
+    """
+    The five deepest drawdown periods a sealed period read, and when their curve began (#529), as
+    ledger columns.
+
+    Beside `period_ledger_fields` rather than in it: that mapping also builds the typed rows the
+    booking-periods report folds, and those need neither the five nor a JSON text in their place.
+
+    Args:
+        period: The sealed period
+
+    Returns:
+        The two columns; the periods as JSON with their rank, None where the seal read no curve —
+        an empty list is a reading, the curve never fell
+    """
+    periods = period.account_drawdown_periods
+    return {
+        'account_drawdown_periods': (
+            json.dumps([{'rank': rank, **asdict(drawdown)}
+                        for rank, drawdown in enumerate(periods, start=1)], sort_keys=True)
+            if periods is not None else None),
+        'drawdown_started_at': period.drawdown_started_at,
     }
 
 
