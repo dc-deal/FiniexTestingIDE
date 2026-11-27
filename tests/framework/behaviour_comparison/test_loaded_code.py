@@ -6,11 +6,14 @@ changes one thing the run header could say, and an identity that cannot say is n
 from pathlib import Path
 from typing import List, Optional
 
+import pytest
+
 from python.framework.types.behaviour_comparison_types import (
     BehaviourComparison,
     ComparisonEnding,
     ComparisonStand,
     ComparisonStandRun,
+    ComparisonVerdict,
     StandCommits,
 )
 from python.framework.types.run_origin_types import (
@@ -105,5 +108,14 @@ class TestTheExitCode:
         codes = {ending: comparison_exit_code(BehaviourComparison(
             comparison_id='x', scenario_set='s', old=StandCommits('a'), new=StandCommits('b'),
             ending=ending)) for ending in ComparisonEnding}
-        assert codes == {ComparisonEnding.NO_EXECUTABLE_CHANGE: 0, ComparisonEnding.STANDS_RAN: 0,
+        assert codes == {ComparisonEnding.NO_EXECUTABLE_CHANGE: 0, ComparisonEnding.COMPARED: 0,
                          ComparisonEnding.REFUSED: 2, ComparisonEnding.STAND_FAILED: 2}
+
+    @pytest.mark.parametrize('verdict, code', [(ComparisonVerdict.IDENTICAL, 0),
+                                               (ComparisonVerdict.RESHAPED, 0),
+                                               (ComparisonVerdict.DIFFERENT, 3)])
+    def test_a_compared_result_exits_by_its_verdict(self, verdict, code):
+        comparison = BehaviourComparison(
+            comparison_id='x', scenario_set='s', old=StandCommits('a'), new=StandCommits('b'),
+            ending=ComparisonEnding.COMPARED, verdict=verdict)
+        assert comparison_exit_code(comparison) == code

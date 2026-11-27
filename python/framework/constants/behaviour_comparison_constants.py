@@ -27,5 +27,9 @@ SCRATCH_DIR_PATTERN = 'finiex_behaviour_{comparison_id}'
 # The scenario set name each stand's copy of the set carries, so its run is found by name
 SCENARIO_SET_NAME_PATTERN = 'bc_{comparison_id}_{stand}'
 
+# What the new stand's second run puts in that name's place, so its run is found apart from its
+# first
+SECOND_RUN_LABEL = 'new_again'
+
 # The comparison's id: the instant it started, UTC
 COMPARISON_ID_FORMAT = '%Y%m%d_%H%M%S'

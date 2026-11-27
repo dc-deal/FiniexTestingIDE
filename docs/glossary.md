@@ -161,8 +161,9 @@ code stands — the code that runs now and the code that is to be deployed, a fr
 strategy commit each — from throwaway trees against scratch data homes, to see whether what a
 strategy does changed, not only its code. Not the *code stand* comparison of a deployment's
 sessions, which says where the code moved and not whether it mattered, and not the divergence
-report's A/A, which holds a deployment's own window on its release and on this tree. See
-[Comparing Two Code Stands Before a Deploy](user_guides/behaviour_comparison_guide.md).
+report's A/A, which holds a deployment's own window on its release and on this tree. Its result
+names each kind of record `IDENTICAL` or `DIFFERENT`, as the A/A does, or *reshaped* or *unseen*.
+See [Comparing Two Code Stands Before a Deploy](user_guides/behaviour_comparison_guide.md).
 
 **booking period** — One sealed period of one run unit, bounded by the market's trading day and
 numbered from 1; the ledger holds one row per booking period, in its account's currency. Every
@@ -1033,6 +1034,11 @@ settled it — the request is in `lost_request`. On a broker answer, `UNRESOLVED
 got no usable answer — the venue could not be reached, its answer could not be read, or the request
 worker crashed on the job — so the answer says nothing about the order, which the venue may hold.
 
+**reshaped** (a behaviour comparison's verdict) — No value of a kind of record differs between the
+two stands' runs, but its shape does: a field, a whole record or a schema version only one stand
+writes. Not a change of what was computed. See
+[Comparing Two Code Stands Before a Deploy](user_guides/behaviour_comparison_guide.md).
+
 **resting** — A pending order the venue (or the trade simulator) has accepted and that waits for its
 price: a resting limit, a resting stop. See [Pending Orders](architecture/pending_order_architecture.md).
 
@@ -1287,6 +1293,11 @@ one over the combinations that carry it, counting the rest in `unranked`. Not Ja
 **undelivered** (an order status and an order event) — The venue confirms it never received the
 order: its answer was lost, and asking by our own key after the venue's records had settled found
 nothing. Never a refusal — the venue refused nothing.
+
+**unseen** (a behaviour comparison's verdict) — What a behaviour comparison cannot say: a kind of
+record empty in both runs — no trade, no signal — or a value the new stand's two runs disagree on,
+which is shown and not judged. It never decides the comparison's result. See
+[Comparing Two Code Stands Before a Deploy](user_guides/behaviour_comparison_guide.md).
 
 **venue** — The real marketplace behind a broker entry: Kraken, an MT5 broker.
 

@@ -7,9 +7,15 @@ The rule is coarse on purpose and errs towards running: every path the declarati
 counts as executable, a path below `tests/fixtures/` too, because shipped scenario sets load their
 strategies from there. It is the framework's rule: a strategy repository's layout is nobody's
 declaration, so none of its paths is skipped.
+
+A Python file whose syntax tree is unchanged executes nothing new either — a change to comments,
+blank lines or formatting — in every repository, because a syntax tree is no layout. A changed
+docstring changes the tree (it is a constant the code can read), and so does a trailing comma added
+inside a tuple.
 """
 
-from typing import Dict, List
+import ast
+from typing import Dict, List, Optional, Sequence
 
 from python.framework.constants.behaviour_comparison_constants import (
     EXECUTED_BELOW_NOT_EXECUTED,
@@ -36,24 +42,55 @@ def is_executable_path(path: str) -> bool:
     return not path.startswith(NOT_EXECUTED_PREFIXES)
 
 
-def classify_changed_paths(repository: ComparedRepository, paths: List[str]) -> ChangedPaths:
+def same_python_code(old: Optional[str], new: Optional[str]) -> bool:
+    """
+    Whether two versions of a Python file have one syntax tree.
+
+    Args:
+        old: The file's text at the old commit; None where it did not exist
+        new: Its text at the new commit; None where it does not exist
+
+    Returns:
+        True only where both exist, both parse and their trees are equal
+    """
+    if old is None or new is None:
+        return False
+    try:
+        return ast.dump(ast.parse(old)) == ast.dump(ast.parse(new))
+    except (SyntaxError, ValueError):
+        return False
+
+
+def classify_changed_paths(repository: ComparedRepository, paths: List[str],
+                           comment_only: Sequence[str] = ()) -> ChangedPaths:
     """
     One repository's changed paths, sorted into executable and not executed.
 
     Args:
         repository: Which repository
         paths: Its changed paths, relative to its top level
+        comment_only: The Python files among them whose syntax tree is unchanged
 
     Returns:
         The paths in both groups, each in the order given, and what the not-executed ones are;
-        every path executable for a repository without a declared layout
+        every other path executable for a repository without a declared layout
     """
     declared = repository.has_declared_layout()
-    executable = [path for path in paths if not declared or is_executable_path(path)]
-    not_executed = [path for path in paths if declared and not is_executable_path(path)]
+    unchanged_code = set(comment_only)
+    executable: List[str] = []
+    not_executed: List[str] = []
+    for path in paths:
+        if path not in unchanged_code and (not declared or is_executable_path(path)):
+            executable.append(path)
+        else:
+            not_executed.append(path)
+    kinds = _not_executed_kinds([path for path in not_executed if path not in unchanged_code])
+    found_comment_only = [path for path in not_executed if path in unchanged_code]
+    if found_comment_only:
+        kinds.append(f'comment only {len(found_comment_only)}')
     return ChangedPaths(repository=repository, executable=executable, not_executed=not_executed,
-                        not_executed_kinds=_not_executed_kinds(not_executed),
-                        changed_path_count=len(paths))
+                        not_executed_kinds=kinds, changed_path_count=len(paths),
+                        comment_only=found_comment_only)
 
 
 def _not_executed_kinds(paths: List[str]) -> List[str]:

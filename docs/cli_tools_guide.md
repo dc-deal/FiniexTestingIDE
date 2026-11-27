@@ -994,7 +994,7 @@ Exit codes: `0` every window identical · `2` refused, or a window not checked �
 |---|---|
 | **VS Code** | `🔀 Behaviour Comparison: compare (prompt)` |
 | **CLI** | `python python/cli/behaviour_comparison_cli.py compare --scenario-set <path> --old-framework <rev> --new-framework <rev>` |
-| **Purpose** | Run the same scenario set on the code that runs now and on the code to be deployed, each from a throwaway tree and a scratch data home, and say whether both ran on their own code (#641) |
+| **Purpose** | Run the same scenario set on the code that runs now and on the code to be deployed, each from a throwaway tree and a scratch data home, prove that both ran on their own code, and say what their records agree and disagree on (#641) |
 
 What it does and what it does not do yet:
 [Comparing Two Code Stands Before a Deploy](user_guides/behaviour_comparison_guide.md).
@@ -1006,13 +1006,15 @@ What it does and what it does not do yet:
 | `--framework-repo <dir>` | The framework repository; this tree's when omitted |
 | `--strategy-repo <dir>` | The strategy repository, below the data home; with it, `--old-strategy` and `--new-strategy` |
 
-A change to the framework's documents and tests only ends the comparison before it builds anything;
-every change of a strategy repository runs, because its layout is its author's. Nothing of the data
-home it runs on is written; each stand's folder is removed when the comparison ends.
+A change to the framework's documents and tests only, or to comments in either repository, ends the
+comparison before it builds anything; every other change of a strategy repository runs, because its
+layout is its author's. The two runs' records are then held against each other value by value, and
+the result names each kind of record `IDENTICAL`, `DIFFERENT`, `RESHAPED` or `UNSEEN`. Nothing of the
+data home it runs on is written; each stand's folder is removed when the comparison ends.
 
-Exit codes: `0` ended as intended (nothing executable changed, or both stands ran on their own
-code) · `2` refused, or a stand could not be built, ran no backtest or loaded other code · `1` an
-error · `130` interrupted.
+Exit codes: `0` nothing executable changed, or the result is `IDENTICAL` or `RESHAPED` · `3` the
+result is `DIFFERENT` · `2` refused, or a stand could not be built, ran no backtest or loaded other
+code · `1` an error · `130` interrupted.
 
 ---
 

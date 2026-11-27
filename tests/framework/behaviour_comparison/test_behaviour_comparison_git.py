@@ -1,6 +1,7 @@
 """
 The git reads a behaviour comparison needs (#641), on throwaway repositories: a revision resolved,
-the paths between two commits, and a clone at a commit that leaves its source untouched.
+the paths between two commits, a clone at a commit that leaves its source untouched, and files read
+as given commits hold them.
 """
 
 from pathlib import Path
@@ -13,6 +14,7 @@ from python.framework.utils.git_info_utils import (
     clear_git_caches,
     clone_at_commit,
     get_repo_status,
+    read_files_at_commits,
     resolve_commit,
 )
 from tests.shared.git_test_repos import commit_all, make_repo, run_git, write_files
@@ -87,3 +89,16 @@ class TestCloneAtCommit:
         failure = clone_at_commit(str(repo[0]), '0' * 40, tmp_path / 'clone')
         assert failure.startswith('the checkout failed: ')
         assert failure != 'the checkout failed: no message'
+
+
+class TestReadFilesAtCommits:
+
+    def test_each_file_is_read_as_its_commit_holds_it(self, repo):
+        root, first, second = repo
+        texts = read_files_at_commits(str(root), [(first, 'python/a.py'), (second, 'python/a.py'),
+                                                  (second, 'python/b.py')])
+        assert texts == {(first, 'python/a.py'): 'x = 1\n', (second, 'python/a.py'): None,
+                         (second, 'python/b.py'): 'x = 1\n'}
+
+    def test_nothing_asked_reads_nothing(self, repo):
+        assert read_files_at_commits(str(repo[0]), []) == {}

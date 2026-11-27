@@ -2,15 +2,18 @@
 The behaviour comparison (#641): the same fixed backtest run on two code stands — what runs now
 and what is to be deployed — step by step, and everything it built removed again.
 
-1 paths    which paths changed between the stands; only documents and tests → nothing to run
+1 paths    which paths changed between the stands; only documents, tests and comments → nothing
+           to run
 2 build    per stand a tree at its framework commit and a scratch data home holding its strategy
            repository at its strategy commit
 3 run      old, then new, each a process of its own; each run's header proves which code it loaded
+4 compare  the two runs' records, kind by kind, value by value; where a value differs, the new
+           stand runs once more, and what its two runs disagree on is not judged
+6 result   a verdict for each kind of record, and the whole
 7 clean    the scratch folder removed, whatever happened before
 
-The steps between run and clean — the comparison of the records and its result, and the reach of
-the runs — are later parts of the issue. A commit says that code changed; only the runs say
-whether what the strategy does changed.
+The reach of the runs — which changed lines no run executed — is a later part of the issue. A
+commit says that code changed; only the runs say whether what the strategy does changed.
 """
 
 import json
@@ -23,12 +26,17 @@ from typing import Dict, List, Optional, Tuple
 
 from python.configuration.app_config_manager import AppConfigManager
 from python.configuration.data_home import relative_in_data_home
-from python.framework.behaviour_comparison.changed_path_classifier import classify_changed_paths
+from python.framework.behaviour_comparison.changed_path_classifier import (
+    classify_changed_paths,
+    same_python_code,
+)
+from python.framework.behaviour_comparison.run_record_comparison import compare_run_records
 from python.framework.behaviour_comparison.stand_home_builder import StandHomeBuilder
 from python.framework.constants.behaviour_comparison_constants import (
     COMPARISON_ID_FORMAT,
     SCENARIO_SET_NAME_PATTERN,
     SCRATCH_DIR_PATTERN,
+    SECOND_RUN_LABEL,
 )
 from python.framework.reporting.divergence_report_coordinator import newest_run_named
 from python.framework.store.entry_members.run_entry_reader import RunEntryReader
@@ -46,6 +54,7 @@ from python.framework.utils.file_utils import create_directory
 from python.framework.utils.git_info_utils import (
     changed_paths_between,
     get_framework_root,
+    read_files_at_commits,
     resolve_commit,
 )
 from python.framework.utils.tree_backtest_utils import (
@@ -53,7 +62,10 @@ from python.framework.utils.tree_backtest_utils import (
     error_lines,
     run_backtest_in_tree,
 )
-from python.framework.validators.behaviour_comparison_validator import judge_loaded_code
+from python.framework.validators.behaviour_comparison_validator import (
+    judge_loaded_code,
+    judge_result,
+)
 
 # What every stand's backtest runs with: no bytecode written into its trees, so the strategy
 # repository reads as committed to the run's own code identity
@@ -173,7 +185,11 @@ class BehaviourComparisonCoordinator:
             paths = changed_paths_between(root, old_commit, new_commit)
             if paths is None:
                 return f'git could not say which paths of the {repository.value} repository changed'
-            changed.append(classify_changed_paths(repository, paths))
+            comment_only = _comment_only(root, old_commit, new_commit, paths)
+            if comment_only is None:
+                return (f'git could not read the changed Python files of the {repository.value} '
+                        f'repository')
+            changed.append(classify_changed_paths(repository, paths, comment_only))
         comparison.changed_paths = changed
         return ''
 
@@ -208,23 +224,59 @@ class BehaviourComparisonCoordinator:
         if failed:
             return _ended(comparison, ComparisonStep.RUN, ComparisonEnding.STAND_FAILED,
                           f'the {failed[0].stand.value} stand {failed[0].failed_because}')
-        return _ended(comparison, ComparisonStep.RUN, ComparisonEnding.STANDS_RAN,
-                      'both stands ran on their own code')
+        return self._compare(comparison)
 
-    def _run_stand(self, comparison_id: str, run: ComparisonStandRun) -> ComparisonStandRun:
+    def _compare(self, comparison: BehaviourComparison) -> BehaviourComparison:
+        """
+        Steps 4 and 6: the two runs' records held against each other, the new stand run once more
+        where a value differs, and the result judged.
+
+        Args:
+            comparison: The comparison, both stands run on their own code
+
+        Returns:
+            The comparison as it ended
+        """
+        old, new = comparison.runs
+        old_dir, new_dir = _run_dir(old), _run_dir(new)
+        if old_dir is None or new_dir is None:
+            return _ended(comparison, ComparisonStep.COMPARE, ComparisonEnding.STAND_FAILED,
+                          'a stand\'s run directory is not in its run index')
+        comparison.records = compare_run_records(old_dir, new_dir)
+        if any(record.differences for record in comparison.records):
+            again = self._run_stand(comparison.comparison_id,
+                                    ComparisonStandRun(stand=ComparisonStand.NEW,
+                                                       commits=new.commits, tree=new.tree,
+                                                       home=new.home),
+                                    label=SECOND_RUN_LABEL)
+            comparison.second_run = again
+            again_dir = _run_dir(again) if not again.failed_because else None
+            if again_dir is None:
+                return _ended(comparison, ComparisonStep.COMPARE, ComparisonEnding.STAND_FAILED,
+                              f'the new stand\'s second run '
+                              f'{again.failed_because or "left no run directory"}')
+            comparison.second_run_disagrees = compare_run_records(new_dir, again_dir)
+        comparison.verdict, comparison.result_lines = judge_result(
+            comparison.records, comparison.second_run_disagrees)
+        return _ended(comparison, ComparisonStep.RESULT, ComparisonEnding.COMPARED,
+                      comparison.verdict.summary())
+
+    def _run_stand(self, comparison_id: str, run: ComparisonStandRun,
+                   label: Optional[str] = None) -> ComparisonStandRun:
         """
         Step 3 for one stand: its backtest, its run found, the code it loaded judged.
 
         Args:
             comparison_id: The comparison's id
-            run: The stand, built
+            run: The stand, built; changed in place
+            label: What its scenario set's name carries in place of the stand; None for the stand
 
         Returns:
             The stand as it ran
         """
         home = Path(run.home)
         set_name = SCENARIO_SET_NAME_PATTERN.format(comparison_id=comparison_id,
-                                                    stand=run.stand.value)
+                                                    stand=label or run.stand.value)
         set_path = self._stand_set(home, set_name)
         started = time.monotonic()
         completed = run_backtest_in_tree(Path(run.tree), home, set_path, self._environment)
@@ -274,6 +326,45 @@ class BehaviourComparisonCoordinator:
             return None
         relative = relative_in_data_home(self._strategy_root)
         return home / relative if relative is not None else None
+
+
+def _comment_only(root: str, old_commit: str, new_commit: str,
+                  paths: List[str]) -> Optional[List[str]]:
+    """
+    The changed Python files whose syntax tree both commits share.
+
+    Args:
+        root: The repository
+        old_commit: The old stand's commit
+        new_commit: The new stand's commit
+        paths: The changed paths
+
+    Returns:
+        Those files, in the order given; None where git could not read them
+    """
+    python_paths = [path for path in paths if path.endswith('.py')]
+    texts = read_files_at_commits(root, [(commit, path) for path in python_paths
+                                         for commit in (old_commit, new_commit)])
+    if texts is None:
+        return None
+    return [path for path in python_paths
+            if same_python_code(texts[(old_commit, path)], texts[(new_commit, path)])]
+
+
+def _run_dir(run: ComparisonStandRun) -> Optional[Path]:
+    """
+    Where a stand's run wrote its records.
+
+    Args:
+        run: The stand as it ran
+
+    Returns:
+        The run's directory; None where its run is not in its home's run index
+    """
+    if not run.run_id:
+        return None
+    return RunEntryReader(run_index_path=Path(run.home) / _configured_run_index()).run_dir(
+        run.run_id)
 
 
 def _configured_run_index() -> Path:

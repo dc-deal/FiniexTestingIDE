@@ -26,9 +26,9 @@ backtest runs on the code that runs now and on the code that is to be deployed, 
 throwaway copy, over the same data, and nothing of either is kept. Whoever runs a bot can run it
 for their own bot before a deploy.
 
-This guide covers what is built so far: which paths changed, the two stands built and run, and the
-proof that each run loaded its own code. Holding the two runs' records against each other and
-saying what moved, which changed lines no run reached, and the record a comparison leaves are later
+This guide covers what is built so far: which paths changed, the two stands built and run with the
+proof that each run loaded its own code, and the two runs' records held against each other with
+what that says. Which changed lines no run reached, and the record a comparison leaves, are later
 parts of the same work. Comparing a live bot with a backtest of its own window is a different
 question, answered by [Comparing a Live Bot With Its Backtest](divergence_report_guide.md).
 
@@ -53,11 +53,18 @@ same file for both stands: choose a short one that passes through what the strat
 ## What happens, step by step
 
 ```
-1 paths   framework: 61 changed, 38 executable · strategy: 2 changed, 2 executable
+1 paths   framework: 61 changed, 37 executable, 1 comment only · strategy: 2 changed, 2 executable
 2 build   old and new in 28.6 s
 3 run     old  ✓ run 20261124_190601_ab12cd34 · loaded framework 1a2b3c4d5e6f · 4 s
           new  ✓ run 20261124_190712_ef56ab78 · loaded framework 5e6f7a8b9c0d · 4 s
-          ended in run: both stands ran on their own code
+4 compare the two runs' records, kind by kind, value by value
+          a value differs, so the new stand ran again: new  ✓ run 20261124_190801_0a1b2c3d · …
+6 result  DIFFERENT  orders
+                     orders[*].requested_lots ×3 — first orders[0].requested_lots 1.0 → 0.5
+          RESHAPED   trades: a field only the new stand writes — trades[*].fee_basis
+          IDENTICAL  order events · resting orders · booking periods · warnings and errors · …
+          UNSEEN     signal data: none in either run — says nothing about a signal
+          ended in result: the behaviour differs — read the cause before the deploy
 7 clean   scratch removed
 ```
 
@@ -66,7 +73,9 @@ same file for both stands: choose a short one that passes through what the strat
    (`ended in paths: no executable path changed — nothing to run`). The rule errs towards running:
    a path it does not name counts as executable, and so does everything below `tests/fixtures/`,
    because shipped scenario sets load their strategies from there. It is the framework's rule: a
-   strategy repository's layout is its author's, so every change there runs.
+   strategy repository's layout is its author's, so every change there runs. In either repository,
+   a Python file whose syntax tree is unchanged — a change to comments, blank lines or formatting —
+   counts as not executed; a changed docstring is code, because a program can read it.
 2. **Build.** Each stand gets a folder of its own below the system's temporary directory: a clone
    of the framework at its commit, and beside it a scratch data home holding the strategy
    repository at its commit, where the scenario set's strategy paths expect it. What a run may
@@ -79,6 +88,27 @@ same file for both stands: choose a short one that passes through what the strat
    the framework from its own tree at its commit, every strategy file from that tree or from the
    stand's strategy repository at its commit, nothing uncommitted. A header that cannot say is a
    failure, never a match.
+4. **Compare.** Every record a backtest writes that says what the run did — the order events, the
+   orders, the trades, the resting orders, the positions and the account, the booking periods, the
+   fills, what the run logged and read — is held against the other stand's, value by value and to
+   the last digit. What says how fast this machine was, the run's provenance, the logs and the CSV
+   copies are left out, each for a stated reason. So are a few fields that differ between two runs
+   of the same code: the run's id, and stamps taken from the wall clock. Where a value differs, the
+   new stand runs once more, and a value its two runs disagree on is not judged — it is shown,
+   never dropped.
+6. **Result.** One line per kind of record:
+
+   | Verdict | Means |
+   |---|---|
+   | `IDENTICAL` | both stands wrote the same values |
+   | `DIFFERENT` | a value both write differs, and the new stand's second run agrees — every differing field is named with how often it differs and its first two values |
+   | `RESHAPED` | no value differs, but the record's shape does: a field, a kind of record or a schema version only one stand writes |
+   | `UNSEEN` | what this comparison cannot say: a kind of record empty in both runs, or a value the new stand's two runs disagree on |
+
+   The whole takes the weightiest line: `DIFFERENT` over `RESHAPED` over `IDENTICAL`; `UNSEEN`
+   never decides it. The result decides nothing by itself: `IDENTICAL` says nothing on this run
+   speaks against the deploy, `DIFFERENT` says the cause is read first, and `UNSEEN` says where
+   to look with other means.
 7. **Clean.** The folder is removed whatever happened before it, a failure or an interruption too.
 
 ## What it touches outside its folder
@@ -97,10 +127,10 @@ than its size suggests.
 
 ## Exit codes
 
-`0` the comparison ended as intended — nothing executable changed, or both stands ran on their own
-code · `2` refused, or a stand could not be built, ran no backtest or loaded other code · `1` an
-error · `130` interrupted. A stand whose backtest finished with logged errors (its own exit `3`)
-counts as run: it computed its events.
+`0` nothing executable changed, or the result is `IDENTICAL` or `RESHAPED` · `3` the result is
+`DIFFERENT` · `2` refused, or a stand could not be built, ran no backtest or loaded other code ·
+`1` an error · `130` interrupted. A stand whose own backtest finished with logged errors counts as
+run: it computed its events, and its records are compared.
 
 ## Related
 

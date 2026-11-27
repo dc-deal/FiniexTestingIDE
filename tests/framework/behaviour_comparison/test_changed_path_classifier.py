@@ -12,6 +12,7 @@ import pytest
 from python.framework.behaviour_comparison.changed_path_classifier import (
     classify_changed_paths,
     is_executable_path,
+    same_python_code,
 )
 from python.framework.types.behaviour_comparison_types import ComparedRepository, ComparisonEnding
 
@@ -47,10 +48,44 @@ class TestTheDeclaredRule:
         assert paths.executable == ['docs/notes.md', 'tests/test_x.py', 'my_algo/x.py']
         assert paths.not_executed == [] and paths.changed_path_count == 3
 
+    def test_a_comment_only_file_leaves_the_executable_paths_in_every_repository(self):
+        for repository in ComparedRepository:
+            paths = classify_changed_paths(repository, ['my_algo/x.py', 'my_algo/y.py'],
+                                           comment_only=['my_algo/x.py'])
+            assert paths.executable == ['my_algo/y.py']
+            assert paths.comment_only == ['my_algo/x.py']
+            assert paths.not_executed_kinds == ['comment only 1']
+
     def test_only_the_framework_has_a_declared_layout(self):
         declared = {repository for repository in ComparedRepository
                     if repository.has_declared_layout()}
         assert declared == {ComparedRepository.FRAMEWORK}
+
+
+_CODE = 'def size(lots, scale):\n    return lots * scale\n'
+
+
+class TestTheSyntaxTree:
+
+    @pytest.mark.parametrize('new', [
+        'def size(lots, scale):\n    # the account\'s scale\n    return lots * scale\n',
+        'def size(lots, scale):\n\n    return lots * scale  \n',
+        'def size(lots,\n         scale):\n    return lots * scale\n',
+    ])
+    def test_comments_blank_lines_and_wrapping_are_the_same_code(self, new):
+        assert same_python_code(_CODE, new)
+
+    @pytest.mark.parametrize('new', [
+        'def size(lots, scale):\n    \"\"\"Sized.\"\"\"\n    return lots * scale\n',
+        'def size(lots, scale):\n    return scale * lots\n',
+        'def size(lots, scale):\n    return lots * scale * 0.99\n',
+    ])
+    def test_a_docstring_or_an_expression_is_another_code(self, new):
+        assert not same_python_code(_CODE, new)
+
+    def test_a_file_that_does_not_parse_or_does_not_exist_is_another_code(self):
+        assert not same_python_code(_CODE, 'def size(:\n')
+        assert not same_python_code(None, _CODE) and not same_python_code(_CODE, None)
 
 
 def _strategy_paths(document: object) -> Iterator[str]:
@@ -96,6 +131,6 @@ class TestTheEnding:
 
     def test_every_ending_says_whether_it_is_intended(self):
         intended = {ending for ending in ComparisonEnding if ending.is_intended()}
-        assert intended == {ComparisonEnding.NO_EXECUTABLE_CHANGE, ComparisonEnding.STANDS_RAN}
+        assert intended == {ComparisonEnding.NO_EXECUTABLE_CHANGE, ComparisonEnding.COMPARED}
         assert set(ComparisonEnding) - intended == {ComparisonEnding.REFUSED,
                                                     ComparisonEnding.STAND_FAILED}

@@ -13,9 +13,10 @@ Usage:
         --old-framework <commit> --new-framework <commit> \\
         --strategy-repo <path> --old-strategy <commit> --new-strategy <commit>
 
-Exit codes: 0 ended as intended (nothing executable changed, or both stands ran on their own code)
-· 2 refused, or a stand could not be built, ran no backtest or loaded other code · 1 an error ·
-130 interrupted. A stand whose backtest finished with logged errors (its own exit 3) counts as run.
+Exit codes: 0 nothing executable changed, or the two runs' records are IDENTICAL or RESHAPED ·
+3 the result is DIFFERENT · 2 refused, or a stand could not be built, ran no backtest or loaded
+other code · 1 an error · 130 interrupted. A stand whose own backtest finished with logged errors
+counts as run: it computed its events, and its records are compared.
 """
 
 import argparse

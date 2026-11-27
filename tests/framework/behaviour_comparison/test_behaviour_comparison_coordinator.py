@@ -65,6 +65,17 @@ class TestNothingToRun:
         assert list(_scratch_and_caches.iterdir()) == []
 
 
+    def test_a_change_to_comments_only_ends_before_anything_is_built(
+            self, scenario_set, framework, _scratch_and_caches):
+        write_files(framework, {'python/x.py': '# the first value\nx = 1\n'})
+        commit_all(framework)
+        comparison = _coordinator(scenario_set, framework).run()
+        assert comparison.ending is ComparisonEnding.NO_EXECUTABLE_CHANGE
+        paths, = comparison.changed_paths
+        assert (paths.executable, paths.comment_only) == ([], ['python/x.py'])
+        assert list(_scratch_and_caches.iterdir()) == []
+
+
 class TestTheCleanUp:
 
     def test_a_step_that_raises_still_leaves_nothing_behind(self, scenario_set, framework,

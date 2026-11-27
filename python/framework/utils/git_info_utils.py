@@ -25,7 +25,7 @@ import time
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 from python.framework.types.git_info_types import GitInfo, RepoCommitHistory, RepoStatus
 
@@ -401,9 +401,50 @@ def read_tree_at_commit(root: str, commit: str, directory: str,
     return sources
 
 
+def read_files_at_commits(root: str, wanted: Sequence[Tuple[str, str]]
+                          ) -> Optional[Dict[Tuple[str, str], Optional[str]]]:
+    """
+    Files as given commits hold them, without a checkout, in one read.
+
+    Read as one `git cat-file --batch` stream, for the same reason as `read_tree_at_commit`: on
+    this mount every object read on its own costs a git process and its start.
+
+    Args:
+        root: The repository's top-level directory
+        wanted: (commit, repository-relative path) pairs
+
+    Returns:
+        Each pair → the file's text, None where the commit holds no such file; None when git is
+        unavailable
+    """
+    if not wanted:
+        return {}
+    request = ''.join(f'{commit}:{path}\n' for commit, path in wanted).encode('utf-8')
+    try:
+        batch = _git(root, ['cat-file', '--batch'], text=False, timeout_s=_ARCHIVE_TIMEOUT_S,
+                     stdin=request)
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    if batch.returncode != 0:
+        return None
+    found: Dict[Tuple[str, str], Optional[str]] = {}
+    output, offset = batch.stdout, 0
+    for pair in wanted:
+        line_end = output.index(b'\n', offset)
+        header = output[offset:line_end].split()
+        offset = line_end + 1
+        if len(header) != 3 or header[1] != b'blob':
+            found[pair] = None
+            continue
+        size = int(header[2])
+        found[pair] = output[offset:offset + size].decode('utf-8', 'replace')
+        offset += size + 1
+    return found
+
+
 def _git(root: str, args: List[str], text: bool = True,
          env: Optional[dict] = None,
-         timeout_s: int = 30) -> subprocess.CompletedProcess:
+         timeout_s: int = 30, stdin: Optional[bytes] = None) -> subprocess.CompletedProcess:
     """
     Run one git command inside a given repository, with the pinned configuration.
 
@@ -414,6 +455,7 @@ def _git(root: str, args: List[str], text: bool = True,
         env: Variables handed to git on purpose — a temporary index is handed over this way;
             the inherited variables in `_DROPPED_GIT_ENV` are dropped
         timeout_s: How long the command may take; a whole tree read as an archive needs longer
+        stdin: Bytes handed to the command's standard input; None hands it nothing
 
     Returns:
         The completed process; the caller decides what a non-zero exit means. A read that could
@@ -424,11 +466,11 @@ def _git(root: str, args: List[str], text: bool = True,
     clean_env.update(env or {})
     command = ['git', '-C', root, _LITERAL_PATHSPECS, *_PINNED_CONFIG, *args]
     result = subprocess.run(command, capture_output=True, text=text, timeout=timeout_s,
-                            env=clean_env)
+                            env=clean_env, input=stdin)
     if result.returncode != 0 and _head_did_not_resolve(args, result.stderr):
         time.sleep(_UNRESOLVED_HEAD_PAUSE_S)
         result = subprocess.run(command, capture_output=True, text=text, timeout=timeout_s,
-                                env=clean_env)
+                                env=clean_env, input=stdin)
     return result
 
 

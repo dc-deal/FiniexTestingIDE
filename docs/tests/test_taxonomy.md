@@ -154,7 +154,9 @@ tests/
 │   ├── behaviour_comparison/ unit + integration — one fixed backtest on two code stands (#641): the rule of what a run
 │   │                      does not execute held to what shipped sets load; a clone at a commit that leaves its source
 │   │                      untouched; the scratch home — caches copied, archive and workspace linked; whether each stand
-│   │                      ran on its own code; one comparison of two real commits end to end, nothing left behind
+│   │                      ran on its own code; which records are compared and why the rest are not; the records
+│   │                      held value by value and judged; a neutral and a defective commit end to end, nothing left
+│   │                      behind
 │   ├── divergence_report/ unit + integration — a live session against a backtest of its window: the backtest built from the session's
 │   │                      record — rendered profile, frozen broker document, recorded warmup — every block declared; the live
 │   │                      side's segments, windows and trading days, each day compared or excluded with every cause; the
