@@ -94,21 +94,22 @@ same file for both stands: choose a short one that passes through what the strat
    the last digit. What says how fast this machine was, the run's provenance, the logs and the CSV
    copies are left out, each for a stated reason. So are a few fields that differ between two runs
    of the same code: the run's id, and stamps taken from the wall clock. Where a value differs, the
-   new stand runs once more, and a value its two runs disagree on is not judged — it is shown,
-   never dropped.
+   new stand runs once more: a value its two runs disagree on is not a change of behaviour but code
+   that does not reproduce itself, and it is shown as such.
 6. **Result.** One line per kind of record:
 
    | Verdict | Means |
    |---|---|
    | `IDENTICAL` | both stands wrote the same values |
    | `DIFFERENT` | a value both write differs, and the new stand's second run agrees — every differing field is named with how often it differs and its first two values |
+   | `UNSTABLE` | the new stand's two runs disagree — the new code does not reproduce itself there |
    | `RESHAPED` | no value differs, but the record's shape does: a field, a kind of record or a schema version only one stand writes |
-   | `UNSEEN` | what this comparison cannot say: a kind of record empty in both runs, or a value the new stand's two runs disagree on |
+   | `UNSEEN` | what this comparison cannot say: a kind of record empty in both runs |
 
-   The whole takes the weightiest line: `DIFFERENT` over `RESHAPED` over `IDENTICAL`; `UNSEEN`
-   never decides it. The result decides nothing by itself: `IDENTICAL` says nothing on this run
-   speaks against the deploy, `DIFFERENT` says the cause is read first, and `UNSEEN` says where
-   to look with other means.
+   The whole takes the weightiest line: `DIFFERENT` over `UNSTABLE` over `RESHAPED` over
+   `IDENTICAL`; `UNSEEN` never decides it. The result decides nothing by itself: `IDENTICAL` says
+   nothing on this run speaks against the deploy, `DIFFERENT` and `UNSTABLE` say the cause is read
+   first, and `UNSEEN` says where to look with other means.
 7. **Clean.** The folder is removed whatever happened before it, a failure or an interruption too.
 
 ## What it touches outside its folder
@@ -128,7 +129,7 @@ than its size suggests.
 ## Exit codes
 
 `0` nothing executable changed, or the result is `IDENTICAL` or `RESHAPED` · `3` the result is
-`DIFFERENT` · `2` refused, or a stand could not be built, ran no backtest or loaded other code ·
+`DIFFERENT` or `UNSTABLE` · `2` refused, or a stand could not be built, ran no backtest or loaded other code ·
 `1` an error · `130` interrupted. A stand whose own backtest finished with logged errors counts as
 run: it computed its events, and its records are compared.
 

@@ -12,9 +12,10 @@ repository at its commit, nothing uncommitted and nothing unknown. An identity t
 a failure, never a match — a comparison of two runs nobody can place compares nothing.
 
 The result judges each kind of record: DIFFERENT where a value both stands write differs and the
-new stand's second run agrees with its first there, RESHAPED where only the records' shape moved,
-IDENTICAL where everything agrees, UNSEEN where the comparison cannot say. A value the new stand's
-two runs disagree on is never judged: it is shown as UNSEEN, never dropped.
+new stand's second run agrees with its first there, UNSTABLE where the new stand's two runs
+disagree, RESHAPED where only the records' shape moved, IDENTICAL where everything agrees, UNSEEN
+where nothing of the kind happened in either run. A value the new stand's two runs disagree on is
+never judged as different: it is shown as UNSTABLE, never dropped.
 """
 
 import os
@@ -35,8 +36,8 @@ from python.framework.types.run_origin_types import CodeIdentity
 from python.framework.utils.git_info_utils import commits_agree
 
 # The order a result's lines stand in: what needs a reading first
-_LINE_ORDER = (ComparisonVerdict.DIFFERENT, ComparisonVerdict.RESHAPED,
-               ComparisonVerdict.IDENTICAL, ComparisonVerdict.UNSEEN)
+_LINE_ORDER = (ComparisonVerdict.DIFFERENT, ComparisonVerdict.UNSTABLE,
+               ComparisonVerdict.RESHAPED, ComparisonVerdict.IDENTICAL, ComparisonVerdict.UNSEEN)
 
 
 def judge_loaded_code(identity: Optional[CodeIdentity], run: ComparisonStandRun,
@@ -104,7 +105,7 @@ def judge_result(records: Sequence[RecordComparison],
 
     Returns:
         (the whole — the weightiest line's verdict, UNSEEN where nothing was compared; the lines,
-        DIFFERENT first, then RESHAPED, IDENTICAL and UNSEEN)
+        DIFFERENT first, then UNSTABLE, RESHAPED, IDENTICAL and UNSEEN)
     """
     second_by_member = {second.record.member_id: second for second in second_run}
     lines: List[ResultLine] = []
@@ -125,10 +126,10 @@ def comparison_exit_code(comparison: BehaviourComparison) -> int:
         comparison: The comparison
 
     Returns:
-        3 where its result is DIFFERENT; 0 where it otherwise ended as intended; 2 where it was
-        refused or a stand failed
+        3 where its result is DIFFERENT or UNSTABLE; 0 where it otherwise ended as intended; 2
+        where it was refused or a stand failed
     """
-    if comparison.verdict is ComparisonVerdict.DIFFERENT:
+    if comparison.verdict in (ComparisonVerdict.DIFFERENT, ComparisonVerdict.UNSTABLE):
         return 3
     return 0 if comparison.ending.is_intended() else 2
 
@@ -144,7 +145,7 @@ def _judge_record(record: RecordComparison,
 
     Returns:
         Its verdict lines — DIFFERENT and RESHAPED both where both apply, none where neither run
-        wrote it — and an UNSEEN line naming everything the new stand's two runs disagree on
+        wrote it — and an UNSTABLE line naming everything the new stand's two runs disagree on
     """
     words = record.record.words
     noise = _second_run_line(second, words)
@@ -172,7 +173,7 @@ def _judge_record(record: RecordComparison,
         if record.empty_in_both:
             lines.append(ResultLine(
                 ComparisonVerdict.UNSEEN, words,
-                unseen_because=f'none in either run — says nothing about '
+                because=f'none in either run — says nothing about '
                                f'{record.record.unseen_words or words}'))
         elif not unjudged:
             lines.append(ResultLine(ComparisonVerdict.IDENTICAL, words))
@@ -189,7 +190,7 @@ def _second_run_line(second: Optional[RecordComparison], words: str) -> List[Res
         words: The kind of record, as a line names it
 
     Returns:
-        One UNSEEN line with the paths and the second run's values; none where the two agree
+        One UNSTABLE line with the paths and the second run's values; none where the two agree
     """
     if second is None:
         return []
@@ -201,9 +202,9 @@ def _second_run_line(second: Optional[RecordComparison], words: str) -> List[Res
         one_sided.append('only one of its two runs writes it')
     if not second.differences and not one_sided:
         return []
-    return [ResultLine(ComparisonVerdict.UNSEEN, words,
+    return [ResultLine(ComparisonVerdict.UNSTABLE, words,
                        differing_fields=_fields(second.differences), reshaped=tuple(one_sided),
-                       unseen_because='the new stand\'s two runs disagree here — not judged')]
+                       because='the new stand\'s two runs disagree here')]
 
 
 def _reshaped(record: RecordComparison, not_judged: Set[str]) -> List[str]:

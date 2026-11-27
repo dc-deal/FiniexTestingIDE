@@ -1009,11 +1009,12 @@ What it does and what it does not do yet:
 A change to the framework's documents and tests only, or to comments in either repository, ends the
 comparison before it builds anything; every other change of a strategy repository runs, because its
 layout is its author's. The two runs' records are then held against each other value by value, and
-the result names each kind of record `IDENTICAL`, `DIFFERENT`, `RESHAPED` or `UNSEEN`. Nothing of the
-data home it runs on is written; each stand's folder is removed when the comparison ends.
+the result names each kind of record `IDENTICAL`, `DIFFERENT`, `UNSTABLE`, `RESHAPED` or `UNSEEN`.
+Nothing of the data home it runs on is written; each stand's folder is removed when the comparison
+ends.
 
 Exit codes: `0` nothing executable changed, or the result is `IDENTICAL` or `RESHAPED` · `3` the
-result is `DIFFERENT` · `2` refused, or a stand could not be built, ran no backtest or loaded other
+result is `DIFFERENT` or `UNSTABLE` · `2` refused, or a stand could not be built, ran no backtest or loaded other
 code · `1` an error · `130` interrupted.
 
 ---

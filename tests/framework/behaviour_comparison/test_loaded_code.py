@@ -113,6 +113,7 @@ class TestTheExitCode:
 
     @pytest.mark.parametrize('verdict, code', [(ComparisonVerdict.IDENTICAL, 0),
                                                (ComparisonVerdict.RESHAPED, 0),
+                                               (ComparisonVerdict.UNSTABLE, 3),
                                                (ComparisonVerdict.DIFFERENT, 3)])
     def test_a_compared_result_exits_by_its_verdict(self, verdict, code):
         comparison = BehaviourComparison(

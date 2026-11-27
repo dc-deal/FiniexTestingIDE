@@ -79,11 +79,14 @@ class ComparisonVerdict(StrEnum):
         first
     RESHAPED: no value differs, but the records' shape does — a field, a record kind or a schema
         version only one stand writes
-    UNSEEN: what this comparison cannot say — a kind of record empty in both runs, or a value the
-        new stand's two runs disagree on. Never decides the whole
+    UNSTABLE: the new stand's two runs disagree — the new code does not reproduce itself there,
+        so what it would do after the deploy cannot be told from one run
+    UNSEEN: what this comparison cannot say — a kind of record empty in both runs. Never decides
+        the whole
     """
     IDENTICAL = 'identical'
     RESHAPED = 'reshaped'
+    UNSTABLE = 'unstable'
     DIFFERENT = 'different'
     UNSEEN = 'unseen'
 
@@ -95,8 +98,8 @@ class ComparisonVerdict(StrEnum):
             other: The verdict held so far
 
         Returns:
-            True where this one decides the whole instead: DIFFERENT over RESHAPED over
-            IDENTICAL; UNSEEN never does
+            True where this one decides the whole instead: DIFFERENT over UNSTABLE over RESHAPED
+            over IDENTICAL; UNSEEN never does
         """
         return _VERDICT_RANK[self] > _VERDICT_RANK[other]
 
@@ -112,11 +115,14 @@ class ComparisonVerdict(StrEnum):
 
 # How the verdicts weigh against each other for the whole; UNSEEN weighs nothing
 _VERDICT_RANK = {ComparisonVerdict.UNSEEN: 0, ComparisonVerdict.IDENTICAL: 1,
-                 ComparisonVerdict.RESHAPED: 2, ComparisonVerdict.DIFFERENT: 3}
+                 ComparisonVerdict.RESHAPED: 2, ComparisonVerdict.UNSTABLE: 3,
+                 ComparisonVerdict.DIFFERENT: 4}
 
 _VERDICT_SUMMARY = {
     ComparisonVerdict.IDENTICAL: 'both stands computed the same, value by value',
     ComparisonVerdict.RESHAPED: 'the same values; the shape of the records changed',
+    ComparisonVerdict.UNSTABLE: 'the new code does not reproduce itself — read the unstable values '
+                                'before the deploy',
     ComparisonVerdict.DIFFERENT: 'the behaviour differs — read the cause before the deploy',
     ComparisonVerdict.UNSEEN: 'nothing was compared',
 }
@@ -246,15 +252,16 @@ class ResultLine:
         verdict: The verdict
         words: The kind of record, as the line names it
         differing_fields: For DIFFERENT, every folded path that differs, in document order; for
-            UNSEEN from a second run, the paths its two runs disagree on
-        reshaped: For RESHAPED, what only one stand writes, each with the stand that writes it
-        unseen_because: For UNSEEN, why the comparison cannot say
+            UNSTABLE, the paths the new stand's two runs disagree on
+        reshaped: For RESHAPED, what only one stand writes, each with the stand that writes it;
+            for UNSTABLE, what only one of the new stand's two runs writes
+        because: For UNSEEN and UNSTABLE, why, in a sentence
     """
     verdict: ComparisonVerdict
     words: str
     differing_fields: Tuple[DifferingField, ...] = ()
     reshaped: Tuple[str, ...] = ()
-    unseen_because: str = ''
+    because: str = ''
 
 
 @dataclass

@@ -76,7 +76,7 @@ class TestEachKindOfRecord:
         records = [compare_record(_TRADES, {'trades': []}, {'trades': []})]
         whole, lines = judge_result(records, [])
         assert whole is ComparisonVerdict.UNSEEN
-        assert lines[0].unseen_because == ('none in either run — says nothing about a closed '
+        assert lines[0].because == ('none in either run — says nothing about a closed '
                                            'position')
 
     def test_a_kind_of_record_neither_run_wrote_earns_no_line(self):
@@ -85,13 +85,13 @@ class TestEachKindOfRecord:
 
 class TestTheSecondRun:
 
-    def test_a_value_the_new_stand_s_two_runs_disagree_on_is_not_judged(self):
+    def test_a_value_the_new_stand_s_two_runs_disagree_on_is_unstable_not_different(self):
         records = [compare_record(_ORDERS, _orders(1.0), _orders(2.0))]
         second = [compare_record(_ORDERS, _orders(2.0), _orders(2.1))]
         whole, lines = judge_result(records, second)
-        assert whole is ComparisonVerdict.UNSEEN
+        assert whole is ComparisonVerdict.UNSTABLE
         line, = lines
-        assert line.verdict is ComparisonVerdict.UNSEEN
+        assert line.verdict is ComparisonVerdict.UNSTABLE
         assert line.differing_fields[0].folded_path == 'orders[*].lots'
 
     def test_a_second_run_that_agrees_leaves_the_difference_judged(self):
@@ -113,7 +113,8 @@ class TestTheWhole:
                                                     ComparisonVerdict.IDENTICAL]
 
     def test_the_verdicts_rank_as_declared(self):
-        assert ComparisonVerdict.DIFFERENT.ranks_above(ComparisonVerdict.RESHAPED)
+        assert ComparisonVerdict.DIFFERENT.ranks_above(ComparisonVerdict.UNSTABLE)
+        assert ComparisonVerdict.UNSTABLE.ranks_above(ComparisonVerdict.RESHAPED)
         assert ComparisonVerdict.RESHAPED.ranks_above(ComparisonVerdict.IDENTICAL)
         assert ComparisonVerdict.IDENTICAL.ranks_above(ComparisonVerdict.UNSEEN)
         assert all(verdict.summary() for verdict in ComparisonVerdict)
@@ -142,10 +143,11 @@ class TestEverythingTheSecondRunDisagreesOn:
     def test_a_path_the_second_run_disagrees_on_is_named_where_old_and_new_agree(self):
         records = [compare_record(_ORDERS, _orders(1.0), _orders(1.0))]
         second = [compare_record(_ORDERS, _orders(1.0), _orders(1.1))]
-        _, lines = judge_result(records, second)
-        assert [line.verdict for line in lines] == [ComparisonVerdict.IDENTICAL,
-                                                    ComparisonVerdict.UNSEEN]
-        assert lines[1].differing_fields[0].first.new_value == '1.1'
+        whole, lines = judge_result(records, second)
+        assert whole is ComparisonVerdict.UNSTABLE
+        assert [line.verdict for line in lines] == [ComparisonVerdict.UNSTABLE,
+                                                    ComparisonVerdict.IDENTICAL]
+        assert lines[0].differing_fields[0].first.new_value == '1.1'
 
     def test_a_field_only_one_of_its_two_runs_writes_is_named_and_not_a_reshape(self):
         records = [compare_record(_ORDERS, {'orders': [{'lots': 1.0}]},
@@ -153,6 +155,7 @@ class TestEverythingTheSecondRunDisagreesOn:
         second = [compare_record(_ORDERS, {'orders': [{'lots': 1.0, 'stamp': 'a'}]},
                                  {'orders': [{'lots': 1.0}]})]
         whole, lines = judge_result(records, second)
-        assert whole is ComparisonVerdict.IDENTICAL
-        unseen, = [line for line in lines if line.verdict is ComparisonVerdict.UNSEEN]
-        assert unseen.reshaped == ('a field only one of its two runs writes — orders[*].stamp',)
+        assert whole is ComparisonVerdict.UNSTABLE
+        assert ComparisonVerdict.RESHAPED not in {line.verdict for line in lines}
+        unstable, = [line for line in lines if line.verdict is ComparisonVerdict.UNSTABLE]
+        assert unstable.reshaped == ('a field only one of its two runs writes — orders[*].stamp',)

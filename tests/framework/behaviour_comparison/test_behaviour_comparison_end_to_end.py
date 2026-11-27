@@ -166,5 +166,4 @@ class TestTheResult:
         assert differs.second_run is not None and differs.second_run.failed_because == ''
         assert not any(record.differences or record.old_only_fields or record.new_only_fields
                        for record in differs.second_run_disagrees)
-        assert not [line for line in differs.result_lines if line.unseen_because.startswith(
-            'the new stand')]
+        assert ComparisonVerdict.UNSTABLE not in {line.verdict for line in differs.result_lines}

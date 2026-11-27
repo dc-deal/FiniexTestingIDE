@@ -162,7 +162,8 @@ strategy commit each — from throwaway trees against scratch data homes, to see
 strategy does changed, not only its code. Not the *code stand* comparison of a deployment's
 sessions, which says where the code moved and not whether it mattered, and not the divergence
 report's A/A, which holds a deployment's own window on its release and on this tree. Its result
-names each kind of record `IDENTICAL` or `DIFFERENT`, as the A/A does, or *reshaped* or *unseen*.
+names each kind of record `IDENTICAL` or `DIFFERENT`, as the A/A does, or *unstable*, *reshaped* or
+*unseen*.
 See [Comparing Two Code Stands Before a Deploy](user_guides/behaviour_comparison_guide.md).
 
 **booking period** — One sealed period of one run unit, bounded by the market's trading day and
@@ -1295,8 +1296,12 @@ order: its answer was lost, and asking by our own key after the venue's records 
 nothing. Never a refusal — the venue refused nothing.
 
 **unseen** (a behaviour comparison's verdict) — What a behaviour comparison cannot say: a kind of
-record empty in both runs — no trade, no signal — or a value the new stand's two runs disagree on,
-which is shown and not judged. It never decides the comparison's result. See
+record empty in both runs — no trade, no signal. It never decides the comparison's result. See
+[Comparing Two Code Stands Before a Deploy](user_guides/behaviour_comparison_guide.md).
+
+**unstable** (a behaviour comparison's verdict) — The new stand's two runs of one backtest disagree
+on a value: the new code does not reproduce itself there, so one run of it says nothing about what
+it would do after the deploy. Ends the comparison with exit 3, as a difference does. See
 [Comparing Two Code Stands Before a Deploy](user_guides/behaviour_comparison_guide.md).
 
 **venue** — The real marketplace behind a broker entry: Kraken, an MT5 broker.

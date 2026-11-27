@@ -129,7 +129,7 @@ def _result(result_lines: List[ResultLine]) -> List[str]:
             printed.append(f'{_verdict(line.verdict)}{line.words}: {" · ".join(line.reshaped)}')
             continue
         head = f'{_verdict(line.verdict)}{line.words}'
-        printed.append(f'{head}: {line.unseen_because}' if line.unseen_because else head)
+        printed.append(f'{head}: {line.because}' if line.because else head)
         printed.extend(_fields(line.differing_fields))
         printed.extend(f'{_FIELD_INDENT}{part}' for part in line.reshaped)
     return printed
